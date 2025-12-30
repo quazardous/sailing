@@ -6,7 +6,7 @@ allowed-tools: Read, Edit, Glob, Task, Bash
 
 **Atomic: mark task done + cascade status updates.**
 
-> 📖 CLI reference: `.sailing/core/RUDDER.md` or `bin/rudder -h`
+> 📖 CLI reference: `bin/rudder -h`
 
 1. Mark done: `rudder task:update TNNN --status Done`
 2. Show impact: `rudder deps:impact TNNN` (what's now unblocked)

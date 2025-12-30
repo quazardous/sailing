@@ -33,11 +33,11 @@ function expandPath(p) {
       ? path.resolve(_scriptDir, '..')
       : path.resolve(import.meta.dirname, '../..');
 
-    const hasCore = fs.existsSync(path.join(repoRoot, 'core'));
+    const hasPrompting = fs.existsSync(path.join(repoRoot, 'prompting'));
     const hasCli = fs.existsSync(path.join(repoRoot, 'cli'));
     const hasInstall = fs.existsSync(path.join(repoRoot, 'install.sh'));
 
-    if (hasCore && hasCli && hasInstall) {
+    if (hasPrompting && hasCli && hasInstall) {
       // Devinstall mode confirmed
       if (p === '^') return repoRoot;
       return path.join(repoRoot, p.slice(2));
@@ -56,12 +56,12 @@ function expandPath(p) {
 const expandHome = expandPath;
 
 // Default paths (relative to project root)
-// Note: devinstall.sh should set core: ^/core in paths.yaml
+// Note: devinstall.sh should set prompting: ^/prompting in paths.yaml
 const DEFAULT_PATHS = {
   artefacts: '.sailing/artefacts',
   memory: '.sailing/memory',
   templates: '.sailing/templates',
-  core: '.sailing/core',
+  prompting: '.sailing/prompting',
   rudder: '.sailing/rudder',
   state: '.sailing/state.json',
   components: '.sailing/components.yaml',
@@ -221,8 +221,8 @@ export function getTemplatesDir() {
   return getPath('templates');
 }
 
-export function getCoreDir() {
-  return getPath('core');
+export function getPromptingDir() {
+  return getPath('prompting');
 }
 
 export function getStateFile() {
@@ -249,7 +249,7 @@ export function isDevInstall() {
     ? path.resolve(_scriptDir, '..')
     : path.resolve(import.meta.dirname, '../..');
 
-  return fs.existsSync(path.join(repoRoot, 'core')) &&
+  return fs.existsSync(path.join(repoRoot, 'prompting')) &&
          fs.existsSync(path.join(repoRoot, 'cli')) &&
          fs.existsSync(path.join(repoRoot, 'install.sh'));
 }
@@ -265,57 +265,27 @@ export function getSailingRepoRoot() {
 }
 
 /**
- * Get core docs directory
- * In devinstall mode: <sailing-repo>/core/
- * In normal mode: paths.core (default: .sailing/core/)
+ * Get prompting directory
+ * In devinstall mode: <sailing-repo>/prompting/
+ * In normal mode: paths.prompting (default: .sailing/prompting/)
  */
-export function getCoreDocs() {
+export function getPrompting() {
   if (isDevInstall()) {
-    return path.join(getSailingRepoRoot(), 'core');
+    return path.join(getSailingRepoRoot(), 'prompting');
   }
-  return getCoreDir();
+  return getPromptingDir();
 }
 
 /**
- * Core doc aliases
+ * Get templates directory
+ * In devinstall mode: <sailing-repo>/templates/
+ * In normal mode: paths.templates (default: .sailing/templates/)
  */
-const CORE_DOC_ALIASES = {
-  sailing: 'SAILING.md',
-  agent: 'AGENT.md',
-  rudder: 'RUDDER.md',
-  versioning: 'VERSIONING.md',
-  tasklog: 'TASKLOG.md',
-  milestone: 'MILESTONE.md'
-};
-
-/**
- * Resolve core doc name (alias or filename)
- */
-export function resolveCoreDoc(name) {
-  const lower = name.toLowerCase().replace(/\.md$/, '');
-  return CORE_DOC_ALIASES[lower] || name;
-}
-
-/**
- * Get core doc path
- */
-export function getCoreDocPath(name) {
-  const coreDir = getCoreDocs();
-  const filename = resolveCoreDoc(name);
-  // Add .md if not present
-  const fullName = filename.endsWith('.md') ? filename : `${filename}.md`;
-  return path.join(coreDir, fullName);
-}
-
-/**
- * List available core docs
- */
-export function listCoreDocs() {
-  const coreDir = getCoreDocs();
-  if (!fs.existsSync(coreDir)) return [];
-  return fs.readdirSync(coreDir)
-    .filter(f => f.endsWith('.md'))
-    .map(f => f.replace(/\.md$/, ''));
+export function getTemplates() {
+  if (isDevInstall()) {
+    return path.join(getSailingRepoRoot(), 'templates');
+  }
+  return getTemplatesDir();
 }
 
 /**
@@ -323,16 +293,9 @@ export function listCoreDocs() {
  * Only exposes paths that agents need to know
  */
 export function getPathsInfo() {
-  const projectRoot = findProjectRoot();
   const config = loadConfig();
-
-  const resolve = (p) => {
-    const expanded = expandHome(p);
-    return path.isAbsolute(expanded) ? expanded : path.join(projectRoot, expanded);
-  };
-
-  const artefactsPath = resolve(config.paths.artefacts);
-  const templatesPath = resolve(config.paths.templates);
+  const artefactsPath = getArtefactsDir();
+  const templatesPath = getTemplates();
 
   return {
     roadmap: {
@@ -499,7 +462,7 @@ export function toKebab(str) {
  * Load a template file
  */
 export function loadTemplate(type) {
-  const templatePath = path.join(getTemplatesDir(), `${type}.md`);
+  const templatePath = path.join(getTemplates(), `${type}.md`);
   if (!fs.existsSync(templatePath)) return null;
   return fs.readFileSync(templatePath, 'utf8');
 }

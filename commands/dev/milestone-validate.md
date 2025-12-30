@@ -8,15 +8,15 @@ allowed-tools: Read, Glob, Grep, Task, Bash
 
 **Purpose:** Validate milestone acceptance criteria and report results to main thread.
 
-> 📖 CLI reference: `.sailing/core/RUDDER.md` or `bin/rudder -h`
-> 📖 Full documentation: `.sailing/core/MILESTONE.md`
+> 📖 CLI reference: `bin/rudder -h`
+> 📖 Context: `rudder context:agent milestone-validate`
 
 ---
 
 ## Pre-flight
 
 ```bash
-rudder core:show agent    # Constitutional rules, CLI contract
+rudder context:agent milestone-validate    # Constitutional rules, CLI contract
 ```
 
 ---

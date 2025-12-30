@@ -18,7 +18,7 @@ You are acting as a **software architect / project lead** reviewing a PRD prior 
 ## Pre-flight
 
 ```bash
-rudder core:show agent    # Constitutional rules, CLI contract
+rudder context:agent prd-review    # Constitutional rules, CLI contract
 rudder versions           # Get current component versions
 rudder prd:show PRD-NNN   # Verify PRD exists and see epic/task counts
 ```

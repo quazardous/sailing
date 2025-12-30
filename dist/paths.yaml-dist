@@ -9,15 +9,15 @@
 # Examples:
 #   artefacts: .sailing/artefacts     # relative to project
 #   artefacts: /var/data/sailing      # absolute path
-#   core: ~/shared/sailing/core       # in home directory
-#   core: ^/core                      # sailing repo (devinstall)
+#   prompting: ~/shared/sailing/prompting  # in home directory
+#   prompting: ^/prompting            # sailing repo (devinstall)
 
 paths:
   # Sailing data
   artefacts: .sailing/artefacts
   memory: .sailing/memory
   templates: .sailing/templates
-  core: .sailing/core
+  prompting: .sailing/prompting
   rudder: .sailing/rudder
 
   # State files

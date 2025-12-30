@@ -9,7 +9,7 @@ allowed-tools: Read, Glob, Grep, Task
 ## Pre-flight
 
 ```bash
-rudder core:show agent    # Constitutional rules, CLI contract
+rudder context:agent test-audit    # Constitutional rules, CLI contract
 ```
 
 ## Pass 1: Analysis (agent)

@@ -3,7 +3,7 @@ description: Project status overview
 allowed-tools: Bash
 ---
 
-> 📖 CLI reference: `.sailing/core/RUDDER.md` or `bin/rudder -h`
+> 📖 CLI reference: `bin/rudder -h`
 
 ```bash
 bin/rudder status [--json]

@@ -15,7 +15,7 @@ allowed-tools: Read, Glob, Grep, Task, WebSearch, WebFetch
 ## Pre-flight
 
 ```bash
-rudder core:show agent    # Constitutional rules, CLI contract
+rudder context:agent tech-audit    # Constitutional rules, CLI contract
 ```
 
 ---

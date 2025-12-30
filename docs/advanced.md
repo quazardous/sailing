@@ -9,7 +9,7 @@ paths:
   artefacts: .sailing/artefacts
   memory: .sailing/memory
   templates: .sailing/templates
-  core: .sailing/core
+  prompting: .sailing/prompting
   rudder: .sailing/rudder
   skill: .claude/skills/sailing
   commands: .claude/commands/dev
@@ -46,53 +46,28 @@ curl -sSL .../install.sh | bash -s -- --dry-run
 
 ## Dev Install (Local Repo)
 
-Install from a local sailing repo instead of GitHub:
+Install from a local sailing repo instead of GitHub (symlink mode):
 
 ```bash
 cd /path/to/target-project
 /path/to/sailing/devinstall.sh [options]
 ```
 
-### Modes
-
-| Mode | Command | Description |
-|------|---------|-------------|
-| `--symlink` | (default) | Symlinks to repo, changes reflected immediately |
-| `--copy` | | Copy files, standalone installation |
-
-### Symlink Mode (default)
-
-```bash
-/path/to/sailing/devinstall.sh
-/path/to/sailing/devinstall.sh --symlink
-```
-
-Creates symlinks:
+Creates symlinks to the repo - changes are immediately reflected:
 - `.claude/skills/sailing` → repo/skill/
 - `.claude/commands/dev` → repo/commands/dev/
 - `.sailing/templates` → repo/templates/
-- Core docs → repo/core/ (except ROADMAP.md, POSTIT.md)
+- `prompting: ^/prompting` in paths.yaml → repo/prompting/
 
-CLI runs directly from source repo. Changes are immediately reflected.
+CLI runs directly from source repo.
 
-### Copy Mode
-
-```bash
-/path/to/sailing/devinstall.sh --copy
-```
-
-Copies all files like `install.sh`:
-- CLI copied to `.sailing/rudder/`
-- Skill, commands, templates copied
-- Standalone installation, no dependency on source repo
+For standalone installation (no dependency on source repo), use `install.sh` instead.
 
 ### Options
 
 | Option | Description |
 |--------|-------------|
-| `--symlink` | Symlink mode (default) |
-| `--copy` | Copy mode |
-| `--force` | Force overwrite protected files |
+| `--force` | Force overwrite existing files |
 | `--help` | Show help |
 
 ## Dev Mode (from repo)

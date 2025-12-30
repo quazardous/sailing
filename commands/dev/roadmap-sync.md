@@ -5,7 +5,7 @@ allowed-tools: Read, Edit, Glob, Grep, Task, Bash
 
 **Verify and fix ROADMAP ↔ project sync.**
 
-> 📖 CLI reference: `.sailing/core/RUDDER.md` or `bin/rudder -h`
+> 📖 CLI reference: `bin/rudder -h`
 
 ## Agent prompt
 

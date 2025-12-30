@@ -94,7 +94,7 @@ your-project/
 └── .sailing/
     ├── artefacts/          # ROADMAP, POSTIT, PRDs, Epics, Tasks
     ├── memory/             # Epic memory
-    ├── core/               # Reference documentation
+    ├── prompting/          # Optimized prompt fragments
     └── templates/          # Entity templates
 ```
 
@@ -104,7 +104,7 @@ your-project/
 - [Folder Structure](docs/folders.md) - What each folder contains
 - [Version Tracking](docs/version_tracking.md) - Component versioning with semver
 - [Advanced Configuration](docs/advanced.md) - Custom paths, dev install, etc.
-- `.sailing/core/SAILING.md` - Complete workflow documentation (after install)
+- `bin/rudder context:agent --list` - Agent context fragments (after install)
 
 ## License
 

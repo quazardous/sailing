@@ -8,7 +8,7 @@ allowed-tools: Read, Write, Edit, Task, Bash
 
 **Purpose:** Decompose a single epic into tasks using Rudder CLI.
 
-> 📖 CLI reference: `.sailing/core/RUDDER.md` or `bin/rudder -h`
+> 📖 CLI reference: `bin/rudder -h`
 
 This command performs **coordination only**, never implementation or inference.
 
@@ -17,7 +17,7 @@ This command performs **coordination only**, never implementation or inference.
 ## Pre-flight
 
 ```bash
-rudder core:show agent             # Constitutional rules, CLI contract
+rudder context:agent epic-breakdown             # Constitutional rules, CLI contract
 rudder epic:show ENNN              # Verify epic exists, see task counts
 rudder epic:show-memory ENNN --full  # Previous learnings + escalations
 rudder story:list PRD-NNN          # Check if stories exist for this PRD

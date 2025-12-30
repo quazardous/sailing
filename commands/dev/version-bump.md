@@ -6,7 +6,7 @@ allowed-tools: Read, Edit, Bash, Grep
 
 **Bump component version and maintain changelog.**
 
-> 📖 CLI reference: `.sailing/core/RUDDER.md` or `bin/rudder -h`
+> 📖 CLI reference: `bin/rudder -h`
 
 ## Pre-check
 

@@ -3,7 +3,7 @@
  */
 import fs from 'fs';
 import path from 'path';
-import { findPrdDirs, findFiles, loadFile, saveFile, jsonOut, getSailingDir, getStateFile, getPrdsDir, getConfigInfo, getPathsInfo, getCoreDocs, getCoreDocPath, listCoreDocs, resolveCoreDoc, isDevInstall } from '../lib/core.js';
+import { findPrdDirs, findFiles, loadFile, saveFile, jsonOut, getSailingDir, getStateFile, getPrdsDir, getConfigInfo, getPathsInfo } from '../lib/core.js';
 import { addDynamicHelp } from '../lib/help.js';
 import { loadState, saveState } from '../lib/state.js';
 import { getAllVersions, getMainVersion } from '../lib/version.js';
@@ -161,27 +161,33 @@ export function registerUtilCommands(program) {
       }
     });
 
-  // state
-  program.command('state')
+  // state group
+  const state = program.command('state')
+    .description('State management (ID counters)');
+
+  addDynamicHelp(state, { entityType: 'state' });
+
+  // state:show (default)
+  state.command('show')
     .description('Show ID counters (PRD, Epic, Task)')
     .option('--json', 'JSON output')
     .action((options) => {
-      const state = loadState();
+      const stateData = loadState();
 
       if (options.json) {
-        jsonOut(state);
+        jsonOut(stateData);
       } else {
         console.log('State counters:');
-        console.log(`  PRD:  ${state.counters.prd}`);
-        console.log(`  Epic: ${state.counters.epic}`);
-        console.log(`  Task: ${state.counters.task}`);
+        console.log(`  PRD:  ${stateData.counters.prd}`);
+        console.log(`  Epic: ${stateData.counters.epic}`);
+        console.log(`  Task: ${stateData.counters.task}`);
         console.log(`\nFile: ${getStateFile()}`);
       }
     });
 
   // state:set
-  program.command('state:set <type> <value>')
-    .description('Set a state counter')
+  state.command('set <type> <value>')
+    .description('Set a state counter (type: prd, epic, task)')
     .action((type, value) => {
       const num = parseInt(value, 10);
       if (isNaN(num)) {
@@ -194,14 +200,20 @@ export function registerUtilCommands(program) {
         process.exit(1);
       }
 
-      const state = loadState();
-      state.counters[type] = num;
-      saveState(state);
+      const stateData = loadState();
+      stateData.counters[type] = num;
+      saveState(stateData);
       console.log(`Set ${type} counter to ${num}`);
     });
 
-  // feedback
-  program.command('feedback <message>')
+  // feedback group
+  const feedback = program.command('feedback')
+    .description('Feedback management (agent systemic issues)');
+
+  addDynamicHelp(feedback, { entityType: 'feedback' });
+
+  // feedback:add
+  feedback.command('add <message>')
     .description('Log agent feedback (systemic issues, not task-specific)')
     .option('-t, --task <id>', 'Related task')
     .action((message, options) => {
@@ -215,7 +227,7 @@ export function registerUtilCommands(program) {
     });
 
   // feedback:list
-  program.command('feedback:list')
+  feedback.command('list')
     .description('Show feedback log')
     .option('-l, --limit <n>', 'Limit entries', parseInt, 20)
     .action((options) => {
@@ -380,70 +392,4 @@ export function registerUtilCommands(program) {
       console.log(`\nFixed ${fixed} file(s)`);
     });
 
-  // core command group
-  const core = program.command('core')
-    .description('Core documentation operations');
-
-  core.command('show [name]')
-    .description('Show core documentation (AGENT, SAILING, etc.)')
-    .option('--path', 'Show file path only')
-    .option('--debug', 'Add source path in frontmatter comment')
-    .action((name, options) => {
-      // If no name provided, list available docs
-      if (!name) {
-        const docs = listCoreDocs();
-        if (docs.length === 0) {
-          console.error('No core docs found.');
-          console.error(`Checked: ${getCoreDocs()}`);
-          process.exit(1);
-        }
-        console.log('Available core docs:\n');
-        docs.forEach(d => {
-          console.log(`  ${d.toLowerCase().padEnd(14)} → ${d}.md`);
-        });
-        console.log(`\nUsage: rudder core:show <name>`);
-        console.log(`Example: rudder core:show agent`);
-        return;
-      }
-
-      const docPath = getCoreDocPath(name);
-
-      if (options.path) {
-        console.log(docPath);
-        return;
-      }
-
-      if (!fs.existsSync(docPath)) {
-        const resolved = resolveCoreDoc(name);
-        console.error(`Core doc not found: ${resolved}`);
-        console.error(`Path: ${docPath}`);
-        const available = listCoreDocs();
-        if (available.length > 0) {
-          console.error(`\nAvailable: ${available.join(', ')}`);
-        }
-        process.exit(1);
-      }
-
-      let content = fs.readFileSync(docPath, 'utf8');
-
-      // Add frontmatter with source path if --debug
-      if (options.debug) {
-        const mode = isDevInstall() ? 'devinstall' : 'installed';
-        const header = `---\n# source: ${docPath}\n# mode: ${mode}\n---\n\n`;
-        content = header + content;
-      }
-
-      console.log(content);
-    });
-
-  core.command('path')
-    .description('Show core docs directory path')
-    .action(() => {
-      const coreDir = getCoreDocs();
-      const mode = isDevInstall() ? 'devinstall' : 'installed';
-      console.log(`${coreDir} (${mode} mode)`);
-    });
-
-  // Add dynamic help for core group
-  addDynamicHelp(core);
 }

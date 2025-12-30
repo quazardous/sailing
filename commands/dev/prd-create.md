@@ -8,7 +8,7 @@ allowed-tools: Bash
 
 **Purpose:** Create a new PRD structure in Draft status.
 
-> 📖 CLI reference: `.sailing/core/RUDDER.md` or `bin/rudder -h`
+> 📖 CLI reference: `bin/rudder -h`
 
 ---
 

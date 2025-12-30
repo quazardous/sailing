@@ -32,7 +32,7 @@ DEFAULT_SAILING_DIR=".sailing"
 DEFAULT_ARTEFACTS=".sailing/artefacts"
 DEFAULT_MEMORY=".sailing/memory"
 DEFAULT_TEMPLATES=".sailing/templates"
-DEFAULT_CORE=".sailing/core"
+DEFAULT_PROMPTING=".sailing/prompting"
 DEFAULT_RUDDER=".sailing/rudder"
 DEFAULT_SKILL=".claude/skills/sailing"
 DEFAULT_COMMANDS=".claude/commands/dev"
@@ -132,7 +132,7 @@ CONFIG_FILE="${DEFAULT_SAILING_DIR}/paths.yaml"
 ARTEFACTS="$DEFAULT_ARTEFACTS"
 MEMORY="$DEFAULT_MEMORY"
 TEMPLATES="$DEFAULT_TEMPLATES"
-CORE="$DEFAULT_CORE"
+PROMPTING="$DEFAULT_PROMPTING"
 RUDDER="$DEFAULT_RUDDER"
 SKILL="$DEFAULT_SKILL"
 COMMANDS="$DEFAULT_COMMANDS"
@@ -148,7 +148,7 @@ if [ -f "$CONFIG_FILE" ]; then
   CUSTOM_ARTEFACTS=$(parse_yaml_path "artefacts")
   CUSTOM_MEMORY=$(parse_yaml_path "memory")
   CUSTOM_TEMPLATES=$(parse_yaml_path "templates")
-  CUSTOM_CORE=$(parse_yaml_path "core")
+  CUSTOM_PROMPTING=$(parse_yaml_path "prompting")
   CUSTOM_RUDDER=$(parse_yaml_path "rudder")
   CUSTOM_SKILL=$(parse_yaml_path "skill")
   CUSTOM_COMMANDS=$(parse_yaml_path "commands")
@@ -156,7 +156,7 @@ if [ -f "$CONFIG_FILE" ]; then
   [ -n "$CUSTOM_ARTEFACTS" ] && ARTEFACTS="$CUSTOM_ARTEFACTS"
   [ -n "$CUSTOM_MEMORY" ] && MEMORY="$CUSTOM_MEMORY"
   [ -n "$CUSTOM_TEMPLATES" ] && TEMPLATES="$CUSTOM_TEMPLATES"
-  [ -n "$CUSTOM_CORE" ] && CORE="$CUSTOM_CORE"
+  [ -n "$CUSTOM_PROMPTING" ] && PROMPTING="$CUSTOM_PROMPTING"
   [ -n "$CUSTOM_RUDDER" ] && RUDDER="$CUSTOM_RUDDER"
   [ -n "$CUSTOM_SKILL" ] && SKILL="$CUSTOM_SKILL"
   [ -n "$CUSTOM_COMMANDS" ] && COMMANDS="$CUSTOM_COMMANDS"
@@ -236,7 +236,7 @@ create_dir "$ARTEFACTS"
 create_dir "$ARTEFACTS/prds"
 create_dir "$MEMORY"
 create_dir "$TEMPLATES"
-create_dir "$CORE"
+create_dir "$PROMPTING"
 create_dir "$RUDDER"
 create_dir "$SKILL"
 create_dir "$COMMANDS"
@@ -320,11 +320,18 @@ fi
 echo "Installing templates..."
 copy_dir "$SRC/templates" "$TEMPLATES"
 
-# Core docs (reference documentation, always updated)
-echo "Installing core docs..."
-for f in "$SRC/core"/*.md; do
-  fname=$(basename "$f")
-  copy_file "$f" "$CORE/$fname" false
+# Prompting fragments (always updated)
+echo "Installing prompting fragments..."
+copy_file "$SRC/prompting/contexts.yaml" "$PROMPTING/contexts.yaml" false
+for subdir in agent skill shared; do
+  if [ -d "$SRC/prompting/$subdir" ]; then
+    create_dir "$PROMPTING/$subdir"
+    for f in "$SRC/prompting/$subdir"/*.md; do
+      [ -f "$f" ] || continue
+      fname=$(basename "$f")
+      copy_file "$f" "$PROMPTING/$subdir/$fname" false
+    done
+  fi
 done
 
 # Skill (always updated)
@@ -341,6 +348,19 @@ copy_file "$SRC/dist/paths.yaml-dist" "$DEFAULT_SAILING_DIR/paths.yaml" true
 copy_file "$SRC/dist/components.yaml-dist" "$DEFAULT_SAILING_DIR/components.yaml" true
 copy_file "$SRC/dist/ROADMAP.md-dist" "$ARTEFACTS/ROADMAP.md" true
 copy_file "$SRC/dist/POSTIT.md-dist" "$ARTEFACTS/POSTIT.md" true
+
+# =============================================================================
+# LEGACY HANDLING - Remove old core/ directory (replaced by prompting/)
+# =============================================================================
+if [ -d "$DEFAULT_SAILING_DIR/core" ]; then
+  echo -e "${BLUE}Cleaning up legacy files...${NC}"
+  if [ "$DRY_RUN" = true ]; then
+    echo "  Would remove: $DEFAULT_SAILING_DIR/core/ (replaced by prompting/)"
+  else
+    rm -rf "$DEFAULT_SAILING_DIR/core"
+    echo -e "  ${GREEN}Removed: $DEFAULT_SAILING_DIR/core/ (replaced by prompting/)${NC}"
+  fi
+fi
 
 echo
 

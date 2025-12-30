@@ -6,7 +6,7 @@ allowed-tools: Read, Edit, Glob, Grep, Task, Bash
 
 **Rewrites task descriptions after a tech change or orientation shift.**
 
-> 📖 CLI reference: `.sailing/core/RUDDER.md` or `bin/rudder -h`
+> 📖 CLI reference: `bin/rudder -h`
 
 ## Workflow
 

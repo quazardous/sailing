@@ -13,7 +13,7 @@ allowed-tools: Read, Edit, Glob, Grep, Task, Bash
 ## Pre-flight
 
 ```bash
-rudder core:show agent    # Constitutional rules, CLI contract
+rudder context:agent test-debug    # Constitutional rules, CLI contract
 ```
 
 If `--task TNNN` provided:
@@ -107,7 +107,7 @@ After all individual fixes:
 
 ## Logging
 
-Use `bin/rudder task:log` during work. See `.sailing/core/TASKLOG.md`.
+Use `bin/rudder task:log` during work. See logging rules in `rudder context:agent test-debug`.
 
 ---
 

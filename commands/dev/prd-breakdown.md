@@ -10,14 +10,14 @@ allowed-tools: Read, Write, Edit, Task, Bash
 
 This command creates **epics only**. Use `/dev:epic-breakdown` to create tasks after epic review.
 
-> 📖 CLI reference: `.sailing/core/RUDDER.md` or `bin/rudder -h`
+> 📖 CLI reference: `bin/rudder -h`
 
 ---
 
 ## Pre-flight
 
 ```bash
-rudder core:show agent    # Constitutional rules, CLI contract
+rudder context:agent prd-breakdown    # Constitutional rules, CLI contract
 rudder prd:show PRD-NNN   # Verify PRD exists and see current epics
 ```
 

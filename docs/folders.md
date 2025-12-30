@@ -15,10 +15,10 @@ your-project/
     ├── paths.yaml             # Path configuration
     ├── state.json             # ID counters
     ├── components.yaml        # Version tracking
-    ├── rudder/                # CLI source
+    ├── rudder/                # CLI source (install.sh only)
     ├── artefacts/             # ROADMAP, POSTIT, PRDs, Epics, Tasks
     ├── memory/                # Epic memory
-    ├── core/                  # Reference documentation
+    ├── prompting/             # Optimized prompt fragments
     └── templates/             # Entity templates
 ```
 
@@ -165,17 +165,23 @@ Memory flow:
 3. Skill consolidates into → `ENNN.md`
 4. Future agents read `ENNN.md` for context
 
-### `core/`
+### `prompting/`
 
-Reference documentation (read-only, updated by installer):
+Optimized prompt fragments for agents and skill (read-only, updated by installer):
 
-| File | Content |
-|------|---------|
-| `SAILING.md` | Complete workflow documentation |
-| `RUDDER.md` | CLI reference |
-| `VERSIONING.md` | Semver rules |
-| `MILESTONE.md` | Milestone validation |
-| `TASKLOG.md` | Logging guidelines |
+| Directory | Content |
+|-----------|---------|
+| `agent/` | Agent execution rules (rules-core, cli, logging, deps, stop, completion, memory) |
+| `skill/` | Skill orchestration (orchestration, reminders) |
+| `shared/` | Shared fragments (milestone, versioning) |
+| `contexts.yaml` | Mapping of commands to fragments |
+
+Access via CLI:
+```bash
+rudder context:agent <command>   # Agent context
+rudder context:skill <command>   # Skill context
+rudder context:list              # All fragments
+```
 
 ### `templates/`
 

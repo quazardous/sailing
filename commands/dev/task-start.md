@@ -6,7 +6,7 @@ allowed-tools: Read, Edit, Glob, Task, Bash
 
 **MUST use Task tool. Supports parallel execution.**
 
-> 📖 CLI reference: `.sailing/core/RUDDER.md` or `bin/rudder -h`
+> 📖 CLI reference: `bin/rudder -h`
 
 ## Agent Brief Checklist
 
@@ -50,7 +50,7 @@ You are acting as a **{role}** on this task.
 
 ## 0. Pre-flight (read in order)
 
-1. **Agent Contract: `rudder core:show agent`** - Constitutional rules, CLI contract, logging protocol
+1. **Agent Contract: `rudder context:agent task-start`** - Constitutional rules, CLI contract, logging protocol
 2. `.claude/TOOLSET.md` (if exists) - Dev environment, make commands
 3. **Task memory: `rudder task:show-memory {TNNN}`** - Learnings from previous work
 4. `{sub-project}/DEV.md` - Patterns, conventions (if exists)

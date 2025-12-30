@@ -58,6 +58,7 @@ import { registerDepsCommands } from './commands/deps.js';
 import { registerMemoryCommands } from './commands/memory.js';
 import { registerUtilCommands } from './commands/util.js';
 import { registerPermissionsCommands } from './commands/permissions.js';
+import { registerContextCommands } from './commands/context.js';
 
 // Expand colon syntax: task:list → task list (first arg only, if it looks like group:command)
 let commandExpanded = false;
@@ -88,6 +89,7 @@ registerTaskCommands(program);
 registerStoryCommands(program);
 registerDepsCommands(program);
 registerMemoryCommands(program);
+registerContextCommands(program);
 registerUtilCommands(program);
 registerPermissionsCommands(program);
 

@@ -6,7 +6,7 @@ allowed-tools: Read, Edit, Glob, Task, Bash
 
 # Batch Start Ready Tasks
 
-> 📖 CLI reference: `.sailing/core/RUDDER.md` or `bin/rudder -h`
+> 📖 CLI reference: `bin/rudder -h`
 
 **Arguments:** $ARGUMENTS
 
@@ -124,7 +124,7 @@ The orchestrator observes and reports — it does not correct or override.
 
 The template includes:
 
-* **Agent Contract** (`rudder core:show agent`) - Constitutional rules, CLI contract
+* **Agent Contract** (`rudder context:agent tasks-batch`) - Constitutional rules, CLI contract
 * **Role** inferred from task location (frontend/backend/etc.)
 * **Pre-flight reading** (TOOLSET.md if exists, `task:show-memory`, DEV.md, epic, task)
 * **Logging Contract** (MANDATORY — minimum 2 entries per task)

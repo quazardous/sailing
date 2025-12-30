@@ -6,7 +6,35 @@ allowed-tools: Read, Write, Edit, Glob, Grep, Task, Bash
 
 # Sailing
 
-Refs: `.sailing/core/SAILING.md`, `.sailing/artefacts/ROADMAP.md`, `.sailing/core/VERSIONING.md`, `.sailing/core/RUDDER.md`, **`.claude/TOOLSET.md`** (optional, user-created)
+Refs: `rudder paths roadmap`, **`.claude/TOOLSET.md`** (optional, user-created)
+
+---
+
+## Pre-flight: Context Loading (MANDATORY)
+
+Before ANY command execution:
+
+```bash
+# Skill (main thread) loads its context:
+rudder context:skill <command>
+
+# Before spawning agent, provide agent context:
+rudder context:agent <command>
+```
+
+| Who | Command | When |
+|-----|---------|------|
+| **Skill** | `rudder context:skill task-start` | Before orchestrating task-start |
+| **Agent** | `rudder context:agent task-start` | Injected by skill when spawning |
+
+**This is not optional.** Context contains:
+- Constitutional rules
+- CLI contract
+- Logging requirements
+- Stop conditions
+- Memory sync protocol
+
+Without context, agents forget critical rules (e.g., minimum 2 log entries).
 
 ---
 
@@ -107,10 +135,13 @@ Main thread → spawns → Next Agent
 | File | Abstraction | Content |
 |------|-------------|---------|
 | **ROADMAP.md** | Vision | Features, versions, milestones, backlog |
-| **SAILING.md** | Process | PRD → Epic → Task lifecycle |
-| **VERSIONING.md** | Process | Semver rules, bump workflow |
-| **RUDDER.md** | Mechanics | CLI usage, commands, options |
 | **POSTIT.md** | Triage | User scratch pad → Backlog or Task |
+| **prompting/** | Agent context | Optimized fragments for agents/skill |
+
+**Context commands replace documentation reading:**
+- `rudder context:agent <cmd>` → agent execution rules
+- `rudder context:skill <cmd>` → skill orchestration rules
+- `rudder --help` → CLI mechanics
 
 **Rule**: One doc = one abstraction level. Don't mix vision with mechanics.
 
@@ -200,7 +231,7 @@ rudder epic:clean-logs ENNN
 |-----------|------------------|
 | `[TIP]` | Agent Context |
 | `[ERROR]`, `[CRITICAL]` | Escalation |
-| `[INFO]`, `[WARN]` | Story |
+| `[INFO]`, `[WARN]` | Changelog |
 
 ### Skill Responsibility
 
@@ -356,7 +387,7 @@ User controls all commits. Agent work = uncommitted changes for review.
 
 ## Rudder CLI
 
-State management tool. See `.sailing/core/RUDDER.md` for full reference.
+Authoritative state management tool. Run `bin/rudder -h` for full reference.
 
 ### Core Commands (illustrative)
 
@@ -455,7 +486,7 @@ In doubt → Do what's possible → Stop → Escalate.
 
 ## Task Logging
 
-See `.sailing/core/TASKLOG.md` for full guidance.
+Logging rules are in `rudder context:agent <cmd>` (section: Logging Contract).
 
 ```bash
 rudder task:log TNNN "message" --level [-f file] [-c cmd] [-s snippet]
@@ -471,13 +502,13 @@ rudder task:log TNNN "message" --level [-f file] [-c cmd] [-s snippet]
 
 **Granularity**: Don't log everything. Only patterns, issues, commands worth remembering.
 
-Systemic issues → `rudder feedback "..." --task TNNN`
+Systemic issues → `rudder feedback add "..." --task TNNN`
 
 ---
 
 ## Epic Memory
 
-Memory structure: `.sailing/memory/ENNN.md` — see `.sailing/templates/memory.md` for format.
+Memory files are managed by rudder (`memory:sync`, `epic:show-memory`, `epic:ensure-memory`).
 
 | Section | Content | Audience |
 |---------|---------|----------|

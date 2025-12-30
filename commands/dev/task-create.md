@@ -4,7 +4,7 @@ argument-hint: <PRD-NNN/ENNN> <title>
 allowed-tools: Bash
 ---
 
-> 📖 CLI reference: `.sailing/core/RUDDER.md` or `bin/rudder -h`
+> 📖 CLI reference: `bin/rudder -h`
 
 ```bash
 bin/rudder task:create <PRD-NNN/ENNN> <title> [--target-version=comp:ver]

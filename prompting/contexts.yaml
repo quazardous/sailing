@@ -1,0 +1,109 @@
+# Context mappings for agent and skill
+# Each operation lists the fragments to compose
+
+agent:
+  # Task operations
+  task-start:
+    - agent/rules-core
+    - agent/memory
+    - agent/cli
+    - agent/logging
+    - agent/deps
+    - agent/stop
+    - agent/completion
+
+  task-create:
+    - agent/rules-core
+    - agent/cli
+
+  task-done:
+    - agent/rules-core
+    - agent/logging
+    - agent/completion
+
+  # Epic operations
+  epic-create:
+    - agent/rules-core
+    - agent/cli
+
+  epic-breakdown:
+    - agent/rules-core
+    - agent/memory
+    - agent/cli
+    - agent/deps
+    - agent/stop
+
+  epic-review:
+    - agent/rules-core
+    - agent/cli
+    - shared/milestone
+
+  # PRD operations
+  prd-create:
+    - agent/rules-core
+    - agent/cli
+
+  prd-breakdown:
+    - agent/rules-core
+    - agent/memory
+    - agent/cli
+    - agent/deps
+    - agent/stop
+    - shared/milestone
+
+  prd-review:
+    - agent/rules-core
+    - agent/cli
+    - shared/milestone
+    - shared/versioning
+
+  # Version operations
+  version-bump:
+    - agent/rules-core
+    - agent/cli
+    - shared/versioning
+
+  # Milestone operations
+  milestone-validate:
+    - agent/rules-core
+    - agent/cli
+    - shared/milestone
+
+  # Test operations
+  test-audit:
+    - agent/rules-core
+    - agent/cli
+    - agent/logging
+    - agent/stop
+
+  test-debug:
+    - agent/rules-core
+    - agent/cli
+    - agent/logging
+    - agent/stop
+
+  # Default fallback
+  default:
+    - agent/rules-core
+    - agent/cli
+    - agent/logging
+    - agent/stop
+
+skill:
+  # All skill contexts include orchestration + reminders
+  task-start:
+    - skill/orchestration
+    - skill/reminders
+
+  prd-breakdown:
+    - skill/orchestration
+    - skill/reminders
+    - shared/milestone
+
+  epic-breakdown:
+    - skill/orchestration
+    - skill/reminders
+
+  default:
+    - skill/orchestration
+    - skill/reminders

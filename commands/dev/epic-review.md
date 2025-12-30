@@ -18,7 +18,7 @@ You are acting as a **software architect** reviewing an epic prior to task break
 ## Pre-flight
 
 ```bash
-rudder core:show agent               # Constitutional rules, CLI contract
+rudder context:agent epic-review               # Constitutional rules, CLI contract
 rudder epic:show ENNN                # Verify epic exists, see task counts
 rudder epic:show-memory ENNN --full  # Previous learnings + escalations
 ```

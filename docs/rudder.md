@@ -130,4 +130,4 @@ bin/rudder deps:tree T042
 
 ## Full Documentation
 
-See `.sailing/core/RUDDER.md` after installation for complete reference.
+Run `bin/rudder -h` after installation for complete reference.

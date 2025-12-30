@@ -8,7 +8,7 @@ allowed-tools: Read, Write, Edit, Task, Bash
 
 **Purpose:** Create user/technical/API stories from PRD requirements.
 
-> 📖 CLI reference: `.sailing/core/RUDDER.md` or `bin/rudder story -h`
+> 📖 CLI reference: `bin/rudder story -h`
 
 This agent creates **stories only**. Stories capture narrative context (who, what, why) that epics and tasks will reference.
 

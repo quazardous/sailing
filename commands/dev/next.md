@@ -7,7 +7,7 @@ allowed-tools: Bash
 
 **Purpose:** Identify the next task to work on based on availability or impact.
 
-> 📖 CLI reference: `.sailing/core/RUDDER.md` or `bin/rudder -h`
+> 📖 CLI reference: `bin/rudder -h`
 
 ---
 

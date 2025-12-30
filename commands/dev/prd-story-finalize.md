@@ -8,7 +8,7 @@ allowed-tools: Read, Write, Edit, Task, Bash
 
 **Purpose:** Link orphan stories to tasks, or create new tasks. Final phase before implementation when stories exist.
 
-> 📖 CLI reference: `.sailing/core/RUDDER.md` or `bin/rudder story -h`
+> 📖 CLI reference: `bin/rudder story -h`
 
 This agent ensures **zero orphan stories** before implementation starts.
 
