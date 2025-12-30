@@ -65,6 +65,15 @@ done
 
 echo -e "${BLUE}Sailing Installer${NC}"
 echo "=================="
+
+# Detect upgrade vs fresh install (check for CLI, not just .sailing which may contain only paths.yaml)
+if [ -f "bin/rudder" ] || [ -d ".sailing/rudder" ]; then
+  UPGRADE=true
+  echo -e "${YELLOW}Existing installation detected - upgrading${NC}"
+else
+  UPGRADE=false
+  echo "Fresh installation"
+fi
 echo
 
 # =============================================================================
