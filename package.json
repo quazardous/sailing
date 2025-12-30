@@ -1,0 +1,32 @@
+{
+  "name": "@quazardous/sailing",
+  "version": "1.0.0",
+  "type": "module",
+  "description": "Project governance CLI for sailing workflow - PRD/Epic/Task management",
+  "bin": {
+    "rudder": "./bin/rudder"
+  },
+  "scripts": {
+    "rudder": "node cli/rudder.js"
+  },
+  "dependencies": {
+    "commander": "^12.1.0",
+    "gray-matter": "^4.0.3",
+    "js-yaml": "^4.1.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/quazardous/sailing.git"
+  },
+  "keywords": [
+    "project-management",
+    "prd",
+    "epic",
+    "task",
+    "governance",
+    "claude",
+    "ai-agent"
+  ],
+  "author": "quazardous",
+  "license": "MIT"
+}

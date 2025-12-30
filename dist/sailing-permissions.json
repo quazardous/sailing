@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$comment": "Claude Code permissions for sailing skill (defaults, actual paths from paths.yaml)",
+  "permissions": {
+    "allow": [
+      "Bash(bin/rudder:*)",
+      "Bash(npm install:*)",
+      "Bash(npm test:*)",
+      "Bash(npm run:*)",
+      "Bash(make:*)",
+      "Bash(chmod:*)",
+      "Bash(mkdir:*)",
+      "Bash(git status:*)",
+      "Bash(git diff:*)",
+      "Bash(git log:*)",
+      "Bash(git branch:*)",
+      "Read(.claude/**)",
+      "Read(.sailing/**)"
+    ]
+  },
+  "note": "Use 'bin/rudder permissions fix' to add path-aware permissions based on your paths.yaml"
+}

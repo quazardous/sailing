@@ -1,0 +1,29 @@
+# Sailing configuration
+#
+# Path prefixes:
+#   ./  → relative to project root (default)
+#   /   → absolute path
+#   ~/  → user home directory
+#   ^/  → sailing maintenance repo (devinstall mode only)
+#
+# Examples:
+#   artefacts: .sailing/artefacts     # relative to project
+#   artefacts: /var/data/sailing      # absolute path
+#   core: ~/shared/sailing/core       # in home directory
+#   core: ^/core                      # sailing repo (devinstall)
+
+paths:
+  # Sailing data
+  artefacts: .sailing/artefacts
+  memory: .sailing/memory
+  templates: .sailing/templates
+  core: .sailing/core
+  rudder: .sailing/rudder
+
+  # State files
+  state: .sailing/state.json
+  components: .sailing/components.yaml
+
+  # Claude integration (must be under .claude/)
+  skill: .claude/skills/sailing
+  commands: .claude/commands/dev

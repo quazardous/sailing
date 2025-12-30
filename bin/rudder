@@ -1,0 +1,30 @@
+#!/bin/bash
+#
+# Rudder CLI wrapper
+#
+# Normal mode (installed in a project):
+#   The CLI automatically finds the project root by walking up from the script
+#   location to find .sailing/ directory.
+#
+# Dev mode (running from the maintenance repo):
+#   Use SAILING_PROJECT env var or --root flag to point to a target project:
+#
+#   # Using environment variable
+#   SAILING_PROJECT=/path/to/my/project ./bin/rudder task:list
+#
+#   # Using --root flag
+#   ./bin/rudder --root /path/to/my/project task:list
+#
+#   # Or export for the session
+#   export SAILING_PROJECT=/path/to/my/project
+#   ./bin/rudder prd:list
+#
+# Priority:
+#   1. --root flag (highest)
+#   2. SAILING_PROJECT environment variable
+#   3. Walk up from script location
+#   4. Walk up from current directory (fallback)
+#
+
+SCRIPT_DIR="$(dirname "$(realpath "$0")")"
+exec node "$SCRIPT_DIR/../cli/rudder.js" "$@"

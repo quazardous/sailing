@@ -1,0 +1,21 @@
+# Dependencies
+node_modules/
+
+# Local settings (not distributed)
+.claude/settings.local.json
+.sailing/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Test/dev artifacts
+*.log
+.env
+.env.local

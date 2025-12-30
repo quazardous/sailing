@@ -1,0 +1,30 @@
+# Component version tracking configuration
+# Used by rudder CLI for version management
+
+extractors:
+  json: "JSON file, path is dot-notation (e.g., 'version', 'versions.api')"
+  text: "Plain text file containing only the version string"
+  regex: "Text file, path is a regex with capture group"
+
+components:
+  - key: core
+    name: Core Package
+    file: packages/core/package.json
+    extractor: json
+    path: version
+    changelog: packages/core/CHANGELOG.md
+    main: true
+
+  - key: api
+    name: API Server
+    file: api/package.json
+    extractor: json
+    path: version
+    changelog: api/CHANGELOG.md
+
+  - key: admin
+    name: Admin UI
+    file: admin/package.json
+    extractor: json
+    path: version
+    changelog: admin/CHANGELOG.md

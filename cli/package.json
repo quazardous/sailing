@@ -1,0 +1,12 @@
+{
+  "name": "@skybot/rudder",
+  "version": "1.0.0",
+  "description": "Sailing CLI - PRD/Epic/Task management",
+  "type": "module",
+  "bin": {
+    "rudder": "./rudder.js"
+  },
+  "dependencies": {
+    "gray-matter": "^4.0.3"
+  }
+}
