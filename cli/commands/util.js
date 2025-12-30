@@ -6,7 +6,7 @@ import path from 'path';
 import { findPrdDirs, findFiles, loadFile, saveFile, jsonOut, getSailingDir, getStateFile, getPrdsDir, getConfigInfo, getPathsInfo } from '../lib/core.js';
 import { addDynamicHelp } from '../lib/help.js';
 import { loadState, saveState } from '../lib/state.js';
-import { getAllVersions, getMainVersion } from '../lib/version.js';
+import { getAllVersions, getMainVersion, getMainComponentName } from '../lib/version.js';
 import { buildDependencyGraph } from '../lib/graph.js';
 import { isStatusDone, isStatusInProgress, isStatusNotStarted, statusSymbol } from '../lib/lexicon.js';
 
@@ -77,7 +77,7 @@ export function registerUtilCommands(program) {
 
   // versions
   program.command('versions')
-    .description('Show component versions (from components.json)')
+    .description('Show component versions (from components.yaml)')
     .option('--json', 'JSON output')
     .action((options) => {
       const versions = getAllVersions();
@@ -147,7 +147,7 @@ export function registerUtilCommands(program) {
       if (options.json) {
         jsonOut(output);
       } else {
-        console.log(`Skybot v${mainVersion}\n`);
+        console.log(`${getMainComponentName()} v${mainVersion}\n`);
         console.log(`Tasks: ${tasks.size} total`);
         console.log(`  ✓ Done: ${byStatus.done}`);
         console.log(`  ● In Progress: ${byStatus.inProgress}`);
@@ -259,7 +259,7 @@ export function registerUtilCommands(program) {
       const distFiles = [
         { src: 'ROADMAP.md-dist', dest: 'ROADMAP.md' },
         { src: 'POSTIT.md-dist', dest: 'POSTIT.md' },
-        { src: 'components.json-dist', dest: 'components.json' }
+        { src: 'components.yaml-dist', dest: 'components.yaml' }
       ];
 
       let created = 0;

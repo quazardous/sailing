@@ -296,6 +296,7 @@ export function getPathsInfo() {
   const config = loadConfig();
   const artefactsPath = getArtefactsDir();
   const templatesPath = getTemplates();
+  const componentsPath = getComponentsFile();
 
   return {
     roadmap: {
@@ -313,6 +314,10 @@ export function getPathsInfo() {
     templates: {
       relative: config.paths.templates,
       absolute: templatesPath
+    },
+    components: {
+      relative: config.paths.components,
+      absolute: componentsPath
     }
   };
 }
