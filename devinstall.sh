@@ -37,7 +37,7 @@ while [[ $# -gt 0 ]]; do
       echo
       echo "Options:"
       echo "  --force              Force overwrite existing files"
-      echo "  --full               Enable worktree mode for agents"
+      echo "  --full               Enable subprocess mode (worktrees, auto-spawn)"
       echo "  --folders-profile=X  Use folder profile: project (default), haven, sibling"
       echo "  --help, -h           Show this help"
       echo
@@ -324,7 +324,7 @@ fi
 
 # 13. Apply full mode (optional)
 if [ "$FULL_MODE" = true ]; then
-  echo -e "${BLUE}Enabling full mode (worktrees)${NC}"
+  echo -e "${BLUE}Enabling full mode (subprocess + worktrees)${NC}"
 
   CONFIG_FILE="$DEFAULT_SAILING_DIR/config.yaml"
 
@@ -333,28 +333,42 @@ if [ "$FULL_MODE" = true ]; then
     cat > "$CONFIG_FILE" << 'EOF'
 # Sailing configuration
 agent:
+  # Enable subprocess mode (Claude spawned as subprocess)
+  use_subprocess: true
+  # Enable worktree isolation for parallel agents
   use_worktrees: true
+  # Skip permission prompts (requires use_subprocess)
   risky_mode: true
+  # Enable sandbox mode (requires use_subprocess)
   sandbox: true
   timeout: 3600
   merge_strategy: merge
 EOF
-    echo -e "  ${GREEN}Created: $CONFIG_FILE with worktree mode enabled${NC}"
+    echo -e "  ${GREEN}Created: $CONFIG_FILE with subprocess+worktree mode enabled${NC}"
   else
-    # Check if use_worktrees is already set
-    if grep -q "use_worktrees:" "$CONFIG_FILE" 2>/dev/null; then
-      # Update existing value
-      sed -i 's/use_worktrees:.*/use_worktrees: true/' "$CONFIG_FILE"
-      echo -e "  ${GREEN}Updated: use_worktrees: true in $CONFIG_FILE${NC}"
+    # Update or add use_subprocess
+    if grep -q "use_subprocess:" "$CONFIG_FILE" 2>/dev/null; then
+      sed -i 's/use_subprocess:.*/use_subprocess: true/' "$CONFIG_FILE"
     else
-      # Add under agent section
+      if grep -q "^agent:" "$CONFIG_FILE" 2>/dev/null; then
+        sed -i '/^agent:/a\  use_subprocess: true' "$CONFIG_FILE"
+      else
+        echo -e "\nagent:\n  use_subprocess: true" >> "$CONFIG_FILE"
+      fi
+    fi
+    echo -e "  ${GREEN}Set: use_subprocess: true${NC}"
+
+    # Update or add use_worktrees
+    if grep -q "use_worktrees:" "$CONFIG_FILE" 2>/dev/null; then
+      sed -i 's/use_worktrees:.*/use_worktrees: true/' "$CONFIG_FILE"
+    else
       if grep -q "^agent:" "$CONFIG_FILE" 2>/dev/null; then
         sed -i '/^agent:/a\  use_worktrees: true' "$CONFIG_FILE"
       else
         echo -e "\nagent:\n  use_worktrees: true" >> "$CONFIG_FILE"
       fi
-      echo -e "  ${GREEN}Added: use_worktrees: true to $CONFIG_FILE${NC}"
     fi
+    echo -e "  ${GREEN}Set: use_worktrees: true${NC}"
   fi
   echo
 fi
