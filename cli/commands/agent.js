@@ -330,6 +330,18 @@ export function registerAgentCommands(program) {
     .option('--dry-run', 'Show what would be done without spawning')
     .option('--json', 'JSON output')
     .action((taskId, options) => {
+      // Check subprocess mode is enabled
+      const agentConfig = getAgentConfig();
+      if (!agentConfig.use_subprocess) {
+        console.error('ERROR: agent:spawn requires use_subprocess: true in config.yaml\n');
+        console.error('Current mode: inline (Task tool)');
+        console.error('To enable subprocess mode:');
+        console.error('  1. Set agent.use_subprocess: true in .sailing/config.yaml');
+        console.error('  2. Or reinstall with: install.sh --full\n');
+        console.error('For inline mode, use Task tool with rudder context:agent instead.');
+        process.exit(1);
+      }
+
       // Normalize task ID
       taskId = taskId.toUpperCase();
       if (!taskId.startsWith('T')) {
@@ -374,8 +386,7 @@ export function registerAgentCommands(program) {
       // Determine agent directory
       const agentDir = ensureDir(getAgentDir(taskId));
 
-      // Determine if worktree should be created
-      const agentConfig = getAgentConfig();
+      // Determine if worktree should be created (agentConfig loaded at function start)
       let useWorktree = agentConfig.use_worktrees;
       if (options.worktree === true) useWorktree = true;
       else if (options.worktree === false) useWorktree = false;
