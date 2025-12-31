@@ -8,6 +8,7 @@ import yaml from 'js-yaml';
 import { getPrompting, jsonOut, findProjectRoot, getPathsInfo } from '../lib/core.js';
 import { addDynamicHelp } from '../lib/help.js';
 import { detectMode, isAgentMode, getAgentInfo } from '../lib/agent-context.js';
+import { getAgentConfig } from '../lib/config.js';
 
 /**
  * Load project-centric file if it exists
@@ -103,10 +104,17 @@ function composeContext(type, command, options = {}) {
   }
 
   // Auto-include project-centric files (convention over configuration)
-  // Agent contexts get: TOOLSET.md + STACK.md
-  // Skill contexts get: TOOLSET.md + STACK.md + ROADMAP.md + POSTIT.md
-  const projectFiles = ['toolset', 'stack'];
-  if (type === 'skill') {
+  // Agent contexts (worktree mode only): TOOLSET.md + STACK.md
+  //   (in main thread, Claude already has these via CLAUDE.md)
+  // Skill contexts: ROADMAP.md + POSTIT.md (vision docs for orchestration)
+  const projectFiles = [];
+
+  if (type === 'agent') {
+    const agentConfig = getAgentConfig();
+    if (agentConfig.use_worktrees) {
+      projectFiles.push('toolset', 'stack');
+    }
+  } else if (type === 'skill') {
     projectFiles.push('roadmap', 'postit');
   }
 
