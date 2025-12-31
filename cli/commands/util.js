@@ -334,6 +334,33 @@ export function registerUtilCommands(program) {
         check('yaml', 'agent config', 'error', `Failed to load: ${e.message}`);
       }
 
+      // 7. Validate config hierarchy (use_subprocess requirements)
+      results.config = [];
+      const configCheck = (name, status, message) => {
+        results.config.push({ name, status, message });
+        if (status === 'ok') results.summary.ok++;
+        else if (status === 'warn') results.summary.warn++;
+        else results.summary.error++;
+      };
+
+      if (!agentConfig.use_subprocess) {
+        // These options require use_subprocess
+        if (agentConfig.use_worktrees) {
+          configCheck('use_worktrees', 'warn', 'Requires use_subprocess: true');
+        }
+        if (agentConfig.risky_mode) {
+          configCheck('risky_mode', 'warn', 'Requires use_subprocess: true (ignored)');
+        }
+        if (agentConfig.sandbox) {
+          configCheck('sandbox', 'warn', 'Requires use_subprocess: true (ignored)');
+        }
+      } else {
+        configCheck('use_subprocess', 'ok', 'Subprocess mode enabled');
+        if (agentConfig.use_worktrees) {
+          configCheck('use_worktrees', 'ok', 'Worktree isolation enabled');
+        }
+      }
+
       // Output
       if (options.json) {
         jsonOut(results);
@@ -366,6 +393,13 @@ export function registerUtilCommands(program) {
           console.log(`  ${symbol('ok')} counters        PRD=${c.prd} Epic=${c.epic} Task=${c.task} Story=${c.story || 0}`);
         } else {
           console.log(`  ${symbol(results.state.status)} state.json      ${results.state.message}`);
+        }
+      }
+
+      if (results.config && results.config.length > 0) {
+        console.log('\nConfig Hierarchy:');
+        for (const c of results.config) {
+          console.log(`  ${symbol(c.status)} ${c.name.padEnd(16)} ${c.message}`);
         }
       }
 

@@ -12,7 +12,7 @@
 #   --global              Install rudder CLI globally via npm
 #   --force               Force overwrite protected files
 #   --dry-run             Show what would be done without doing it
-#   --full                Enable worktree mode for agents
+#   --full                Enable subprocess mode (worktrees, auto-spawn)
 #   --folders-profile=X   Use folder profile: project (default), haven, sibling
 #
 
@@ -502,40 +502,54 @@ fi
 # 11. APPLY FULL MODE (optional)
 # =============================================================================
 if [ "$FULL_MODE" = true ]; then
-  echo -e "${BLUE}Enabling full mode (worktrees)${NC}"
+  echo -e "${BLUE}Enabling full mode (subprocess + worktrees)${NC}"
 
   CONFIG_FILE="$DEFAULT_SAILING_DIR/config.yaml"
 
   if [ "$DRY_RUN" = true ]; then
-    echo "  Would set agent.use_worktrees: true in $CONFIG_FILE"
+    echo "  Would set agent.use_subprocess: true and agent.use_worktrees: true in $CONFIG_FILE"
   else
     # Create or update config.yaml
     if [ ! -f "$CONFIG_FILE" ]; then
       cat > "$CONFIG_FILE" << 'EOF'
 # Sailing configuration
 agent:
+  # Enable subprocess mode (Claude spawned as subprocess)
+  use_subprocess: true
+  # Enable worktree isolation for parallel agents
   use_worktrees: true
+  # Skip permission prompts (requires use_subprocess)
   risky_mode: true
+  # Enable sandbox mode (requires use_subprocess)
   sandbox: true
   timeout: 3600
   merge_strategy: merge
 EOF
-      echo -e "  ${GREEN}Created: $CONFIG_FILE with worktree mode enabled${NC}"
+      echo -e "  ${GREEN}Created: $CONFIG_FILE with subprocess+worktree mode enabled${NC}"
     else
-      # Check if use_worktrees is already set
-      if grep -q "use_worktrees:" "$CONFIG_FILE" 2>/dev/null; then
-        # Update existing value
-        sed -i 's/use_worktrees:.*/use_worktrees: true/' "$CONFIG_FILE"
-        echo -e "  ${GREEN}Updated: use_worktrees: true in $CONFIG_FILE${NC}"
+      # Update or add use_subprocess
+      if grep -q "use_subprocess:" "$CONFIG_FILE" 2>/dev/null; then
+        sed -i 's/use_subprocess:.*/use_subprocess: true/' "$CONFIG_FILE"
       else
-        # Add under agent section
+        if grep -q "^agent:" "$CONFIG_FILE" 2>/dev/null; then
+          sed -i '/^agent:/a\  use_subprocess: true' "$CONFIG_FILE"
+        else
+          echo -e "\nagent:\n  use_subprocess: true" >> "$CONFIG_FILE"
+        fi
+      fi
+      echo -e "  ${GREEN}Set: use_subprocess: true${NC}"
+
+      # Update or add use_worktrees
+      if grep -q "use_worktrees:" "$CONFIG_FILE" 2>/dev/null; then
+        sed -i 's/use_worktrees:.*/use_worktrees: true/' "$CONFIG_FILE"
+      else
         if grep -q "^agent:" "$CONFIG_FILE" 2>/dev/null; then
           sed -i '/^agent:/a\  use_worktrees: true' "$CONFIG_FILE"
         else
           echo -e "\nagent:\n  use_worktrees: true" >> "$CONFIG_FILE"
         fi
-        echo -e "  ${GREEN}Added: use_worktrees: true to $CONFIG_FILE${NC}"
       fi
+      echo -e "  ${GREEN}Set: use_worktrees: true${NC}"
     fi
   fi
   echo
