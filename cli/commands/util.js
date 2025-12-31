@@ -271,7 +271,7 @@ export function registerUtilCommands(program) {
       // 3. Check project-centric files (convention)
       const pathsInfo = getPathsInfo();
       const projectFiles = [
-        { name: 'TOOLSET.md', key: 'toolset', required: true, desc: 'Build/test commands for agents' },
+        { name: 'TOOLSET.md', key: 'toolset', required: false, desc: 'Build/test commands (project-specific)' },
         { name: 'STACK.md', key: 'stack', required: false, desc: 'Tech stack documentation' },
         { name: 'ROADMAP.md', key: 'roadmap', required: true, desc: 'Project vision and milestones' },
         { name: 'POSTIT.md', key: 'postit', required: false, desc: 'Informal backlog for PRD creation' }

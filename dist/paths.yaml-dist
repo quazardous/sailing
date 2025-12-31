@@ -27,3 +27,11 @@ paths:
   # Claude integration (must be under .claude/)
   skill: .claude/skills/sailing
   commands: .claude/commands/dev
+
+  # Project-centric files (auto-injected into context)
+  # Agent context: toolset, stack
+  # Skill context: toolset, stack, roadmap, postit
+  toolset: .claude/TOOLSET.md      # Build/test commands (project-specific)
+  stack: STACK.md                   # Tech stack documentation
+  roadmap: .sailing/artefacts/ROADMAP.md
+  postit: .sailing/artefacts/POSTIT.md
