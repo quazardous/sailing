@@ -75,9 +75,6 @@ const DEFAULT_PATHS = {
   memory:     { path: '.sailing/memory', type: 'dir' },
   templates:  { path: '.sailing/templates', type: 'dir' },
   prompting:  { path: '.sailing/prompting', type: 'dir' },
-  rudder:     { path: '.sailing/rudder', type: 'dir' },
-  skill:      { path: '.claude/skills/sailing', type: 'dir' },
-  commands:   { path: '.claude/commands/dev', type: 'dir' },
 
   // Project files
   state:      { path: '.sailing/state.json', type: 'file' },

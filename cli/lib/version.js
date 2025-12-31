@@ -7,39 +7,45 @@ import path from 'path';
 import { execSync } from 'child_process';
 import { loadComponents as loadComponentsConfig, getComponentsFile, findProjectRoot } from './core.js';
 
-// Version extractors registry
+/**
+ * Version extractors registry
+ * Each extractor returns { version, source } where:
+ *   - version: the extracted version string (or null)
+ *   - source: human-readable resource string describing the source
+ */
 const extractors = {
   // JSON file, path is dot-notation (e.g., "version", "versions.api")
   json: (filePath, pathExpr) => {
     const data = JSON.parse(fs.readFileSync(filePath, 'utf8'));
-    return pathExpr.split('.').reduce((o, k) => o?.[k], data);
+    const version = pathExpr.split('.').reduce((o, k) => o?.[k], data);
+    return { version, source: `${path.basename(filePath)}:${pathExpr}` };
   },
 
   // Plain text file containing only the version string
   text: (filePath) => {
-    return fs.readFileSync(filePath, 'utf8').trim();
+    const version = fs.readFileSync(filePath, 'utf8').trim();
+    return { version, source: path.basename(filePath) };
   },
 
   // Text file with regex capture group
   regex: (filePath, pattern) => {
     const content = fs.readFileSync(filePath, 'utf8');
     const match = content.match(new RegExp(pattern));
-    return match?.[1];
+    return { version: match?.[1], source: `${path.basename(filePath)}:/${pattern}/` };
   },
 
   // Git tag - gets latest tag matching pattern (default: v*)
   git: (_filePath, pattern = 'v*') => {
     try {
       const projectRoot = findProjectRoot();
-      // Get latest tag matching pattern (suppress all git errors)
       const tag = execSync(
         `git describe --tags --abbrev=0 --match "${pattern}" 2>/dev/null || git tag -l "${pattern}" --sort=-v:refname 2>/dev/null | head -1`,
         { cwd: projectRoot, encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'] }
       ).trim();
-      // Remove 'v' prefix if present
-      return tag.replace(/^v/, '') || null;
+      const version = tag.replace(/^v/, '') || null;
+      return { version, source: `git tag ${pattern}` };
     } catch {
-      return null;
+      return { version: null, source: `git tag ${pattern}` };
     }
   }
 };
@@ -57,35 +63,45 @@ export function loadComponents() {
 }
 
 /**
- * Get version for a component using its extractor
+ * Get version info for a component using its extractor
+ * @returns {{ version: string|null, source: string }}
  */
-export function getComponentVersion(component) {
+export function getComponentVersionInfo(component) {
   const extractorType = component.extractor || 'json';
   const extractor = extractors[extractorType];
   if (!extractor) {
     console.error(`Unknown extractor: ${extractorType}`);
-    return 'N/A';
+    return { version: null, source: 'unknown' };
   }
 
   // Git extractor doesn't need a file
   if (extractorType === 'git') {
     try {
-      return extractor(null, component.path) || 'N/A';
+      return extractor(null, component.path);
     } catch (e) {
-      return 'N/A';
+      return { version: null, source: `git tag ${component.path || 'v*'}` };
     }
   }
 
   // File-based extractors
   const projectRoot = findProjectRoot();
   const filePath = path.join(projectRoot, component.file);
-  if (!fs.existsSync(filePath)) return 'N/A';
+  if (!fs.existsSync(filePath)) {
+    return { version: null, source: `${component.file} (not found)` };
+  }
 
   try {
-    return extractor(filePath, component.path) || 'N/A';
+    return extractor(filePath, component.path);
   } catch (e) {
-    return 'N/A';
+    return { version: null, source: `${component.file} (error)` };
   }
+}
+
+/**
+ * Get version string for a component (legacy, returns string only)
+ */
+export function getComponentVersion(component) {
+  return getComponentVersionInfo(component).version;
 }
 
 /**
@@ -97,7 +113,8 @@ export function getMainVersion() {
   if (!config) return '0.0.0';
   const mainComponent = config.components?.find(c => c.main);
   if (!mainComponent) return '0.0.0';
-  return getComponentVersion(mainComponent) || '0.0.0';
+  const version = getComponentVersion(mainComponent);
+  return (version && version !== 'N/A') ? version : '0.0.0';
 }
 
 /**
@@ -117,10 +134,14 @@ export function getMainComponentName() {
  */
 export function getAllVersions() {
   const config = loadComponents();
-  return config.components.map(c => ({
-    name: c.name,
-    version: getComponentVersion(c),
-    main: c.main || false,
-    changelog: c.changelog || null
-  }));
+  return config.components.map(c => {
+    const info = getComponentVersionInfo(c);
+    return {
+      name: c.name,
+      version: info.version || '0.0.0',
+      source: info.source,
+      main: c.main || false,
+      changelog: c.changelog || null
+    };
+  });
 }

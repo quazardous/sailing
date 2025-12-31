@@ -120,10 +120,32 @@ function composeContext(type, command, options = {}) {
 
     // Inject execution mode for skill to know how to spawn agents
     const execMode = agentConfig.use_subprocess ? 'subprocess' : 'inline';
-    const modeInfo = `## Execution Mode\n\nAgent execution: **${execMode}**\n` +
-      (execMode === 'subprocess'
-        ? '- Use `rudder agent:spawn TNNN` to execute tasks\n- Agents run as separate Claude processes'
-        : '- Use Task tool with `rudder context:agent` to execute tasks\n- Agents run inline via Task tool');
+    const useWorktrees = agentConfig.use_worktrees && agentConfig.use_subprocess;
+
+    let modeInfo = `## Execution Mode\n\nAgent execution: **${execMode}**`;
+
+    if (execMode === 'subprocess') {
+      modeInfo += `\n- Use \`rudder agent:spawn TNNN\` to execute tasks\n- Agents run as separate Claude processes`;
+
+      if (useWorktrees) {
+        modeInfo += `\n\n### Worktree Isolation: **enabled**
+
+Each agent runs in an isolated git worktree:
+1. \`rudder agent:spawn TNNN\` creates worktree + spawns Claude
+2. Agent works in isolation (separate branch)
+3. After completion, check: \`rudder agent:status TNNN\`
+4. To merge: \`rudder agent:merge TNNN\`
+5. To discard: \`rudder agent:reject TNNN\`
+
+**Parallel agents**:
+- Check conflicts: \`rudder agent:conflicts\`
+- Merge order matters if agents touch same files
+- Use \`agent:merge --strategy squash\` for cleaner history`;
+      }
+    } else {
+      modeInfo += `\n- Use Task tool with \`rudder context:agent\` to execute tasks\n- Agents run inline via Task tool`;
+    }
+
     parts.push(modeInfo);
     sources.push('config:execution_mode');
   }

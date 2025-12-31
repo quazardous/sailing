@@ -13,7 +13,7 @@ import { getAllVersions, getMainVersion, getMainComponentName } from '../lib/ver
 import { buildDependencyGraph } from '../lib/graph.js';
 import { isStatusDone, isStatusInProgress, isStatusNotStarted, statusSymbol } from '../lib/lexicon.js';
 import { loadConfig as loadAgentConfig, getConfigDisplay, getSchema, getConfigPath, getAgentConfig } from '../lib/config.js';
-import { getWorktreesDir, getAgentsDir, getPathType } from '../lib/core.js';
+import { getWorktreesDir, getAgentsDir, getRunsDir, getAssignmentsDir, getPathType } from '../lib/core.js';
 
 /**
  * Register utility commands
@@ -129,6 +129,7 @@ export function registerUtilCommands(program) {
     .option('--fix', 'Create missing directories and files')
     .action((options) => {
       const results = {
+        git: [],
         directories: [],
         files: [],
         yaml: [],
@@ -149,6 +150,100 @@ export function registerUtilCommands(program) {
       const sailingDir = getSailingDir();
       const agentConfig = getAgentConfig();
 
+      // 0. Check git repository
+      let hasGitRepo = false;
+      let gitBranch = null;
+      let gitClean = false;
+      let hasGit = false;
+      let hasCommits = false;
+
+      try {
+        execSync('git --version', { stdio: ['pipe', 'pipe', 'pipe'] });
+        hasGit = true;
+        check('git', 'git', 'ok', 'Git available');
+      } catch {
+        check('git', 'git', 'error', 'Git not found (install git)');
+      }
+
+      if (hasGit) {
+        try {
+          execSync('git rev-parse --git-dir 2>/dev/null', {
+            cwd: projectRoot,
+            encoding: 'utf8',
+            stdio: ['pipe', 'pipe', 'pipe']
+          });
+          hasGitRepo = true;
+          check('git', 'repository', 'ok', 'Valid git repository');
+
+          // Get branch
+          try {
+            gitBranch = execSync('git branch --show-current 2>/dev/null', {
+              cwd: projectRoot,
+              encoding: 'utf8',
+              stdio: ['pipe', 'pipe', 'pipe']
+            }).trim();
+            if (gitBranch) {
+              check('git', 'branch', 'ok', gitBranch);
+            } else {
+              check('git', 'branch', 'warn', 'Detached HEAD');
+            }
+          } catch {
+            check('git', 'branch', 'warn', 'Could not determine branch');
+          }
+
+          // Check working tree status
+          try {
+            const status = execSync('git status --porcelain 2>/dev/null', {
+              cwd: projectRoot,
+              encoding: 'utf8',
+              stdio: ['pipe', 'pipe', 'pipe']
+            }).trim();
+            if (status === '') {
+              gitClean = true;
+              check('git', 'status', 'ok', 'Working tree clean');
+            } else {
+              const lines = status.split('\n').length;
+              check('git', 'status', 'warn', `${lines} uncommitted change(s)`);
+            }
+          } catch {
+            check('git', 'status', 'warn', 'Could not check status');
+          }
+
+          // Check for commits (required for worktrees)
+          try {
+            execSync('git rev-parse HEAD 2>/dev/null', {
+              cwd: projectRoot,
+              encoding: 'utf8',
+              stdio: ['pipe', 'pipe', 'pipe']
+            });
+            hasCommits = true;
+          } catch {
+            if (agentConfig.use_worktrees) {
+              check('git', 'commits', 'error', 'No commits (required for worktrees)');
+            }
+          }
+        } catch {
+          // Not a git repo - try to fix if requested
+          if (options.fix) {
+            try {
+              execSync('git init', {
+                cwd: projectRoot,
+                encoding: 'utf8',
+                stdio: ['pipe', 'pipe', 'pipe']
+              });
+              hasGitRepo = true;
+              check('git', 'repository', 'ok', 'Initialized git repository');
+            } catch (e) {
+              check('git', 'repository', 'error', `Failed to init: ${e.message}`);
+            }
+          } else if (agentConfig.use_worktrees) {
+            check('git', 'repository', 'error', 'Not a git repository (required for worktrees)');
+          } else {
+            check('git', 'repository', 'warn', 'Not a git repository');
+          }
+        }
+      }
+
       // 1. Check required directories
       const requiredDirs = [
         { name: '.sailing', path: sailingDir },
@@ -157,6 +252,13 @@ export function registerUtilCommands(program) {
         { name: 'templates', path: getTemplatesDir() },
         { name: 'prompting', path: getPromptingDir() },
         { name: 'prds', path: getPrdsDir() }
+      ];
+
+      // Subprocess-only directories (haven-based, only when use_subprocess is enabled)
+      const subprocessDirs = [
+        { name: 'haven', path: resolvePlaceholders('%haven%') },
+        { name: 'runs', path: getRunsDir() },
+        { name: 'assignments', path: getAssignmentsDir() }
       ];
 
       // Worktree-only directories (only when use_worktrees is enabled)
@@ -177,6 +279,29 @@ export function registerUtilCommands(program) {
           }
         } else {
           check('directories', dir.name, 'error', `Missing: ${dir.path}`);
+        }
+      }
+
+      // Subprocess directories - only check/create if use_subprocess is enabled
+      for (const dir of subprocessDirs) {
+        if (agentConfig.use_subprocess) {
+          if (fs.existsSync(dir.path)) {
+            check('directories', dir.name, 'ok', dir.path);
+          } else if (options.fix) {
+            try {
+              fs.mkdirSync(dir.path, { recursive: true });
+              check('directories', dir.name, 'ok', `${dir.path} (created)`);
+            } catch (e) {
+              check('directories', dir.name, 'error', `Failed to create: ${e.message}`);
+            }
+          } else {
+            check('directories', dir.name, 'error', `Missing: ${dir.path}`);
+          }
+        } else {
+          // Not needed - skip silently or show as skipped
+          if (fs.existsSync(dir.path)) {
+            check('directories', dir.name, 'ok', `${dir.path} (not required)`);
+          }
         }
       }
 
@@ -350,19 +475,6 @@ export function registerUtilCommands(program) {
       const hasSandbox = agentConfig.sandbox;
       const hasRisky = agentConfig.risky_mode;
 
-      // Check git repo availability (for worktree validation)
-      let hasGitRepo = false;
-      try {
-        execSync('git rev-parse --git-dir 2>/dev/null', {
-          cwd: projectRoot,
-          encoding: 'utf8',
-          stdio: ['pipe', 'pipe', 'pipe']
-        });
-        hasGitRepo = true;
-      } catch {
-        // Not a git repo
-      }
-
       // use_subprocess
       if (hasSubprocess) {
         configCheck('use_subprocess', 'ok', 'Subprocess mode enabled');
@@ -370,12 +482,14 @@ export function registerUtilCommands(program) {
         configCheck('use_subprocess', 'warn', 'Required by other options but disabled');
       }
 
-      // use_worktrees (requires use_subprocess + git)
+      // use_worktrees (requires use_subprocess + git + commits)
       if (hasWorktrees) {
         if (!hasSubprocess) {
           configCheck('use_worktrees', 'warn', 'Requires use_subprocess: true');
         } else if (!hasGitRepo) {
           configCheck('use_worktrees', 'error', 'Requires git repository (not found)');
+        } else if (!hasCommits) {
+          configCheck('use_worktrees', 'error', 'Requires at least one commit');
         } else {
           configCheck('use_worktrees', 'ok', 'Worktree isolation enabled');
         }
@@ -419,7 +533,12 @@ export function registerUtilCommands(program) {
 
       console.log('Project Check\n');
 
-      console.log('Directories:');
+      console.log('Git:');
+      for (const g of results.git) {
+        console.log(`  ${symbol(g.status)} ${g.name.padEnd(12)} ${g.message}`);
+      }
+
+      console.log('\nDirectories:');
       for (const d of results.directories) {
         console.log(`  ${symbol(d.status)} ${d.name.padEnd(12)} ${d.message}`);
       }
@@ -640,9 +759,10 @@ export function registerUtilCommands(program) {
         // Calculate column widths
         const nameWidth = Math.max(10, ...versions.map(v => v.name.length));
         const versionWidth = Math.max(7, ...versions.map(v => v.version.length));
+        const sourceWidth = Math.max(6, ...versions.map(v => v.source.length));
 
         // Header
-        const header = `${'Component'.padEnd(nameWidth)}  ${'Version'.padEnd(versionWidth)}  Changelog`;
+        const header = `${'Component'.padEnd(nameWidth)}  ${'Version'.padEnd(versionWidth)}  ${'Source'.padEnd(sourceWidth)}  Changelog`;
         console.log(header);
         console.log('-'.repeat(header.length + 10));
 
@@ -650,7 +770,7 @@ export function registerUtilCommands(program) {
         versions.forEach(v => {
           const name = v.main ? `${v.name} *` : v.name;
           const changelog = v.changelog || '-';
-          console.log(`${name.padEnd(nameWidth)}  ${v.version.padEnd(versionWidth)}  ${changelog}`);
+          console.log(`${name.padEnd(nameWidth)}  ${v.version.padEnd(versionWidth)}  ${v.source.padEnd(sourceWidth)}  ${changelog}`);
         });
       }
     });

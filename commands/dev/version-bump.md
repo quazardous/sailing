@@ -1,6 +1,6 @@
 ---
 description: Bump version + update changelog
-argument-hint: <component-key> <patch|minor|major> ["changelog entry"]
+argument-hint: "[component-key] [patch|minor|major] [\"changelog entry\"]"
 allowed-tools: Read, Edit, Bash, Grep
 ---
 
@@ -8,10 +8,40 @@ allowed-tools: Read, Edit, Bash, Grep
 
 > 📖 CLI reference: `bin/rudder -h`
 
-## Pre-check
+**Arguments:** $ARGUMENTS
+
+---
+
+## Pre-flight (MANDATORY)
 
 ```bash
-rudder versions   # List all components and current versions
+rudder context:skill version-bump   # Execution context
+rudder versions                      # List components and current versions
+```
+
+---
+
+## Argument Resolution
+
+When arguments are incomplete, resolve interactively:
+
+| Missing | Resolution |
+|---------|------------|
+| **component** | If only one component exists → use it. Otherwise ask user to choose from `rudder versions` output |
+| **bump type** | Ask user: patch (bug fix), minor (feature), or major (breaking)? |
+| **changelog** | Ask user what changed. Suggest based on recent git commits if available |
+
+### Discovery Workflow
+
+```bash
+# 1. List available components
+rudder versions
+
+# 2. Check recent work (optional, for changelog suggestion)
+git log --oneline -10
+
+# 3. Check if tasks have target_versions for this component
+rudder task:targets <component>
 ```
 
 ## Components
@@ -59,3 +89,36 @@ If target_versions references a version lower than current:
 | `patch` | Bug fix, no API change |
 | `minor` | New feature, backward compatible |
 | `major` | Breaking change (ask user first) |
+
+---
+
+## Common Scenarios
+
+### User says "bump version" (no details)
+
+1. Run `rudder versions` to list components
+2. If single main component → propose it
+3. Ask bump type (patch/minor/major)
+4. Ask for changelog entry or suggest from recent commits
+
+### User says "bump + changelog" after completing work
+
+1. Run `rudder versions` to identify main component
+2. Run `git log --oneline -10` to see recent changes
+3. Propose: component, bump type, changelog summary
+4. Confirm with user before executing
+
+### After task completion with target_versions
+
+1. Check task's `target_versions` for expected version
+2. If current < target → bump to match
+3. Use task title/description for changelog entry
+
+---
+
+## Non-Goals
+
+This command does **NOT**:
+- Git commit or push (user controls commits)
+- Modify task/epic status
+- Chain to other commands

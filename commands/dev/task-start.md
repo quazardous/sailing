@@ -4,7 +4,17 @@ argument-hint: <TNNN>
 allowed-tools: Read, Edit, Glob, Task, Bash
 ---
 
-**MUST use Task tool. Supports parallel execution.**
+## Pre-flight (MANDATORY)
+
+```bash
+rudder context:skill task-start
+```
+
+Check the **Execution Mode** section in the output:
+- **subprocess**: Use `rudder agent:spawn TNNN`
+- **inline**: Use Task tool with agent prompt below
+
+If **Worktree Isolation: enabled**, agent runs in isolated git branch.
 
 ## Agent Prompt Template
 

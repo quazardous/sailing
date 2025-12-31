@@ -26,6 +26,19 @@ The batch runner prepares and launches work, then steps aside.
 
 ---
 
+## Pre-flight (MANDATORY)
+
+```bash
+rudder context:skill tasks-batch
+```
+
+This tells you:
+- **Execution mode**: subprocess vs inline
+- **Worktree isolation**: enabled/disabled
+- How to spawn agents (agent:spawn vs Task tool)
+
+---
+
 ## Workflow
 
 1. **Memory Sync (MANDATORY)**
@@ -79,9 +92,21 @@ The batch runner prepares and launches work, then steps aside.
 
 6. **Spawn parallel agents**
 
+   Check your execution mode from `rudder context:skill tasks-batch` output.
+
+   **Mode: subprocess** (`use_subprocess: true`):
+   ```bash
+   # Spawn each task as a separate Claude process
+   rudder agent:spawn T101 &
+   rudder agent:spawn T102 &
+   rudder agent:spawn T103 &
+   wait  # Wait for all agents
+   ```
+   If worktree isolation is enabled, each agent gets its own git worktree.
+
+   **Mode: inline** (`use_subprocess: false`):
    * Spawn agents in a **single message** using multiple `Task` tools
    * Each agent runs `assign:claim TNNN` to get its full context
-   * Use minimal prompt (see task-start.md template)
 
    ```
    ┌─ Task(T101) ─┐
@@ -90,11 +115,24 @@ The batch runner prepares and launches work, then steps aside.
    └─ Task(T104) ─┘
    ```
 
-   > In non-worktree mode, `assign:claim` works directly - no prior `assign:create` needed.
+7. **Collect results**
 
-7. **Collect results (passive)**
+   **Mode: subprocess + worktree**:
+   ```bash
+   # Check agent status
+   rudder agent:status
 
-   * Wait for agents to complete
+   # Check for conflicts between agents
+   rudder agent:conflicts
+
+   # Merge each completed agent (order matters if conflicts!)
+   rudder agent:merge T101
+   rudder agent:merge T102
+   # Or reject failed work: rudder agent:reject T103
+   ```
+
+   **Mode: inline**:
+   * Wait for Task tool agents to complete
    * Summarize outcomes (Done / Blocked)
    * Report newly unblocked tasks if relevant
 

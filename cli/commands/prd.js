@@ -209,7 +209,7 @@ export function registerPrdCommands(program) {
         jsonOut({ id, title, dir: prdDir, file: prdFile });
       } else {
         console.log(`Created: ${id} - ${title}`);
-        console.log(`Directory: ${prdDir}`);
+        console.log(`File: ${prdFile}`);
       }
     });
 

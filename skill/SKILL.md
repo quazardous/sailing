@@ -75,6 +75,7 @@ During task execution phases, **rudder CLI is the ONLY authority** for:
 | PRD milestones | `rudder prd:milestone PRD M1 --add-epic ENNN` | Edit PRD frontmatter |
 | Versions | `rudder versions` | JSON parsing of package.json |
 | Memory pending | `rudder memory:sync` | Glob for .log files |
+| Epic memory | `rudder epic:show-memory ENNN` | Read .sailing/memory/*.md |
 | Paths | `rudder paths <key>` | Hardcoded paths |
 
 **Why**: Rudder handles path resolution, status normalization, dependency graph, and state consistency. Direct file access bypasses these guarantees.
@@ -525,6 +526,8 @@ Memory files are managed by rudder (`memory:sync`, `epic:show-memory`, `epic:ens
 | `task:show-memory TNNN` | Agent Context only | Task agents |
 | `epic:show-memory ENNN` | Agent Context only | Task agents |
 | `epic:show-memory ENNN --full` | All sections | Review/breakdown agents |
+
+**NEVER** use `Read` tool on `.sailing/memory/*.md` files directly. Always use the commands above.
 
 **Rule**: Task agents see Agent Context only. High-level agents (epic-review, epic-breakdown) use `--full` to see escalations and full context.
 
