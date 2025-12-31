@@ -344,31 +344,68 @@ export function registerUtilCommands(program) {
         else results.summary.error++;
       };
 
-      if (!agentConfig.use_subprocess) {
-        // These options require use_subprocess
-        if (agentConfig.use_worktrees) {
-          configCheck('use_worktrees', 'warn', 'Requires use_subprocess: true');
-        }
-        if (agentConfig.risky_mode) {
-          configCheck('risky_mode', 'warn', 'Requires use_subprocess: true (ignored)');
-        }
-        if (agentConfig.sandbox) {
-          configCheck('sandbox', 'warn', 'Requires use_subprocess: true (ignored)');
-        }
-      } else {
+      // Hierarchy: use_subprocess → use_worktrees → sandbox → risky_mode
+      const hasSubprocess = agentConfig.use_subprocess;
+      const hasWorktrees = agentConfig.use_worktrees;
+      const hasSandbox = agentConfig.sandbox;
+      const hasRisky = agentConfig.risky_mode;
+
+      // Check git repo availability (for worktree validation)
+      let hasGitRepo = false;
+      try {
+        execSync('git rev-parse --git-dir 2>/dev/null', {
+          cwd: projectRoot,
+          encoding: 'utf8',
+          stdio: ['pipe', 'pipe', 'pipe']
+        });
+        hasGitRepo = true;
+      } catch {
+        // Not a git repo
+      }
+
+      // use_subprocess
+      if (hasSubprocess) {
         configCheck('use_subprocess', 'ok', 'Subprocess mode enabled');
-        if (agentConfig.use_worktrees) {
-          // Check if we have a valid git repo for worktrees
-          try {
-            execSync('git rev-parse --git-dir 2>/dev/null', {
-              cwd: projectRoot,
-              encoding: 'utf8',
-              stdio: ['pipe', 'pipe', 'pipe']
-            });
-            configCheck('use_worktrees', 'ok', 'Worktree isolation enabled');
-          } catch {
-            configCheck('use_worktrees', 'error', 'Requires git repository (not found)');
-          }
+      } else if (hasWorktrees || hasSandbox || hasRisky) {
+        configCheck('use_subprocess', 'warn', 'Required by other options but disabled');
+      }
+
+      // use_worktrees (requires use_subprocess + git)
+      if (hasWorktrees) {
+        if (!hasSubprocess) {
+          configCheck('use_worktrees', 'warn', 'Requires use_subprocess: true');
+        } else if (!hasGitRepo) {
+          configCheck('use_worktrees', 'error', 'Requires git repository (not found)');
+        } else {
+          configCheck('use_worktrees', 'ok', 'Worktree isolation enabled');
+        }
+      } else if (hasSandbox || hasRisky) {
+        configCheck('use_worktrees', 'warn', 'Required by sandbox/risky_mode but disabled');
+      }
+
+      // sandbox (requires use_worktrees)
+      if (hasSandbox) {
+        if (!hasWorktrees) {
+          configCheck('sandbox', 'warn', 'Requires use_worktrees: true');
+        } else if (!hasSubprocess) {
+          configCheck('sandbox', 'warn', 'Requires use_subprocess: true');
+        } else {
+          configCheck('sandbox', 'ok', 'Sandbox mode enabled');
+        }
+      } else if (hasRisky) {
+        configCheck('sandbox', 'warn', 'Required by risky_mode but disabled');
+      }
+
+      // risky_mode (requires sandbox)
+      if (hasRisky) {
+        if (!hasSandbox) {
+          configCheck('risky_mode', 'warn', 'Requires sandbox: true');
+        } else if (!hasWorktrees) {
+          configCheck('risky_mode', 'warn', 'Requires use_worktrees: true');
+        } else if (!hasSubprocess) {
+          configCheck('risky_mode', 'warn', 'Requires use_subprocess: true');
+        } else {
+          configCheck('risky_mode', 'ok', 'Risky mode enabled (--dangerously-skip-permissions)');
         }
       }
 
