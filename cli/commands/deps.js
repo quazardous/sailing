@@ -10,6 +10,105 @@ import { buildDependencyGraph, detectCycles, findRoots, blockersResolved, longes
 import { addDynamicHelp } from '../lib/help.js';
 
 /**
+ * Check if ID is an epic (ENNN) vs task (TNNN)
+ */
+function isEpicId(id) {
+  return /^E\d+$/i.test(id);
+}
+
+/**
+ * Find an epic file by ID
+ * @returns {{ file: string, prdDir: string, data: object } | null}
+ */
+function findEpicFile(epicId) {
+  const normalizedId = normalizeId(epicId);
+  for (const prdDir of findPrdDirs()) {
+    const epicsDir = path.join(prdDir, 'epics');
+    const files = findFiles(epicsDir, /^E\d+.*\.md$/);
+    for (const f of files) {
+      if (matchesId(f, epicId)) {
+        const fileData = loadFile(f);
+        return { file: f, prdDir, data: fileData };
+      }
+    }
+  }
+  return null;
+}
+
+/**
+ * Build epic dependency map
+ * @returns {Map<string, { id, file, status, blockedBy, prdDir }>}
+ */
+function buildEpicDependencyMap() {
+  const epics = new Map();
+
+  for (const prdDir of findPrdDirs()) {
+    const epicsDir = path.join(prdDir, 'epics');
+    const files = findFiles(epicsDir, /^E\d+.*\.md$/);
+
+    for (const f of files) {
+      const file = loadFile(f);
+      if (!file?.data?.id) continue;
+
+      const id = normalizeId(file.data.id);
+      const blockedBy = (file.data.blocked_by || []).map(b => normalizeId(b));
+
+      epics.set(id, {
+        id,
+        file: f,
+        status: file.data.status || 'Not Started',
+        blockedBy,
+        prdDir
+      });
+    }
+  }
+
+  return epics;
+}
+
+/**
+ * Detect cycles in epic dependencies
+ * @param {Map} epics - Epic dependency map
+ * @returns {string[][]} Array of cycles
+ */
+function detectEpicCycles(epics) {
+  const cycles = [];
+  const visited = new Set();
+  const recStack = new Set();
+
+  const dfs = (id, path) => {
+    if (recStack.has(id)) {
+      // Found a cycle - extract it
+      const cycleStart = path.indexOf(id);
+      cycles.push(path.slice(cycleStart).concat(id));
+      return;
+    }
+    if (visited.has(id)) return;
+
+    visited.add(id);
+    recStack.add(id);
+    path.push(id);
+
+    const epic = epics.get(id);
+    if (epic) {
+      for (const blockerId of epic.blockedBy) {
+        dfs(blockerId, [...path]);
+      }
+    }
+
+    recStack.delete(id);
+  };
+
+  for (const id of epics.keys()) {
+    if (!visited.has(id)) {
+      dfs(id, []);
+    }
+  }
+
+  return cycles;
+}
+
+/**
  * Register deps commands
  */
 export function registerDepsCommands(program) {
@@ -252,13 +351,54 @@ export function registerDepsCommands(program) {
         }
       }
 
-      // 7. Cycles
+      // 7. Task Cycles
       const cycles = detectCycles(tasks);
       for (const cycle of cycles) {
         errors.push({
           type: 'cycle',
           path: cycle,
-          message: `Cycle detected: ${cycle.join(' → ')}`
+          message: `Task cycle detected: ${cycle.join(' → ')}`
+        });
+      }
+
+      // 7b. Epic dependency validation
+      const epics = buildEpicDependencyMap();
+      for (const [epicId, epic] of epics) {
+        // Epic missing refs
+        for (const blockerId of epic.blockedBy) {
+          if (!epics.has(blockerId)) {
+            errors.push({
+              type: 'epic_missing_ref',
+              epic: epicId,
+              blocker: blockerId,
+              message: `${epicId}: blocked_by references non-existent epic ${blockerId}`
+            });
+            if (options.fix) {
+              fixes.push({ epic: epicId, file: epic.file, action: 'remove_epic_blocker', blockerId });
+            }
+          }
+        }
+
+        // Epic self-reference
+        if (epic.blockedBy.includes(epicId)) {
+          errors.push({
+            type: 'epic_self_ref',
+            epic: epicId,
+            message: `${epicId}: blocked_by contains self-reference`
+          });
+          if (options.fix) {
+            fixes.push({ epic: epicId, file: epic.file, action: 'remove_epic_self_ref' });
+          }
+        }
+      }
+
+      // 7c. Epic cycles
+      const epicCycles = detectEpicCycles(epics);
+      for (const cycle of epicCycles) {
+        errors.push({
+          type: 'epic_cycle',
+          path: cycle,
+          message: `Epic cycle detected: ${cycle.join(' → ')}`
         });
       }
 
@@ -580,7 +720,24 @@ export function registerDepsCommands(program) {
     .option('--json', 'JSON output')
     .action((options) => {
       const { tasks, blocks } = buildDependencyGraph();
+      const epics = buildEpicDependencyMap();
       const ready = [];
+
+      // Helper: check if epic blockers are resolved
+      const epicBlockersResolved = (epicId) => {
+        if (!epicId) return true;
+        const epic = epics.get(epicId);
+        if (!epic) return true;
+
+        for (const blockerId of epic.blockedBy) {
+          const blocker = epics.get(blockerId);
+          if (!blocker) continue;
+          if (!isStatusDone(blocker.status)) {
+            return false; // Blocker epic not done
+          }
+        }
+        return true;
+      };
 
       // Normalize filters
       const prdFilter = options.prd ? normalizeId(options.prd) : null;
@@ -598,7 +755,11 @@ export function registerDepsCommands(program) {
           if (!allTagsMatch) continue;
         }
 
-        if (isStatusNotStarted(task.status) && blockersResolved(task, tasks)) {
+        // Check both task blockers AND epic blockers
+        const taskReady = isStatusNotStarted(task.status) && blockersResolved(task, tasks);
+        const epicReady = epicBlockersResolved(task.epic);
+
+        if (taskReady && epicReady) {
           const totalUnblocked = countTotalUnblocked(id, tasks, blocks);
           const { length: criticalPathLen } = longestPath(id, tasks, blocks);
           ready.push({
@@ -670,59 +831,130 @@ export function registerDepsCommands(program) {
     });
 
   // deps:add
-  deps.command('add <taskId>')
-    .description('Add dependency (--blocks T001 or --blocked-by T002)')
-    .option('--blocks <ids...>', 'This task blocks these tasks')
-    .option('--blocked-by <ids...>', 'This task is blocked by these tasks')
-    .action((taskId, options) => {
-      const id = normalizeId(taskId);
-      const { tasks } = buildDependencyGraph();
+  deps.command('add <id>')
+    .description('Add dependency (--blocks or --blocked-by, supports TNNN and ENNN)')
+    .option('--blocks <ids...>', 'This entity blocks these entities')
+    .option('--blocked-by <ids...>', 'This entity is blocked by these entities')
+    .action((entityId, options) => {
+      const id = normalizeId(entityId);
+      const isEpic = isEpicId(id);
 
-      if (!tasks.has(id)) {
-        console.error(`Task not found: ${id}`);
-        process.exit(1);
-      }
+      if (isEpic) {
+        // Epic dependency handling
+        const epics = buildEpicDependencyMap();
 
-      const task = tasks.get(id);
+        if (!epics.has(id)) {
+          console.error(`Epic not found: ${id}`);
+          process.exit(1);
+        }
 
-      if (options.blocks) {
-        // Add this task as a blocker to others
-        for (const targetId of options.blocks) {
-          const tid = normalizeId(targetId);
-          const target = tasks.get(tid);
-          if (!target) {
-            console.error(`Task not found: ${tid}`);
-            continue;
+        if (options.blocks) {
+          // Add this epic as a blocker to others
+          for (const targetId of options.blocks) {
+            const tid = normalizeId(targetId);
+            if (!isEpicId(tid)) {
+              console.error(`Epic can only block epics, not tasks: ${tid}`);
+              continue;
+            }
+            const target = epics.get(tid);
+            if (!target) {
+              console.error(`Epic not found: ${tid}`);
+              continue;
+            }
+
+            const file = loadFile(target.file);
+            if (!Array.isArray(file.data.blocked_by)) file.data.blocked_by = [];
+            if (!file.data.blocked_by.includes(id)) {
+              file.data.blocked_by.push(id);
+              saveFile(target.file, file.data, file.body);
+              console.log(`Added: ${tid} blocked by ${id}`);
+            }
           }
+        }
 
-          const file = loadFile(target.file);
+        if (options.blockedBy) {
+          // Add blockers to this epic
+          const epic = epics.get(id);
+          const file = loadFile(epic.file);
           if (!Array.isArray(file.data.blocked_by)) file.data.blocked_by = [];
-          if (!file.data.blocked_by.includes(id)) {
-            file.data.blocked_by.push(id);
-            saveFile(target.file, file.data, file.body);
-            console.log(`Added: ${tid} blocked by ${id}`);
+
+          for (const blockerId of options.blockedBy) {
+            const bid = normalizeId(blockerId);
+            if (!isEpicId(bid)) {
+              console.error(`Epic can only be blocked by epics, not tasks: ${bid}`);
+              continue;
+            }
+            if (!epics.has(bid)) {
+              console.error(`Epic not found: ${bid}`);
+              continue;
+            }
+
+            if (!file.data.blocked_by.includes(bid)) {
+              file.data.blocked_by.push(bid);
+              console.log(`Added: ${id} blocked by ${bid}`);
+            }
+          }
+
+          saveFile(epic.file, file.data, file.body);
+        }
+      } else {
+        // Task dependency handling (existing logic)
+        const { tasks } = buildDependencyGraph();
+
+        if (!tasks.has(id)) {
+          console.error(`Task not found: ${id}`);
+          process.exit(1);
+        }
+
+        const task = tasks.get(id);
+
+        if (options.blocks) {
+          // Add this task as a blocker to others
+          for (const targetId of options.blocks) {
+            const tid = normalizeId(targetId);
+            if (isEpicId(tid)) {
+              console.error(`Task can only block tasks, not epics: ${tid}`);
+              continue;
+            }
+            const target = tasks.get(tid);
+            if (!target) {
+              console.error(`Task not found: ${tid}`);
+              continue;
+            }
+
+            const file = loadFile(target.file);
+            if (!Array.isArray(file.data.blocked_by)) file.data.blocked_by = [];
+            if (!file.data.blocked_by.includes(id)) {
+              file.data.blocked_by.push(id);
+              saveFile(target.file, file.data, file.body);
+              console.log(`Added: ${tid} blocked by ${id}`);
+            }
           }
         }
-      }
 
-      if (options.blockedBy) {
-        // Add blockers to this task
-        const file = loadFile(task.file);
-        if (!Array.isArray(file.data.blocked_by)) file.data.blocked_by = [];
+        if (options.blockedBy) {
+          // Add blockers to this task
+          const file = loadFile(task.file);
+          if (!Array.isArray(file.data.blocked_by)) file.data.blocked_by = [];
 
-        for (const blockerId of options.blockedBy) {
-          const bid = normalizeId(blockerId);
-          if (!tasks.has(bid)) {
-            console.error(`Task not found: ${bid}`);
-            continue;
+          for (const blockerId of options.blockedBy) {
+            const bid = normalizeId(blockerId);
+            if (isEpicId(bid)) {
+              console.error(`Task can only be blocked by tasks, not epics: ${bid}`);
+              continue;
+            }
+            if (!tasks.has(bid)) {
+              console.error(`Task not found: ${bid}`);
+              continue;
+            }
+            if (!file.data.blocked_by.includes(bid)) {
+              file.data.blocked_by.push(bid);
+              console.log(`Added: ${id} blocked by ${bid}`);
+            }
           }
-          if (!file.data.blocked_by.includes(bid)) {
-            file.data.blocked_by.push(bid);
-            console.log(`Added: ${id} blocked by ${bid}`);
-          }
+
+          saveFile(task.file, file.data, file.body);
         }
-
-        saveFile(task.file, file.data, file.body);
       }
 
       console.log('\nRun `rudder deps:validate` to check for cycles.');
@@ -730,68 +962,98 @@ export function registerDepsCommands(program) {
 
   // deps:show
   deps.command('show <id>')
-    .description('Show dependencies (TNNN for task, ENNN for epic summary)')
+    .description('Show dependencies (TNNN for task, ENNN for epic with blockers)')
     .option('--json', 'JSON output')
     .action((id, options) => {
       const { tasks, blocks } = buildDependencyGraph();
+      const epics = buildEpicDependencyMap();
       const normalizedId = normalizeId(id);
 
-      // Epic mode: show summary for all tasks in epic (ENNN)
+      // Epic mode: show epic blockers + task summary (ENNN)
       if (normalizedId.startsWith('E')) {
         const epicId = normalizedId;
-        const epicTasks = [...tasks.values()].filter(t => {
-          // Match by epic field or by parent containing the epic ID
-          return t.epic === epicId || (t.parent && t.parent.includes(epicId));
-        });
+        const epic = epics.get(epicId);
 
-        if (epicTasks.length === 0) {
-          console.error(`No tasks found for epic: ${epicId}`);
+        if (!epic) {
+          console.error(`Epic not found: ${epicId}`);
           process.exit(1);
         }
 
-        const summary = epicTasks.map(t => {
-          const dependents = blocks.get(t.id) || [];
-          const externalBlockers = t.blockedBy.filter(b => {
-            const blocker = tasks.get(b);
-            return blocker && blocker.epic !== epicId;
-          });
-          const externalDependents = dependents.filter(d => {
-            const dep = tasks.get(d);
-            return dep && dep.epic !== epicId;
-          });
+        // Find tasks in this epic
+        const epicTasks = [...tasks.values()].filter(t => {
+          return t.epic === epicId || (t.parent && t.parent.includes(epicId));
+        });
 
+        // Find epics that block this one and epics blocked by this one
+        const epicBlockers = epic.blockedBy.map(bid => {
+          const b = epics.get(bid);
+          return b ? { id: bid, status: b.status, done: isStatusDone(b.status) } : null;
+        }).filter(Boolean);
+
+        const epicBlocks = [...epics.values()]
+          .filter(e => e.blockedBy.includes(epicId))
+          .map(e => ({ id: e.id, status: e.status }));
+
+        // Check if epic is ready (all blocker epics done)
+        const epicReady = epicBlockers.every(b => b.done);
+
+        const taskSummary = epicTasks.map(t => {
+          const dependents = blocks.get(t.id) || [];
           return {
             id: t.id,
             title: t.title,
             status: t.status,
             blockedBy: t.blockedBy,
             blocks: dependents,
-            externalBlockers,
-            externalDependents,
-            ready: blockersResolved(t, tasks)
+            ready: blockersResolved(t, tasks) && epicReady
           };
         });
 
         if (options.json) {
-          jsonOut(summary);
-        } else {
-          console.log(`Dependencies for ${epicId}:\n`);
-          summary.forEach(t => {
-            const sym = statusSymbol(t.status);
-            const ready = t.ready && !isStatusDone(t.status) ? ' ✓' : '';
-            console.log(`${sym} ${t.id}: ${t.title}${ready}`);
-            if (t.blockedBy.length > 0) {
-              console.log(`   ← blocked by: ${t.blockedBy.join(', ')}`);
-            }
-            if (t.blocks.length > 0) {
-              console.log(`   → blocks: ${t.blocks.join(', ')}`);
-            }
+          jsonOut({
+            epic: {
+              id: epicId,
+              status: epic.status,
+              blockedBy: epicBlockers,
+              blocks: epicBlocks,
+              ready: epicReady
+            },
+            tasks: taskSummary
           });
+        } else {
+          console.log(`Epic ${epicId} (${epic.status}):\n`);
+
+          // Show epic-level dependencies
+          if (epicBlockers.length > 0) {
+            const blockerStatus = epicBlockers.map(b => `${b.id}${b.done ? ' ✓' : ''}`).join(', ');
+            console.log(`  ← blocked by epics: ${blockerStatus}`);
+          }
+          if (epicBlocks.length > 0) {
+            console.log(`  → blocks epics: ${epicBlocks.map(e => e.id).join(', ')}`);
+          }
+          if (!epicReady) {
+            console.log(`  ⚠ Epic blocked - waiting for: ${epicBlockers.filter(b => !b.done).map(b => b.id).join(', ')}`);
+          }
+
+          if (epicTasks.length > 0) {
+            console.log(`\nTasks (${epicTasks.length}):\n`);
+            taskSummary.forEach(t => {
+              const sym = statusSymbol(t.status);
+              const ready = t.ready && !isStatusDone(t.status) ? ' ✓' : '';
+              console.log(`${sym} ${t.id}: ${t.title}${ready}`);
+              if (t.blockedBy.length > 0) {
+                console.log(`   ← blocked by: ${t.blockedBy.join(', ')}`);
+              }
+              if (t.blocks.length > 0) {
+                console.log(`   → blocks: ${t.blocks.join(', ')}`);
+              }
+            });
+          }
 
           // Summary
-          const readyCount = summary.filter(t => t.ready && !isStatusDone(t.status)).length;
-          const doneCount = summary.filter(t => isStatusDone(t.status)).length;
-          console.log(`\nSummary: ${doneCount} done, ${readyCount} ready, ${summary.length} total`);
+          const readyCount = taskSummary.filter(t => t.ready && !isStatusDone(t.status)).length;
+          const doneCount = taskSummary.filter(t => isStatusDone(t.status)).length;
+          console.log(`\nSummary: ${doneCount} done, ${readyCount} ready, ${epicTasks.length} total`);
         }
         return;
       }
