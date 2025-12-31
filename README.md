@@ -1,110 +1,156 @@
-# Sailing - Project Governance Skill
+# Sailing
 
-A Claude Code skill for structured project governance using PRD/Epic/Task workflow.
+**AI-assisted project governance** that actually remembers what it learns.
 
-## What is Sailing?
+> Stop losing context. Start building with memory.
 
-Sailing is a governance framework for AI-assisted development. It provides:
+## Your First PRD in 5 Minutes
 
-- **Structured workflow**: PRD → Epic → Task decomposition
-- **Agent governance**: Rules for how Claude agents operate
-- **Memory consolidation**: Persistent learning across sessions
-- **Version tracking**: Component versioning with semver
-
-### Workflow
-
-```
-PRD (Product Requirement)
- └── Epic (Feature scope)
-      └── Task (Atomic work unit)
-```
-
-## Installation
+### 1. Install (30 seconds)
 
 ```bash
 curl -sSL https://raw.githubusercontent.com/quazardous/sailing/main/install.sh | bash
 ```
 
-## Usage
+### 2. Create a PRD (1 minute)
 
-Once installed, Claude Code automatically loads the sailing skill. Use natural language:
+Talk to Claude naturally — just mention "sailing" to activate the skill:
 
-### Planning Phase
+**You:** "With sailing, create a PRD for a user authentication system"
+
+**Claude:** "I've created PRD-001. The spec includes OAuth2, JWT tokens, and password recovery. Would you like me to review it for completeness?"
+
+### 3. Follow the Guided Flow (3 minutes)
+
+**You:** "Yes, review it"
+
+**Claude:** "Review complete. I recommend adding target versions for milestone M1. Ready to break this down into epics?"
+
+**You:** "Go ahead"
+
+**Claude:** "Created 3 epics:
+- E001: OAuth2 Integration
+- E002: JWT Token Management
+- E003: Password Recovery
+
+I recommend reviewing E001's technical approach before breaking it into tasks. Should I proceed with `/dev:epic-review E001`?"
+
+**You:** "Yes"
+
+**Claude:** "Epic reviewed. Added technical notes on token storage strategy. Ready to create tasks with `/dev:epic-breakdown E001`?"
+
+**You:** "Do it"
+
+**Claude:** "Created 5 tasks for E001. T001 is ready to start. Run `/dev:task-start T001` when you're ready."
+
+**That's it. From idea to actionable tasks in 5 minutes.**
+
+## What You Get
+
+| Feature | Description |
+|---------|-------------|
+| **Memory That Persists** | Claude consolidates learnings into epic memory — next agent picks up where you left off |
+| **Guided Workflow** | Claude suggests next steps at every decision point |
+| **Structured Governance** | PRD → Epic → Task hierarchy keeps work organized |
+| **Constitutional Rules** | Prevents scope creep, lost context, and agent guessing |
+
+## Everyday Usage
+
+### Natural Language (Recommended)
+
+Just talk to Claude. Mention "sailing" to activate:
 
 ```
-"With sailing, create a PRD for a user authentication system"
-"Using the sailing skill, start a new PRD for an e-commerce platform"
-"Review PRD-001 and suggest improvements"
-"Break down PRD-001 into epics"
-"Create user stories for PRD-002"
+"With sailing, what should I work on next?"
+"Using sailing, show me the project status"
+"With the sailing skill, I finished T005 — mark it done"
+"Sailing: this task is blocked, log the issue"
 ```
 
-### Implementation Phase
-
-```
-"What's the next task to work on?"
-"Show me the project status"
-"Start working on task T005"
-"I finished task T005, mark it as done"
-"Task T007 is blocked, I need help from the backend team"
-```
-
-### Version & Milestone
-
-```
-"Show me all component versions"
-"Bump the core version to minor with message 'Added auth feature'"
-"Validate milestone M1"
-"Sync the roadmap with completed work"
-```
-
-### Memory & Context
-
-```
-"Sync the memory before starting the next task"
-"Show me the context for epic E003"
-"What issues were encountered in epic E002?"
-```
+Claude guides you through the workflow — you don't need to memorize commands.
 
 ### Slash Commands
 
-Or use slash commands directly:
+For direct control:
 
-```
-/dev:prd-create "E-commerce Platform"
-/dev:prd-review PRD-001
-/dev:prd-breakdown PRD-001
-/dev:epic-breakdown PRD-001/E001
-/dev:task-start T005
-/dev:task-done T005
-/dev:next
-/dev:status
-/dev:versions
-/dev:version-bump core minor "Added feature"
-```
+| Command | Description |
+|---------|-------------|
+| `/dev:status` | Project overview |
+| `/dev:next` | Get next ready task |
+| `/dev:task-start T001` | Start a task |
+| `/dev:task-done T001` | Complete a task |
+| `/dev:prd-review PRD-001` | Review a PRD |
+| `/dev:epic-breakdown E001` | Break epic into tasks |
+| `/dev:versions` | Show component versions |
 
-## Structure
+[Full command reference →](docs/rudder.md)
+
+## How It Works
+
+### Constitutional Layer
+
+These rules keep Claude reliable:
+
+| Rule | Why It Matters |
+|------|----------------|
+| **Rudder is single source of truth** | No manual file editing = no state corruption |
+| **Main thread decides** | Agents execute only, never chain or infer |
+| **Memory before execution** | Context survives across sessions |
+| **When in doubt, escalate** | No guessing = no surprises |
+
+### Guided Decision Points
+
+| You Just... | Claude Suggests... |
+|-------------|-------------------|
+| Created a PRD | Review → Stories (optional) → Breakdown |
+| Created epics | Epic review → Task breakdown |
+| Broke down tasks | Start first ready task |
+| Completed a task | Version bump (if needed) → Next task |
+| Finished milestone | Validate → Sync roadmap |
+
+## Project Structure
 
 ```
 your-project/
-├── bin/rudder              # CLI (see docs/rudder.md)
+├── bin/rudder              # CLI for state management
 ├── .claude/
-│   ├── skills/sailing/     # Skill definition
-│   └── commands/dev/       # /dev:* commands
+│   ├── skills/sailing/     # Skill definition (auto-loaded)
+│   └── commands/dev/       # /dev:* slash commands
 └── .sailing/
-    ├── artefacts/          # ROADMAP, POSTIT, PRDs, Epics, Tasks
-    ├── memory/             # Epic memory
-    ├── prompting/          # Optimized prompt fragments
+    ├── artefacts/          # ROADMAP, PRDs, Epics, Tasks
+    ├── memory/             # Epic memory (persists learnings)
+    ├── prompting/          # Agent context fragments
     └── templates/          # Entity templates
 ```
 
+[Detailed structure →](docs/folders.md)
+
+## Why Sailing?
+
+**Problem:** AI assistants lose context between sessions. You repeat the same explanations, watch agents make the same mistakes, lose architectural decisions.
+
+**Solution:** Sailing provides structure + memory. Each task logs learnings. Memory consolidates into epics. Next agent reads that memory and builds on it.
+
+**Result:**
+- Agents get smarter as your project grows
+- Context survives across sessions
+- Work stays organized and traceable
+- You stop repeating yourself
+
 ## Documentation
 
-- [Rudder CLI](docs/rudder.md) - The main CLI for state management
-- [Folder Structure](docs/folders.md) - What each folder contains
-- [Version Tracking](docs/version_tracking.md) - Component versioning with semver
-- [Advanced Configuration](docs/advanced.md) - Custom paths, dev install, etc.
-- `bin/rudder context:agent --list` - Agent context fragments (after install)
+| Topic | Link |
+|-------|------|
+| CLI Reference | [docs/rudder.md](docs/rudder.md) |
+| Folder Structure | [docs/folders.md](docs/folders.md) |
+| Version Tracking | [docs/version_tracking.md](docs/version_tracking.md) |
+| Advanced Config | [docs/advanced.md](docs/advanced.md) |
+
+## Requirements
+
+- Claude Code CLI
+- Node.js 18+
+- Git
 
 ## License
 

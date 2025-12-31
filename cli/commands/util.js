@@ -534,10 +534,20 @@ export function registerUtilCommands(program) {
       if (options.json) {
         jsonOut(versions);
       } else {
-        console.log('Component Versions:\n');
+        // Calculate column widths
+        const nameWidth = Math.max(10, ...versions.map(v => v.name.length));
+        const versionWidth = Math.max(7, ...versions.map(v => v.version.length));
+
+        // Header
+        const header = `${'Component'.padEnd(nameWidth)}  ${'Version'.padEnd(versionWidth)}  Changelog`;
+        console.log(header);
+        console.log('-'.repeat(header.length + 10));
+
+        // Rows
         versions.forEach(v => {
-          const marker = v.main ? ' (main)' : '';
-          console.log(`  ${v.name}: ${v.version}${marker}`);
+          const name = v.main ? `${v.name} *` : v.name;
+          const changelog = v.changelog || '-';
+          console.log(`${name.padEnd(nameWidth)}  ${v.version.padEnd(versionWidth)}  ${changelog}`);
         });
       }
     });

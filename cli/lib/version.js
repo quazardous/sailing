@@ -120,6 +120,7 @@ export function getAllVersions() {
   return config.components.map(c => ({
     name: c.name,
     version: getComponentVersion(c),
-    main: c.main || false
+    main: c.main || false,
+    changelog: c.changelog || null
   }));
 }
