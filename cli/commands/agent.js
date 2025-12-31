@@ -333,12 +333,8 @@ export function registerAgentCommands(program) {
       // Check subprocess mode is enabled
       const agentConfig = getAgentConfig();
       if (!agentConfig.use_subprocess) {
-        console.error('ERROR: agent:spawn requires use_subprocess: true in config.yaml\n');
-        console.error('Current mode: inline (Task tool)');
-        console.error('To enable subprocess mode:');
-        console.error('  1. Set agent.use_subprocess: true in .sailing/config.yaml');
-        console.error('  2. Or reinstall with: install.sh --full\n');
-        console.error('For inline mode, use Task tool with rudder context:agent instead.');
+        console.error('ERROR: agent:spawn is disabled (use_subprocess: false)\n');
+        console.error('Use Task tool with `rudder context:agent <command>` to spawn agents inline.');
         process.exit(1);
       }
 
