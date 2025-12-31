@@ -2,6 +2,18 @@
 
 All notable changes to the Rudder CLI will be documented in this file.
 
+## [1.3.0] - 2025-12-31
+
+### Added
+- Epic-to-epic dependencies: `deps:add ENNN --blocked-by E001`
+- `deps:ready` now checks both task and epic blockers
+- `deps:show ENNN` displays epic blockers
+- `deps:validate` detects epic dependency cycles
+- `versions` command now displays as table with changelog paths
+
+### Changed
+- README rewritten with quick start approach
+
 ## [1.2.0] - 2025-12-31
 
 ### Added
