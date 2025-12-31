@@ -1,13 +1,18 @@
 /**
  * Path resolution system with placeholder support
  *
- * Placeholders:
- *   %home%         → user home directory
- *   %project%      → project root directory
+ * Built-in placeholders:
+ *   %home%         → user home directory (~/)
+ *   %project%      → project root directory (^/)
  *   %project_name% → project directory name
  *   %project_hash% → SHA256 of git remote or realpath (first 12 chars)
- *   %haven%        → central haven directory (default: ~/.sailing)
- *   %sibling%      → sibling project directory (default: %haven%/projects/%project_hash%)
+ *   %haven%        → project haven directory (~/.sailing/havens/%project_hash%)
+ *
+ * Shortcuts:
+ *   ~/  → %home%/
+ *   ^/  → %project%/
+ *
+ * All placeholders can be overridden in paths.yaml (no circular refs allowed)
  */
 import fs from 'fs';
 import path from 'path';
@@ -62,8 +67,7 @@ function getBuiltinPlaceholders() {
     project: projectRoot,
     project_name: projectName,
     project_hash: projectHash,
-    haven: path.join(home, '.sailing'),
-    sibling: path.join(home, '.sailing', 'projects', projectHash)
+    haven: path.join(home, '.sailing', 'havens', projectHash)
   };
 }
 
@@ -110,6 +114,13 @@ export function resolvePlaceholders(str, depth = 0) {
   const all = { ...builtins, ...custom };
 
   let result = str;
+
+  // Resolve shortcuts: ~/ → %home%/, ^/ → %project%/
+  if (result.startsWith('~/')) {
+    result = '%home%/' + result.slice(2);
+  } else if (result.startsWith('^/')) {
+    result = '%project%/' + result.slice(2);
+  }
   let hasPlaceholder = true;
 
   // Keep resolving until no more placeholders

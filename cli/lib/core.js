@@ -6,6 +6,7 @@ import path from 'path';
 import os from 'os';
 import matter from 'gray-matter';
 import yaml from 'js-yaml';
+import { resolvePlaceholders, resolvePath } from './paths.js';
 
 /**
  * Expand special path prefixes:
@@ -298,27 +299,66 @@ export function getPathsInfo() {
   const templatesPath = getTemplates();
   const componentsPath = getComponentsFile();
 
+  // Resolve haven base path
+  const havenPath = resolvePlaceholders('%haven%');
+  const home = os.homedir();
+
+  // Helper to make path relative to home (~/...)
+  const toHomeRelative = (p) => {
+    if (p.startsWith(home)) {
+      return '~' + p.slice(home.length);
+    }
+    return p;
+  };
+
+  // Helper for haven-based paths with override support
+  const getHavenPath = (key, subpath) => {
+    const custom = resolvePath(key);
+    const resolved = custom || path.join(havenPath, subpath);
+    const template = custom ? config.paths?.[key] : `%haven%/${subpath}`;
+    return {
+      template,
+      relative: toHomeRelative(resolved),
+      absolute: resolved
+    };
+  };
+
   return {
     roadmap: {
+      template: '^/.sailing/artefacts/ROADMAP.md',
       relative: config.paths.artefacts + '/ROADMAP.md',
       absolute: path.join(artefactsPath, 'ROADMAP.md')
     },
     postit: {
+      template: '^/.sailing/artefacts/POSTIT.md',
       relative: config.paths.artefacts + '/POSTIT.md',
       absolute: path.join(artefactsPath, 'POSTIT.md')
     },
     artefacts: {
+      template: '^/.sailing/artefacts',
       relative: config.paths.artefacts,
       absolute: artefactsPath
     },
     templates: {
+      template: '^/templates',
       relative: config.paths.templates,
       absolute: templatesPath
     },
     components: {
+      template: '^/.sailing/components.yaml',
       relative: config.paths.components,
       absolute: componentsPath
-    }
+    },
+    // Haven-based paths (with override support)
+    haven: {
+      template: '%haven%',
+      relative: toHomeRelative(havenPath),
+      absolute: havenPath
+    },
+    agents: getHavenPath('agents', 'agents'),
+    runs: getHavenPath('runs', 'runs'),
+    assignments: getHavenPath('assignments', 'assignments'),
+    worktrees: getHavenPath('worktrees', 'worktrees')
   };
 }
 

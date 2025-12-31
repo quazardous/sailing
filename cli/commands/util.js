@@ -47,8 +47,9 @@ export function registerUtilCommands(program) {
   // paths group
   const paths = program.command('paths')
     .description('Path management (show paths, placeholders, resolve)')
-    .argument('[key]', 'Specific path key (roadmap, postit, artefacts, templates)')
+    .argument('[key]', 'Path key (roadmap, artefacts, haven, agents, runs, assignments, worktrees, ...)')
     .option('--json', 'JSON output')
+    .option('-p, --placeholders', 'Show paths with placeholders (unresolved)')
     .action((key, options) => {
       const pathsInfo = getPathsInfo();
 
@@ -58,14 +59,18 @@ export function registerUtilCommands(program) {
           console.error(`Available: ${Object.keys(pathsInfo).join(', ')}`);
           process.exit(1);
         }
-        console.log(pathsInfo[key].absolute);
+        if (options.placeholders) {
+          console.log(pathsInfo[key].template || pathsInfo[key].relative);
+        } else {
+          console.log(pathsInfo[key].absolute);
+        }
         return;
       }
 
       if (options.json) {
         const result = {};
         for (const [k, v] of Object.entries(pathsInfo)) {
-          result[k] = v.absolute;
+          result[k] = options.placeholders ? (v.template || v.relative) : v.absolute;
         }
         jsonOut(result);
         return;
@@ -73,7 +78,8 @@ export function registerUtilCommands(program) {
 
       // Human readable
       for (const [k, v] of Object.entries(pathsInfo)) {
-        console.log(`${k.padEnd(12)} ${v.relative}`);
+        const display = options.placeholders ? (v.template || v.relative) : v.relative;
+        console.log(`${k.padEnd(12)} ${display}`);
       }
     });
 

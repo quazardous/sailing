@@ -8,14 +8,15 @@ import fs from 'fs';
 import path from 'path';
 import { execSync } from 'child_process';
 import { findProjectRoot } from './core.js';
-import { resolvePlaceholders, ensureDir } from './paths.js';
+import { resolvePlaceholders, resolvePath, ensureDir } from './paths.js';
 
 /**
- * Get the worktrees base directory
- * Uses %haven%/worktrees/<project_hash>/ by default
+ * Get the worktrees base directory (overridable via paths.yaml: worktrees)
+ * Default: %haven%/worktrees
  */
 export function getWorktreesDir() {
-  return resolvePlaceholders('%haven%/worktrees/%project_hash%');
+  const custom = resolvePath('worktrees');
+  return custom || resolvePlaceholders('%haven%/worktrees');
 }
 
 /**

@@ -7,7 +7,7 @@ import path from 'path';
 import yaml from 'js-yaml';
 import { execSync } from 'child_process';
 import { findProjectRoot, loadFile, jsonOut, getPrdsDir } from '../lib/core.js';
-import { resolvePlaceholders, ensureDir } from '../lib/paths.js';
+import { resolvePlaceholders, resolvePath, ensureDir } from '../lib/paths.js';
 import { createMission, validateMission, validateResult, getProtocolVersion } from '../lib/agent-schema.js';
 import { loadState, saveState } from '../lib/state.js';
 import { addDynamicHelp } from '../lib/help.js';
@@ -15,6 +15,22 @@ import { getAgentConfig } from '../lib/config.js';
 import { createWorktree, getWorktreePath, getBranchName, worktreeExists, removeWorktree, getWorktreeStatus } from '../lib/worktree.js';
 import { spawnClaude, buildPromptFromMission, getLogFilePath } from '../lib/claude.js';
 import { buildConflictMatrix, suggestMergeOrder, canMergeWithoutConflict } from '../lib/conflicts.js';
+
+/**
+ * Get agents base directory (overridable via paths.yaml: agents)
+ * Default: %haven%/agents
+ */
+function getAgentsBaseDir() {
+  const custom = resolvePath('agents');
+  return custom || resolvePlaceholders('%haven%/agents');
+}
+
+/**
+ * Get agent directory for a task
+ */
+function getAgentDir(taskId) {
+  return path.join(getAgentsBaseDir(), taskId);
+}
 
 /**
  * Find task file by ID
@@ -208,7 +224,7 @@ export function registerAgentCommands(program) {
       }
 
       // Determine agent directory
-      const agentDir = ensureDir(`%haven%/agents/${taskId}`);
+      const agentDir = ensureDir(getAgentDir(taskId));
       const missionFile = path.join(agentDir, 'mission.yaml');
 
       if (options.dryRun) {
@@ -311,7 +327,7 @@ export function registerAgentCommands(program) {
    * @returns {{ complete: boolean, hasResult: boolean, hasSentinel: boolean }}
    */
   function checkAgentCompletion(taskId) {
-    const agentDir = resolvePlaceholders(`%haven%/agents/${taskId}`);
+    const agentDir = getAgentDir(taskId);
     const resultFile = path.join(agentDir, 'result.yaml');
     const sentinelFile = path.join(agentDir, 'done');
 
@@ -606,7 +622,7 @@ export function registerAgentCommands(program) {
       }
 
       // Find result file
-      const agentDir = resolvePlaceholders(`%haven%/agents/${taskId}`);
+      const agentDir = getAgentDir(taskId);
       const resultFile = path.join(agentDir, 'result.yaml');
 
       if (!fs.existsSync(resultFile)) {

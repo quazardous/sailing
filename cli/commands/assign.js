@@ -5,10 +5,12 @@
 import fs from 'fs';
 import path from 'path';
 import yaml from 'js-yaml';
-import { jsonOut, getPrompting, getMemoryDir, loadFile, getPrdsDir } from '../lib/core.js';
-import { resolvePlaceholders, ensureDir, computeProjectHash } from '../lib/paths.js';
+import { jsonOut, getPrompting, getMemoryDir, loadFile, getPrdsDir, saveFile } from '../lib/core.js';
+import { resolvePlaceholders, resolvePath, ensureDir, computeProjectHash } from '../lib/paths.js';
 import { normalizeId } from '../lib/normalize.js';
 import { addDynamicHelp } from '../lib/help.js';
+import { findLogFiles, mergeTaskLog, findTaskEpic, readLogFile } from '../lib/memory.js';
+import { addLogEntry } from '../lib/update.js';
 
 /**
  * Find task file by ID
@@ -51,11 +53,144 @@ function findEpicFile(epicId) {
 }
 
 /**
- * Get assignments directory path
+ * Get assignments directory path (overridable via paths.yaml: assignments)
  */
 function getAssignmentsDir() {
-  const dirPath = resolvePlaceholders('%haven%/assignments');
+  const custom = resolvePath('assignments');
+  const dirPath = custom || resolvePlaceholders('%haven%/assignments');
   return ensureDir(dirPath);
+}
+
+/**
+ * Get runs directory path (overridable via paths.yaml: runs)
+ * Stores run sentinel files (TNNN.run) to detect orphan agents
+ */
+function getRunsDir() {
+  const custom = resolvePath('runs');
+  const dirPath = custom || resolvePlaceholders('%haven%/runs');
+  return ensureDir(dirPath);
+}
+
+/**
+ * Get run file path for a task
+ */
+function runFilePath(taskId) {
+  const dir = getRunsDir();
+  return path.join(dir, `${taskId}.run`);
+}
+
+/**
+ * Check if run file exists (agent is running)
+ */
+function isRunning(taskId) {
+  return fs.existsSync(runFilePath(taskId));
+}
+
+/**
+ * Create run file (mark agent as running)
+ */
+function createRunFile(taskId, operation) {
+  const filePath = runFilePath(taskId);
+  const data = {
+    taskId,
+    operation,
+    started_at: new Date().toISOString(),
+    pid: process.pid
+  };
+  fs.writeFileSync(filePath, yaml.dump(data));
+  return filePath;
+}
+
+/**
+ * Remove run file (agent finished)
+ */
+function removeRunFile(taskId) {
+  const filePath = runFilePath(taskId);
+  if (fs.existsSync(filePath)) {
+    fs.unlinkSync(filePath);
+    return true;
+  }
+  return false;
+}
+
+/**
+ * List orphan run files
+ */
+function findOrphanRuns() {
+  const dir = getRunsDir();
+  if (!fs.existsSync(dir)) return [];
+
+  return fs.readdirSync(dir)
+    .filter(f => f.endsWith('.run'))
+    .map(f => {
+      const content = yaml.load(fs.readFileSync(path.join(dir, f), 'utf8'));
+      return { taskId: content.taskId, ...content };
+    });
+}
+
+/**
+ * Check for pending memory (logs not consolidated)
+ * Returns { pending: boolean, epics: string[] }
+ */
+function checkPendingMemory(epicId = null) {
+  // Merge task logs first
+  const taskLogs = findLogFiles().filter(f => f.type === 'task');
+  for (const { id: taskId } of taskLogs) {
+    if (epicId) {
+      const taskInfo = findTaskEpic(taskId);
+      if (!taskInfo || taskInfo.epicId !== epicId) continue;
+    }
+    mergeTaskLog(taskId);
+  }
+
+  // Check for epic logs
+  let epicLogs = findLogFiles().filter(f => f.type === 'epic');
+  if (epicId) {
+    epicLogs = epicLogs.filter(f => f.id === epicId);
+  }
+
+  const pendingEpics = epicLogs
+    .filter(({ id }) => readLogFile(id)) // Has content
+    .map(({ id }) => id);
+
+  return {
+    pending: pendingEpics.length > 0,
+    epics: pendingEpics
+  };
+}
+
+/**
+ * Count TIP logs in task log file
+ */
+function countTaskTips(taskId) {
+  const taskInfo = findTaskEpic(taskId);
+  if (!taskInfo) return 0;
+
+  // Check task's own log file
+  const taskLog = readLogFile(taskId);
+  if (!taskLog) return 0;
+
+  const matches = taskLog.match(/\[TIP\]/g);
+  return matches ? matches.length : 0;
+}
+
+/**
+ * Add log entry to task file
+ */
+function logToTask(taskId, message, level = 'INFO') {
+  const taskFile = findTaskFile(taskId);
+  if (!taskFile) return false;
+
+  const file = loadFile(taskFile);
+  const author = 'agent';
+  const levelPrefix = `[${level}] `;
+  const fullMessage = levelPrefix + message;
+
+  // Ensure body exists
+  const body = file.body || '';
+  const newBody = addLogEntry(body, fullMessage, author);
+  saveFile(taskFile, file.data, newBody);
+  return true;
 }
 
 /**
@@ -274,6 +409,8 @@ export function registerAssignCommands(program) {
   assign.command('claim <task-id>')
     .description('Claim assignment and get compiled prompt (works without prior create)')
     .option('--operation <op>', 'Operation type (default: task-start)', 'task-start')
+    .option('--approach <text>', 'Approach description for auto-log')
+    .option('--force', 'Force claim even with orphan runs or pending memory')
     .option('--sources', 'Show fragment sources used')
     .option('--debug', 'Add source comments to each section')
     .option('--json', 'JSON output')
@@ -281,13 +418,27 @@ export function registerAssignCommands(program) {
       const normalized = normalizeId(taskId);
       const filePath = assignmentPath(normalized);
 
+      // Pre-flight check 1: Orphan run files
+      const orphans = findOrphanRuns();
+      if (orphans.length > 0 && !options.force) {
+        console.error(`STOP: Orphan agent run(s) detected:`);
+        for (const o of orphans) {
+          console.error(`  ${o.taskId} - started ${o.started_at}`);
+        }
+        console.error(`\nPrevious agent didn't release. Use --force to override.`);
+        console.error(`Or run: rudder assign:release ${orphans[0].taskId}`);
+        process.exit(1);
+      }
+
       let assignment;
       let tracked = false;  // Whether we're tracking with a file
+      let epicId = null;
 
       if (fs.existsSync(filePath)) {
         // Existing assignment (worktree mode)
         assignment = yaml.load(fs.readFileSync(filePath, 'utf8'));
         tracked = true;
+        epicId = assignment.epicId;
 
         if (assignment.status === 'claimed') {
           console.error(`Assignment already claimed at ${assignment.claimed_at}`);
@@ -309,7 +460,7 @@ export function registerAssignCommands(program) {
         const file = loadFile(taskFile);
         const parent = file.data?.parent || '';
         const epicMatch = parent.match(/E(\d+)/i);
-        const epicId = epicMatch ? normalizeId(`E${epicMatch[1]}`) : null;
+        epicId = epicMatch ? normalizeId(`E${epicMatch[1]}`) : null;
 
         assignment = {
           taskId: normalized,
@@ -317,6 +468,19 @@ export function registerAssignCommands(program) {
           operation: options.operation
         };
         // Don't create file - just generate prompt
+      }
+
+      // Pre-flight check 2: Pending memory
+      const memoryCheck = checkPendingMemory(epicId);
+      if (memoryCheck.pending && !options.force) {
+        console.error(`STOP: Pending memory consolidation required:`);
+        for (const e of memoryCheck.epics) {
+          console.error(`  ${e} - has unconsolidated logs`);
+        }
+        console.error(`\nRun: rudder memory:sync`);
+        console.error(`Then consolidate logs into ENNN.md files.`);
+        console.error(`Use --force to bypass (not recommended).`);
+        process.exit(1);
       }
 
       // Build compiled prompt
@@ -382,6 +546,13 @@ export function registerAssignCommands(program) {
         fs.writeFileSync(filePath, yaml.dump(assignment));
       }
 
+      // Create run file (mark agent as running)
+      createRunFile(normalized, assignment.operation);
+
+      // Auto-log start
+      const approach = options.approach || assignment.operation;
+      logToTask(normalized, `Starting: ${approach}`, 'INFO');
+
       if (options.json) {
         jsonOut({
           taskId: normalized,
@@ -405,6 +576,76 @@ export function registerAssignCommands(program) {
       }
 
       console.log(compiledPrompt);
+    });
+
+  // assign:release TNNN
+  assign.command('release <task-id>')
+    .description('Release assignment (agent finished)')
+    .option('--status <status>', 'Task status (Done, Blocked)', 'Done')
+    .option('--json', 'JSON output')
+    .action((taskId, options) => {
+      const normalized = normalizeId(taskId);
+
+      // Check if run file exists
+      if (!isRunning(normalized)) {
+        console.error(`No active run for ${normalized}`);
+        console.error(`Use assign:claim first to start.`);
+        process.exit(1);
+      }
+
+      // Check for TIP logs (warn if none)
+      const tipCount = countTaskTips(normalized);
+      if (tipCount === 0) {
+        console.error(`⚠ Warning: No TIP logs found for ${normalized}`);
+        console.error(`  Agents should log at least 1 tip during work.`);
+        console.error(`  Use: rudder task:log ${normalized} "insight" --tip`);
+        // Continue anyway - just a warning
+      }
+
+      // Auto-log completion
+      logToTask(normalized, 'Completed', 'INFO');
+
+      // Update task status
+      const taskFile = findTaskFile(normalized);
+      if (taskFile) {
+        const file = loadFile(taskFile);
+        const newStatus = options.status === 'Blocked' ? 'Blocked' : 'Done';
+        file.data.status = newStatus;
+        if (newStatus === 'Done') {
+          file.data.done_at = new Date().toISOString();
+        }
+        saveFile(taskFile, file.data, file.body || '');
+      }
+
+      // Remove run file
+      removeRunFile(normalized);
+
+      // Update assignment file if tracked
+      const assignPath = assignmentPath(normalized);
+      if (fs.existsSync(assignPath)) {
+        const assignment = yaml.load(fs.readFileSync(assignPath, 'utf8'));
+        assignment.status = 'complete';
+        assignment.completed_at = new Date().toISOString();
+        assignment.success = options.status !== 'Blocked';
+        fs.writeFileSync(assignPath, yaml.dump(assignment));
+      }
+
+      if (options.json) {
+        jsonOut({
+          taskId: normalized,
+          status: options.status,
+          tipCount,
+          released: true
+        });
+        return;
+      }
+
+      console.log(`✓ Released ${normalized} (${options.status})`);
+      if (tipCount === 0) {
+        console.log(`  ⚠ No TIP logs - consider adding insights for next agent`);
+      } else {
+        console.log(`  ${tipCount} TIP log(s) recorded`);
+      }
     });
 
   // assign:show TNNN
@@ -557,27 +798,33 @@ export function registerAssignCommands(program) {
 
   // Add dynamic help
   addDynamicHelp(assign, `
-• create <task-id>
-    --operation <op>      Operation type (task-start, etc.) [required]
-    --json                JSON output
-
-• claim <task-id>
+• claim <task-id>        Get context + start agent run
+    --approach <text>     Approach description for auto-log
+    --force               Bypass orphan/memory checks
     --sources             Show fragment sources used
+    --debug               Add source comments to sections
     --json                JSON output
 
-• show <task-id>
+• release <task-id>      Finish agent run + update status
+    --status <status>     Task status: Done (default), Blocked
     --json                JSON output
 
-• list
-    --status <status>     Filter by status (pending, claimed, complete)
+• create <task-id>       Create tracked assignment (worktree mode)
+    --operation <op>      Operation type [required]
     --json                JSON output
 
-• complete <task-id>
-    --success             Mark as successful completion
-    --failure             Mark as failed completion
+• show <task-id>         Show assignment status
     --json                JSON output
 
-• delete <task-id>
+• list                   List all assignments
+    --status <status>     Filter: pending, claimed, complete
+    --json                JSON output
+
+• complete <task-id>     Mark assignment complete (worktree mode)
+    --success/--failure   Completion status
+    --json                JSON output
+
+• delete <task-id>       Delete assignment
     --force               Force delete even if claimed
     --json                JSON output
 `);

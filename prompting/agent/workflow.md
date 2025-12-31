@@ -1,28 +1,25 @@
-## 1. Start
-
-```bash
-rudder task:log TNNN "Starting: <approach>" --info
-```
-
-## 2. Execute
+## 1. Execute
 
 Implement deliverables. No scope expansion.
 
-Log insights as you go:
-- `--info` for milestones
-- `--tip` for non-obvious patterns
-- `--warn` for issues/workarounds
-
-## 3. Complete
-
-Before marking Done:
-- [ ] All deliverables implemented
-- [ ] Tests pass (if applicable)
-- [ ] At least 2 log entries (start + final tip)
-
+**Log at least 1 TIP** during work:
 ```bash
-rudder task:log TNNN "<key insight for next agent>" --tip
-rudder task:update TNNN --status Done
+rudder task:log TNNN "<pattern/insight for next agent>" --tip
 ```
 
-**Rejection**: incomplete deliverables, <2 logs, or frontmatter edited directly.
+Other levels:
+- `--info` for milestones
+- `--warn` for issues/workarounds
+
+## 2. Complete
+
+Before finishing:
+- [ ] All deliverables implemented
+- [ ] Tests pass (if applicable)
+- [ ] At least 1 TIP logged
+
+```bash
+rudder assign:release TNNN
+```
+
+**Rejection**: incomplete deliverables, 0 TIP logs, or frontmatter edited directly.

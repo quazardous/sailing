@@ -2,6 +2,25 @@
 
 All notable changes to the Sailing Framework will be documented in this file.
 
+## [1.2.0] - 2025-12-31
+
+### Added
+- `assign:claim` / `assign:release` lifecycle for agent work
+  - Orphan run detection via sentinel files
+  - Pending memory sync check before claim
+  - Auto-logging on claim/release
+  - TIP log validation on release
+- Haven-based path overrides: agents, runs, assignments, worktrees
+
+### Fixed
+- Path system: `%haven%` now correctly resolves to `~/.sailing/havens/<hash>/`
+- Path shortcuts: `~/` and `^/` work consistently
+- Worktree path no longer duplicates project hash
+
+### Changed
+- Agent workflow simplified: claim → work (log TIPs) → release
+- Prompting fragment `workflow.md` updated for release flow
+
 ## [1.1.0] - 2024-12-31
 
 ### Added

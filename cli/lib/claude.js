@@ -7,7 +7,15 @@ import { spawn } from 'child_process';
 import fs from 'fs';
 import path from 'path';
 import { getAgentConfig } from './config.js';
-import { resolvePlaceholders, ensureDir } from './paths.js';
+import { resolvePlaceholders, resolvePath, ensureDir } from './paths.js';
+
+/**
+ * Get agents base directory (overridable via paths.yaml: agents)
+ */
+function getAgentsBaseDir() {
+  const custom = resolvePath('agents');
+  return custom || resolvePlaceholders('%haven%/agents');
+}
 
 /**
  * Build Claude command arguments based on config and options
@@ -186,5 +194,5 @@ export function buildPromptFromMission(mission) {
  * @returns {string} Absolute path to log file
  */
 export function getLogFilePath(taskId) {
-  return resolvePlaceholders(`%haven%/agents/${taskId}/run.log`);
+  return path.join(getAgentsBaseDir(), taskId, 'run.log');
 }

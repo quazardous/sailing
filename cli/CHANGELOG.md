@@ -2,6 +2,27 @@
 
 All notable changes to the Rudder CLI will be documented in this file.
 
+## [1.1.0] - 2025-12-31
+
+### Added
+- `assign:claim TNNN` - claim task and get compiled prompt
+- `assign:release TNNN` - complete work with auto-logging
+- Run file sentinel for orphan detection
+- Pending memory check before claim
+- `paths` command improvements:
+  - `--placeholders` flag to show unresolved templates
+  - Haven-based paths: agents, runs, assignments, worktrees
+  - All haven paths overridable via paths.yaml
+
+### Fixed
+- `%haven%` now resolves to `~/.sailing/havens/<hash>/` (was `~/.sailing`)
+- Removed unused `%sibling%` placeholder
+- Worktree path no longer duplicates project hash
+
+### Changed
+- Path shortcuts: `~/` → `%home%/`, `^/` → `%project%/`
+- `agent` commands use centralized `getAgentDir()` helper
+
 ## [1.0.0] - 2024-12-30
 
 ### Added
