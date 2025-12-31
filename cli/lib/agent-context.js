@@ -16,12 +16,12 @@ import { resolvePlaceholders } from './paths.js';
  */
 function checkGitWorktree() {
   try {
-    const result = execSync('git rev-parse --git-common-dir', {
+    const result = execSync('git rev-parse --git-common-dir 2>/dev/null', {
       encoding: 'utf8',
       stdio: ['pipe', 'pipe', 'pipe']
     }).trim();
 
-    const gitDir = execSync('git rev-parse --git-dir', {
+    const gitDir = execSync('git rev-parse --git-dir 2>/dev/null', {
       encoding: 'utf8',
       stdio: ['pipe', 'pipe', 'pipe']
     }).trim();

@@ -31,10 +31,10 @@ const extractors = {
   git: (_filePath, pattern = 'v*') => {
     try {
       const projectRoot = findProjectRoot();
-      // Get latest tag matching pattern
+      // Get latest tag matching pattern (suppress all git errors)
       const tag = execSync(
-        `git describe --tags --abbrev=0 --match "${pattern}" 2>/dev/null || git tag -l "${pattern}" --sort=-v:refname | head -1`,
-        { cwd: projectRoot, encoding: 'utf8' }
+        `git describe --tags --abbrev=0 --match "${pattern}" 2>/dev/null || git tag -l "${pattern}" --sort=-v:refname 2>/dev/null | head -1`,
+        { cwd: projectRoot, encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'] }
       ).trim();
       // Remove 'v' prefix if present
       return tag.replace(/^v/, '') || null;
