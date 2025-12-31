@@ -2,7 +2,7 @@
 node_modules/
 
 # Local settings (not distributed)
-.claude/settings.local.json
+.claude/
 .sailing/
 
 # OS files

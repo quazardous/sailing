@@ -39,10 +39,11 @@ export function registerTaskCommands(program) {
 
   // task:list
   task.command('list [prd]')
-    .description('List tasks (filter by PRD, epic, status, assignee)')
+    .description('List tasks (filter by PRD, epic, status, assignee, tag)')
     .option('-s, --status <status>', `Filter by status (${statusHelp})`)
     .option('-e, --epic <id>', 'Filter by epic (e.g., E035)')
     .option('-a, --assignee <name>', 'Filter by assignee')
+    .option('-t, --tag <tag>', 'Filter by tag (repeatable, AND logic)', (v, arr) => arr.concat(v), [])
     .option('-r, --ready', 'Only show ready tasks (unblocked)')
     .option('-l, --limit <n>', 'Limit results', parseInt)
     .option('--prd <id>', 'Filter by PRD (alias for positional arg)')
@@ -77,6 +78,13 @@ export function registerTaskCommands(program) {
           if (options.assignee) {
             const assignee = (file.data.assignee || '').toLowerCase();
             if (!assignee.includes(options.assignee.toLowerCase())) return;
+          }
+
+          // Tag filter (AND logic - all specified tags must be present)
+          if (options.tag?.length > 0) {
+            const taskTags = file.data.tags || [];
+            const allTagsMatch = options.tag.every(t => taskTags.includes(t));
+            if (!allTagsMatch) return;
           }
 
           tasks.push({
@@ -192,6 +200,7 @@ export function registerTaskCommands(program) {
   task.command('create <parent> <title>')
     .description('Create task under epic (e.g., PRD-001/E035 "Title")')
     .option('--story <id>', 'Link to story (repeatable)', (v, arr) => arr.concat(v), [])
+    .option('--tag <tag>', 'Add tag (repeatable, slugified to kebab-case)', (v, arr) => arr.concat(v), [])
     .option('--target-version <comp:ver>', 'Target version (repeatable)', (v, arr) => arr.concat(v), [])
     .option('--json', 'JSON output')
     .action((parent, title, options) => {
@@ -225,6 +234,7 @@ export function registerTaskCommands(program) {
         assignee: '',
         blocked_by: [],
         stories: [],
+        tags: [],
         effort: 'M',
         priority: 'normal'
       };
@@ -232,6 +242,11 @@ export function registerTaskCommands(program) {
       // Add stories if specified
       if (options.story?.length > 0) {
         data.stories = options.story.map(s => normalizeId(s));
+      }
+
+      // Add tags if specified (slugified to kebab-case)
+      if (options.tag?.length > 0) {
+        data.tags = options.tag.map(t => toKebab(t));
       }
 
       // Add target versions if specified

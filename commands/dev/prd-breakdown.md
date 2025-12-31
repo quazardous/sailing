@@ -44,6 +44,7 @@ When spawning an agent for epic creation, ensure the prompt contains:
 |---|------|------|
 | 7 | **Scope guidance**: Explicit in/out-of-scope | If boundaries are ambiguous |
 | 8 | **Epic dependencies**: Which epics block others | If complex dependency graph |
+| 9 | **Tag propagation**: PRD tags to inherit | If PRD has tags |
 
 ---
 
@@ -80,8 +81,12 @@ Agent must provide:
 ⚠️ **NEVER use Write tool to create epic files directly.**
 
 ```bash
-# Step 1: Create via Rudder
-bin/rudder epic:create <PRD-NNN> "<title>" [--target-version=<comp:ver>]
+# Step 1: Create via Rudder (inherit PRD tags using --tag)
+bin/rudder epic:create <PRD-NNN> "<title>" [--target-version=<comp:ver>] [--tag=<tag>]
+
+# Example with tag propagation:
+# If PRD has tags: [api, security]
+bin/rudder epic:create PRD-001 "API Authentication" --tag=api --tag=security
 
 # Step 2: Read then Edit content
 Read the created file, then use Edit tool to fill:
@@ -90,6 +95,13 @@ Read the created file, then use Edit tool to fill:
 - Technical Notes (leave empty if epic-review will fill)
 - Risks
 ```
+
+### Tag Propagation
+
+When creating epics, propagate parent PRD's tags:
+1. Read PRD tags from frontmatter
+2. Pass to `epic:create` using `--tag` option
+3. User can modify/override before confirmation
 
 **Why mandatory?**
 - Rudder assigns sequential IDs (E040, E041, etc.)

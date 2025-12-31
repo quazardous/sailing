@@ -19,6 +19,8 @@ BLUE='\033[0;34m'
 NC='\033[0m'
 
 FORCE=false
+FULL_MODE=false
+FOLDERS_PROFILE=""
 
 # Parse arguments
 while [[ $# -gt 0 ]]; do
@@ -34,8 +36,10 @@ while [[ $# -gt 0 ]]; do
       echo "For standalone installation, use install.sh instead."
       echo
       echo "Options:"
-      echo "  --force      Force overwrite existing files"
-      echo "  --help, -h   Show this help"
+      echo "  --force              Force overwrite existing files"
+      echo "  --full               Enable worktree mode for agents"
+      echo "  --folders-profile=X  Use folder profile: project (default), haven, sibling"
+      echo "  --help, -h           Show this help"
       echo
       echo "Examples:"
       echo "  cd /path/to/my-project"
@@ -48,6 +52,18 @@ while [[ $# -gt 0 ]]; do
       FORCE=true
       shift
       ;;
+    --full)
+      FULL_MODE=true
+      shift
+      ;;
+    --folders-profile=*)
+      FOLDERS_PROFILE="${1#*=}"
+      shift
+      ;;
+    --folders-profile)
+      FOLDERS_PROFILE="$2"
+      shift 2
+      ;;
     *)
       echo -e "${RED}Unknown option: $1${NC}"
       echo "Use --help for usage"
@@ -55,6 +71,19 @@ while [[ $# -gt 0 ]]; do
       ;;
   esac
 done
+
+# Validate folders profile
+if [ -n "$FOLDERS_PROFILE" ]; then
+  case "$FOLDERS_PROFILE" in
+    project|haven|sibling)
+      ;;
+    *)
+      echo -e "${RED}Invalid folders profile: $FOLDERS_PROFILE${NC}"
+      echo "Valid profiles: project, haven, sibling"
+      exit 1
+      ;;
+  esac
+fi
 
 echo -e "${BLUE}Sailing Dev Install${NC} (symlink mode)"
 echo "===================="
@@ -247,6 +276,88 @@ bin/rudder permissions:fix || {
   echo "  Run manually: bin/rudder permissions:fix"
 }
 echo
+
+# 12. Apply folder profile (optional)
+if [ -n "$FOLDERS_PROFILE" ]; then
+  echo -e "${BLUE}Applying folder profile: $FOLDERS_PROFILE${NC}"
+
+  PATHS_FILE="$DEFAULT_SAILING_DIR/paths.yaml"
+
+  # For devinstall, we always preserve ^/ prefixes for prompting/templates
+  # Only configure worktrees/agents paths based on profile
+
+  case "$FOLDERS_PROFILE" in
+    project)
+      # Append worktree paths if not present
+      if ! grep -q "^worktrees:" "$PATHS_FILE" 2>/dev/null; then
+        echo 'worktrees: "%haven%/worktrees/%project_hash%"' >> "$PATHS_FILE"
+        echo -e "  ${GREEN}Added: worktrees path${NC}"
+      fi
+      if ! grep -q "^agents:" "$PATHS_FILE" 2>/dev/null; then
+        echo 'agents: "%haven%/agents"' >> "$PATHS_FILE"
+        echo -e "  ${GREEN}Added: agents path${NC}"
+      fi
+      ;;
+    haven)
+      if ! grep -q "^worktrees:" "$PATHS_FILE" 2>/dev/null; then
+        echo 'worktrees: "%haven%/worktrees"' >> "$PATHS_FILE"
+        echo -e "  ${GREEN}Added: worktrees path${NC}"
+      fi
+      if ! grep -q "^agents:" "$PATHS_FILE" 2>/dev/null; then
+        echo 'agents: "%haven%/agents"' >> "$PATHS_FILE"
+        echo -e "  ${GREEN}Added: agents path${NC}"
+      fi
+      ;;
+    sibling)
+      if ! grep -q "^worktrees:" "$PATHS_FILE" 2>/dev/null; then
+        echo 'worktrees: "%sibling%/worktrees"' >> "$PATHS_FILE"
+        echo -e "  ${GREEN}Added: worktrees path${NC}"
+      fi
+      if ! grep -q "^agents:" "$PATHS_FILE" 2>/dev/null; then
+        echo 'agents: "%sibling%/agents"' >> "$PATHS_FILE"
+        echo -e "  ${GREEN}Added: agents path${NC}"
+      fi
+      ;;
+  esac
+  echo
+fi
+
+# 13. Apply full mode (optional)
+if [ "$FULL_MODE" = true ]; then
+  echo -e "${BLUE}Enabling full mode (worktrees)${NC}"
+
+  CONFIG_FILE="$DEFAULT_SAILING_DIR/config.yaml"
+
+  # Create or update config.yaml
+  if [ ! -f "$CONFIG_FILE" ]; then
+    cat > "$CONFIG_FILE" << 'EOF'
+# Sailing configuration
+agent:
+  use_worktrees: true
+  risky_mode: true
+  sandbox: true
+  timeout: 3600
+  merge_strategy: merge
+EOF
+    echo -e "  ${GREEN}Created: $CONFIG_FILE with worktree mode enabled${NC}"
+  else
+    # Check if use_worktrees is already set
+    if grep -q "use_worktrees:" "$CONFIG_FILE" 2>/dev/null; then
+      # Update existing value
+      sed -i 's/use_worktrees:.*/use_worktrees: true/' "$CONFIG_FILE"
+      echo -e "  ${GREEN}Updated: use_worktrees: true in $CONFIG_FILE${NC}"
+    else
+      # Add under agent section
+      if grep -q "^agent:" "$CONFIG_FILE" 2>/dev/null; then
+        sed -i '/^agent:/a\  use_worktrees: true' "$CONFIG_FILE"
+      else
+        echo -e "\nagent:\n  use_worktrees: true" >> "$CONFIG_FILE"
+      fi
+      echo -e "  ${GREEN}Added: use_worktrees: true to $CONFIG_FILE${NC}"
+    fi
+  fi
+  echo
+fi
 
 # Done
 echo -e "${GREEN}Dev install complete!${NC}"

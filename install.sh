@@ -9,9 +9,11 @@
 # For local development, use devinstall.sh instead.
 #
 # Options:
-#   --global    Install rudder CLI globally via npm
-#   --force     Force overwrite protected files
-#   --dry-run   Show what would be done without doing it
+#   --global              Install rudder CLI globally via npm
+#   --force               Force overwrite protected files
+#   --dry-run             Show what would be done without doing it
+#   --full                Enable worktree mode for agents
+#   --folders-profile=X   Use folder profile: project (default), haven, sibling
 #
 
 set -e
@@ -41,6 +43,8 @@ DEFAULT_COMMANDS=".claude/commands/dev"
 GLOBAL=false
 FORCE=false
 DRY_RUN=false
+FULL_MODE=false
+FOLDERS_PROFILE=""
 
 while [[ $# -gt 0 ]]; do
   case $1 in
@@ -56,12 +60,37 @@ while [[ $# -gt 0 ]]; do
       DRY_RUN=true
       shift
       ;;
+    --full)
+      FULL_MODE=true
+      shift
+      ;;
+    --folders-profile=*)
+      FOLDERS_PROFILE="${1#*=}"
+      shift
+      ;;
+    --folders-profile)
+      FOLDERS_PROFILE="$2"
+      shift 2
+      ;;
     *)
       echo -e "${RED}Unknown option: $1${NC}"
       exit 1
       ;;
   esac
 done
+
+# Validate folders profile
+if [ -n "$FOLDERS_PROFILE" ]; then
+  case "$FOLDERS_PROFILE" in
+    project|haven|sibling)
+      ;;
+    *)
+      echo -e "${RED}Invalid folders profile: $FOLDERS_PROFILE${NC}"
+      echo "Valid profiles: project, haven, sibling"
+      exit 1
+      ;;
+  esac
+fi
 
 echo -e "${BLUE}Sailing Installer${NC}"
 echo "=================="
@@ -414,6 +443,102 @@ else
 fi
 
 echo
+
+# =============================================================================
+# 10. APPLY FOLDER PROFILE (optional)
+# =============================================================================
+if [ -n "$FOLDERS_PROFILE" ]; then
+  echo -e "${BLUE}Applying folder profile: $FOLDERS_PROFILE${NC}"
+
+  PATHS_FILE="$DEFAULT_SAILING_DIR/paths.yaml"
+
+  # Check if paths.yaml already exists
+  if [ -f "$PATHS_FILE" ] && [ "$FORCE" != "true" ]; then
+    echo -e "${YELLOW}paths.yaml already exists, skipping (use --force to overwrite)${NC}"
+  else
+    if [ "$DRY_RUN" = true ]; then
+      echo "  Would create: $PATHS_FILE with profile $FOLDERS_PROFILE"
+    else
+      case "$FOLDERS_PROFILE" in
+        project)
+          cat > "$PATHS_FILE" << 'EOF'
+# Folder profile: project
+# Worktrees in haven, artefacts in project
+artefacts: ".sailing/artefacts"
+memory: ".sailing/memory"
+worktrees: "%haven%/worktrees/%project_hash%"
+agents: "%haven%/agents"
+EOF
+          ;;
+        haven)
+          cat > "$PATHS_FILE" << 'EOF'
+# Folder profile: haven
+# Everything in ~/.sailing/havens/<hash>/
+artefacts: "%haven%/artefacts"
+memory: "%haven%/memory"
+worktrees: "%haven%/worktrees"
+agents: "%haven%/agents"
+EOF
+          ;;
+        sibling)
+          cat > "$PATHS_FILE" << 'EOF'
+# Folder profile: sibling
+# Worktrees in sibling directory
+artefacts: ".sailing/artefacts"
+memory: ".sailing/memory"
+worktrees: "%sibling%/worktrees"
+agents: "%sibling%/agents"
+EOF
+          ;;
+      esac
+      echo -e "  ${GREEN}Created: $PATHS_FILE${NC}"
+    fi
+  fi
+  echo
+fi
+
+# =============================================================================
+# 11. APPLY FULL MODE (optional)
+# =============================================================================
+if [ "$FULL_MODE" = true ]; then
+  echo -e "${BLUE}Enabling full mode (worktrees)${NC}"
+
+  CONFIG_FILE="$DEFAULT_SAILING_DIR/config.yaml"
+
+  if [ "$DRY_RUN" = true ]; then
+    echo "  Would set agent.use_worktrees: true in $CONFIG_FILE"
+  else
+    # Create or update config.yaml
+    if [ ! -f "$CONFIG_FILE" ]; then
+      cat > "$CONFIG_FILE" << 'EOF'
+# Sailing configuration
+agent:
+  use_worktrees: true
+  risky_mode: true
+  sandbox: true
+  timeout: 3600
+  merge_strategy: merge
+EOF
+      echo -e "  ${GREEN}Created: $CONFIG_FILE with worktree mode enabled${NC}"
+    else
+      # Check if use_worktrees is already set
+      if grep -q "use_worktrees:" "$CONFIG_FILE" 2>/dev/null; then
+        # Update existing value
+        sed -i 's/use_worktrees:.*/use_worktrees: true/' "$CONFIG_FILE"
+        echo -e "  ${GREEN}Updated: use_worktrees: true in $CONFIG_FILE${NC}"
+      else
+        # Add under agent section
+        if grep -q "^agent:" "$CONFIG_FILE" 2>/dev/null; then
+          sed -i '/^agent:/a\  use_worktrees: true' "$CONFIG_FILE"
+        else
+          echo -e "\nagent:\n  use_worktrees: true" >> "$CONFIG_FILE"
+        fi
+        echo -e "  ${GREEN}Added: use_worktrees: true to $CONFIG_FILE${NC}"
+      fi
+    fi
+  fi
+  echo
+fi
 
 # =============================================================================
 # DONE

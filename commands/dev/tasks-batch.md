@@ -51,7 +51,7 @@ The batch runner prepares and launches work, then steps aside.
 
    ```bash
    # If PRD specified (recommended)
-   rudder deps:ready --prd PRD-005 --limit 6
+   rudder deps:ready --prd PRD-005 [--tag <tag>] --limit 6
 
    # Or filter by epic
    rudder deps:ready --epic E048 --limit 4
@@ -69,7 +69,7 @@ The batch runner prepares and launches work, then steps aside.
      * Exit immediately
      * **Do NOT spawn agents**
 
-5. **Mark all tasks In Progress**
+5. **Mark tasks In Progress**
 
    ```bash
    for task in T101 T102 T103; do
@@ -80,14 +80,17 @@ The batch runner prepares and launches work, then steps aside.
 6. **Spawn parallel agents**
 
    * Spawn agents in a **single message** using multiple `Task` tools
-   * Each task is handled by exactly one agent
+   * Each agent runs `assign:claim TNNN` to get its full context
+   * Use minimal prompt (see task-start.md template)
 
    ```
    ┌─ Task(T101) ─┐
-   ├─ Task(T102) ─┼─► Parallel implementation
+   ├─ Task(T102) ─┼─► Parallel: each agent runs `assign:claim TNNN`
    ├─ Task(T103) ─┤
    └─ Task(T104) ─┘
    ```
+
+   > In non-worktree mode, `assign:claim` works directly - no prior `assign:create` needed.
 
 7. **Collect results (passive)**
 
@@ -118,20 +121,38 @@ The orchestrator observes and reports — it does not correct or override.
 
 ---
 
-## Agent Brief — MUST use task-start.md template
+## Agent Brief — Minimal Prompt with assign:claim
 
-⚠️ **Each spawned agent MUST receive the full prompt template from `task-start.md`.**
+Each spawned agent receives a **minimal prompt** and claims its assignment:
 
-The template includes:
+```markdown
+# Assignment: {TNNN}
 
-* **Agent Contract** (`rudder context:agent tasks-batch`) - Constitutional rules, CLI contract
-* **Role** inferred from task location (frontend/backend/etc.)
-* **Pre-flight reading** (TOOLSET.md if exists, `task:show-memory`, DEV.md, epic, task)
-* **Logging Contract** (MANDATORY — minimum 2 entries per task)
-* **Stop & escalate** conditions
-* **Completion checklist** with logging verification
+You are a senior engineer executing task {TNNN}.
 
-**Do NOT simplify or skip sections.** The Logging Contract (Section 3) is mandatory.
+## 1. Claim your assignment
+
+```bash
+rudder assign:claim {TNNN}
+```
+
+This returns your complete execution context. Read and follow strictly.
+
+## 2. Execute
+
+Implement the deliverables. No scope expansion.
+
+## 3. Complete
+
+```bash
+rudder assign:complete {TNNN}
+```
+
+The `assign:claim` command returns the compiled context:
+- Agent Contract (constitutional rules, CLI contract, logging protocol)
+- Epic memory (learnings from previous work)
+- Epic context (tech notes, constraints)
+- Task details (deliverables, workflow)
 
 ---
 

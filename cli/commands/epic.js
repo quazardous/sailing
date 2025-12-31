@@ -38,8 +38,9 @@ export function registerEpicCommands(program) {
 
   // epic:list
   epic.command('list [prd]')
-    .description('List epics (filter by PRD, status)')
+    .description('List epics (filter by PRD, status, tag)')
     .option('-s, --status <status>', `Filter by status (${statusHelp})`)
+    .option('-t, --tag <tag>', 'Filter by tag (repeatable, AND logic)', (v, arr) => arr.concat(v), [])
     .option('-l, --limit <n>', 'Limit results', parseInt)
     .option('--prd <id>', 'Filter by PRD (alias for positional arg)')
     .option('--json', 'JSON output')
@@ -62,6 +63,13 @@ export function registerEpicCommands(program) {
             const targetStatus = normalizeStatus(options.status, 'epic');
             const epicStatus = normalizeStatus(file.data.status, 'epic');
             if (targetStatus !== epicStatus) return;
+          }
+
+          // Tag filter (AND logic)
+          if (options.tag?.length > 0) {
+            const epicTags = file.data.tags || [];
+            const allTagsMatch = options.tag.every(t => epicTags.includes(t));
+            if (!allTagsMatch) return;
           }
 
           // Count tasks
@@ -177,6 +185,7 @@ export function registerEpicCommands(program) {
   epic.command('create <prd> <title>')
     .description('Create epic in PRD (e.g., PRD-001 "Title")')
     .option('--story <id>', 'Link to story (repeatable)', (v, arr) => arr.concat(v), [])
+    .option('--tag <tag>', 'Add tag (repeatable, slugified to kebab-case)', (v, arr) => arr.concat(v), [])
     .option('--target-version <comp:ver>', 'Target version (repeatable)', (v, arr) => arr.concat(v), [])
     .option('--json', 'JSON output')
     .action((prd, title, options) => {
@@ -203,6 +212,7 @@ export function registerEpicCommands(program) {
         parent: path.basename(prdDir).split('-').slice(0,2).join('-'),
         blocked_by: [],
         stories: [],
+        tags: [],
         milestone: '',
         target_versions: {}
       };
@@ -210,6 +220,11 @@ export function registerEpicCommands(program) {
       // Add stories if specified
       if (options.story?.length > 0) {
         data.stories = options.story.map(s => normalizeId(s));
+      }
+
+      // Add tags if specified (slugified to kebab-case)
+      if (options.tag?.length > 0) {
+        data.tags = options.tag.map(t => toKebab(t));
       }
 
       // Add target versions if specified

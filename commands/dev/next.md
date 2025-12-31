@@ -25,7 +25,7 @@ bin/rudder task:next [--json]
 ### Smart (impact-aware, sorted)
 
 ```bash
-bin/rudder deps:ready [--limit 5] [--json]
+bin/rudder deps:ready [--tag <tag>] [--limit 5] [--json]
 ```
 
 Returns tasks sorted by:

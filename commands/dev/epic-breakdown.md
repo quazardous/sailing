@@ -54,6 +54,7 @@ When spawning agents for task creation, ensure the prompt contains:
 |---|------|------|
 | 6 | **Scope guidance**: Explicit in/out-of-scope | If boundaries are ambiguous |
 | 7 | **Dependency types**: Internal (same epic) vs External (other epic) | If complex dependency graph |
+| 8 | **Tag propagation**: Epic tags to inherit | If epic has tags |
 
 ---
 
@@ -85,6 +86,19 @@ Read the created file, then use Edit tool to fill:
 - Rudder sets correct frontmatter structure
 - Rudder tracks state in state.json
 - Direct Write breaks state tracking
+
+### Tag Propagation
+
+When creating tasks, propagate parent epic's tags:
+1. Read epic tags from frontmatter
+2. Pass to `task:create` using `--tag` option
+3. User can modify/override before confirmation
+
+```bash
+# Example with tag propagation:
+# If epic has tags: [backend, api]
+bin/rudder task:create PRD-001/E001 "Implement endpoint" --tag=backend --tag=api
+```
 
 ### Story Linkage
 

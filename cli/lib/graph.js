@@ -33,6 +33,7 @@ export function buildDependencyGraph() {
         assignee: file?.data?.assignee || 'unassigned',
         effort: file?.data?.effort || '',
         priority: file?.data?.priority || 'normal',
+        tags: file?.data?.tags || [],
         blockedBy,
         blockedByRaw,
         file: f,

@@ -1,23 +1,12 @@
-# Dependency Rules
-
-## Before starting
+## Check Before Starting
 
 ```bash
-rudder deps:ready           # List unblocked tasks
-rudder deps:show TNNN       # Show task dependencies
+rudder deps:show TNNN
 ```
 
 ## Rules
 
-1. **Never start blocked task** - check `deps:ready` first
-2. **Dependency Done but artifact missing** = state corruption → STOP
-3. **Never implement code from dependency** - it should already exist
-4. **Never expand scope to unblock yourself**
-
-## Adding dependencies
-
-```bash
-rudder deps:add TNNN --blocked-by T001
-```
-
-Never edit `blocked_by` frontmatter directly.
+1. **Never start blocked task**
+2. **Dependency Done but artifact missing** → STOP (state corruption)
+3. **Never implement dependency code** - it should exist
+4. **Never expand scope to unblock**

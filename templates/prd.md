@@ -2,6 +2,7 @@
 id: PRD-NNN
 title: Title
 status: Draft
+tags: []
 milestones:
   - id: M1
     name: MVP functional

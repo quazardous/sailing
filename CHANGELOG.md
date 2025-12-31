@@ -2,6 +2,31 @@
 
 All notable changes to the Sailing Framework will be documented in this file.
 
+## [1.1.0] - 2024-12-31
+
+### Added
+- `assign` command group for skill → agent prompt composition
+  - `assign:claim TNNN` - get compiled prompt without prior create
+  - `assign:create/show/list/complete/delete` - full lifecycle
+  - `--debug` mode shows source file per section
+  - `--sources` shows fragment summary
+- `agent` command group for worktree-based agent lifecycle
+- `gc` command for orphaned resource cleanup
+- `tag` command for git tag operations
+
+### Optimized
+- Prompting fragments reduced from 7 to 4 files (~50% smaller)
+  - `contract.md` - merged rules-core + stop conditions
+  - `cli.md` - condensed CLI reference
+  - `deps.md` - condensed dependency rules
+  - `workflow.md` - merged logging + completion
+- Context composition now ~90 lines vs ~187 previously
+
+### Changed
+- `task-start.md` simplified to use `assign:claim`
+- `tasks-batch.md` updated for new assign flow
+- Templates now include `created_by` field
+
 ## [1.0.0] - 2024-12-30
 
 ### Added

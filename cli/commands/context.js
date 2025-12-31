@@ -5,8 +5,9 @@
 import fs from 'fs';
 import path from 'path';
 import yaml from 'js-yaml';
-import { getPrompting, jsonOut } from '../lib/core.js';
+import { getPrompting, jsonOut, findProjectRoot } from '../lib/core.js';
 import { addDynamicHelp } from '../lib/help.js';
+import { detectMode, isAgentMode, getAgentInfo } from '../lib/agent-context.js';
 
 /**
  * Load contexts.yaml configuration
@@ -239,6 +240,29 @@ export function registerContextCommands(program) {
       console.log('       rudder context:skill <context>');
     });
 
+  // context:mode (detect execution mode)
+  context.command('mode')
+    .description('Detect execution mode (main or agent)')
+    .option('--json', 'JSON output')
+    .action((options) => {
+      const mode = detectMode();
+
+      if (options.json) {
+        jsonOut(mode);
+        return;
+      }
+
+      console.log(`Mode: ${mode.mode}`);
+      console.log(`Project: ${mode.projectRoot}`);
+
+      if (mode.mode === 'agent') {
+        console.log(`\nAgent Context:`);
+        console.log(`  Task: ${mode.taskId}`);
+        console.log(`  Mission: ${mode.missionPath}`);
+        console.log(`  Agent dir: ${mode.agentDir}`);
+      }
+    });
+
   // Add dynamic help
   addDynamicHelp(context, `
 • agent <context>
@@ -256,6 +280,9 @@ export function registerContextCommands(program) {
 
 • list
     --fragments           Show fragments for each context
+    --json                JSON output
+
+• mode
     --json                JSON output
 `);
 }

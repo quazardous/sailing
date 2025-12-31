@@ -3,7 +3,9 @@
  */
 import fs from 'fs';
 import path from 'path';
-import { findPrdDirs, findFiles, loadFile, saveFile, jsonOut, getSailingDir, getStateFile, getPrdsDir, getConfigInfo, getPathsInfo } from '../lib/core.js';
+import yaml from 'js-yaml';
+import { findPrdDirs, findFiles, loadFile, saveFile, jsonOut, getSailingDir, getStateFile, getPrdsDir, getConfigInfo, getPathsInfo, findProjectRoot } from '../lib/core.js';
+import { getPlaceholders, resolvePlaceholders, computeProjectHash } from '../lib/paths.js';
 import { addDynamicHelp } from '../lib/help.js';
 import { loadState, saveState } from '../lib/state.js';
 import { getAllVersions, getMainVersion, getMainComponentName } from '../lib/version.js';
@@ -42,27 +44,27 @@ export function registerUtilCommands(program) {
       }
     });
 
-  // paths (authoritative for agents)
-  program.command('paths')
-    .description('Show paths for agents (authoritative source)')
+  // paths group
+  const paths = program.command('paths')
+    .description('Path management (show paths, placeholders, resolve)')
     .argument('[key]', 'Specific path key (roadmap, postit, artefacts, templates)')
     .option('--json', 'JSON output')
     .action((key, options) => {
-      const paths = getPathsInfo();
+      const pathsInfo = getPathsInfo();
 
       if (key) {
-        if (!paths[key]) {
+        if (!pathsInfo[key]) {
           console.error(`Unknown path key: ${key}`);
-          console.error(`Available: ${Object.keys(paths).join(', ')}`);
+          console.error(`Available: ${Object.keys(pathsInfo).join(', ')}`);
           process.exit(1);
         }
-        console.log(paths[key].absolute);
+        console.log(pathsInfo[key].absolute);
         return;
       }
 
       if (options.json) {
         const result = {};
-        for (const [k, v] of Object.entries(paths)) {
+        for (const [k, v] of Object.entries(pathsInfo)) {
           result[k] = v.absolute;
         }
         jsonOut(result);
@@ -70,8 +72,113 @@ export function registerUtilCommands(program) {
       }
 
       // Human readable
-      for (const [k, v] of Object.entries(paths)) {
+      for (const [k, v] of Object.entries(pathsInfo)) {
         console.log(`${k.padEnd(12)} ${v.relative}`);
+      }
+    });
+
+  addDynamicHelp(paths, { entityType: 'paths' });
+
+  // paths:placeholders
+  paths.command('placeholders')
+    .description('Show available placeholders and their values')
+    .option('--json', 'JSON output')
+    .action((options) => {
+      const ph = getPlaceholders();
+
+      if (options.json) {
+        jsonOut(ph);
+        return;
+      }
+
+      console.log('Built-in placeholders:\n');
+      for (const [k, v] of Object.entries(ph.builtin)) {
+        console.log(`  %${k}%`.padEnd(20) + v);
+      }
+
+      if (Object.keys(ph.custom).length > 0) {
+        console.log('\nCustom placeholders (from paths.yaml):\n');
+        for (const [k, v] of Object.entries(ph.custom)) {
+          console.log(`  %${k}%`.padEnd(20) + v);
+        }
+      }
+    });
+
+  // paths:resolve
+  paths.command('resolve <path>')
+    .description('Resolve placeholders in a path string')
+    .action((pathStr) => {
+      const resolved = resolvePlaceholders(pathStr);
+      console.log(resolved);
+    });
+
+  // paths:hash
+  paths.command('hash')
+    .description('Show project hash (used for %project_hash%)')
+    .action(() => {
+      const hash = computeProjectHash();
+      console.log(hash);
+    });
+
+  // paths:raw
+  paths.command('raw')
+    .description('Show raw paths.yaml content (unresolved)')
+    .option('--json', 'JSON output')
+    .action((options) => {
+      const projectRoot = findProjectRoot();
+      const pathsFile = path.join(projectRoot, '.sailing', 'paths.yaml');
+
+      if (!fs.existsSync(pathsFile)) {
+        console.log('No paths.yaml found (using defaults)');
+        return;
+      }
+
+      const content = fs.readFileSync(pathsFile, 'utf8');
+
+      if (options.json) {
+        jsonOut(yaml.load(content));
+        return;
+      }
+
+      console.log(content);
+    });
+
+  // paths:check
+  paths.command('check')
+    .description('Validate paths exist and are writable')
+    .action(() => {
+      const pathsInfo = getPathsInfo();
+      let allOk = true;
+
+      console.log('Checking paths:\n');
+
+      for (const [key, info] of Object.entries(pathsInfo)) {
+        const p = info.absolute;
+        let status = '✓';
+        let note = '';
+
+        if (!fs.existsSync(p)) {
+          status = '✗';
+          note = ' (not found)';
+          allOk = false;
+        } else {
+          try {
+            fs.accessSync(p, fs.constants.W_OK);
+          } catch {
+            status = '⚠';
+            note = ' (not writable)';
+          }
+        }
+
+        console.log(`  ${status} ${key.padEnd(12)} ${p}${note}`);
+      }
+
+      console.log('');
+      if (allOk) {
+        console.log('All paths OK');
+      } else {
+        console.log('Some paths missing or not writable');
+        process.exit(1);
       }
     });
 

@@ -24,6 +24,7 @@ export function registerDepsCommands(program) {
     .option('--ancestors', 'Show ancestors (blockers)')
     .option('--descendants', 'Show descendants (blocked by this)')
     .option('-d, --depth <n>', 'Max depth', parseInt)
+    .option('-t, --tag <tag>', 'Filter by tag (repeatable, AND logic)', (v, arr) => arr.concat(v), [])
     .option('--ready', 'Only show ready tasks')
     .option('--json', 'JSON output')
     .action((taskId, options) => {
@@ -101,6 +102,13 @@ export function registerDepsCommands(program) {
           if (!task) return;
 
           if (options.ready && !blockersResolved(task, tasks)) return;
+
+          // Tag filter (AND logic)
+          if (options.tag?.length > 0) {
+            const taskTags = task.tags || [];
+            const allTagsMatch = options.tag.every(t => taskTags.includes(t));
+            if (!allTagsMatch) return;
+          }
 
           output.push({
             id,
@@ -567,6 +575,7 @@ export function registerDepsCommands(program) {
     .description('Ready tasks sorted by impact (best to work on first)')
     .option('--prd <id>', 'Filter by PRD')
     .option('--epic <id>', 'Filter by epic')
+    .option('-t, --tag <tag>', 'Filter by tag (repeatable, AND logic)', (v, arr) => arr.concat(v), [])
     .option('-l, --limit <n>', 'Limit results', parseInt)
     .option('--json', 'JSON output')
     .action((options) => {
@@ -581,6 +590,13 @@ export function registerDepsCommands(program) {
         // Apply filters
         if (prdFilter && !task.prd?.includes(prdFilter)) continue;
         if (epicFilter && task.epic !== epicFilter) continue;
+
+        // Tag filter (AND logic)
+        if (options.tag?.length > 0) {
+          const taskTags = task.tags || [];
+          const allTagsMatch = options.tag.every(t => taskTags.includes(t));
+          if (!allTagsMatch) continue;
+        }
 
         if (isStatusNotStarted(task.status) && blockersResolved(task, tasks)) {
           const totalUnblocked = countTotalUnblocked(id, tasks, blocks);

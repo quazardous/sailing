@@ -1,36 +1,21 @@
-# CLI Contract
+Rudder is the ONLY interface for state. **Never edit frontmatter directly.**
 
-Rudder is the ONLY interface for state operations.
+## Read
 
-## Queries (read)
+| Data | Command |
+|------|---------|
+| Task | `rudder task:show TNNN` |
+| Dependencies | `rudder deps:show TNNN` |
+| Memory | `rudder task:show-memory TNNN` |
 
-| Data | Command | NEVER |
-|------|---------|-------|
-| Task metadata | `rudder task:show TNNN` | Read .md files |
-| Task list | `rudder task:list` | Glob/Grep |
-| Dependencies | `rudder deps:show TNNN` | Parse blocked_by |
-| Ready tasks | `rudder deps:ready` | Manual analysis |
-| Memory | `rudder task:show-memory TNNN` | Read memory files |
+## Write
 
-## Mutations (write)
+| Action | Command |
+|--------|---------|
+| Update status | `rudder task:update TNNN --status Done` |
+| Log progress | `rudder task:log TNNN "msg" --info` |
+| Log insight | `rudder task:log TNNN "msg" --tip` |
 
-| Action | Command | NEVER |
-|--------|---------|-------|
-| Create task/epic | `rudder task:create`, `rudder epic:create` | Write tool |
-| Update status | `rudder task:update TNNN --status Done` | Edit frontmatter |
-| Add dependency | `rudder deps:add TNNN --blocked-by T001` | Edit blocked_by |
-| Log progress | `rudder task:log TNNN "msg" --level` | Write .log files |
+## Allowed Edits
 
-## Body Content
-
-Edit tool allowed ONLY for:
-- Source code files being implemented
-- Body sections (Description, Deliverables, Technical Details)
-
-**NEVER edit frontmatter directly.**
-
-## If rudder not found
-
-1. Check `pwd` - may be in subproject
-2. Use absolute path: `<project>/bin/rudder`
-3. Still not found → **STOP and escalate**
+Edit tool ONLY for source code and task body sections (Description, Deliverables, Technical Details).

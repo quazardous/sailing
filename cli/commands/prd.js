@@ -25,6 +25,7 @@ export function registerPrdCommands(program) {
   prd.command('list')
     .description('List PRDs with epic/task counts')
     .option('-s, --status <status>', `Filter by status (${statusHelp})`)
+    .option('-t, --tag <tag>', 'Filter by tag (repeatable, AND logic)', (v, arr) => arr.concat(v), [])
     .option('-l, --limit <n>', 'Limit results', parseInt)
     .option('--json', 'JSON output')
     .action((options) => {
@@ -40,6 +41,13 @@ export function registerPrdCommands(program) {
           const targetStatus = normalizeStatus(options.status, 'prd');
           const prdStatus = normalizeStatus(file.data.status, 'prd');
           if (targetStatus !== prdStatus) continue;
+        }
+
+        // Tag filter (AND logic)
+        if (options.tag?.length > 0) {
+          const prdTags = file.data.tags || [];
+          const allTagsMatch = options.tag.every(t => prdTags.includes(t));
+          if (!allTagsMatch) continue;
         }
 
         // Count epics and tasks
@@ -162,6 +170,7 @@ export function registerPrdCommands(program) {
   // prd:create
   prd.command('create <title>')
     .description('Create PRD directory + prd.md (status: Draft)')
+    .option('--tag <tag>', 'Add tag (repeatable, slugified to kebab-case)', (v, arr) => arr.concat(v), [])
     .option('--json', 'JSON output')
     .action((title, options) => {
       const num = nextId('prd');
@@ -181,8 +190,14 @@ export function registerPrdCommands(program) {
       const data = {
         id,
         title,
-        status: 'Draft'
+        status: 'Draft',
+        tags: []
       };
+
+      // Add tags if specified (slugified to kebab-case)
+      if (options.tag?.length > 0) {
+        data.tags = options.tag.map(t => toKebab(t));
+      }
 
       const body = `\n# ${id}: ${title}\n\n## Problem Statement\n\n[Describe the problem]\n\n## Goals\n\n- [Goal 1]\n\n## Non-Goals\n\n- [Non-goal 1]\n\n## Solution Overview\n\n[High-level approach]\n`;
 
