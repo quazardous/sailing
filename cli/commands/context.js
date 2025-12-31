@@ -106,7 +106,7 @@ function composeContext(type, command, options = {}) {
   // Auto-include project-centric files (convention over configuration)
   // Agent contexts (subprocess mode): TOOLSET.md + STACK.md
   //   (subprocess doesn't inherit main thread's Claude context)
-  // Skill contexts (main thread): ROADMAP.md + POSTIT.md
+  // Skill contexts (main thread): ROADMAP.md + POSTIT.md + execution mode
   //   (main thread already has TOOLSET via CLAUDE.md)
   const projectFiles = [];
   const agentConfig = getAgentConfig();
@@ -117,6 +117,15 @@ function composeContext(type, command, options = {}) {
   } else if (type === 'skill') {
     // Skill = main thread, needs vision docs
     projectFiles.push('roadmap', 'postit');
+
+    // Inject execution mode for skill to know how to spawn agents
+    const execMode = agentConfig.use_subprocess ? 'subprocess' : 'inline';
+    const modeInfo = `## Execution Mode\n\nAgent execution: **${execMode}**\n` +
+      (execMode === 'subprocess'
+        ? '- Use `rudder agent:spawn TNNN` to execute tasks\n- Agents run as separate Claude processes'
+        : '- Use Task tool with `rudder context:agent` to execute tasks\n- Agents run inline via Task tool');
+    parts.push(modeInfo);
+    sources.push('config:execution_mode');
   }
 
   for (const key of projectFiles) {
