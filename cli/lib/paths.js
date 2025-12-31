@@ -37,14 +37,14 @@ export function computeProjectHash() {
   let source;
 
   try {
-    // Try git remote origin URL first
-    source = execSync('git remote get-url origin', {
+    // Try git remote origin URL first (suppress stderr)
+    source = execSync('git remote get-url origin 2>/dev/null', {
       cwd: projectRoot,
       encoding: 'utf8',
       stdio: ['pipe', 'pipe', 'pipe']
     }).trim();
   } catch {
-    // Fallback to realpath
+    // Fallback to realpath (not a git repo or no remote)
     source = fs.realpathSync(projectRoot);
   }
 

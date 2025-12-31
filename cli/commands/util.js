@@ -70,7 +70,7 @@ export function registerUtilCommands(program) {
       for (const [key, val] of Object.entries(info.paths)) {
         const markers = [];
         if (val.isCustom) markers.push('custom');
-        if (val.isAbsolute) markers.push('absolute');
+        if (val.isAbsolute) markers.push('external');  // outside project root
         const marker = markers.length > 0 ? `  # (${markers.join(', ')})` : '';
         console.log(`  ${key}: ${val.path}${marker}`);
       }
