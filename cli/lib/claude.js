@@ -7,7 +7,7 @@ import { spawn } from 'child_process';
 import fs from 'fs';
 import path from 'path';
 import { getAgentConfig } from './config.js';
-import { getAgentsDir } from './core.js';
+import { getAgentsDir, getPathsInfo } from './core.js';
 import { ensureDir } from './paths.js';
 
 // Alias for internal use
@@ -68,11 +68,19 @@ export function spawnClaude(options) {
   // Determine command and final args based on sandbox mode
   let command, finalArgs;
   if (sandbox) {
-    // Wrap with srt (sandbox-runtime): srt claude [args]
+    // Wrap with srt (sandbox-runtime): srt --settings <path> claude [args]
     // Requires: npm install -g @anthropic-ai/sandbox-runtime
-    // Configure: ~/.srt-settings.json (network domains, filesystem paths)
+    // Config: rudder sandbox:init to create haven/srt-settings.json
     command = 'srt';
-    finalArgs = ['claude', ...args];
+    finalArgs = [];
+
+    // Use project-specific srt config if available
+    const paths = getPathsInfo();
+    if (paths.srtConfig && fs.existsSync(paths.srtConfig.absolute)) {
+      finalArgs.push('--settings', paths.srtConfig.absolute);
+    }
+
+    finalArgs.push('claude', ...args);
   } else {
     command = 'claude';
     finalArgs = args;

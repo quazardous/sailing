@@ -63,6 +63,7 @@ import { registerTagCommands } from './commands/tag.js';
 import { registerAgentCommands } from './commands/agent.js';
 import { registerGcCommands } from './commands/gc.js';
 import { registerAssignCommands } from './commands/assign.js';
+import { registerSandboxCommands } from './commands/sandbox.js';
 
 // Expand colon syntax: task:list → task list (first arg only, if it looks like group:command)
 let commandExpanded = false;
@@ -98,6 +99,7 @@ registerTagCommands(program);
 registerAgentCommands(program);
 registerGcCommands(program);
 registerAssignCommands(program);
+registerSandboxCommands(program);
 registerUtilCommands(program);
 registerPermissionsCommands(program);
 

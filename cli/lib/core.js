@@ -88,10 +88,12 @@ const DEFAULT_PATHS = {
   postit:     { path: '.sailing/artefacts/POSTIT.md', type: 'file' },
 
   // Haven directories (per-project isolation outside project root)
+  haven:        { path: '%haven%', type: 'dir' },
   agents:       { path: '%haven%/agents', type: 'dir' },
   worktrees:    { path: '%haven%/worktrees', type: 'dir' },
   runs:         { path: '%haven%/runs', type: 'dir' },
-  assignments:  { path: '%haven%/assignments', type: 'dir' }
+  assignments:  { path: '%haven%/assignments', type: 'dir' },
+  srtConfig:    { path: '%haven%/srt-settings.json', type: 'file' }
 };
 
 // Cached config
@@ -447,7 +449,8 @@ export function getPathsInfo() {
     agents: getHavenPath('agents', 'agents'),
     runs: getHavenPath('runs', 'runs'),
     assignments: getHavenPath('assignments', 'assignments'),
-    worktrees: getHavenPath('worktrees', 'worktrees')
+    worktrees: getHavenPath('worktrees', 'worktrees'),
+    srtConfig: getHavenPath('srtConfig', 'srt-settings.json')
   };
 }
 
