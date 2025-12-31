@@ -49,29 +49,9 @@ export function registerUtilCommands(program) {
     .description('Path management (show paths, placeholders, resolve)')
     .argument('[key]', 'Path key (roadmap, artefacts, haven, agents, runs, assignments, worktrees, ...)')
     .option('--json', 'JSON output')
-    .option('-p, --placeholders', 'Show available placeholders and values')
+    .option('-p, --placeholders', 'Include placeholders in output')
     .option('-n, --no-resolve', 'Show paths with placeholders (unresolved)')
     .action((key, options) => {
-      // --placeholders: show placeholder values (like paths:placeholders)
-      if (options.placeholders) {
-        const ph = getPlaceholders();
-        if (options.json) {
-          jsonOut(ph);
-          return;
-        }
-        console.log('Placeholders:\n');
-        for (const [k, v] of Object.entries(ph.builtin)) {
-          console.log(`  %${k}%`.padEnd(20) + v);
-        }
-        if (Object.keys(ph.custom).length > 0) {
-          console.log('\nCustom (from paths.yaml):\n');
-          for (const [k, v] of Object.entries(ph.custom)) {
-            console.log(`  %${k}%`.padEnd(20) + v);
-          }
-        }
-        return;
-      }
-
       const pathsInfo = getPathsInfo();
 
       if (key) {
@@ -89,18 +69,37 @@ export function registerUtilCommands(program) {
       }
 
       if (options.json) {
-        const result = {};
+        const result = { paths: {} };
         for (const [k, v] of Object.entries(pathsInfo)) {
-          result[k] = options.resolve === false ? (v.template || v.relative) : v.absolute;
+          result.paths[k] = options.resolve === false ? (v.template || v.relative) : v.absolute;
         }
-        jsonOut(result);
+        if (options.placeholders) {
+          result.placeholders = getPlaceholders();
+        }
+        jsonOut(options.placeholders ? result : result.paths);
         return;
       }
 
-      // Human readable
+      // Human readable - paths
+      console.log('Paths:\n');
       for (const [k, v] of Object.entries(pathsInfo)) {
         const display = options.resolve === false ? (v.template || v.relative) : v.relative;
-        console.log(`${k.padEnd(12)} ${display}`);
+        console.log(`  ${k.padEnd(12)} ${display}`);
+      }
+
+      // Placeholders if requested
+      if (options.placeholders) {
+        const ph = getPlaceholders();
+        console.log('\nPlaceholders:\n');
+        for (const [k, v] of Object.entries(ph.builtin)) {
+          console.log(`  %${k}%`.padEnd(20) + v);
+        }
+        if (Object.keys(ph.custom).length > 0) {
+          console.log('\n  Custom (paths.yaml):');
+          for (const [k, v] of Object.entries(ph.custom)) {
+            console.log(`  %${k}%`.padEnd(20) + v);
+          }
+        }
       }
     });
 
