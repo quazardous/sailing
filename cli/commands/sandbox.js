@@ -281,13 +281,21 @@ export function registerSandboxCommands(program) {
   sandbox
     .command('run [prompt...]')
     .description('Run Claude with sandbox (debug/test mode)')
-    .option('-w, --workdir <path>', 'Working directory', '.')
+    .option('-w, --workdir <path>', 'Working directory (default: temp dir)')
     .option('-p, --prompt <text>', 'Prompt text (alternative to positional args)')
     .option('--no-sandbox', 'Run without sandbox wrapper')
     .option('--debug', 'Enable srt debug mode')
     .action((promptArgs, options) => {
       const { spawnSync } = require('child_process');
-      const cwd = path.resolve(options.workdir);
+
+      // Use temp dir by default for safety
+      let cwd;
+      if (options.workdir) {
+        cwd = path.resolve(options.workdir);
+      } else {
+        cwd = fs.mkdtempSync(path.join(os.tmpdir(), 'rudder-sandbox-'));
+        console.error(`Created temp workdir: ${cwd}`);
+      }
 
       // Get prompt from args or option
       let prompt = options.prompt || promptArgs.join(' ');
