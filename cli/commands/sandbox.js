@@ -277,4 +277,66 @@ export function registerSandboxCommands(program) {
     .description('Show current srt config')
     .action((options) => sandboxShow([], options));
 
+  // sandbox:run - proxy to claude with sandbox
+  sandbox
+    .command('run [prompt...]')
+    .description('Run Claude with sandbox (debug/test mode)')
+    .option('-w, --workdir <path>', 'Working directory', '.')
+    .option('-p, --prompt <text>', 'Prompt text (alternative to positional args)')
+    .option('--no-sandbox', 'Run without sandbox wrapper')
+    .option('--debug', 'Enable srt debug mode')
+    .action((promptArgs, options) => {
+      const { spawnSync } = require('child_process');
+      const cwd = path.resolve(options.workdir);
+
+      // Get prompt from args or option
+      let prompt = options.prompt || promptArgs.join(' ');
+
+      // If no prompt, read from stdin
+      if (!prompt) {
+        console.error('Usage: rudder sandbox:run "your prompt"');
+        console.error('   or: echo "prompt" | rudder sandbox:run');
+        process.exit(1);
+      }
+
+      // Build command
+      let cmd, args;
+      if (options.sandbox !== false) {
+        const paths = getPathsInfo();
+        cmd = 'srt';
+        args = [];
+
+        // Debug mode
+        if (options.debug) {
+          args.push('--debug');
+        }
+
+        // Use project config if available
+        if (paths.srtConfig && fs.existsSync(paths.srtConfig.absolute)) {
+          args.push('--settings', paths.srtConfig.absolute);
+        }
+
+        args.push('claude', '-p', prompt);
+      } else {
+        cmd = 'claude';
+        args = ['-p', prompt];
+      }
+
+      console.error(`CWD: ${cwd}`);
+      console.error(`CMD: ${cmd} ${args.join(' ')}`);
+      console.error('---');
+
+      // Run synchronously with stdio inherited
+      const result = spawnSync(cmd, args, {
+        cwd,
+        stdio: 'inherit',
+        env: {
+          ...process.env,
+          ...(options.debug && { SRT_DEBUG: '1' })
+        }
+      });
+
+      process.exit(result.status || 0);
+    });
+
 }
