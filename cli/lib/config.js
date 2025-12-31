@@ -35,7 +35,7 @@ export const CONFIG_SCHEMA = {
   'agent.sandbox': {
     type: 'boolean',
     default: true,
-    description: 'Enable sandbox mode (experimental, requires sandbox-runtime)'
+    description: 'Wrap agents with @anthropic-ai/sandbox-runtime'
   },
   'agent.timeout': {
     type: 'number',

@@ -29,10 +29,6 @@ export function buildClaudeArgs(options) {
 
   const args = [];
 
-  // Sandbox mode (placeholder - requires sandbox-runtime integration)
-  // TODO: Implement srt wrapper when sandbox-runtime is available
-  // if (sandbox) { ... }
-
   // Risky mode: --dangerously-skip-permissions
   if (riskyMode) {
     args.push('--dangerously-skip-permissions');
@@ -42,7 +38,7 @@ export function buildClaudeArgs(options) {
   args.push('-p');
   args.push(options.prompt);
 
-  return args;
+  return { args, sandbox };
 }
 
 /**
@@ -63,11 +59,22 @@ export function spawnClaude(options) {
   ensureDir(path.dirname(logFile));
 
   // Build arguments
-  const args = buildClaudeArgs({
+  const { args, sandbox } = buildClaudeArgs({
     prompt,
     riskyMode: options.riskyMode,
     sandbox: options.sandbox
   });
+
+  // Determine command and final args based on sandbox mode
+  let command, finalArgs;
+  if (sandbox) {
+    // Wrap with sandbox-runtime: npx @anthropic-ai/sandbox-runtime claude [args]
+    command = 'npx';
+    finalArgs = ['@anthropic-ai/sandbox-runtime', 'claude', ...args];
+  } else {
+    command = 'claude';
+    finalArgs = args;
+  }
 
   // Create log file stream
   const logStream = fs.createWriteStream(logFile, { flags: 'a' });
@@ -76,11 +83,12 @@ export function spawnClaude(options) {
   const startTime = new Date().toISOString();
   logStream.write(`\n=== Claude Started: ${startTime} ===\n`);
   logStream.write(`CWD: ${cwd}\n`);
-  logStream.write(`Args: ${args.join(' ')}\n`);
+  logStream.write(`Command: ${command} ${finalArgs.join(' ')}\n`);
+  logStream.write(`Sandbox: ${sandbox ? 'enabled' : 'disabled'}\n`);
   logStream.write('='.repeat(50) + '\n\n');
 
-  // Spawn Claude
-  const child = spawn('claude', args, {
+  // Spawn Claude (with or without sandbox wrapper)
+  const child = spawn(command, finalArgs, {
     cwd,
     stdio: ['ignore', 'pipe', 'pipe'],
     detached: false
