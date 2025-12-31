@@ -16,6 +16,11 @@ Check the **Execution Mode** section in the output:
 
 If **Worktree Isolation: enabled**, agent runs in isolated git branch.
 
+**⚠️ NO AUTO-FALLBACK**: If worktree mode is enabled but fails (no git, no commits, spawn error):
+- DO NOT switch to inline mode on your own
+- STOP and report the error to user
+- Constitutional rule: "When in doubt: stop, log, escalate — never guess."
+
 ## Agent Prompt Template
 
 ```markdown

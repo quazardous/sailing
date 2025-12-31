@@ -140,7 +140,16 @@ Each agent runs in an isolated git worktree:
 **Parallel agents**:
 - Check conflicts: \`rudder agent:conflicts\`
 - Merge order matters if agents touch same files
-- Use \`agent:merge --strategy squash\` for cleaner history`;
+- Use \`agent:merge --strategy squash\` for cleaner history
+
+**⚠️ CRITICAL - No auto-fallback**:
+If worktree mode fails (no git repo, no commits, spawn error):
+- DO NOT silently switch to inline mode
+- STOP immediately
+- Report the error to user
+- Ask how to proceed
+
+This is a Constitutional rule: "When in doubt: stop, log, escalate — never guess."`;
       }
     } else {
       modeInfo += `\n- Use Task tool with \`rudder context:agent\` to execute tasks\n- Agents run inline via Task tool`;
