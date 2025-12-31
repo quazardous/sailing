@@ -3,7 +3,9 @@ node_modules/
 
 # Local settings (not distributed)
 .claude/
-.sailing/
+# Ignore .sailing contents but track components.yaml
+.sailing/*
+!.sailing/components.yaml
 
 # OS files
 .DS_Store
