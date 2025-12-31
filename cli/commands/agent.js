@@ -6,7 +6,7 @@ import fs from 'fs';
 import path from 'path';
 import yaml from 'js-yaml';
 import { execSync } from 'child_process';
-import { findProjectRoot, loadFile, jsonOut, getPrdsDir } from '../lib/core.js';
+import { findProjectRoot, loadFile, jsonOut, getPrdsDir, getMemoryDir } from '../lib/core.js';
 import { resolvePlaceholders, resolvePath, ensureDir } from '../lib/paths.js';
 import { createMission, validateMission, validateResult, getProtocolVersion } from '../lib/agent-schema.js';
 import { loadState, saveState } from '../lib/state.js';
@@ -132,8 +132,7 @@ function findToolset() {
  * Find memory file for epic
  */
 function findMemoryFile(epicId) {
-  const projectRoot = findProjectRoot();
-  const memoryPath = path.join(projectRoot, '.sailing', 'memory', `${epicId}.md`);
+  const memoryPath = path.join(getMemoryDir(), `${epicId}.md`);
   return fs.existsSync(memoryPath) ? memoryPath : null;
 }
 

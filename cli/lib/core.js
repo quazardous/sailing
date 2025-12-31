@@ -323,7 +323,19 @@ export function getPathsInfo() {
     };
   };
 
+  // Helper for project-relative paths
+  const getProjectPath = (key) => {
+    const configuredPath = config.paths[key] || DEFAULT_PATHS[key];
+    const absolute = getPath(key);
+    return {
+      template: `^/${configuredPath}`,
+      relative: configuredPath,
+      absolute
+    };
+  };
+
   return {
+    // Project-relative paths
     roadmap: {
       template: '^/.sailing/artefacts/ROADMAP.md',
       relative: config.paths.artefacts + '/ROADMAP.md',
@@ -334,21 +346,16 @@ export function getPathsInfo() {
       relative: config.paths.artefacts + '/POSTIT.md',
       absolute: path.join(artefactsPath, 'POSTIT.md')
     },
-    artefacts: {
-      template: '^/.sailing/artefacts',
-      relative: config.paths.artefacts,
-      absolute: artefactsPath
-    },
+    artefacts: getProjectPath('artefacts'),
+    memory: getProjectPath('memory'),
     templates: {
       template: '^/templates',
       relative: config.paths.templates,
       absolute: templatesPath
     },
-    components: {
-      template: '^/.sailing/components.yaml',
-      relative: config.paths.components,
-      absolute: componentsPath
-    },
+    prompting: getProjectPath('prompting'),
+    components: getProjectPath('components'),
+    state: getProjectPath('state'),
     // Haven-based paths (with override support)
     haven: {
       template: '%haven%',

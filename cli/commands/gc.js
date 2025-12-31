@@ -12,33 +12,41 @@ import { loadState, saveState } from '../lib/state.js';
 import { removeWorktree, listAgentWorktrees, pruneWorktrees } from '../lib/worktree.js';
 
 /**
+ * Get base havens directory (~/.sailing/havens)
+ */
+function getHavensBaseDir() {
+  return path.join(os.homedir(), '.sailing', 'havens');
+}
+
+/**
  * Get list of all havens
  * @returns {Array<{ hash: string, path: string }>}
  */
 function listHavens() {
-  const sailingDir = path.join(os.homedir(), '.sailing');
+  const havensDir = getHavensBaseDir();
 
-  // Check worktrees directory
-  const worktreesDir = path.join(sailingDir, 'worktrees');
-  const agentsDir = path.join(sailingDir, 'agents');
+  if (!fs.existsSync(havensDir)) {
+    return [];
+  }
 
-  const havens = new Set();
+  const havens = [];
 
-  // Collect hashes from worktrees
-  if (fs.existsSync(worktreesDir)) {
-    for (const hash of fs.readdirSync(worktreesDir)) {
-      const hashPath = path.join(worktreesDir, hash);
-      if (fs.statSync(hashPath).isDirectory()) {
-        havens.add(hash);
-      }
+  // Each directory in havens/ is a project hash
+  for (const hash of fs.readdirSync(havensDir)) {
+    const havenPath = path.join(havensDir, hash);
+    if (fs.statSync(havenPath).isDirectory()) {
+      havens.push({
+        hash,
+        path: havenPath,
+        worktreesPath: path.join(havenPath, 'worktrees'),
+        agentsPath: path.join(havenPath, 'agents'),
+        runsPath: path.join(havenPath, 'runs'),
+        assignmentsPath: path.join(havenPath, 'assignments')
+      });
     }
   }
 
-  return Array.from(havens).map(hash => ({
-    hash,
-    worktreesPath: path.join(worktreesDir, hash),
-    agentsPath: agentsDir
-  }));
+  return havens;
 }
 
 /**
@@ -133,10 +141,7 @@ export function registerGcCommands(program) {
 
       console.log(`Orphaned havens (${orphaned.length}):`);
       for (const haven of orphaned) {
-        console.log(`  ${haven.hash}`);
-        if (fs.existsSync(haven.worktreesPath)) {
-          console.log(`    Worktrees: ${haven.worktreesPath}`);
-        }
+        console.log(`  ${haven.hash}: ${haven.path}`);
       }
 
       if (options.dryRun) {
@@ -149,13 +154,13 @@ export function registerGcCommands(program) {
         return;
       }
 
-      // Clean orphaned havens
+      // Clean orphaned havens (remove entire haven directory)
       let cleaned = 0;
       for (const haven of orphaned) {
         try {
-          if (fs.existsSync(haven.worktreesPath)) {
-            fs.rmSync(haven.worktreesPath, { recursive: true });
-            console.log(`Removed: ${haven.worktreesPath}`);
+          if (fs.existsSync(haven.path)) {
+            fs.rmSync(haven.path, { recursive: true });
+            console.log(`Removed: ${haven.path}`);
             cleaned++;
           }
         } catch (e) {
@@ -274,8 +279,8 @@ export function registerGcCommands(program) {
       if (orphaned.length > 0 && options.force && !options.dryRun) {
         for (const haven of orphaned) {
           try {
-            if (fs.existsSync(haven.worktreesPath)) {
-              fs.rmSync(haven.worktreesPath, { recursive: true });
+            if (fs.existsSync(haven.path)) {
+              fs.rmSync(haven.path, { recursive: true });
             }
           } catch {
             // Ignore errors

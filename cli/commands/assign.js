@@ -5,7 +5,7 @@
 import fs from 'fs';
 import path from 'path';
 import yaml from 'js-yaml';
-import { jsonOut, getPrompting, getMemoryDir, loadFile, getPrdsDir, saveFile } from '../lib/core.js';
+import { jsonOut, getPrompting, getMemoryDir, loadFile, getPrdsDir, saveFile, getPath, loadConfig } from '../lib/core.js';
 import { resolvePlaceholders, resolvePath, ensureDir, computeProjectHash } from '../lib/paths.js';
 import { normalizeId } from '../lib/normalize.js';
 import { addDynamicHelp } from '../lib/help.js';
@@ -501,7 +501,8 @@ export function registerAssignCommands(program) {
       // 2. Memory (from epic)
       const memory = getTaskMemory(normalized);
       if (memory.content) {
-        const memoryPath = `.sailing/memory/${memory.epicId}.md`;
+        const config = loadConfig();
+        const memoryPath = `${config.paths.memory}/${memory.epicId}.md`;
         const header = debug
           ? `<!-- section: Memory, source: ${memoryPath} -->\n# Memory: ${memory.epicId}`
           : `# Memory: ${memory.epicId}`;
