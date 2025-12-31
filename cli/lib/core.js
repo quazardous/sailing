@@ -84,6 +84,11 @@ const DEFAULT_PATHS = {
   config:     { path: '.sailing/config.yaml', type: 'file' },
   components: { path: '.sailing/components.yaml', type: 'file' },
 
+  // Project-centric files (convention, overridable)
+  toolset:    { path: '.claude/TOOLSET.md', type: 'file' },
+  stack:      { path: 'STACK.md', type: 'file' },
+  roadmap:    { path: '.sailing/artefacts/ROADMAP.md', type: 'file' },
+
   // Haven directories (per-project isolation outside project root)
   agents:       { path: '%haven%/agents', type: 'dir' },
   worktrees:    { path: '%haven%/worktrees', type: 'dir' },
@@ -419,22 +424,10 @@ export function getPathsInfo() {
   };
 
   return {
-    // Project-centric files (convention)
-    toolset: {
-      template: '^/.claude/TOOLSET.md',
-      relative: '.claude/TOOLSET.md',
-      absolute: path.join(findProjectRoot(), '.claude/TOOLSET.md')
-    },
-    stack: {
-      template: '^/STACK.md',
-      relative: 'STACK.md',
-      absolute: path.join(findProjectRoot(), 'STACK.md')
-    },
-    roadmap: {
-      template: '^/.sailing/artefacts/ROADMAP.md',
-      relative: config.paths.artefacts + '/ROADMAP.md',
-      absolute: path.join(artefactsPath, 'ROADMAP.md')
-    },
+    // Project-centric files (convention, overridable via paths.yaml)
+    toolset: getProjectPath('toolset'),
+    stack: getProjectPath('stack'),
+    roadmap: getProjectPath('roadmap'),
     postit: {
       template: '^/.sailing/artefacts/POSTIT.md',
       relative: config.paths.artefacts + '/POSTIT.md',

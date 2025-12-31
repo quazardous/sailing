@@ -268,7 +268,27 @@ export function registerUtilCommands(program) {
         }
       }
 
-      // 3. Validate YAML syntax
+      // 3. Check project-centric files (convention)
+      const pathsInfo = getPathsInfo();
+      const projectFiles = [
+        { name: 'TOOLSET.md', key: 'toolset', required: true, desc: 'Build/test commands for agents' },
+        { name: 'STACK.md', key: 'stack', required: false, desc: 'Tech stack documentation' },
+        { name: 'ROADMAP.md', key: 'roadmap', required: true, desc: 'Project vision and milestones' }
+      ];
+
+      for (const file of projectFiles) {
+        const info = pathsInfo[file.key];
+        if (!info) continue;
+
+        if (fs.existsSync(info.absolute)) {
+          check('files', file.name, 'ok', info.relative);
+        } else if (file.required) {
+          check('files', file.name, 'warn', `Missing: ${info.relative} (${file.desc})`);
+        }
+        // Optional files: don't report if missing
+      }
+
+      // 4. Validate YAML syntax
       const yamlFiles = [
         { name: 'paths.yaml', path: path.join(sailingDir, 'paths.yaml') },
         { name: 'config.yaml', path: getConfigFile() },
@@ -286,7 +306,7 @@ export function registerUtilCommands(program) {
         }
       }
 
-      // 4. Validate state.json
+      // 5. Validate state.json
       const stateFile = getStateFile();
       if (fs.existsSync(stateFile)) {
         try {
@@ -305,7 +325,7 @@ export function registerUtilCommands(program) {
         }
       }
 
-      // 5. Validate agent config loads
+      // 6. Validate agent config loads
       try {
         loadAgentConfig();
         check('yaml', 'agent config', 'ok', 'Config loads successfully');
