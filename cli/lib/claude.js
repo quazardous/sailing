@@ -29,10 +29,9 @@ export function buildClaudeArgs(options) {
 
   const args = [];
 
-  // Sandbox mode
-  if (sandbox) {
-    args.push('--sandbox-mode=auto-allow');
-  }
+  // Sandbox mode (placeholder - requires sandbox-runtime integration)
+  // TODO: Implement srt wrapper when sandbox-runtime is available
+  // if (sandbox) { ... }
 
   // Risky mode: --dangerously-skip-permissions
   if (riskyMode) {
