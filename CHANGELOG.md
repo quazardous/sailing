@@ -2,6 +2,35 @@
 
 All notable changes to the Sailing Framework will be documented in this file.
 
+## [1.4.0] - 2025-12-31
+
+### Added
+- `fix:chmod` command to fix 600 permissions caused by Claude Code Write tool
+- `use_subprocess` config option as gate for subprocess features
+- Execution mode injection in skill context (inline vs subprocess)
+- Config hierarchy validation in `config:check`
+- Project-centric files: TOOLSET.md, STACK.md, ROADMAP.md, POSTIT.md
+  - Auto-injected into context based on execution mode
+
+### Changed
+- `agent:spawn` now refuses if `use_subprocess: false` with clear error
+- `install.sh --full` enables both `use_subprocess` and `use_worktrees`
+- `init` command refactored: correct paths, generates config.yaml from schema
+
+### Fixed
+- Init command was using wrong dist directory
+- ROADMAP.md/POSTIT.md placed in correct artefacts/ location
+
+## [1.3.0] - 2025-12-31
+
+### Added
+- Epic-to-epic dependencies support (`deps:add ENNN --blocked-by E001`)
+- Epic cycle detection in `deps:validate`
+- `deps:ready` checks epic blockers before returning tasks
+
+### Fixed
+- `bin/rudder -V` now shows correct version from Rudder CLI component
+
 ## [1.2.0] - 2025-12-31
 
 ### Added
