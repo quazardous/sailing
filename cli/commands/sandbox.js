@@ -5,7 +5,7 @@
 import fs from 'fs';
 import path from 'path';
 import os from 'os';
-import { execSync } from 'child_process';
+import { execSync, spawnSync } from 'child_process';
 import { getPathsInfo, findProjectRoot } from '../lib/core.js';
 
 /**
@@ -286,8 +286,6 @@ export function registerSandboxCommands(program) {
     .option('--no-sandbox', 'Run without sandbox wrapper')
     .option('--debug', 'Enable srt debug mode')
     .action((promptArgs, options) => {
-      const { spawnSync } = require('child_process');
-
       // Use temp dir by default for safety
       let cwd;
       if (options.workdir) {
