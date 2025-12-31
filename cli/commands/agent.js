@@ -387,6 +387,23 @@ export function registerAgentCommands(program) {
       if (options.worktree === true) useWorktree = true;
       else if (options.worktree === false) useWorktree = false;
 
+      // Verify git repo if worktree mode is enabled
+      if (useWorktree) {
+        try {
+          execSync('git rev-parse --git-dir 2>/dev/null', {
+            cwd: findProjectRoot(),
+            encoding: 'utf8',
+            stdio: ['pipe', 'pipe', 'pipe']
+          });
+        } catch {
+          console.error('ERROR: use_worktrees requires a git repository\n');
+          console.error('Either:');
+          console.error('  1. Initialize git: git init && git add -A && git commit -m "init"');
+          console.error('  2. Or disable worktrees: --no-worktree');
+          process.exit(1);
+        }
+      }
+
       // Get timeout
       const timeout = options.timeout || agentConfig.timeout || 600;
 

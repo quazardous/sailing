@@ -3,6 +3,7 @@
  */
 import fs from 'fs';
 import path from 'path';
+import { execSync } from 'child_process';
 import yaml from 'js-yaml';
 import { findPrdDirs, findFiles, loadFile, saveFile, jsonOut, getSailingDir, getStateFile, getConfigFile, getComponentsFile, getPrdsDir, getConfigInfo, getPathsInfo, findProjectRoot, getArtefactsDir, getMemoryDir, getTemplatesDir, getPromptingDir } from '../lib/core.js';
 import { getPlaceholders, resolvePlaceholders, computeProjectHash } from '../lib/paths.js';
@@ -357,7 +358,17 @@ export function registerUtilCommands(program) {
       } else {
         configCheck('use_subprocess', 'ok', 'Subprocess mode enabled');
         if (agentConfig.use_worktrees) {
-          configCheck('use_worktrees', 'ok', 'Worktree isolation enabled');
+          // Check if we have a valid git repo for worktrees
+          try {
+            execSync('git rev-parse --git-dir 2>/dev/null', {
+              cwd: projectRoot,
+              encoding: 'utf8',
+              stdio: ['pipe', 'pipe', 'pipe']
+            });
+            configCheck('use_worktrees', 'ok', 'Worktree isolation enabled');
+          } catch {
+            configCheck('use_worktrees', 'error', 'Requires git repository (not found)');
+          }
         }
       }
 
