@@ -145,9 +145,9 @@ export function registerAgentCommands(program) {
 
   addDynamicHelp(agent, { entityType: 'agent' });
 
-  // agent:dispatch
+  // agent:dispatch (DEPRECATED - use agent:spawn)
   agent.command('dispatch <task-id>')
-    .description('Create mission file from task for agent execution')
+    .description('[DEPRECATED] Use agent:spawn instead')
     .option('--timeout <seconds>', 'Execution timeout (default: 600)', parseInt, 600)
     .option('--worktree', 'Create isolated worktree for agent (overrides config)')
     .option('--no-worktree', 'Skip worktree creation (overrides config)')
@@ -321,6 +321,220 @@ export function registerAgentCommands(program) {
       }
     });
 
+  // agent:spawn - merged dispatch + run with bootstrap prompt
+  agent.command('spawn <task-id>')
+    .description('Spawn agent to execute task (creates worktree, spawns Claude)')
+    .option('--timeout <seconds>', 'Execution timeout (default: 600)', parseInt)
+    .option('--worktree', 'Create isolated worktree (overrides config)')
+    .option('--no-worktree', 'Skip worktree creation (overrides config)')
+    .option('--dry-run', 'Show what would be done without spawning')
+    .option('--json', 'JSON output')
+    .action((taskId, options) => {
+      // Normalize task ID
+      taskId = taskId.toUpperCase();
+      if (!taskId.startsWith('T')) {
+        taskId = 'T' + taskId;
+      }
+
+      // Find task file
+      const taskFile = findTaskFile(taskId);
+      if (!taskFile) {
+        console.error(`Task not found: ${taskId}`);
+        process.exit(1);
+      }
+
+      // Load task data
+      const task = loadFile(taskFile);
+      if (!task) {
+        console.error(`Could not load task file: ${taskFile}`);
+        process.exit(1);
+      }
+
+      // Extract IDs
+      const prdId = extractPrdId(task.data.parent);
+      const epicId = extractEpicId(task.data.parent);
+
+      if (!prdId || !epicId) {
+        console.error(`Could not extract PRD/Epic IDs from parent: ${task.data.parent}`);
+        process.exit(1);
+      }
+
+      // Check if already running
+      const state = loadState();
+      if (!state.agents) state.agents = {};
+
+      if (state.agents[taskId]) {
+        const status = state.agents[taskId].status;
+        if (status === 'running' || status === 'spawned') {
+          console.error(`Agent ${taskId} is already running (status: ${status})`);
+          process.exit(1);
+        }
+      }
+
+      // Determine agent directory
+      const agentDir = ensureDir(getAgentDir(taskId));
+
+      // Determine if worktree should be created
+      const agentConfig = getAgentConfig();
+      let useWorktree = agentConfig.use_worktrees;
+      if (options.worktree === true) useWorktree = true;
+      else if (options.worktree === false) useWorktree = false;
+
+      // Get timeout
+      const timeout = options.timeout || agentConfig.timeout || 600;
+
+      // Create mission.yaml for debug/trace
+      const mission = createMission({
+        task_id: taskId,
+        epic_id: epicId,
+        prd_id: prdId,
+        instruction: task.body.trim(),
+        dev_md: findDevMd() || '',
+        epic_file: findEpicFile(epicId),
+        task_file: taskFile,
+        memory: findMemoryFile(epicId),
+        toolset: findToolset(),
+        constraints: { no_git_commit: true },
+        timeout
+      });
+      const missionFile = path.join(agentDir, 'mission.yaml');
+
+      // Build bootstrap prompt
+      const bootstrapPrompt = `# Agent Bootstrap: ${taskId}
+
+You are an autonomous agent assigned to task ${taskId}.
+
+## Instructions
+
+1. **Get your context** by running:
+   \`\`\`bash
+   rudder assign:claim ${taskId}
+   \`\`\`
+   This will output your full instructions, memory, and task details.
+
+2. **Execute the task** according to the deliverables.
+
+3. **Log tips** during your work (at least 1):
+   \`\`\`bash
+   rudder task:log ${taskId} "useful insight for future agents" --tip
+   \`\`\`
+
+4. **When complete**, run:
+   \`\`\`bash
+   rudder assign:release ${taskId}
+   \`\`\`
+
+## Constraints
+
+- NO git commit (user will commit after review)
+- Follow the task deliverables exactly
+- Log meaningful tips for knowledge transfer
+
+Start by running \`rudder assign:claim ${taskId}\` to get your instructions.
+`;
+
+      if (options.dryRun) {
+        console.log('Agent spawn (dry run):\n');
+        console.log(`Task: ${taskId}`);
+        console.log(`Epic: ${epicId}, PRD: ${prdId}`);
+        console.log(`Worktree: ${useWorktree ? 'yes' : 'no'}`);
+        console.log(`Timeout: ${timeout}s`);
+        console.log(`Agent dir: ${agentDir}`);
+        console.log(`\nBootstrap prompt:\n${bootstrapPrompt}`);
+        return;
+      }
+
+      // Create worktree if enabled
+      let worktreeInfo = null;
+      let cwd = findProjectRoot();
+
+      if (useWorktree) {
+        if (worktreeExists(taskId)) {
+          console.error(`Worktree already exists for ${taskId}`);
+          console.error(`  Path: ${getWorktreePath(taskId)}`);
+          process.exit(1);
+        }
+
+        const result = createWorktree(taskId);
+        if (!result.success) {
+          console.error(`Failed to create worktree: ${result.error}`);
+          process.exit(1);
+        }
+
+        worktreeInfo = {
+          path: result.path,
+          branch: result.branch,
+          base_branch: result.baseBranch
+        };
+        cwd = result.path;
+
+        if (!options.json) {
+          console.log(`Worktree created: ${result.path}`);
+          console.log(`  Branch: ${result.branch}`);
+        }
+      }
+
+      // Write mission file (for debug/trace)
+      fs.writeFileSync(missionFile, yaml.dump(mission));
+
+      // Get log file path
+      const logFile = getLogFilePath(taskId);
+
+      // Spawn Claude with bootstrap prompt
+      const spawnResult = spawnClaude({
+        prompt: bootstrapPrompt,
+        cwd,
+        logFile,
+        timeout
+      });
+
+      // Update state
+      state.agents[taskId] = {
+        status: 'spawned',
+        spawned_at: new Date().toISOString(),
+        pid: spawnResult.pid,
+        mission_file: missionFile,
+        log_file: spawnResult.logFile,
+        timeout,
+        ...(worktreeInfo && { worktree: worktreeInfo })
+      };
+      saveState(state);
+
+      // Handle process exit
+      spawnResult.process.on('exit', (code, signal) => {
+        const currentState = loadState();
+        if (currentState.agents[taskId]) {
+          currentState.agents[taskId].status = code === 0 ? 'completed' : 'error';
+          currentState.agents[taskId].exit_code = code;
+          currentState.agents[taskId].exit_signal = signal;
+          currentState.agents[taskId].ended_at = new Date().toISOString();
+          delete currentState.agents[taskId].pid;
+          saveState(currentState);
+        }
+      });
+
+      if (options.json) {
+        jsonOut({
+          task_id: taskId,
+          epic_id: epicId,
+          prd_id: prdId,
+          pid: spawnResult.pid,
+          cwd,
+          log_file: spawnResult.logFile,
+          mission_file: missionFile,
+          timeout,
+          ...(worktreeInfo && { worktree: worktreeInfo })
+        });
+      } else {
+        console.log(`Spawned: ${taskId}`);
+        console.log(`  PID: ${spawnResult.pid}`);
+        console.log(`  CWD: ${cwd}`);
+        console.log(`  Log: ${spawnResult.logFile}`);
+        console.log(`  Mission: ${missionFile}`);
+        console.log(`  Timeout: ${timeout}s`);
+      }
+    });
+
   /**
    * Check agent completion state
    * @returns {{ complete: boolean, hasResult: boolean, hasSentinel: boolean }}
@@ -489,9 +703,9 @@ export function registerAgentCommands(program) {
       }
     });
 
-  // agent:run
+  // agent:run (DEPRECATED - use agent:spawn)
   agent.command('run <task-id>')
-    .description('Spawn Claude subprocess to execute task in worktree')
+    .description('[DEPRECATED] Use agent:spawn instead')
     .option('--timeout <seconds>', 'Execution timeout in seconds (overrides config)', parseInt)
     .option('--json', 'JSON output')
     .action((taskId, options) => {
