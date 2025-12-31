@@ -29,9 +29,8 @@ export function buildClaudeArgs(options) {
 
   const args = [];
 
-  // Sandbox mode: -sb --sandbox-mode=auto-allow
+  // Sandbox mode
   if (sandbox) {
-    args.push('-sb');
     args.push('--sandbox-mode=auto-allow');
   }
 

@@ -35,7 +35,7 @@ export const CONFIG_SCHEMA = {
   'agent.sandbox': {
     type: 'boolean',
     default: true,
-    description: 'Enable sandbox mode (-sb --sandbox-mode=auto-allow)'
+    description: 'Enable sandbox mode (--sandbox-mode=auto-allow)'
   },
   'agent.timeout': {
     type: 'number',
