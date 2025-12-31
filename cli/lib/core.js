@@ -88,6 +88,7 @@ const DEFAULT_PATHS = {
   toolset:    { path: '.claude/TOOLSET.md', type: 'file' },
   stack:      { path: 'STACK.md', type: 'file' },
   roadmap:    { path: '.sailing/artefacts/ROADMAP.md', type: 'file' },
+  postit:     { path: '.sailing/artefacts/POSTIT.md', type: 'file' },
 
   // Haven directories (per-project isolation outside project root)
   agents:       { path: '%haven%/agents', type: 'dir' },
@@ -428,11 +429,7 @@ export function getPathsInfo() {
     toolset: getProjectPath('toolset'),
     stack: getProjectPath('stack'),
     roadmap: getProjectPath('roadmap'),
-    postit: {
-      template: '^/.sailing/artefacts/POSTIT.md',
-      relative: config.paths.artefacts + '/POSTIT.md',
-      absolute: path.join(artefactsPath, 'POSTIT.md')
-    },
+    postit: getProjectPath('postit'),
     artefacts: getProjectPath('artefacts'),
     memory: getProjectPath('memory'),
     templates: {

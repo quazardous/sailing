@@ -104,10 +104,10 @@ function composeContext(type, command, options = {}) {
 
   // Auto-include project-centric files (convention over configuration)
   // Agent contexts get: TOOLSET.md + STACK.md
-  // Skill contexts get: TOOLSET.md + STACK.md + ROADMAP.md
+  // Skill contexts get: TOOLSET.md + STACK.md + ROADMAP.md + POSTIT.md
   const projectFiles = ['toolset', 'stack'];
   if (type === 'skill') {
-    projectFiles.push('roadmap');
+    projectFiles.push('roadmap', 'postit');
   }
 
   for (const key of projectFiles) {
