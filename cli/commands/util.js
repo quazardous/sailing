@@ -51,8 +51,16 @@ export function registerUtilCommands(program) {
     .option('--json', 'JSON output')
     .option('-p, --placeholders', 'Include placeholders in output')
     .option('-n, --no-resolve', 'Show paths with placeholders (unresolved)')
+    .option('-r, --realpath', 'Show fully resolved absolute paths')
     .action((key, options) => {
       const pathsInfo = getPathsInfo();
+
+      // Helper to get display value based on flags
+      const getDisplay = (v) => {
+        if (options.resolve === false) return v.template || v.relative;
+        if (options.realpath) return v.absolute;
+        return v.relative;
+      };
 
       if (key) {
         if (!pathsInfo[key]) {
@@ -60,18 +68,14 @@ export function registerUtilCommands(program) {
           console.error(`Available: ${Object.keys(pathsInfo).join(', ')}`);
           process.exit(1);
         }
-        if (options.resolve === false) {
-          console.log(pathsInfo[key].template || pathsInfo[key].relative);
-        } else {
-          console.log(pathsInfo[key].absolute);
-        }
+        console.log(getDisplay(pathsInfo[key]));
         return;
       }
 
       if (options.json) {
         const result = { paths: {} };
         for (const [k, v] of Object.entries(pathsInfo)) {
-          result.paths[k] = options.resolve === false ? (v.template || v.relative) : v.absolute;
+          result.paths[k] = getDisplay(v);
         }
         if (options.placeholders) {
           result.placeholders = getPlaceholders();
@@ -83,8 +87,7 @@ export function registerUtilCommands(program) {
       // Human readable - paths
       console.log('Paths:\n');
       for (const [k, v] of Object.entries(pathsInfo)) {
-        const display = options.resolve === false ? (v.template || v.relative) : v.relative;
-        console.log(`  ${k.padEnd(12)} ${display}`);
+        console.log(`  ${k.padEnd(12)} ${getDisplay(v)}`);
       }
 
       // Placeholders if requested
