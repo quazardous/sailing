@@ -68,9 +68,11 @@ export function spawnClaude(options) {
   // Determine command and final args based on sandbox mode
   let command, finalArgs;
   if (sandbox) {
-    // Wrap with sandbox-runtime: npx @anthropic-ai/sandbox-runtime claude [args]
-    command = 'npx';
-    finalArgs = ['@anthropic-ai/sandbox-runtime', 'claude', ...args];
+    // Wrap with srt (sandbox-runtime): srt claude [args]
+    // Requires: npm install -g @anthropic-ai/sandbox-runtime
+    // Configure: ~/.srt-settings.json (network domains, filesystem paths)
+    command = 'srt';
+    finalArgs = ['claude', ...args];
   } else {
     command = 'claude';
     finalArgs = args;

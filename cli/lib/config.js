@@ -34,8 +34,8 @@ export const CONFIG_SCHEMA = {
   },
   'agent.sandbox': {
     type: 'boolean',
-    default: true,
-    description: 'Wrap agents with @anthropic-ai/sandbox-runtime'
+    default: false,
+    description: 'Wrap agents with srt (sandbox-runtime, requires setup)'
   },
   'agent.timeout': {
     type: 'number',
