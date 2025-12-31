@@ -6,12 +6,100 @@
 import { spawn } from 'child_process';
 import fs from 'fs';
 import path from 'path';
+import os from 'os';
 import { getAgentConfig } from './config.js';
 import { getAgentsDir, getPathsInfo } from './core.js';
 import { ensureDir } from './paths.js';
 
 // Alias for internal use
 const getAgentsBaseDir = getAgentsDir;
+
+/**
+ * Load base srt config from project or generate defaults
+ */
+function loadBaseSrtConfig() {
+  const paths = getPathsInfo();
+  const homeDir = os.homedir();
+
+  // Try to load from project config
+  if (paths.srtConfig && fs.existsSync(paths.srtConfig.absolute)) {
+    try {
+      return JSON.parse(fs.readFileSync(paths.srtConfig.absolute, 'utf8'));
+    } catch {
+      // Fall through to defaults
+    }
+  }
+
+  // Default config
+  return {
+    network: {
+      allowedDomains: [
+        'api.anthropic.com',
+        '*.anthropic.com',
+        'sentry.io',
+        'statsig.anthropic.com',
+        'github.com',
+        '*.github.com',
+        'api.github.com',
+        'raw.githubusercontent.com',
+        'registry.npmjs.org',
+        '*.npmjs.org'
+      ],
+      deniedDomains: []
+    },
+    filesystem: {
+      allowWrite: [
+        `${homeDir}/.claude`,
+        `${homeDir}/.claude.json`,
+        `${homeDir}/.npm/_logs`,
+        '/tmp'
+      ],
+      denyWrite: [],
+      denyRead: [
+        `${homeDir}/.ssh`,
+        `${homeDir}/.gnupg`,
+        `${homeDir}/.aws`
+      ]
+    }
+  };
+}
+
+/**
+ * Generate agent-specific srt config
+ * @param {object} options - Options
+ * @param {string} options.agentDir - Agent directory path
+ * @param {string} options.cwd - Working directory (worktree)
+ * @param {string} options.logFile - Log file path
+ * @returns {string} Path to generated srt config
+ */
+export function generateAgentSrtConfig(options) {
+  const { agentDir, cwd, logFile } = options;
+
+  // Load base config
+  const config = loadBaseSrtConfig();
+
+  // Add agent-specific write paths
+  const additionalPaths = [
+    cwd,                          // Worktree directory
+    agentDir,                     // Agent directory (for mission, result files)
+    path.dirname(logFile)         // Log directory
+  ];
+
+  // Merge with base allowWrite (avoid duplicates)
+  const existingPaths = new Set(config.filesystem.allowWrite);
+  for (const p of additionalPaths) {
+    if (p && !existingPaths.has(p)) {
+      config.filesystem.allowWrite.push(p);
+    }
+  }
+
+  // Write agent-specific config
+  const configPath = path.join(agentDir, 'srt-settings.json');
+  ensureDir(agentDir);
+  fs.writeFileSync(configPath, JSON.stringify(config, null, 2));
+
+  return configPath;
+}
 
 /**
  * Build Claude command arguments based on config and options
@@ -47,13 +135,14 @@ export function buildClaudeArgs(options) {
  * @param {string} options.prompt - The prompt to send to Claude
  * @param {string} options.cwd - Working directory (worktree path)
  * @param {string} options.logFile - Path to log file for stdout/stderr
+ * @param {string} [options.agentDir] - Agent directory (for srt config generation)
  * @param {number} [options.timeout] - Timeout in seconds
  * @param {boolean} [options.riskyMode] - Override risky_mode config
  * @param {boolean} [options.sandbox] - Override sandbox config
- * @returns {{ process: ChildProcess, pid: number, logFile: string }}
+ * @returns {{ process: ChildProcess, pid: number, logFile: string, srtConfig?: string }}
  */
 export function spawnClaude(options) {
-  const { prompt, cwd, logFile, timeout } = options;
+  const { prompt, cwd, logFile, timeout, agentDir } = options;
 
   // Ensure log directory exists
   ensureDir(path.dirname(logFile));
@@ -66,18 +155,29 @@ export function spawnClaude(options) {
   });
 
   // Determine command and final args based on sandbox mode
-  let command, finalArgs;
+  let command, finalArgs, srtConfigPath;
   if (sandbox) {
+    // Generate agent-specific srt config with worktree paths
+    if (agentDir) {
+      srtConfigPath = generateAgentSrtConfig({
+        agentDir,
+        cwd,
+        logFile
+      });
+    } else {
+      // Fallback to project config
+      const paths = getPathsInfo();
+      if (paths.srtConfig && fs.existsSync(paths.srtConfig.absolute)) {
+        srtConfigPath = paths.srtConfig.absolute;
+      }
+    }
+
     // Wrap with srt (sandbox-runtime): srt --settings <path> claude [args]
-    // Requires: npm install -g @anthropic-ai/sandbox-runtime
-    // Config: rudder sandbox:init to create haven/srt-settings.json
     command = 'srt';
     finalArgs = [];
 
-    // Use project-specific srt config if available
-    const paths = getPathsInfo();
-    if (paths.srtConfig && fs.existsSync(paths.srtConfig.absolute)) {
-      finalArgs.push('--settings', paths.srtConfig.absolute);
+    if (srtConfigPath) {
+      finalArgs.push('--settings', srtConfigPath);
     }
 
     finalArgs.push('claude', ...args);
@@ -95,6 +195,9 @@ export function spawnClaude(options) {
   logStream.write(`CWD: ${cwd}\n`);
   logStream.write(`Command: ${command} ${finalArgs.join(' ')}\n`);
   logStream.write(`Sandbox: ${sandbox ? 'enabled' : 'disabled'}\n`);
+  if (srtConfigPath) {
+    logStream.write(`SRT Config: ${srtConfigPath}\n`);
+  }
   logStream.write('='.repeat(50) + '\n\n');
 
   // Spawn Claude (with or without sandbox wrapper)
@@ -134,7 +237,8 @@ export function spawnClaude(options) {
   return {
     process: child,
     pid: child.pid,
-    logFile
+    logFile,
+    srtConfig: srtConfigPath
   };
 }
 

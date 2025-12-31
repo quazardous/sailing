@@ -509,7 +509,8 @@ Start by running \`rudder assign:claim ${taskId}\` to get your instructions.
         prompt: bootstrapPrompt,
         cwd,
         logFile,
-        timeout
+        timeout,
+        agentDir
       });
 
       // Update state
@@ -788,11 +789,13 @@ Start by running \`rudder assign:claim ${taskId}\` to get your instructions.
       const logFile = getLogFilePath(taskId);
 
       // Spawn Claude
+      const agentDir = getAgentDir(taskId);
       const result = spawnClaude({
         prompt,
         cwd,
         logFile,
-        timeout
+        timeout,
+        agentDir
       });
 
       // Update state with PID
