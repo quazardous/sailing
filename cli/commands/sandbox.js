@@ -298,7 +298,14 @@ export function registerSandboxCommands(program) {
       // Get prompt from args or option
       let prompt = options.prompt || promptArgs.join(' ');
 
-      // If no prompt, read from stdin
+      // If no prompt, try to read from stdin
+      if (!prompt) {
+        // Check if stdin has data (not a TTY)
+        if (!process.stdin.isTTY) {
+          prompt = fs.readFileSync(0, 'utf8').trim();
+        }
+      }
+
       if (!prompt) {
         console.error('Usage: rudder sandbox:run "your prompt"');
         console.error('   or: echo "prompt" | rudder sandbox:run');
