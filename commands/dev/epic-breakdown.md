@@ -65,7 +65,7 @@ When spawning agents for task creation, ensure the prompt contains:
 2. Propose task structure (titles + 1-line descriptions)
 3. Present questions to main thread
 4. After approval: create tasks via rudder CLI
-5. Set dependencies via rudder deps:add
+5. Set task dependencies via rudder deps:add (task-level only, epic deps set at prd-breakdown)
 ```
 
 ### Task Creation (Rudder CLI) — MANDATORY
