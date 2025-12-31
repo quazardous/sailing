@@ -189,6 +189,11 @@ function sandboxCheck(args, options) {
     console.log('\n✓ Sandbox ready');
   }
 
+  // Always show path customization hint
+  console.log('\nCustomize path in .sailing/paths.yaml:');
+  console.log('  srtConfig: ~/.srt-settings.json    # Global');
+  console.log('  srtConfig: .sailing/srt.json       # Per-project');
+
   return status;
 }
 
