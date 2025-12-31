@@ -419,7 +419,17 @@ export function getPathsInfo() {
   };
 
   return {
-    // Project-relative paths
+    // Project-centric files (convention)
+    toolset: {
+      template: '^/.claude/TOOLSET.md',
+      relative: '.claude/TOOLSET.md',
+      absolute: path.join(findProjectRoot(), '.claude/TOOLSET.md')
+    },
+    stack: {
+      template: '^/STACK.md',
+      relative: 'STACK.md',
+      absolute: path.join(findProjectRoot(), 'STACK.md')
+    },
     roadmap: {
       template: '^/.sailing/artefacts/ROADMAP.md',
       relative: config.paths.artefacts + '/ROADMAP.md',

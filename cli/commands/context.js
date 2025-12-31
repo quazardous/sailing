@@ -5,9 +5,29 @@
 import fs from 'fs';
 import path from 'path';
 import yaml from 'js-yaml';
-import { getPrompting, jsonOut, findProjectRoot } from '../lib/core.js';
+import { getPrompting, jsonOut, findProjectRoot, getPathsInfo } from '../lib/core.js';
 import { addDynamicHelp } from '../lib/help.js';
 import { detectMode, isAgentMode, getAgentInfo } from '../lib/agent-context.js';
+
+/**
+ * Load project-centric file if it exists
+ * Returns { content, source } or null
+ */
+function loadProjectFile(key) {
+  try {
+    const paths = getPathsInfo();
+    const info = paths[key];
+    if (!info) return null;
+
+    if (fs.existsSync(info.absolute)) {
+      const content = fs.readFileSync(info.absolute, 'utf8').trim();
+      return { content, source: `project:${key}` };
+    }
+  } catch {
+    // Ignore errors
+  }
+  return null;
+}
 
 /**
  * Load contexts.yaml configuration
@@ -80,6 +100,22 @@ function composeContext(type, command, options = {}) {
   if (parts.length === 0) {
     console.error(`Error: No fragments loaded for ${type}:${command}`);
     process.exit(1);
+  }
+
+  // Auto-include project-centric files (convention over configuration)
+  // Agent contexts get: TOOLSET.md + STACK.md
+  // Skill contexts get: TOOLSET.md + STACK.md + ROADMAP.md
+  const projectFiles = ['toolset', 'stack'];
+  if (type === 'skill') {
+    projectFiles.push('roadmap');
+  }
+
+  for (const key of projectFiles) {
+    const projectFile = loadProjectFile(key);
+    if (projectFile) {
+      parts.push(projectFile.content);
+      sources.push(projectFile.source);
+    }
   }
 
   return {
