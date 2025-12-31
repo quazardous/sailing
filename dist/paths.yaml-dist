@@ -29,9 +29,9 @@ paths:
   commands: .claude/commands/dev
 
   # Project-centric files (auto-injected into context)
-  # Agent context (worktree mode): toolset, stack
-  # Skill context: roadmap, postit
-  toolset: .claude/TOOLSET.md      # Build/test commands (worktree agents only)
-  stack: STACK.md                   # Tech stack (worktree agents only)
-  roadmap: .sailing/artefacts/ROADMAP.md  # Vision docs for skill
-  postit: .sailing/artefacts/POSTIT.md    # Backlog for PRD creation
+  # Agent context (subprocess): toolset, stack
+  # Skill context (main thread): roadmap, postit
+  toolset: .claude/TOOLSET.md      # Build/test commands (for subprocess agents)
+  stack: STACK.md                   # Tech stack (for subprocess agents)
+  roadmap: .sailing/artefacts/ROADMAP.md  # Vision docs (skill only)
+  postit: .sailing/artefacts/POSTIT.md    # Backlog (skill only)
