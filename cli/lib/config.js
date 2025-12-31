@@ -17,6 +17,11 @@ import { getConfigFile } from './core.js';
  * Format: 'section.key': { type, default, description, values? }
  */
 export const CONFIG_SCHEMA = {
+  'agent.use_subprocess': {
+    type: 'boolean',
+    default: false,
+    description: 'Spawn Claude as subprocess (vs manual execution)'
+  },
   'agent.use_worktrees': {
     type: 'boolean',
     default: false,

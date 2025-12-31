@@ -29,9 +29,9 @@ paths:
   commands: .claude/commands/dev
 
   # Project-centric files (auto-injected into context)
-  # Agent context (subprocess): toolset, stack
+  # Agent context (use_subprocess=true): toolset, stack
   # Skill context (main thread): roadmap, postit
-  toolset: .claude/TOOLSET.md      # Build/test commands (for subprocess agents)
-  stack: STACK.md                   # Tech stack (for subprocess agents)
+  toolset: .claude/TOOLSET.md      # Build/test commands (subprocess mode)
+  stack: STACK.md                   # Tech stack (subprocess mode)
   roadmap: .sailing/artefacts/ROADMAP.md  # Vision docs (skill only)
   postit: .sailing/artefacts/POSTIT.md    # Backlog (skill only)

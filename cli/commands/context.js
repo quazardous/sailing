@@ -8,6 +8,7 @@ import yaml from 'js-yaml';
 import { getPrompting, jsonOut, findProjectRoot, getPathsInfo } from '../lib/core.js';
 import { addDynamicHelp } from '../lib/help.js';
 import { detectMode, isAgentMode, getAgentInfo } from '../lib/agent-context.js';
+import { getAgentConfig } from '../lib/config.js';
 
 /**
  * Load project-centric file if it exists
@@ -103,14 +104,15 @@ function composeContext(type, command, options = {}) {
   }
 
   // Auto-include project-centric files (convention over configuration)
-  // Agent contexts (subprocess): TOOLSET.md + STACK.md
+  // Agent contexts (subprocess mode): TOOLSET.md + STACK.md
   //   (subprocess doesn't inherit main thread's Claude context)
   // Skill contexts (main thread): ROADMAP.md + POSTIT.md
   //   (main thread already has TOOLSET via CLAUDE.md)
   const projectFiles = [];
+  const agentConfig = getAgentConfig();
 
-  if (type === 'agent') {
-    // Agent = subprocess via spawnClaude, needs project context
+  if (type === 'agent' && agentConfig.use_subprocess) {
+    // Agent in subprocess mode needs project context
     projectFiles.push('toolset', 'stack');
   } else if (type === 'skill') {
     // Skill = main thread, needs vision docs
