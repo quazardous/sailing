@@ -49,8 +49,29 @@ export function registerUtilCommands(program) {
     .description('Path management (show paths, placeholders, resolve)')
     .argument('[key]', 'Path key (roadmap, artefacts, haven, agents, runs, assignments, worktrees, ...)')
     .option('--json', 'JSON output')
-    .option('-p, --placeholders', 'Show paths with placeholders (unresolved)')
+    .option('-p, --placeholders', 'Show available placeholders and values')
+    .option('-n, --no-resolve', 'Show paths with placeholders (unresolved)')
     .action((key, options) => {
+      // --placeholders: show placeholder values (like paths:placeholders)
+      if (options.placeholders) {
+        const ph = getPlaceholders();
+        if (options.json) {
+          jsonOut(ph);
+          return;
+        }
+        console.log('Placeholders:\n');
+        for (const [k, v] of Object.entries(ph.builtin)) {
+          console.log(`  %${k}%`.padEnd(20) + v);
+        }
+        if (Object.keys(ph.custom).length > 0) {
+          console.log('\nCustom (from paths.yaml):\n');
+          for (const [k, v] of Object.entries(ph.custom)) {
+            console.log(`  %${k}%`.padEnd(20) + v);
+          }
+        }
+        return;
+      }
+
       const pathsInfo = getPathsInfo();
 
       if (key) {
@@ -59,7 +80,7 @@ export function registerUtilCommands(program) {
           console.error(`Available: ${Object.keys(pathsInfo).join(', ')}`);
           process.exit(1);
         }
-        if (options.placeholders) {
+        if (options.resolve === false) {
           console.log(pathsInfo[key].template || pathsInfo[key].relative);
         } else {
           console.log(pathsInfo[key].absolute);
@@ -70,7 +91,7 @@ export function registerUtilCommands(program) {
       if (options.json) {
         const result = {};
         for (const [k, v] of Object.entries(pathsInfo)) {
-          result[k] = options.placeholders ? (v.template || v.relative) : v.absolute;
+          result[k] = options.resolve === false ? (v.template || v.relative) : v.absolute;
         }
         jsonOut(result);
         return;
@@ -78,7 +99,7 @@ export function registerUtilCommands(program) {
 
       // Human readable
       for (const [k, v] of Object.entries(pathsInfo)) {
-        const display = options.placeholders ? (v.template || v.relative) : v.relative;
+        const display = options.resolve === false ? (v.template || v.relative) : v.relative;
         console.log(`${k.padEnd(12)} ${display}`);
       }
     });
