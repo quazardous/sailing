@@ -10,6 +10,7 @@ import { buildDependencyGraph, blockersResolved } from '../lib/graph.js';
 import { nextId } from '../lib/state.js';
 import { parseUpdateOptions, addLogEntry } from '../lib/update.js';
 import { addDynamicHelp } from '../lib/help.js';
+import { formatId } from '../lib/config.js';
 
 /**
  * Find a task file by ID
@@ -222,7 +223,7 @@ export function registerTaskCommands(program) {
       }
 
       const num = nextId('task');
-      const id = `T${String(num).padStart(3, '0')}`;
+      const id = formatId('T', num);
       const filename = `${id}-${toKebab(title)}.md`;
       const taskPath = path.join(tasksDir, filename);
 
@@ -262,7 +263,7 @@ export function registerTaskCommands(program) {
       let body = loadTemplate('task');
       if (body) {
         body = body.replace(/^---[\s\S]*?---\s*/, ''); // Remove template frontmatter
-        body = body.replace(/# T000: Task Title/g, `# ${id}: ${title}`);
+        body = body.replace(/# T00000: Task Title/g, `# ${id}: ${title}`);
       } else {
         body = `\n# ${id}: ${title}\n\n## Description\n\n[Add description]\n\n## Deliverables\n\n- [ ] [Deliverable 1]\n\n## Log\n`;
       }

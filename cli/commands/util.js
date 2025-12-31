@@ -4,43 +4,356 @@
 import fs from 'fs';
 import path from 'path';
 import yaml from 'js-yaml';
-import { findPrdDirs, findFiles, loadFile, saveFile, jsonOut, getSailingDir, getStateFile, getPrdsDir, getConfigInfo, getPathsInfo, findProjectRoot } from '../lib/core.js';
+import { findPrdDirs, findFiles, loadFile, saveFile, jsonOut, getSailingDir, getStateFile, getConfigFile, getComponentsFile, getPrdsDir, getConfigInfo, getPathsInfo, findProjectRoot, getArtefactsDir, getMemoryDir, getTemplatesDir, getPromptingDir } from '../lib/core.js';
 import { getPlaceholders, resolvePlaceholders, computeProjectHash } from '../lib/paths.js';
 import { addDynamicHelp } from '../lib/help.js';
 import { loadState, saveState } from '../lib/state.js';
 import { getAllVersions, getMainVersion, getMainComponentName } from '../lib/version.js';
 import { buildDependencyGraph } from '../lib/graph.js';
 import { isStatusDone, isStatusInProgress, isStatusNotStarted, statusSymbol } from '../lib/lexicon.js';
+import { loadConfig as loadAgentConfig, getConfigDisplay, getSchema, getConfigPath, getAgentConfig } from '../lib/config.js';
+import { getWorktreesDir, getAgentsDir, getPathType } from '../lib/core.js';
 
 /**
  * Register utility commands
  */
 export function registerUtilCommands(program) {
-  // config
-  program.command('config')
-    .description('Show configuration (paths, CLI location)')
+  // config group
+  const config = program.command('config')
+    .description('Configuration management (show, check)')
     .option('--json', 'JSON output')
     .action((options) => {
+      // Default: show config
       const info = getConfigInfo();
+      const configDisplay = getConfigDisplay();
 
       if (options.json) {
-        jsonOut(info);
+        jsonOut({
+          projectRoot: info.projectRoot,
+          sailingDir: info.sailingDir,
+          cliPath: info.cliPath,
+          configFile: getConfigFile(),
+          configExists: fs.existsSync(getConfigFile()),
+          settings: configDisplay,
+          paths: info.paths
+        });
         return;
       }
 
-      console.log('Sailing Configuration\n');
-      console.log(`Project root:  ${info.projectRoot}`);
-      console.log(`Sailing dir:   ${info.sailingDir}`);
-      console.log(`CLI path:      ${info.cliPath}`);
-      console.log(`paths.yaml:    ${info.pathsConfigPath} ${info.pathsConfigExists ? '✓' : '(not found)'}`);
-      console.log('\nConfigured paths:\n');
+      // YAML-style output
+      console.log('# Sailing Configuration\n');
+      console.log(`# project_root: ${info.projectRoot}`);
+      console.log(`# sailing_dir: ${info.sailingDir}`);
+      console.log(`# config_file: ${getConfigFile()} ${fs.existsSync(getConfigFile()) ? '✓' : '(using defaults)'}`);
 
+      // Group settings by section
+      const sections = {};
+      for (const item of configDisplay) {
+        const [section] = item.key.split('.');
+        if (!sections[section]) sections[section] = [];
+        sections[section].push(item);
+      }
+
+      for (const [section, items] of Object.entries(sections)) {
+        console.log(`\n${section}:`);
+        for (const item of items) {
+          const keyName = item.key.split('.').slice(1).join('.');
+          const marker = item.isDefault ? '' : '  # (custom)';
+          const valuesHint = item.values ? ` [${item.values.join('|')}]` : '';
+          console.log(`  # ${item.description}${valuesHint}`);
+          console.log(`  ${keyName}: ${item.value}${marker}`);
+        }
+      }
+
+      console.log('\n# Configured paths');
+      console.log('paths:');
       for (const [key, val] of Object.entries(info.paths)) {
         const markers = [];
         if (val.isCustom) markers.push('custom');
         if (val.isAbsolute) markers.push('absolute');
-        const marker = markers.length > 0 ? ` (${markers.join(', ')})` : '';
-        console.log(`  ${key.padEnd(12)} ${val.path}${marker}`);
+        const marker = markers.length > 0 ? `  # (${markers.join(', ')})` : '';
+        console.log(`  ${key}: ${val.path}${marker}`);
+      }
+    });
+
+  addDynamicHelp(config, { entityType: 'config' });
+
+  // config:init - generate config.yaml from schema
+  config.command('init')
+    .description('Generate config.yaml from schema with defaults')
+    .option('--force', 'Overwrite existing config.yaml')
+    .action((options) => {
+      const configPath = getConfigPath();
+
+      if (fs.existsSync(configPath) && !options.force) {
+        console.error(`config.yaml already exists: ${configPath}`);
+        console.error('Use --force to overwrite');
+        process.exit(1);
+      }
+
+      const schema = getSchema();
+      const lines = ['# Sailing configuration', '# Generated from schema - edit as needed', ''];
+
+      // Group by section
+      const sections = {};
+      for (const [key, def] of Object.entries(schema)) {
+        const [section, ...rest] = key.split('.');
+        if (!sections[section]) sections[section] = [];
+        sections[section].push({ key: rest.join('.'), ...def });
+      }
+
+      for (const [section, items] of Object.entries(sections)) {
+        lines.push(`${section}:`);
+        for (const item of items) {
+          // Add description as comment
+          lines.push(`  # ${item.description}`);
+          if (item.values) {
+            lines.push(`  # Valid: ${item.values.join(', ')}`);
+          }
+          // Add key: value
+          const value = typeof item.default === 'string' ? item.default : JSON.stringify(item.default);
+          lines.push(`  ${item.key}: ${value}`);
+          lines.push('');
+        }
+      }
+
+      fs.writeFileSync(configPath, lines.join('\n'));
+      console.log(`Created: ${configPath}`);
+    });
+
+  // config:check
+  config.command('check')
+    .description('Validate project setup (files, folders, YAML syntax)')
+    .option('--json', 'JSON output')
+    .option('--fix', 'Create missing directories and files')
+    .action((options) => {
+      const results = {
+        directories: [],
+        files: [],
+        yaml: [],
+        state: null,
+        summary: { ok: 0, warn: 0, error: 0 }
+      };
+
+      const check = (category, name, status, message = '') => {
+        const entry = { name, status, message };
+        results[category].push(entry);
+        if (status === 'ok') results.summary.ok++;
+        else if (status === 'warn') results.summary.warn++;
+        else results.summary.error++;
+        return status;
+      };
+
+      const projectRoot = findProjectRoot();
+      const sailingDir = getSailingDir();
+      const agentConfig = getAgentConfig();
+
+      // 1. Check required directories
+      const requiredDirs = [
+        { name: '.sailing', path: sailingDir },
+        { name: 'artefacts', path: getArtefactsDir() },
+        { name: 'memory', path: getMemoryDir() },
+        { name: 'templates', path: getTemplatesDir() },
+        { name: 'prompting', path: getPromptingDir() },
+        { name: 'prds', path: getPrdsDir() }
+      ];
+
+      // Worktree-only directories (only when use_worktrees is enabled)
+      const worktreeDirs = [
+        { name: 'worktrees', path: getWorktreesDir() },
+        { name: 'agents', path: getAgentsDir() }
+      ];
+
+      for (const dir of requiredDirs) {
+        if (fs.existsSync(dir.path)) {
+          check('directories', dir.name, 'ok', dir.path);
+        } else if (options.fix) {
+          try {
+            fs.mkdirSync(dir.path, { recursive: true });
+            check('directories', dir.name, 'ok', `${dir.path} (created)`);
+          } catch (e) {
+            check('directories', dir.name, 'error', `Failed to create: ${e.message}`);
+          }
+        } else {
+          check('directories', dir.name, 'error', `Missing: ${dir.path}`);
+        }
+      }
+
+      // Worktree directories - only check/create if use_worktrees is enabled
+      for (const dir of worktreeDirs) {
+        if (agentConfig.use_worktrees) {
+          if (fs.existsSync(dir.path)) {
+            check('directories', dir.name, 'ok', dir.path);
+          } else if (options.fix) {
+            try {
+              fs.mkdirSync(dir.path, { recursive: true });
+              check('directories', dir.name, 'ok', `${dir.path} (created)`);
+            } catch (e) {
+              check('directories', dir.name, 'error', `Failed to create: ${e.message}`);
+            }
+          } else {
+            check('directories', dir.name, 'error', `Missing: ${dir.path}`);
+          }
+        } else {
+          // Not needed - skip silently or show as skipped
+          if (fs.existsSync(dir.path)) {
+            check('directories', dir.name, 'ok', `${dir.path} (not required)`);
+          }
+          // If doesn't exist and not needed, don't report
+        }
+      }
+
+      // 2. Check config files exist
+      // Get dist directory (for --fix to copy templates)
+      const distDir = path.join(path.dirname(path.dirname(import.meta.dirname)), 'dist');
+
+      // Generator function for config.yaml from schema
+      const generateConfigYaml = () => {
+        const schema = getSchema();
+        const lines = ['# Sailing configuration', '# Generated from schema - edit as needed', ''];
+        const sections = {};
+        for (const [key, def] of Object.entries(schema)) {
+          const [section, ...rest] = key.split('.');
+          if (!sections[section]) sections[section] = [];
+          sections[section].push({ key: rest.join('.'), ...def });
+        }
+        for (const [section, items] of Object.entries(sections)) {
+          lines.push(`${section}:`);
+          for (const item of items) {
+            lines.push(`  # ${item.description}`);
+            if (item.values) lines.push(`  # Valid: ${item.values.join(', ')}`);
+            const value = typeof item.default === 'string' ? item.default : JSON.stringify(item.default);
+            lines.push(`  ${item.key}: ${value}`);
+            lines.push('');
+          }
+        }
+        return lines.join('\n');
+      };
+
+      const configFiles = [
+        { name: 'paths.yaml', path: path.join(sailingDir, 'paths.yaml'), dist: 'paths.yaml-dist' },
+        { name: 'config.yaml', path: getConfigFile(), generator: generateConfigYaml },
+        { name: 'components.yaml', path: getComponentsFile(), dist: 'components.yaml-dist' },
+        { name: 'state.json', path: getStateFile(), required: true, defaultContent: '{"counters":{"prd":0,"epic":0,"task":0,"story":0}}' }
+      ];
+
+      for (const file of configFiles) {
+        if (fs.existsSync(file.path)) {
+          check('files', file.name, 'ok', file.path);
+        } else if (options.fix) {
+          try {
+            // Create from dist template, generator, or default content
+            if (file.dist) {
+              const distPath = path.join(distDir, file.dist);
+              if (fs.existsSync(distPath)) {
+                fs.copyFileSync(distPath, file.path);
+                check('files', file.name, 'ok', `${file.path} (created from template)`);
+              } else {
+                check('files', file.name, 'error', `Template not found: ${distPath}`);
+              }
+            } else if (file.generator) {
+              fs.writeFileSync(file.path, file.generator());
+              check('files', file.name, 'ok', `${file.path} (generated from schema)`);
+            } else if (file.defaultContent) {
+              fs.writeFileSync(file.path, file.defaultContent);
+              check('files', file.name, 'ok', `${file.path} (created with defaults)`);
+            }
+          } catch (e) {
+            check('files', file.name, 'error', `Failed to create: ${e.message}`);
+          }
+        } else if (file.required) {
+          check('files', file.name, 'error', `Missing: ${file.path}`);
+        } else {
+          check('files', file.name, 'warn', `Not found (optional): ${file.path}`);
+        }
+      }
+
+      // 3. Validate YAML syntax
+      const yamlFiles = [
+        { name: 'paths.yaml', path: path.join(sailingDir, 'paths.yaml') },
+        { name: 'config.yaml', path: getConfigFile() },
+        { name: 'components.yaml', path: getComponentsFile() }
+      ];
+
+      for (const file of yamlFiles) {
+        if (!fs.existsSync(file.path)) continue;
+        try {
+          const content = fs.readFileSync(file.path, 'utf8');
+          yaml.load(content);
+          check('yaml', file.name, 'ok', 'Valid YAML');
+        } catch (e) {
+          check('yaml', file.name, 'error', `Invalid YAML: ${e.message}`);
+        }
+      }
+
+      // 4. Validate state.json
+      const stateFile = getStateFile();
+      if (fs.existsSync(stateFile)) {
+        try {
+          const content = fs.readFileSync(stateFile, 'utf8');
+          const state = JSON.parse(content);
+          if (state.counters && typeof state.counters.prd === 'number') {
+            results.state = { status: 'ok', counters: state.counters };
+            results.summary.ok++;
+          } else {
+            results.state = { status: 'warn', message: 'Missing or invalid counters' };
+            results.summary.warn++;
+          }
+        } catch (e) {
+          results.state = { status: 'error', message: `Invalid JSON: ${e.message}` };
+          results.summary.error++;
+        }
+      }
+
+      // 5. Validate agent config loads
+      try {
+        loadAgentConfig();
+        check('yaml', 'agent config', 'ok', 'Config loads successfully');
+      } catch (e) {
+        check('yaml', 'agent config', 'error', `Failed to load: ${e.message}`);
+      }
+
+      // Output
+      if (options.json) {
+        jsonOut(results);
+        return;
+      }
+
+      const symbol = (s) => s === 'ok' ? '✓' : s === 'warn' ? '⚠' : '✗';
+
+      console.log('Project Check\n');
+
+      console.log('Directories:');
+      for (const d of results.directories) {
+        console.log(`  ${symbol(d.status)} ${d.name.padEnd(12)} ${d.message}`);
+      }
+
+      console.log('\nFiles:');
+      for (const f of results.files) {
+        console.log(`  ${symbol(f.status)} ${f.name.padEnd(16)} ${f.message}`);
+      }
+
+      console.log('\nYAML Validation:');
+      for (const y of results.yaml) {
+        console.log(`  ${symbol(y.status)} ${y.name.padEnd(16)} ${y.message}`);
+      }
+
+      if (results.state) {
+        console.log('\nState:');
+        if (results.state.status === 'ok') {
+          const c = results.state.counters;
+          console.log(`  ${symbol('ok')} counters        PRD=${c.prd} Epic=${c.epic} Task=${c.task} Story=${c.story || 0}`);
+        } else {
+          console.log(`  ${symbol(results.state.status)} state.json      ${results.state.message}`);
+        }
+      }
+
+      console.log('\nSummary:');
+      console.log(`  ✓ OK: ${results.summary.ok}  ⚠ Warnings: ${results.summary.warn}  ✗ Errors: ${results.summary.error}`);
+
+      if (results.summary.error > 0 || results.summary.warn > 0) {
+        console.log('\nRun with --fix to create missing directories and files');
+        if (results.summary.error > 0) process.exit(1);
       }
     });
 

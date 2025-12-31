@@ -5,8 +5,8 @@
 import fs from 'fs';
 import path from 'path';
 import yaml from 'js-yaml';
-import { jsonOut, getPrompting, getMemoryDir, loadFile, getPrdsDir, saveFile, getPath, loadConfig } from '../lib/core.js';
-import { resolvePlaceholders, resolvePath, ensureDir, computeProjectHash } from '../lib/paths.js';
+import { jsonOut, getPrompting, getMemoryDir, loadFile, getPrdsDir, saveFile, getPath, loadPathsConfig, getRunsDir, getAssignmentsDir } from '../lib/core.js';
+import { ensureDir, computeProjectHash } from '../lib/paths.js';
 import { normalizeId } from '../lib/normalize.js';
 import { addDynamicHelp } from '../lib/help.js';
 import { findLogFiles, mergeTaskLog, findTaskEpic, readLogFile } from '../lib/memory.js';
@@ -52,24 +52,8 @@ function findEpicFile(epicId) {
   return null;
 }
 
-/**
- * Get assignments directory path (overridable via paths.yaml: assignments)
- */
-function getAssignmentsDir() {
-  const custom = resolvePath('assignments');
-  const dirPath = custom || resolvePlaceholders('%haven%/assignments');
-  return ensureDir(dirPath);
-}
-
-/**
- * Get runs directory path (overridable via paths.yaml: runs)
- * Stores run sentinel files (TNNN.run) to detect orphan agents
- */
-function getRunsDir() {
-  const custom = resolvePath('runs');
-  const dirPath = custom || resolvePlaceholders('%haven%/runs');
-  return ensureDir(dirPath);
-}
+// Note: getAssignmentsDir() and getRunsDir() are imported from core.js
+// They handle path resolution and placeholders centrally
 
 /**
  * Get run file path for a task
@@ -91,6 +75,7 @@ function isRunning(taskId) {
  */
 function createRunFile(taskId, operation) {
   const filePath = runFilePath(taskId);
+  ensureDir(path.dirname(filePath));
   const data = {
     taskId,
     operation,
@@ -394,6 +379,7 @@ export function registerAssignCommands(program) {
         projectHash: computeProjectHash()
       };
 
+      ensureDir(path.dirname(filePath));
       fs.writeFileSync(filePath, yaml.dump(assignment));
 
       if (options.json) {
@@ -501,7 +487,7 @@ export function registerAssignCommands(program) {
       // 2. Memory (from epic)
       const memory = getTaskMemory(normalized);
       if (memory.content) {
-        const config = loadConfig();
+        const config = loadPathsConfig();
         const memoryPath = `${config.paths.memory}/${memory.epicId}.md`;
         const header = debug
           ? `<!-- section: Memory, source: ${memoryPath} -->\n# Memory: ${memory.epicId}`

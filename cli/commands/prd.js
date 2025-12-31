@@ -9,6 +9,7 @@ import { STATUS, normalizeStatus, statusSymbol } from '../lib/lexicon.js';
 import { nextId } from '../lib/state.js';
 import { parseUpdateOptions } from '../lib/update.js';
 import { addDynamicHelp } from '../lib/help.js';
+import { formatId } from '../lib/config.js';
 
 /**
  * Register PRD commands
@@ -174,7 +175,7 @@ export function registerPrdCommands(program) {
     .option('--json', 'JSON output')
     .action((title, options) => {
       const num = nextId('prd');
-      const id = `PRD-${String(num).padStart(3, '0')}`;
+      const id = formatId('PRD-', num);
       const dirName = `${id}-${toKebab(title)}`;
       const prdsDir = getPrdsDir();
       const prdDir = path.join(prdsDir, dirName);

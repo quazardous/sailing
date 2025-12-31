@@ -56,18 +56,39 @@ function expandPath(p) {
 // Legacy alias
 const expandHome = expandPath;
 
-// Default paths (relative to project root)
-// Note: devinstall.sh should set prompting: ^/prompting in paths.yaml
+/**
+ * Default paths configuration
+ *
+ * Each path has: { path, type }
+ * - type: 'dir' | 'file'
+ * - path: default value (relative to project or using %placeholder%)
+ *
+ * Path prefixes:
+ *   (none)   → relative to project root
+ *   %haven%  → haven directory (~/.sailing/havens/<hash>)
+ *   ~/       → home directory
+ *   ^/       → sailing repo root (devinstall only)
+ */
 const DEFAULT_PATHS = {
-  artefacts: '.sailing/artefacts',
-  memory: '.sailing/memory',
-  templates: '.sailing/templates',
-  prompting: '.sailing/prompting',
-  rudder: '.sailing/rudder',
-  state: '.sailing/state.json',
-  components: '.sailing/components.yaml',
-  skill: '.claude/skills/sailing',
-  commands: '.claude/commands/dev'
+  // Project directories
+  artefacts:  { path: '.sailing/artefacts', type: 'dir' },
+  memory:     { path: '.sailing/memory', type: 'dir' },
+  templates:  { path: '.sailing/templates', type: 'dir' },
+  prompting:  { path: '.sailing/prompting', type: 'dir' },
+  rudder:     { path: '.sailing/rudder', type: 'dir' },
+  skill:      { path: '.claude/skills/sailing', type: 'dir' },
+  commands:   { path: '.claude/commands/dev', type: 'dir' },
+
+  // Project files
+  state:      { path: '.sailing/state.json', type: 'file' },
+  config:     { path: '.sailing/config.yaml', type: 'file' },
+  components: { path: '.sailing/components.yaml', type: 'file' },
+
+  // Haven directories (per-project isolation outside project root)
+  agents:       { path: '%haven%/agents', type: 'dir' },
+  worktrees:    { path: '%haven%/worktrees', type: 'dir' },
+  runs:         { path: '%haven%/runs', type: 'dir' },
+  assignments:  { path: '%haven%/assignments', type: 'dir' }
 };
 
 // Cached config
@@ -146,28 +167,54 @@ export function findProjectRoot() {
 }
 
 /**
- * Load configuration from .sailing/paths.yaml
+ * Helper: extract path string from DEFAULT_PATHS entry or user config
+ * Handles both old format (string) and new format ({ path, type })
+ */
+function getPathString(value) {
+  if (!value) return null;
+  if (typeof value === 'string') return value;
+  if (typeof value === 'object' && value.path) return value.path;
+  return null;
+}
+
+/**
+ * Helper: get path type from DEFAULT_PATHS
+ */
+export function getPathType(key) {
+  const def = DEFAULT_PATHS[key];
+  if (def && typeof def === 'object') return def.type;
+  return 'dir'; // Default to dir for backward compatibility
+}
+
+/**
+ * Load paths configuration from .sailing/paths.yaml
  * Falls back to defaults if not found
  */
-export function loadConfig() {
+export function loadPathsConfig() {
   if (_config) return _config;
 
   const projectRoot = findProjectRoot();
   const pathsConfigPath = path.join(projectRoot, '.sailing', 'paths.yaml');
+
+  // Build default paths (extract path strings)
+  const defaultPaths = {};
+  for (const [key, value] of Object.entries(DEFAULT_PATHS)) {
+    defaultPaths[key] = getPathString(value);
+  }
 
   if (fs.existsSync(pathsConfigPath)) {
     try {
       const content = fs.readFileSync(pathsConfigPath, 'utf8');
       const parsed = yaml.load(content);
       _config = {
-        paths: { ...DEFAULT_PATHS, ...(parsed.paths || {}) }
+        paths: { ...defaultPaths, ...(parsed.paths || {}) }
       };
     } catch (e) {
       console.error(`Warning: Could not parse ${pathsConfigPath}, using defaults`);
-      _config = { paths: DEFAULT_PATHS };
+      _config = { paths: defaultPaths };
     }
   } else {
-    _config = { paths: DEFAULT_PATHS };
+    _config = { paths: defaultPaths };
   }
 
   return _config;
@@ -179,15 +226,31 @@ export function loadConfig() {
  * RULE: Relative paths are ALWAYS resolved from PROJECT ROOT, never from CLI location.
  *
  * Prefixes:
- *   (none)  → relative to project root
- *   /       → absolute path
- *   ~/      → home directory
- *   ^/      → sailing repo root (devinstall mode only)
+ *   (none)     → relative to project root
+ *   /          → absolute path
+ *   ~/         → home directory
+ *   ^/         → sailing repo root (devinstall mode only)
+ *   %haven%    → per-project haven directory
+ *   %home%     → home directory
+ *   %project%  → project root
  */
 export function getPath(key) {
-  const config = loadConfig();
+  const config = loadPathsConfig();
   const projectRoot = findProjectRoot();
-  const configuredPath = config.paths[key] || DEFAULT_PATHS[key];
+
+  // Get configured path or default (handle object format)
+  let configuredPath = config.paths[key];
+  if (!configuredPath) {
+    const def = DEFAULT_PATHS[key];
+    configuredPath = getPathString(def);
+  }
+
+  if (!configuredPath) return null;
+
+  // Handle %placeholder% paths first
+  if (configuredPath.includes('%')) {
+    return resolvePlaceholders(configuredPath);
+  }
 
   // Expand special prefixes (~, ^)
   const expanded = expandPath(configuredPath);
@@ -230,8 +293,29 @@ export function getStateFile() {
   return getPath('state');
 }
 
+export function getConfigFile() {
+  return getPath('config');
+}
+
 export function getComponentsFile() {
   return getPath('components');
+}
+
+// Haven-based paths (outside project root)
+export function getAgentsDir() {
+  return getPath('agents');
+}
+
+export function getWorktreesDir() {
+  return getPath('worktrees');
+}
+
+export function getRunsDir() {
+  return getPath('runs');
+}
+
+export function getAssignmentsDir() {
+  return getPath('assignments');
 }
 
 // Legacy exports for backward compatibility
@@ -294,7 +378,7 @@ export function getTemplates() {
  * Only exposes paths that agents need to know
  */
 export function getPathsInfo() {
-  const config = loadConfig();
+  const config = loadPathsConfig();
   const artefactsPath = getArtefactsDir();
   const templatesPath = getTemplates();
   const componentsPath = getComponentsFile();
@@ -356,6 +440,7 @@ export function getPathsInfo() {
     prompting: getProjectPath('prompting'),
     components: getProjectPath('components'),
     state: getProjectPath('state'),
+    config: getProjectPath('config'),
     // Haven-based paths (with override support)
     haven: {
       template: '%haven%',
@@ -375,25 +460,26 @@ export function getPathsInfo() {
 export function getConfigInfo() {
   const projectRoot = findProjectRoot();
   const pathsConfigPath = path.join(projectRoot, '.sailing', 'paths.yaml');
-  const config = loadConfig();
+  const config = loadPathsConfig();
 
   // Determine which paths are custom vs default
   const pathsInfo = {};
   for (const key of Object.keys(DEFAULT_PATHS)) {
     const configuredPath = config.paths[key];
-    const isCustom = configuredPath !== DEFAULT_PATHS[key];
-    const isHome = configuredPath.startsWith('~/');
+    const defaultPath = getPathString(DEFAULT_PATHS[key]);
+    const isCustom = configuredPath !== defaultPath;
+    const isHome = configuredPath?.startsWith('~/') || false;
+    const isHaven = configuredPath?.includes('%') || false;
 
-    // Expand ~ and compute absolute path
-    const expanded = expandHome(configuredPath);
-    const isAbsolute = path.isAbsolute(expanded);
-    const absolutePath = isAbsolute ? expanded : path.join(projectRoot, expanded);
+    // Get absolute path using getPath (handles all prefixes)
+    const absolutePath = getPath(key);
 
     pathsInfo[key] = {
       path: absolutePath,
       configured: configuredPath,
+      type: getPathType(key),
       isCustom,
-      isAbsolute: isAbsolute || isHome
+      isAbsolute: isHome || isHaven || path.isAbsolute(configuredPath || '')
     };
   }
 

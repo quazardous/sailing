@@ -216,7 +216,7 @@ copy_protected() {
   fi
 }
 
-# paths.yaml always goes in .sailing/
+# paths.yaml always goes in .sailing/ (config.yaml created only if needed)
 copy_protected "$SCRIPT_DIR/dist/paths.yaml-dist" "$DEFAULT_SAILING_DIR/paths.yaml"
 
 # These respect paths.yaml configuration

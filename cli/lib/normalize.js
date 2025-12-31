@@ -1,32 +1,41 @@
 /**
  * ID normalization utilities
- * Handles flexible ID formats: T1, T01, T001, E1, E001, PRD-1, PRD-001
+ * Handles flexible ID formats: T1, T01, T00001, E1, E0001, S1, S0001, PRD-1, PRD-001
+ *
+ * Canonical format uses configured digits (default: 3)
  */
 import path from 'path';
+import { formatId } from './config.js';
 
 /**
- * Normalize entity IDs to canonical format (E001, T001, PRD-001)
- * Accepts: E1, E01, E001, E0001, T2, T02, T002, PRD-1, PRD-001, etc.
+ * Normalize entity IDs to canonical format
+ * Accepts any number of digits, outputs configured padding
  */
 export function normalizeId(id) {
   if (!id) return id;
 
-  // PRD format: PRD-NNN
+  // PRD format
   const prdMatch = id.match(/^PRD-?(\d+)$/i);
   if (prdMatch) {
-    return `PRD-${String(parseInt(prdMatch[1], 10)).padStart(3, '0')}`;
+    return formatId('PRD-', parseInt(prdMatch[1], 10));
   }
 
-  // Epic format: ENNN
+  // Epic format
   const epicMatch = id.match(/^E(\d+)$/i);
   if (epicMatch) {
-    return `E${String(parseInt(epicMatch[1], 10)).padStart(3, '0')}`;
+    return formatId('E', parseInt(epicMatch[1], 10));
   }
 
-  // Task format: TNNN
+  // Task format
   const taskMatch = id.match(/^T(\d+)$/i);
   if (taskMatch) {
-    return `T${String(parseInt(taskMatch[1], 10)).padStart(3, '0')}`;
+    return formatId('T', parseInt(taskMatch[1], 10));
+  }
+
+  // Story format
+  const storyMatch = id.match(/^S(\d+)$/i);
+  if (storyMatch) {
+    return formatId('S', parseInt(storyMatch[1], 10));
   }
 
   return id;
@@ -40,7 +49,7 @@ export function matchesId(filename, rawId) {
   const normalizedInput = normalizeId(rawId);
   const basename = path.basename(filename, '.md');
   // Extract ID from filename (e.g., "T002" from "T002-some-task")
-  const filenameIdMatch = basename.match(/^(T\d+|E\d+|PRD-\d+)/i);
+  const filenameIdMatch = basename.match(/^(T\d+|E\d+|S\d+|PRD-\d+)/i);
   if (!filenameIdMatch) return false;
   const normalizedFilename = normalizeId(filenameIdMatch[1]);
   return normalizedFilename === normalizedInput;
@@ -84,5 +93,6 @@ export function getEntityType(id) {
   if (id.match(/^PRD-?\d+$/i)) return 'prd';
   if (id.match(/^E\d+$/i)) return 'epic';
   if (id.match(/^T\d+$/i)) return 'task';
+  if (id.match(/^S\d+$/i)) return 'story';
   return null;
 }

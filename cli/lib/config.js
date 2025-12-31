@@ -3,25 +3,118 @@
  *
  * Loads and provides access to sailing configuration.
  * Config file: .sailing/config.yaml
+ *
+ * CONFIG_SCHEMA is the single source of truth for all config variables.
+ * Each variable declares: type, default, description, and valid values (for enums).
  */
 import fs from 'fs';
-import path from 'path';
 import yaml from 'js-yaml';
-import { findProjectRoot } from './core.js';
+import { getConfigFile } from './core.js';
 
-// Default configuration values
-const DEFAULTS = {
-  agent: {
-    use_worktrees: false,    // opt-in for worktree isolation
-    risky_mode: true,        // enables --dangerously-skip-permissions
-    sandbox: true,           // enables -sb --sandbox-mode=auto-allow
-    timeout: 3600,           // default agent timeout in seconds
-    merge_strategy: 'merge'  // merge | squash | rebase
+/**
+ * Configuration Schema
+ * Each component declares its config variables here.
+ * Format: 'section.key': { type, default, description, values? }
+ */
+export const CONFIG_SCHEMA = {
+  'agent.use_worktrees': {
+    type: 'boolean',
+    default: false,
+    description: 'Worktree isolation for parallel agents'
+  },
+  'agent.risky_mode': {
+    type: 'boolean',
+    default: true,
+    description: 'Skip permission prompts (--dangerously-skip-permissions)'
+  },
+  'agent.sandbox': {
+    type: 'boolean',
+    default: true,
+    description: 'Enable sandbox mode (-sb --sandbox-mode=auto-allow)'
+  },
+  'agent.timeout': {
+    type: 'number',
+    default: 3600,
+    description: 'Agent timeout in seconds (0 = no timeout)'
+  },
+  'agent.merge_strategy': {
+    type: 'enum',
+    default: 'merge',
+    values: ['merge', 'squash', 'rebase'],
+    description: 'Git merge strategy for worktree changes'
+  },
+  'agent.model': {
+    type: 'enum',
+    default: 'sonnet',
+    values: ['sonnet', 'opus', 'haiku'],
+    description: 'Default Claude model for agents'
+  },
+  'agent.max_parallel': {
+    type: 'number',
+    default: 6,
+    description: 'Maximum parallel agents (0 = unlimited)'
+  },
+  'agent.auto_merge': {
+    type: 'boolean',
+    default: false,
+    description: 'Auto-merge worktree changes on task completion'
+  },
+  'output.color': {
+    type: 'boolean',
+    default: true,
+    description: 'Enable colored output'
+  },
+  'output.verbose': {
+    type: 'number',
+    default: 0,
+    description: 'Verbosity level (0=normal, 1=verbose, 2=debug)'
+  },
+  'logging.level': {
+    type: 'enum',
+    default: 'info',
+    values: ['debug', 'info', 'warn', 'error'],
+    description: 'Minimum log level for task logs'
+  },
+  'ids.prd_digits': {
+    type: 'number',
+    default: 3,
+    description: 'Number of digits for PRD IDs (PRD-001)'
+  },
+  'ids.epic_digits': {
+    type: 'number',
+    default: 3,
+    description: 'Number of digits for Epic IDs (E001)'
+  },
+  'ids.task_digits': {
+    type: 'number',
+    default: 3,
+    description: 'Number of digits for Task IDs (T001)'
+  },
+  'ids.story_digits': {
+    type: 'number',
+    default: 3,
+    description: 'Number of digits for Story IDs (S001)'
   }
 };
 
-// Valid values for enums
-const VALID_MERGE_STRATEGIES = ['merge', 'squash', 'rebase'];
+/**
+ * Build DEFAULTS object from schema
+ */
+function buildDefaults() {
+  const defaults = {};
+  for (const [key, schema] of Object.entries(CONFIG_SCHEMA)) {
+    const parts = key.split('.');
+    let obj = defaults;
+    for (let i = 0; i < parts.length - 1; i++) {
+      if (!obj[parts[i]]) obj[parts[i]] = {};
+      obj = obj[parts[i]];
+    }
+    obj[parts[parts.length - 1]] = schema.default;
+  }
+  return defaults;
+}
+
+const DEFAULTS = buildDefaults();
 
 // Cached config
 let _config = null;
@@ -30,8 +123,7 @@ let _config = null;
  * Get config file path
  */
 export function getConfigPath() {
-  const projectRoot = findProjectRoot();
-  return path.join(projectRoot, '.sailing', 'config.yaml');
+  return getConfigFile();
 }
 
 /**
@@ -80,24 +172,60 @@ function deepMerge(target, source) {
 }
 
 /**
- * Validate configuration values
+ * Validate configuration values against schema
  */
 function validateConfig(config) {
-  // Validate merge_strategy
-  if (config.agent?.merge_strategy) {
-    if (!VALID_MERGE_STRATEGIES.includes(config.agent.merge_strategy)) {
-      console.error(`Warning: Invalid merge_strategy '${config.agent.merge_strategy}'. Valid: ${VALID_MERGE_STRATEGIES.join(', ')}`);
-      config.agent.merge_strategy = DEFAULTS.agent.merge_strategy;
-    }
-  }
+  for (const [key, schema] of Object.entries(CONFIG_SCHEMA)) {
+    const value = getNestedValue(config, key);
+    if (value === undefined) continue;
 
-  // Validate timeout is positive
-  if (config.agent?.timeout !== undefined) {
-    if (typeof config.agent.timeout !== 'number' || config.agent.timeout < 0) {
-      console.error(`Warning: Invalid timeout '${config.agent.timeout}'. Must be positive number.`);
-      config.agent.timeout = DEFAULTS.agent.timeout;
+    switch (schema.type) {
+      case 'boolean':
+        if (typeof value !== 'boolean') {
+          console.error(`Warning: ${key} should be boolean, got ${typeof value}`);
+          setNestedValue(config, key, schema.default);
+        }
+        break;
+      case 'number':
+        if (typeof value !== 'number' || value < 0) {
+          console.error(`Warning: ${key} should be positive number, got ${value}`);
+          setNestedValue(config, key, schema.default);
+        }
+        break;
+      case 'enum':
+        if (!schema.values.includes(value)) {
+          console.error(`Warning: Invalid ${key} '${value}'. Valid: ${schema.values.join(', ')}`);
+          setNestedValue(config, key, schema.default);
+        }
+        break;
     }
   }
+}
+
+/**
+ * Get nested value from object using dot notation
+ */
+function getNestedValue(obj, key) {
+  const parts = key.split('.');
+  let value = obj;
+  for (const part of parts) {
+    if (value === undefined || value === null) return undefined;
+    value = value[part];
+  }
+  return value;
+}
+
+/**
+ * Set nested value in object using dot notation
+ */
+function setNestedValue(obj, key, value) {
+  const parts = key.split('.');
+  let target = obj;
+  for (let i = 0; i < parts.length - 1; i++) {
+    if (!target[parts[i]]) target[parts[i]] = {};
+    target = target[parts[i]];
+  }
+  target[parts[parts.length - 1]] = value;
 }
 
 /**
@@ -146,4 +274,62 @@ export function configExists() {
  */
 export function getDefaults() {
   return JSON.parse(JSON.stringify(DEFAULTS));
+}
+
+/**
+ * Get all config values with schema info for display
+ * Returns array of { key, value, default, description, type, values?, isDefault }
+ */
+export function getConfigDisplay() {
+  const config = loadConfig();
+  const result = [];
+
+  for (const [key, schema] of Object.entries(CONFIG_SCHEMA)) {
+    const value = getNestedValue(config, key);
+    result.push({
+      key,
+      value,
+      default: schema.default,
+      description: schema.description,
+      type: schema.type,
+      values: schema.values,
+      isDefault: value === schema.default
+    });
+  }
+
+  return result;
+}
+
+/**
+ * Get config schema (for documentation/tooling)
+ */
+export function getSchema() {
+  return CONFIG_SCHEMA;
+}
+
+/**
+ * Get ID configuration
+ * @returns {{ prd_digits: number, epic_digits: number, task_digits: number, story_digits: number }}
+ */
+export function getIdsConfig() {
+  const config = loadConfig();
+  return config.ids;
+}
+
+/**
+ * Format an ID with configured digits
+ * @param {string} prefix - 'PRD-', 'E', 'T', or 'S'
+ * @param {number} num - The numeric part
+ * @returns {string} Formatted ID
+ */
+export function formatId(prefix, num) {
+  const ids = getIdsConfig();
+  const digitMap = {
+    'PRD-': ids.prd_digits,
+    'E': ids.epic_digits,
+    'T': ids.task_digits,
+    'S': ids.story_digits
+  };
+  const digits = digitMap[prefix] || 3;
+  return `${prefix}${String(num).padStart(digits, '0')}`;
 }

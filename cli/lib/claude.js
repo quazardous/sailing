@@ -7,15 +7,11 @@ import { spawn } from 'child_process';
 import fs from 'fs';
 import path from 'path';
 import { getAgentConfig } from './config.js';
-import { resolvePlaceholders, resolvePath, ensureDir } from './paths.js';
+import { getAgentsDir } from './core.js';
+import { ensureDir } from './paths.js';
 
-/**
- * Get agents base directory (overridable via paths.yaml: agents)
- */
-function getAgentsBaseDir() {
-  const custom = resolvePath('agents');
-  return custom || resolvePlaceholders('%haven%/agents');
-}
+// Alias for internal use
+const getAgentsBaseDir = getAgentsDir;
 
 /**
  * Build Claude command arguments based on config and options

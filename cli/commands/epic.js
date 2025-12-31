@@ -9,6 +9,7 @@ import { STATUS, normalizeStatus, statusSymbol } from '../lib/lexicon.js';
 import { nextId } from '../lib/state.js';
 import { parseUpdateOptions } from '../lib/update.js';
 import { addDynamicHelp } from '../lib/help.js';
+import { formatId } from '../lib/config.js';
 
 /**
  * Find an epic file by ID
@@ -201,7 +202,7 @@ export function registerEpicCommands(program) {
       }
 
       const num = nextId('epic');
-      const id = `E${String(num).padStart(3, '0')}`;
+      const id = formatId('E', num);
       const filename = `${id}-${toKebab(title)}.md`;
       const epicPath = path.join(epicsDir, filename);
 
@@ -239,7 +240,7 @@ export function registerEpicCommands(program) {
       let body = loadTemplate('epic');
       if (body) {
         body = body.replace(/^---[\s\S]*?---\s*/, '');
-        body = body.replace(/# E000: Epic Title/g, `# ${id}: ${title}`);
+        body = body.replace(/# E0000: Epic Title/g, `# ${id}: ${title}`);
       } else {
         body = `\n# ${id}: ${title}\n\n## Description\n\n[Add description]\n\n## Tasks\n\n- [ ] [Task 1]\n\n## Acceptance Criteria\n\n- [ ] [Criterion 1]\n`;
       }
@@ -511,7 +512,7 @@ updated: '${new Date().toISOString()}'
 `;
       } else {
         // Replace placeholders in template
-        template = template.replace(/E000/g, epicId);
+        template = template.replace(/E0000/g, epicId);
         template = template.replace(/created: ''/g, `created: '${new Date().toISOString()}'`);
         template = template.replace(/updated: ''/g, `updated: '${new Date().toISOString()}'`);
       }

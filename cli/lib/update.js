@@ -2,6 +2,7 @@
  * Update utilities for parsing flags and updating entity data
  */
 import { normalizeStatus, STATUS, EFFORT, PRIORITY } from './lexicon.js';
+import { formatId } from './config.js';
 
 /**
  * Parse update flags from command options and apply to frontmatter data
@@ -123,7 +124,7 @@ export function parseUpdateOptions(options, data, entityType) {
       const stories = Array.isArray(options.story) ? options.story : [options.story];
       data.stories = stories.map(s => {
         const num = s.match(/\d+/)?.[0];
-        return num ? `S${num.padStart(3, '0')}` : s;
+        return num ? formatId('S', parseInt(num, 10)) : s;
       });
       updated = true;
     }
@@ -134,7 +135,7 @@ export function parseUpdateOptions(options, data, entityType) {
       if (!Array.isArray(data.stories)) data.stories = [];
       stories.forEach(s => {
         const num = s.match(/\d+/)?.[0];
-        const normalized = num ? `S${num.padStart(3, '0')}` : s;
+        const normalized = num ? formatId('S', parseInt(num, 10)) : s;
         if (!data.stories.includes(normalized)) {
           data.stories.push(normalized);
         }
@@ -148,7 +149,7 @@ export function parseUpdateOptions(options, data, entityType) {
       if (Array.isArray(data.stories)) {
         const toRemove = stories.map(s => {
           const num = s.match(/\d+/)?.[0];
-          return num ? `S${num.padStart(3, '0')}` : s;
+          return num ? formatId('S', parseInt(num, 10)) : s;
         });
         data.stories = data.stories.filter(s => !toRemove.includes(s));
       }

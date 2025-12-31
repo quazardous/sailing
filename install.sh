@@ -374,6 +374,7 @@ copy_dir "$SRC/commands/dev" "$COMMANDS"
 # Dist files (only if target doesn't exist)
 echo "Installing dist files..."
 copy_file "$SRC/dist/paths.yaml-dist" "$DEFAULT_SAILING_DIR/paths.yaml" true
+# config.yaml: created on demand via 'rudder config:init' (defaults from schema)
 copy_file "$SRC/dist/components.yaml-dist" "$DEFAULT_SAILING_DIR/components.yaml" true
 copy_file "$SRC/dist/ROADMAP.md-dist" "$ARTEFACTS/ROADMAP.md" true
 copy_file "$SRC/dist/POSTIT.md-dist" "$ARTEFACTS/POSTIT.md" true

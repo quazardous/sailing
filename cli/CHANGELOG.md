@@ -2,6 +2,28 @@
 
 All notable changes to the Rudder CLI will be documented in this file.
 
+## [1.2.0] - 2025-12-31
+
+### Added
+- `config:init` command generates config.yaml from schema (replaces config.yaml-dist)
+- Configurable ID digits: `ids.prd_digits`, `ids.epic_digits`, `ids.task_digits`, `ids.story_digits`
+- New agent configs: `agent.model`, `agent.max_parallel`, `agent.auto_merge`
+- New output configs: `output.color`, `output.verbose`
+- New logging config: `logging.level`
+- Config descriptions displayed with `rudder config`
+- Path type metadata (dir/file) in DEFAULT_PATHS
+
+### Changed
+- `config` command output now uses YAML format with comments
+- Centralized `formatId()` function for consistent ID formatting
+- Haven paths (agents, worktrees, runs, assignments) now in DEFAULT_PATHS
+- `loadConfig` renamed to `loadPathsConfig` in core.js (avoids collision)
+- `assign.js` now uses centralized `getRunsDir()` and `getAssignmentsDir()`
+- `config:check --fix` uses `config:init` instead of copying dist file
+
+### Removed
+- `dist/config.yaml-dist` (replaced by schema-driven generation)
+
 ## [1.1.0] - 2025-12-31
 
 ### Added

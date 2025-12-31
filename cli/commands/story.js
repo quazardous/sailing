@@ -7,6 +7,7 @@ import { findPrdDirs, findFiles, loadFile, saveFile, toKebab, loadTemplate, json
 import { normalizeId, matchesId, matchesPrdDir } from '../lib/normalize.js';
 import { nextId } from '../lib/state.js';
 import { addDynamicHelp } from '../lib/help.js';
+import { formatId } from '../lib/config.js';
 
 const STORY_TYPES = ['user', 'technical', 'api'];
 
@@ -261,7 +262,7 @@ export function registerStoryCommands(program) {
       }
 
       const num = nextId('story');
-      const id = `S${String(num).padStart(3, '0')}`;
+      const id = formatId('S', num);
       const filename = `${id}-${toKebab(title)}.md`;
       const storyPath = path.join(storiesDir, filename);
 
@@ -277,7 +278,7 @@ export function registerStoryCommands(program) {
       let body = loadTemplate('story');
       if (body) {
         body = body.replace(/^---[\s\S]*?---\s*/, '');
-        body = body.replace(/# S000: Story Title/g, `# ${id}: ${title}`);
+        body = body.replace(/# S0000: Story Title/g, `# ${id}: ${title}`);
       } else {
         body = `\n# ${id}: ${title}\n\n## Story\n\n[Define the story]\n\n## Acceptance Criteria\n\n- [ ] Given X, when Y, then Z\n\n## Context\n\n**Where**: \n**Why**: \n**Constraints**: \n`;
       }

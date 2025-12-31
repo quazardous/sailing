@@ -4,7 +4,7 @@
  */
 import fs from 'fs';
 import path from 'path';
-import { findProjectRoot, getSailingDir, loadConfig, jsonOut } from '../lib/core.js';
+import { findProjectRoot, getSailingDir, loadPathsConfig, jsonOut } from '../lib/core.js';
 import { addDynamicHelp } from '../lib/help.js';
 
 // Base sailing permissions (path-independent)
@@ -27,7 +27,7 @@ const BASE_PERMISSIONS = [
  * Get sailing permissions based on paths.yaml configuration
  */
 function getSailingPermissions() {
-  const config = loadConfig();
+  const config = loadPathsConfig();
   const perms = [...BASE_PERMISSIONS];
 
   // Add Read permission for the sailing directory

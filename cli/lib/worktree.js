@@ -7,17 +7,11 @@
 import fs from 'fs';
 import path from 'path';
 import { execSync } from 'child_process';
-import { findProjectRoot } from './core.js';
-import { resolvePlaceholders, resolvePath, ensureDir } from './paths.js';
+import { findProjectRoot, getWorktreesDir as _getWorktreesDir } from './core.js';
+import { ensureDir } from './paths.js';
 
-/**
- * Get the worktrees base directory (overridable via paths.yaml: worktrees)
- * Default: %haven%/worktrees
- */
-export function getWorktreesDir() {
-  const custom = resolvePath('worktrees');
-  return custom || resolvePlaceholders('%haven%/worktrees');
-}
+// Re-export from core.js for backward compatibility
+export const getWorktreesDir = _getWorktreesDir;
 
 /**
  * Get worktree path for a task
