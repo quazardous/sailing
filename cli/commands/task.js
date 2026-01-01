@@ -5,6 +5,7 @@ import fs from 'fs';
 import path from 'path';
 import { findPrdDirs, findFiles, loadFile, saveFile, toKebab, loadTemplate, jsonOut, getMemoryDir } from '../lib/core.js';
 import { normalizeId, matchesId, matchesPrdDir } from '../lib/normalize.js';
+import { findEpicParent } from '../lib/entities.js';
 import { STATUS, normalizeStatus, isStatusDone, isStatusNotStarted, isStatusInProgress, isStatusCancelled, statusSymbol } from '../lib/lexicon.js';
 import { buildDependencyGraph, blockersResolved } from '../lib/graph.js';
 import { nextId } from '../lib/state.js';
@@ -26,6 +27,8 @@ function findTaskFile(taskId) {
   }
   return null;
 }
+
+// findEpicParent imported from lib/entities.js
 
 /**
  * Register task commands
@@ -199,22 +202,39 @@ export function registerTaskCommands(program) {
 
   // task:create
   task.command('create <parent> <title>')
-    .description('Create task under epic (e.g., PRD-001/E035 "Title")')
+    .description('Create task under epic (e.g., E035 or PRD-001/E035 "Title")')
     .option('--story <id>', 'Link to story (repeatable)', (v, arr) => arr.concat(v), [])
     .option('--tag <tag>', 'Add tag (repeatable, slugified to kebab-case)', (v, arr) => arr.concat(v), [])
     .option('--target-version <comp:ver>', 'Target version (repeatable)', (v, arr) => arr.concat(v), [])
     .option('--json', 'JSON output')
     .action((parent, title, options) => {
-      // Parse parent: PRD-001/E001 or PRD-001
-      const parentParts = parent.split('/');
-      const prdPart = parentParts[0];
-      const epicPart = parentParts[1];
+      let prdDir, epicPart, prdId;
 
-      // Find PRD directory
-      const prdDir = findPrdDirs().find(d => matchesPrdDir(d, prdPart));
-      if (!prdDir) {
-        console.error(`PRD not found: ${prdPart}`);
-        process.exit(1);
+      // Check if parent is just an epic ID (e.g., E0076)
+      const epicOnlyMatch = parent.match(/^E\d+$/i);
+      if (epicOnlyMatch) {
+        // Find PRD from epic
+        const epicInfo = findEpicParent(parent);
+        if (!epicInfo) {
+          console.error(`Epic not found: ${parent}`);
+          process.exit(1);
+        }
+        prdDir = epicInfo.prdDir;
+        epicPart = normalizeId(parent);
+        prdId = epicInfo.prdId;
+      } else {
+        // Parse parent: PRD-001/E001 or PRD-001
+        const parentParts = parent.split('/');
+        const prdPart = parentParts[0];
+        epicPart = parentParts[1] ? normalizeId(parentParts[1]) : null;
+
+        // Find PRD directory
+        prdDir = findPrdDirs().find(d => matchesPrdDir(d, prdPart));
+        if (!prdDir) {
+          console.error(`PRD not found: ${prdPart}`);
+          process.exit(1);
+        }
+        prdId = path.basename(prdDir).match(/^PRD-\d+/)?.[0] || path.basename(prdDir).split('-').slice(0, 2).join('-');
       }
 
       const tasksDir = path.join(prdDir, 'tasks');
@@ -231,7 +251,7 @@ export function registerTaskCommands(program) {
         id,
         title,
         status: 'Not Started',
-        parent: epicPart ? `${path.basename(prdDir).split('-').slice(0,2).join('-')} / ${epicPart}` : path.basename(prdDir).split('-').slice(0,2).join('-'),
+        parent: epicPart ? `${prdId} / ${epicPart}` : prdId,
         assignee: '',
         blocked_by: [],
         stories: [],

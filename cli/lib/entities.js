@@ -228,3 +228,32 @@ export function findToolset(projectRoot) {
   }
   return null;
 }
+
+/**
+ * Find PRD directory containing an epic
+ * @param {string} epicId - Epic ID (e.g., E0076)
+ * @returns {{ prdDir: string, epicFile: string, prdId: string } | null}
+ */
+export function findEpicParent(epicId) {
+  epicId = normalizeId(epicId, 'E');
+  const prdsDir = getPrdsDir();
+  if (!fs.existsSync(prdsDir)) return null;
+
+  for (const prdDir of fs.readdirSync(prdsDir)) {
+    const prdPath = path.join(prdsDir, prdDir);
+    const epicsDir = path.join(prdPath, 'epics');
+    if (!fs.existsSync(epicsDir)) continue;
+
+    for (const file of fs.readdirSync(epicsDir)) {
+      if (file.startsWith(epicId + '-') && file.endsWith('.md')) {
+        const prdId = prdDir.match(/^PRD-\d+/)?.[0] || prdDir.split('-').slice(0, 2).join('-');
+        return {
+          prdDir: prdPath,
+          epicFile: path.join(epicsDir, file),
+          prdId
+        };
+      }
+    }
+  }
+  return null;
+}
