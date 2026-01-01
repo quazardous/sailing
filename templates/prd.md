@@ -2,6 +2,7 @@
 id: PRD-NNN
 title: Title
 status: Draft
+branching: flat  # flat | prd | epic (set by prd-review)
 tags: []
 milestones:
   - id: M1

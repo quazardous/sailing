@@ -17,6 +17,11 @@ import { getConfigFile } from './core.js';
  * Format: 'section.key': { type, default, description, values? }
  */
 export const CONFIG_SCHEMA = {
+  'git.main_branch': {
+    type: 'string',
+    default: 'main',
+    description: 'Main branch name (main, master, develop, etc.)'
+  },
   'agent.use_subprocess': {
     type: 'boolean',
     default: false,
@@ -62,7 +67,23 @@ export const CONFIG_SCHEMA = {
   'agent.auto_merge': {
     type: 'boolean',
     default: false,
-    description: 'Auto-merge worktree changes on task completion'
+    description: 'Auto-merge worktree changes on task completion (local)'
+  },
+  'agent.auto_pr': {
+    type: 'boolean',
+    default: true,
+    description: 'Auto-create PR/MR when agent completes successfully'
+  },
+  'agent.pr_draft': {
+    type: 'boolean',
+    default: false,
+    description: 'Create PRs as drafts by default'
+  },
+  'agent.pr_provider': {
+    type: 'enum',
+    default: 'auto',
+    values: ['auto', 'github', 'gitlab'],
+    description: 'PR provider (auto detects from git remote)'
   },
   'output.color': {
     type: 'boolean',
@@ -197,6 +218,12 @@ function validateConfig(config) {
           setNestedValue(config, key, schema.default);
         }
         break;
+      case 'string':
+        if (typeof value !== 'string' || value.trim() === '') {
+          console.error(`Warning: ${key} should be non-empty string, got ${typeof value}`);
+          setNestedValue(config, key, schema.default);
+        }
+        break;
       case 'enum':
         if (!schema.values.includes(value)) {
           console.error(`Warning: Invalid ${key} '${value}'. Valid: ${schema.values.join(', ')}`);
@@ -319,6 +346,15 @@ export function getSchema() {
 export function getIdsConfig() {
   const config = loadConfig();
   return config.ids;
+}
+
+/**
+ * Get git configuration
+ * @returns {{ main_branch: string }}
+ */
+export function getGitConfig() {
+  const config = loadConfig();
+  return config.git;
 }
 
 /**

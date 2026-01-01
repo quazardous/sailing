@@ -327,6 +327,7 @@ export function registerAgentCommands(program) {
     .option('--timeout <seconds>', 'Execution timeout (default: 600)', parseInt)
     .option('--worktree', 'Create isolated worktree (overrides config)')
     .option('--no-worktree', 'Skip worktree creation (overrides config)')
+    .option('--stderr-to-file [path]', 'Redirect stderr to file only (default: run.log)')
     .option('--dry-run', 'Show what would be done without spawning')
     .option('--json', 'JSON output')
     .action((taskId, options) => {
@@ -424,13 +425,16 @@ export function registerAgentCommands(program) {
           process.exit(1);
         }
 
-        // Check for commits
+        // Check for commits (git worktree requires at least one commit)
         try {
           execSync('git rev-parse HEAD 2>/dev/null', gitOpts);
         } catch {
           console.error('ERROR: No commits in repository\n');
-          console.error('Worktree isolation requires at least one commit.');
-          console.error('Create initial commit: git add -A && git commit -m "init"');
+          console.error('Git worktree requires at least one commit to create branches.');
+          console.error('This is a git limitation, not a sailing restriction.\n');
+          console.error('Either:');
+          console.error('  1. Create initial commit: git add -A && git commit -m "init"');
+          console.error('  2. Or use inline mode: --no-worktree');
           process.exit(1);
         }
       }
@@ -541,7 +545,8 @@ Start by running \`rudder assign:claim ${taskId}\` to get your instructions.
         cwd,
         logFile,
         timeout,
-        agentDir
+        agentDir,
+        stderrToFile: options.stderrToFile
       });
 
       // Update state
@@ -566,6 +571,21 @@ Start by running \`rudder assign:claim ${taskId}\` to get your instructions.
           currentState.agents[taskId].ended_at = new Date().toISOString();
           delete currentState.agents[taskId].pid;
           saveState(currentState);
+
+          // Auto-create PR if enabled and agent completed successfully
+          if (code === 0 && agentConfig.auto_pr && currentState.agents[taskId].worktree) {
+            try {
+              const draftFlag = agentConfig.pr_draft ? '--draft' : '';
+              execSync(`${process.argv[0]} ${process.argv[1]} worktree pr ${taskId} ${draftFlag} --json`, {
+                cwd: projectRoot,
+                encoding: 'utf8',
+                stdio: ['pipe', 'pipe', 'pipe']
+              });
+              console.log(`Auto-PR created for ${taskId}`);
+            } catch (e) {
+              console.error(`Auto-PR failed for ${taskId}: ${e.message}`);
+            }
+          }
         }
       });
 
@@ -763,6 +783,7 @@ Start by running \`rudder assign:claim ${taskId}\` to get your instructions.
   agent.command('run <task-id>')
     .description('[DEPRECATED] Use agent:spawn instead')
     .option('--timeout <seconds>', 'Execution timeout in seconds (overrides config)', parseInt)
+    .option('--stderr-to-file [path]', 'Redirect stderr to file only (default: run.log)')
     .option('--json', 'JSON output')
     .action((taskId, options) => {
       taskId = taskId.toUpperCase();
@@ -826,7 +847,8 @@ Start by running \`rudder assign:claim ${taskId}\` to get your instructions.
         cwd,
         logFile,
         timeout,
-        agentDir
+        agentDir,
+        stderrToFile: options.stderrToFile
       });
 
       // Update state with PID

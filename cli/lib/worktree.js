@@ -9,6 +9,20 @@ import path from 'path';
 import { execSync } from 'child_process';
 import { findProjectRoot, getWorktreesDir as _getWorktreesDir } from './core.js';
 import { ensureDir } from './paths.js';
+import { getGitConfig } from './config.js';
+
+/**
+ * Get configured main branch name
+ * @returns {string} Main branch name (from config or default 'main')
+ */
+export function getMainBranch() {
+  try {
+    const gitConfig = getGitConfig();
+    return gitConfig?.main_branch || 'main';
+  } catch {
+    return 'main';
+  }
+}
 
 // Re-export from core.js for backward compatibility
 export const getWorktreesDir = _getWorktreesDir;
@@ -25,10 +39,136 @@ export function getWorktreePath(taskId) {
 /**
  * Get branch name for a task
  * @param {string} taskId - Task ID
- * @returns {string} Branch name (e.g., agent/T042)
+ * @returns {string} Branch name (e.g., task/T042)
  */
 export function getBranchName(taskId) {
-  return `agent/${taskId}`;
+  return `task/${taskId}`;
+}
+
+/**
+ * Get branch name for a PRD
+ * @param {string} prdId - PRD ID (e.g., PRD-001)
+ * @returns {string} Branch name (e.g., prd/PRD-001)
+ */
+export function getPrdBranchName(prdId) {
+  return `prd/${prdId}`;
+}
+
+/**
+ * Get branch name for an Epic
+ * @param {string} epicId - Epic ID (e.g., E001)
+ * @returns {string} Branch name (e.g., epic/E001)
+ */
+export function getEpicBranchName(epicId) {
+  return `epic/${epicId}`;
+}
+
+/**
+ * Check if a branch exists
+ * @param {string} branchName - Full branch name
+ * @returns {boolean}
+ */
+export function branchExists(branchName) {
+  const projectRoot = findProjectRoot();
+  try {
+    execSync(`git rev-parse --verify "${branchName}"`, {
+      cwd: projectRoot,
+      stdio: ['pipe', 'pipe', 'pipe']
+    });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Create a branch if it doesn't exist
+ * @param {string} branchName - Branch name to create
+ * @param {string} baseBranch - Base branch to create from (default: configured main branch)
+ * @returns {{ created: boolean, branch: string, error?: string }}
+ */
+export function ensureBranch(branchName, baseBranch = null) {
+  baseBranch = baseBranch || getMainBranch();
+  const projectRoot = findProjectRoot();
+
+  if (branchExists(branchName)) {
+    return { created: false, branch: branchName, existed: true };
+  }
+
+  try {
+    execSync(`git branch "${branchName}" "${baseBranch}"`, {
+      cwd: projectRoot,
+      encoding: 'utf8',
+      stdio: ['pipe', 'pipe', 'pipe']
+    });
+    return { created: true, branch: branchName };
+  } catch (e) {
+    return { created: false, branch: branchName, error: e.message };
+  }
+}
+
+/**
+ * Get parent branch for a task based on branching strategy
+ * @param {string} taskId - Task ID
+ * @param {object} context - Context with prdId, epicId, branching strategy
+ * @returns {string} Parent branch name
+ */
+export function getParentBranch(taskId, context = {}) {
+  const { prdId, epicId, branching = 'flat' } = context;
+  const mainBranch = getMainBranch();
+
+  switch (branching) {
+    case 'epic':
+      if (epicId) return getEpicBranchName(epicId);
+      if (prdId) return getPrdBranchName(prdId);
+      return mainBranch;
+    case 'prd':
+      if (prdId) return getPrdBranchName(prdId);
+      return mainBranch;
+    case 'flat':
+    default:
+      return mainBranch;
+  }
+}
+
+/**
+ * Ensure branch hierarchy exists for a task
+ * @param {object} context - { prdId, epicId, branching, mainBranch }
+ * @returns {{ branches: string[], created: string[], errors: string[] }}
+ */
+export function ensureBranchHierarchy(context) {
+  const { prdId, epicId, branching = 'flat' } = context;
+  const mainBranch = context.mainBranch || getMainBranch();
+  const branches = [];
+  const created = [];
+  const errors = [];
+
+  if (branching === 'flat') {
+    return { branches: [mainBranch], created: [], errors: [] };
+  }
+
+  // PRD branch (for 'prd' and 'epic' strategies)
+  if (prdId && (branching === 'prd' || branching === 'epic')) {
+    const prdBranch = getPrdBranchName(prdId);
+    branches.push(prdBranch);
+
+    const result = ensureBranch(prdBranch, mainBranch);
+    if (result.created) created.push(prdBranch);
+    if (result.error) errors.push(`${prdBranch}: ${result.error}`);
+  }
+
+  // Epic branch (for 'epic' strategy only)
+  if (epicId && branching === 'epic') {
+    const epicBranch = getEpicBranchName(epicId);
+    const parentBranch = prdId ? getPrdBranchName(prdId) : mainBranch;
+    branches.push(epicBranch);
+
+    const result = ensureBranch(epicBranch, parentBranch);
+    if (result.created) created.push(epicBranch);
+    if (result.error) errors.push(`${epicBranch}: ${result.error}`);
+  }
+
+  return { branches, created, errors };
 }
 
 /**
@@ -188,8 +328,8 @@ export function listWorktrees() {
         current.head = line.substring(5);
       } else if (line.startsWith('branch ')) {
         current.branch = line.substring(7);
-        // Extract task ID from agent/TNNN pattern
-        const match = current.branch.match(/refs\/heads\/agent\/(T\d+)$/);
+        // Extract task ID from task/TNNN pattern
+        const match = current.branch.match(/refs\/heads\/task\/(T\d+)$/);
         if (match) {
           current.taskId = match[1];
         }

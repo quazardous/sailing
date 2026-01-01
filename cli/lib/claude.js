@@ -139,6 +139,7 @@ export function buildClaudeArgs(options) {
  * @param {number} [options.timeout] - Timeout in seconds
  * @param {boolean} [options.riskyMode] - Override risky_mode config
  * @param {boolean} [options.sandbox] - Override sandbox config
+ * @param {boolean|string} [options.stderrToFile] - Redirect stderr to file only (true=logFile, string=custom path)
  * @returns {{ process: ChildProcess, pid: number, logFile: string, srtConfig?: string }}
  */
 export function spawnClaude(options) {
@@ -207,9 +208,26 @@ export function spawnClaude(options) {
     detached: false
   });
 
-  // Pipe stdout/stderr to log file
-  child.stdout.pipe(logStream);
-  child.stderr.pipe(logStream);
+  // Pipe stdout to log file and console
+  child.stdout.on('data', (data) => {
+    logStream.write(data);
+    process.stdout.write(data);
+  });
+
+  // Pipe stderr: to file only (--stderr-to-file) or console + log (default)
+  const stderrToFile = options.stderrToFile;
+  if (stderrToFile) {
+    // Stderr to file only (quiet mode)
+    const stderrPath = typeof stderrToFile === 'string' ? stderrToFile : logFile;
+    const stderrStream = stderrPath === logFile ? logStream : fs.createWriteStream(stderrPath, { flags: 'a' });
+    child.stderr.pipe(stderrStream);
+  } else {
+    // Default: stderr to both console and log (visible for srt debugging)
+    child.stderr.on('data', (data) => {
+      logStream.write(data);
+      process.stderr.write(data);
+    });
+  }
 
   // Handle timeout
   let timeoutId = null;

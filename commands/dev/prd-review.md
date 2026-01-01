@@ -75,7 +75,38 @@ Example:
 - Check version target alignment
 - Flag mismatches between PRD scope and ROADMAP vision
 
-### 7. Stories Assessment
+### 7. Branching Strategy (MANDATORY)
+
+Evaluate and recommend `branching` level for git workflow:
+
+| Critère | flat | prd | epic |
+|---------|------|-----|------|
+| Epics count | 1-2 | 3-5 | 6+ |
+| Breaking changes | No | Yes | Major |
+| Review scope | Task-level | Feature-level | Sub-feature |
+| Rollback risk | Low | Medium | High |
+| Team size | Solo | 2-3 | 4+ |
+| Estimated tasks | <10 | 10-30 | 30+ |
+
+**Branching levels:**
+- `flat`: task branches from main directly (`task/T001` → `main`)
+- `prd`: PRD feature branch (`task/T001` → `prd/PRD-001` → `main`)
+- `epic`: Epic sub-branches (`task/T001` → `epic/E001` → `prd/PRD-001` → `main`)
+
+**Default: `flat`** (simplicity first)
+
+**Upgrade to `prd` if:**
+- 3+ epics
+- Breaking changes requiring isolation
+- Need feature-level review before merge to main
+- Medium/high rollback risk
+
+**Upgrade to `epic` if:**
+- 6+ epics with complex dependencies
+- Large team with parallel epic work
+- Need sub-feature review gates
+
+### 8. Stories Assessment
 
 Evaluate if user stories are needed for this PRD.
 
@@ -115,6 +146,10 @@ Evaluate if user stories are needed for this PRD.
 - Features implemented: [list]
 - Version match: ✅ / ⚠️
 
+### Branching Recommendation
+- Recommended: `flat` | `prd` | `epic`
+- Rationale: [why this level]
+
 ### Stories Recommendation
 - Stories needed: ✅ / ❌
 - Personas identified: [list]
@@ -138,6 +173,7 @@ Returns to main thread:
 - List of improvements needed
 - Proposed milestone versions (table)
 - ROADMAP alignment assessment
+- **Branching recommendation** (flat/prd/epic + rationale)
 - **Stories recommendation** (needed? + proposed outlines)
 - Questions for user decision
 
@@ -148,6 +184,7 @@ Returns to main thread:
 ## Materialization
 
 After user validates:
+- Agent updates PRD `branching` field with confirmed strategy
 - Agent updates PRD `milestones[].versions` with confirmed targets
 - Agent applies approved improvements to PRD
 
