@@ -1,0 +1,267 @@
+# Workflow Matrix - Single Source of Truth
+# Used by: rudder workflow:show, documentation generation
+#
+# Structure:
+#   workflow:
+#     phases:
+#       - name: phase-name
+#         actor: skill | agent
+#         commands:
+#           - cmd: command with {ENTITY} placeholder
+#             mode: both | inline | subprocess
+#             purpose: why this command
+#             output: what it provides
+
+task-start:
+  description: Execute a task implementation
+  entity: task
+
+  phases:
+    - name: pre-flight
+      actor: skill
+      commands:
+        - cmd: memory:sync
+          mode: both
+          purpose: Consolidate pending logs before work
+          required: true
+
+        - cmd: deps:ready --task {TASK}
+          mode: both
+          purpose: Verify task unblocked
+          required: true
+
+        - cmd: task:show {TASK}
+          mode: both
+          purpose: Review requirements before spawning agent
+          required: true
+
+    - name: context-load
+      actor: skill
+      commands:
+        # Inline mode: skill assembles prompt for Task tool
+        - cmd: context:skill task-start
+          mode: inline
+          purpose: Skill orchestration context
+          output: orchestration rules, reminders
+
+        - cmd: context:agent task-start
+          mode: inline
+          purpose: Agent execution rules
+          output: constitutional rules, CLI contract
+
+        - cmd: memory:show {TASK}
+          mode: inline
+          purpose: Epic memory for agent
+          output: Agent Context section
+
+        - cmd: task:show {TASK}
+          mode: inline
+          purpose: Task content for agent
+          output: full task file
+
+        # Subprocess mode: skill spawns, agent claims
+        - cmd: context:skill task-start
+          mode: subprocess
+          purpose: Skill orchestration context
+          output: spawn instructions
+
+        - cmd: agent:spawn {TASK}
+          mode: subprocess
+          purpose: Launch agent subprocess
+          output: spawned agent PID
+
+    - name: agent-init
+      actor: agent
+      commands:
+        # Inline: agent receives context from Task tool prompt (no commands)
+
+        # Subprocess: agent claims assignment
+        - cmd: assign:claim {TASK}
+          mode: subprocess
+          purpose: Get full compiled prompt
+          output: agent contract + memory + epic + task
+
+    - name: execution
+      actor: agent
+      commands:
+        - cmd: task:log {TASK} "message" --level
+          mode: both
+          purpose: Log progress and insights
+          required: true
+          note: Minimum 2 entries (1 TIP required)
+
+    - name: completion
+      actor: agent
+      commands:
+        - cmd: assign:release {TASK}
+          mode: subprocess
+          purpose: Release assignment, update status
+          output: marks task Done
+
+      # Inline: skill handles completion
+
+    - name: post-flight
+      actor: skill
+      commands:
+        - cmd: task:update {TASK} --status Done
+          mode: inline
+          purpose: Update task status after agent returns
+
+        - cmd: agent:status {TASK}
+          mode: subprocess
+          purpose: Check agent completion status
+
+        - cmd: agent:merge {TASK}
+          mode: subprocess
+          purpose: Merge worktree changes (if worktree mode)
+          condition: use_worktrees
+
+epic-breakdown:
+  description: Decompose epic into tasks
+  entity: epic
+
+  phases:
+    - name: pre-flight
+      actor: skill
+      commands:
+        - cmd: memory:sync
+          mode: both
+          purpose: Consolidate pending logs
+
+        - cmd: epic:show {EPIC}
+          mode: both
+          purpose: Review epic before breakdown
+
+    - name: context-load
+      actor: skill
+      commands:
+        - cmd: context:skill epic-breakdown
+          mode: inline
+          purpose: Skill orchestration context
+
+        - cmd: context:agent epic-breakdown
+          mode: inline
+          purpose: Agent execution rules
+
+        - cmd: epic:show {EPIC} --full
+          mode: inline
+          purpose: Epic content for agent
+
+        - cmd: context:skill epic-breakdown
+          mode: subprocess
+          purpose: Skill orchestration context
+
+        - cmd: agent:spawn {EPIC} --operation epic-breakdown
+          mode: subprocess
+          purpose: Launch agent subprocess
+
+    - name: agent-init
+      actor: agent
+      commands:
+        - cmd: assign:claim {EPIC}
+          mode: subprocess
+          purpose: Get compiled prompt with PRD + epic content
+
+    - name: execution
+      actor: agent
+      commands:
+        - cmd: task:create {EPIC} "title"
+          mode: both
+          purpose: Create tasks via rudder CLI
+
+        - cmd: deps:add {TASK} --blocked-by {TASK}
+          mode: both
+          purpose: Set task dependencies
+
+        - cmd: deps:validate --fix
+          mode: both
+          purpose: Validate dependency graph
+
+    - name: completion
+      actor: skill
+      commands:
+        - cmd: story:validate {PRD}
+          mode: both
+          purpose: Check for orphan stories
+
+prd-breakdown:
+  description: Decompose PRD into epics
+  entity: prd
+
+  phases:
+    - name: pre-flight
+      actor: skill
+      commands:
+        - cmd: memory:sync
+          mode: both
+          purpose: Consolidate pending logs
+
+        - cmd: prd:show {PRD}
+          mode: both
+          purpose: Review PRD before breakdown
+
+    - name: context-load
+      actor: skill
+      commands:
+        - cmd: context:skill prd-breakdown
+          mode: inline
+          purpose: Skill orchestration context
+
+        - cmd: context:agent prd-breakdown
+          mode: inline
+          purpose: Agent execution rules
+
+        - cmd: prd:show {PRD} --full
+          mode: inline
+          purpose: PRD content for agent
+
+    - name: execution
+      actor: agent
+      commands:
+        - cmd: epic:create {PRD} "title"
+          mode: both
+          purpose: Create epics via rudder CLI
+
+        - cmd: prd:milestone {PRD} M1 --add-epic {EPIC}
+          mode: both
+          purpose: Assign epics to milestones
+
+prd-review:
+  description: Review PRD for completeness
+  entity: prd
+
+  phases:
+    - name: context-load
+      actor: skill
+      commands:
+        - cmd: context:skill prd-review
+          mode: inline
+          purpose: Skill context
+
+        - cmd: context:agent prd-review
+          mode: inline
+          purpose: Agent rules
+
+        - cmd: prd:show {PRD} --full
+          mode: inline
+          purpose: PRD content
+
+        - cmd: versions
+          mode: inline
+          purpose: Current component versions
+
+milestone-validate:
+  description: Validate milestone completion
+  entity: milestone
+
+  phases:
+    - name: execution
+      actor: agent
+      commands:
+        - cmd: prd:milestone {PRD} {MILESTONE} --check
+          mode: both
+          purpose: Check milestone criteria
+
+        - cmd: task:list --milestone {MILESTONE} --status
+          mode: both
+          purpose: Verify all tasks done

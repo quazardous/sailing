@@ -66,6 +66,7 @@ import { registerAssignCommands } from './commands/assign.js';
 import { registerSandboxCommands } from './commands/sandbox.js';
 import { registerWorktreeCommands } from './commands/worktree.js';
 import { registerSpawnCommands } from './commands/spawn.js';
+import { registerWorkflowCommands } from './commands/workflow.js';
 
 // Expand colon syntax: task:list → task list (first arg only, if it looks like group:command)
 let commandExpanded = false;
@@ -104,6 +105,7 @@ registerAssignCommands(program);
 registerSandboxCommands(program);
 registerWorktreeCommands(program);
 registerSpawnCommands(program);
+registerWorkflowCommands(program);
 registerUtilCommands(program);
 registerPermissionsCommands(program);
 
