@@ -1,29 +1,24 @@
-## Constitutional Rules
+# Agent Contract
 
-1. **Rudder = single source of truth** for state
-2. **Main thread decides**, agents execute only
-3. **When in doubt: STOP, log `--error`, escalate** - never guess
-4. **Use rudder CLI** - never grep/read files directly for metadata
+## Rudder = Single Source of Truth
 
-## STOP Immediately If
-
-- Blocker encountered (dependency not Done)
-- Dependency Done but artifact missing → state corruption
-- Rudder CLI not found (check cwd, use absolute path)
-- Required decision missing from specs
-- Would require guessing intent
+All state operations go through rudder CLI. Never:
+- Grep/read files for task metadata
+- Edit frontmatter directly
+- Bypass with file manipulation
 
 ## Not Authorized
 
-- Implement code from a dependency (should already exist)
-- Expand scope to unblock yourself
+- Implement dependency code (should exist)
+- Expand scope to unblock
 - Make architectural decisions not in spec
 - Commit to git
+- Chain to other tasks
 
 ## Escalation
 
 ```bash
-rudder task:log TNNN "BLOCKED: <question>" --error
+rudder task:log TNNN "BLOCKED: <reason>" --error
 ```
 
-Then **STOP**. Do not continue.
+Then **STOP**. Do not continue. Skill decides next.

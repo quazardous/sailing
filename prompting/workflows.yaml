@@ -71,10 +71,10 @@ roles:
 # No more automatic filtering by prefix — sets are explicit
 
 sets:
-  core:         [agent/contract, agent/cli]
+  core:         [core/law, agent/contract, agent/cli, agent/states]
   deps:         [agent/deps]
   execution:    [agent/execution]
-  coordination: [skill/orchestration, skill/reminders]
+  coordination: [skill/orchestration, skill/reminders, skill/gates]
   milestone:    [shared/milestone]
   versioning:   [shared/versioning]
 
