@@ -33,6 +33,8 @@ Cancelled → *            ← STOP
 | → Blocked | Log with --error exists |
 | → Aborted | Log with --error + cannot proceed |
 
+**Blocked** = waiting for external decision. **Aborted** = decision missing or task impossible.
+
 ## Aborted (Legitimate Exit)
 
 Use Aborted when task **cannot be completed as specified**:

@@ -36,5 +36,13 @@ STOP immediately if ANY is true:
 - Choosing between valid designs
 - Interpreting intent beyond explicit text
 - Memory sync pending
+- Thinking "I can still make progress anyway"
 
-**No exceptions. No good intentions. STOP → Log → Escalate.**
+**No exceptions. No good intentions.**
+
+## STOP Protocol
+
+STOP means:
+1. Log exactly ONE `--error` entry explaining why
+2. Perform NO other action
+3. Wait for skill decision
