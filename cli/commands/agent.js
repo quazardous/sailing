@@ -387,19 +387,50 @@ export function registerAgentCommands(program) {
       if (options.worktree === true) useWorktree = true;
       else if (options.worktree === false) useWorktree = false;
 
-      // Verify git repo if worktree mode is enabled
+      // Verify git repo and clean state if worktree mode is enabled
       if (useWorktree) {
+        const projectRoot = findProjectRoot();
+        const gitOpts = { cwd: projectRoot, encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'] };
+
+        // Check git repo exists
         try {
-          execSync('git rev-parse --git-dir 2>/dev/null', {
-            cwd: findProjectRoot(),
-            encoding: 'utf8',
-            stdio: ['pipe', 'pipe', 'pipe']
-          });
+          execSync('git rev-parse --git-dir 2>/dev/null', gitOpts);
         } catch {
           console.error('ERROR: use_worktrees requires a git repository\n');
           console.error('Either:');
           console.error('  1. Initialize git: git init && git add -A && git commit -m "init"');
           console.error('  2. Or disable worktrees: --no-worktree');
+          process.exit(1);
+        }
+
+        // Check for uncommitted changes
+        try {
+          const status = execSync('git status --porcelain', gitOpts).trim();
+          if (status) {
+            console.error('ERROR: Working directory has uncommitted changes\n');
+            console.error('Worktree isolation requires a clean working directory.');
+            console.error('Either:');
+            console.error('  1. Commit or stash your changes: git add -A && git commit -m "wip"');
+            console.error('  2. Or disable worktrees: --no-worktree');
+            console.error('\nUncommitted files:');
+            status.split('\n').slice(0, 10).forEach(line => console.error(`  ${line}`));
+            if (status.split('\n').length > 10) {
+              console.error(`  ... and ${status.split('\n').length - 10} more`);
+            }
+            process.exit(1);
+          }
+        } catch (e) {
+          console.error('ERROR: Failed to check git status:', e.message);
+          process.exit(1);
+        }
+
+        // Check for commits
+        try {
+          execSync('git rev-parse HEAD 2>/dev/null', gitOpts);
+        } catch {
+          console.error('ERROR: No commits in repository\n');
+          console.error('Worktree isolation requires at least one commit.');
+          console.error('Create initial commit: git add -A && git commit -m "init"');
           process.exit(1);
         }
       }

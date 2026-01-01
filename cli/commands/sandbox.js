@@ -285,6 +285,8 @@ export function registerSandboxCommands(program) {
     .option('-p, --prompt <text>', 'Prompt text (alternative to positional args)')
     .option('--no-sandbox', 'Run without sandbox wrapper')
     .option('--debug', 'Enable srt debug mode')
+    .option('--claude-args <args>', 'Additional args to pass to claude (e.g. "--model opus")')
+    .option('--dangerously-skip-permissions', 'Skip permission prompts')
     .action((promptArgs, options) => {
       // Use temp dir by default for safety
       let cwd;
@@ -312,6 +314,22 @@ export function registerSandboxCommands(program) {
         process.exit(1);
       }
 
+      // Build claude args
+      const claudeArgs = [];
+
+      // Skip permissions flag
+      if (options.dangerouslySkipPermissions) {
+        claudeArgs.push('--dangerously-skip-permissions');
+      }
+
+      // Additional args from --claude-args
+      if (options.claudeArgs) {
+        claudeArgs.push(...options.claudeArgs.split(/\s+/));
+      }
+
+      // Prompt
+      claudeArgs.push('-p', prompt);
+
       // Build command
       let cmd, args;
       if (options.sandbox !== false) {
@@ -329,10 +347,10 @@ export function registerSandboxCommands(program) {
           args.push('--settings', paths.srtConfig.absolute);
         }
 
-        args.push('claude', '-p', prompt);
+        args.push('claude', ...claudeArgs);
       } else {
         cmd = 'claude';
-        args = ['-p', prompt];
+        args = claudeArgs;
       }
 
       console.error(`CWD: ${cwd}`);
