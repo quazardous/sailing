@@ -56,3 +56,5 @@ Only skill decides:
 - Reset → `agent:reject TNNN` + respawn
 
 Agents are disposable. This is by design.
+
+**Worktrees are disposable. Memory is not.**

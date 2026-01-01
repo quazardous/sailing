@@ -35,6 +35,8 @@ Cancelled → *            ← STOP
 
 **Blocked** = waiting for external decision. **Aborted** = decision missing or task impossible.
 
+Aborted is a runtime outcome. Skill marks task Blocked or Cancelled after abort.
+
 ## Aborted (Legitimate Exit)
 
 Use Aborted when task **cannot be completed as specified**:
