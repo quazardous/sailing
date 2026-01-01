@@ -97,9 +97,15 @@ if [ -n "$FOLDERS_PROFILE" ]; then
   esac
 fi
 
-# --use-worktree defaults to haven profile (avoid git pollution)
-if [ "$USE_WORKTREE" = true ] && [ -z "$FOLDERS_PROFILE" ]; then
-  FOLDERS_PROFILE="haven"
+# --use-worktree requires haven or sibling profile (git-clean isolation)
+if [ "$USE_WORKTREE" = true ]; then
+  if [ -z "$FOLDERS_PROFILE" ]; then
+    FOLDERS_PROFILE="haven"
+  elif [ "$FOLDERS_PROFILE" != "haven" ] && [ "$FOLDERS_PROFILE" != "sibling" ]; then
+    echo -e "${RED}Error: --use-worktree requires --folders-profile=haven or sibling${NC}"
+    echo "  Project profile keeps worktrees inside git repo (not allowed)"
+    exit 1
+  fi
 fi
 
 echo -e "${BLUE}Sailing Installer${NC}"

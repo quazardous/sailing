@@ -297,8 +297,13 @@ Start by calling the rudder MCP tool with \`assign:claim ${taskId}\` to get your
         cwd = result.path;
 
         if (!options.json) {
-          console.log(`Worktree created: ${result.path}`);
-          console.log(`  Branch: ${result.branch} (from ${parentBranch})`);
+          if (result.reused) {
+            console.log(`Worktree created (reusing existing branch): ${result.path}`);
+            console.log(`  Branch: ${result.branch} (orphaned, no commits)`);
+          } else {
+            console.log(`Worktree created: ${result.path}`);
+            console.log(`  Branch: ${result.branch} (from ${parentBranch})`);
+          }
         }
       }
 

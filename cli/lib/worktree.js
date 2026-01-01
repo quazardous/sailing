@@ -449,7 +449,7 @@ export function createWorktree(taskId, options = {}) {
   const worktreePath = getWorktreePath(taskId);
   const branch = getBranchName(taskId);
 
-  // Check if already exists
+  // Check if worktree path already exists
   if (fs.existsSync(worktreePath)) {
     return {
       success: false,
@@ -473,19 +473,63 @@ export function createWorktree(taskId, options = {}) {
       }).trim();
     }
 
-    // Create worktree with new branch
-    execSync(`git worktree add "${worktreePath}" -b "${branch}"`, {
-      cwd: projectRoot,
-      encoding: 'utf8',
-      stdio: ['pipe', 'pipe', 'pipe']
-    });
+    // Check if branch already exists (orphaned from previous run)
+    const branchAlreadyExists = branchExists(branch);
 
-    return {
-      success: true,
-      path: worktreePath,
-      branch,
-      baseBranch
-    };
+    if (branchAlreadyExists) {
+      // Check if the branch has commits ahead of base
+      // If yes, there's work that might be lost - escalate
+      try {
+        const aheadCount = execSync(
+          `git rev-list --count "${baseBranch}..${branch}"`,
+          { cwd: projectRoot, encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'] }
+        ).trim();
+
+        if (parseInt(aheadCount, 10) > 0) {
+          return {
+            success: false,
+            path: worktreePath,
+            branch,
+            baseBranch,
+            error: `Branch '${branch}' exists with ${aheadCount} commit(s) ahead of ${baseBranch}. ` +
+                   `Use 'git branch -D ${branch}' to delete it, or investigate the existing work.`
+          };
+        }
+      } catch {
+        // If we can't check, assume safe to reuse
+      }
+
+      // Branch exists but no worktree, and no commits → reuse the branch
+      // This handles: previous agent crashed, worktree cleaned but branch remained
+      execSync(`git worktree add "${worktreePath}" "${branch}"`, {
+        cwd: projectRoot,
+        encoding: 'utf8',
+        stdio: ['pipe', 'pipe', 'pipe']
+      });
+
+      return {
+        success: true,
+        path: worktreePath,
+        branch,
+        baseBranch,
+        reused: true  // Indicates we reused an existing branch
+      };
+    } else {
+      // Create worktree with new branch
+      execSync(`git worktree add "${worktreePath}" -b "${branch}"`, {
+        cwd: projectRoot,
+        encoding: 'utf8',
+        stdio: ['pipe', 'pipe', 'pipe']
+      });
+
+      return {
+        success: true,
+        path: worktreePath,
+        branch,
+        baseBranch,
+        reused: false
+      };
+    }
   } catch (e) {
     return {
       success: false,

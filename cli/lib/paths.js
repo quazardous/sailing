@@ -7,6 +7,7 @@
  *   %project_name% → project directory name
  *   %project_hash% → SHA256 of git remote or realpath (first 12 chars)
  *   %haven%        → project haven directory (~/.sailing/havens/%project_hash%)
+ *   %sibling%      → sibling directory for isolation (%project%/../%project_name%-sailing)
  *
  * Shortcuts:
  *   ~/  → %home%/
@@ -61,13 +62,15 @@ function getBuiltinPlaceholders() {
   const projectName = path.basename(projectRoot);
   const projectHash = computeProjectHash();
   const home = os.homedir();
+  const projectParent = path.dirname(projectRoot);
 
   return {
     home,
     project: projectRoot,
     project_name: projectName,
     project_hash: projectHash,
-    haven: path.join(home, '.sailing', 'havens', projectHash)
+    haven: path.join(home, '.sailing', 'havens', projectHash),
+    sibling: path.join(projectParent, `${projectName}-sailing`)
   };
 }
 
