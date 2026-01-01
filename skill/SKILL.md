@@ -20,11 +20,13 @@ rudder context:load <operation>    # Auto-resolves role from operation
 
 ### Roles
 
-| Role | Description | Workflow | Project Files |
-|------|-------------|----------|---------------|
+| Role | Description | Workflow | Injected Files |
+|------|-------------|----------|----------------|
 | **agent** | Pure execution, no decisions | ❌ | subprocess: toolset, stack |
 | **coordinator** | Spawn agents, coordinate | ✅ | — |
-| **skill** | Full orchestration | ✅ | roadmap, postit, worktree |
+| **skill** | Full orchestration | ✅ | roadmap, postit |
+
+> **Note**: When worktree isolation is enabled, `context:load` includes additional merge workflow guidance.
 
 ### Examples
 
