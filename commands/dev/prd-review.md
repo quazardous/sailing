@@ -18,7 +18,7 @@ You are acting as a **software architect / project lead** reviewing a PRD prior 
 ## Pre-flight
 
 ```bash
-rudder context:agent prd-review    # Constitutional rules, CLI contract
+rudder context:load prd-review --role coordinator
 rudder versions           # Get current component versions
 rudder prd:show PRD-NNN   # Verify PRD exists and see epic/task counts
 ```
@@ -199,10 +199,3 @@ This command does **NOT**:
 - Modify ROADMAP.md
 - Trigger other commands or suggest next steps
 
----
-
-## Failure Philosophy
-
-- If milestones are unclear → escalate, don't invent
-- If version targets conflict → present options, don't choose
-- **When in doubt: stop, log, escalate — never guess**

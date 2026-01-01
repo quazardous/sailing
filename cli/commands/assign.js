@@ -244,11 +244,11 @@ function assignmentPath(taskId) {
 }
 
 /**
- * Load contexts.yaml configuration
+ * Load unified workflows.yaml configuration
  */
-function loadContextsConfig() {
+function loadWorkflowsConfig() {
   const promptingDir = getPrompting();
-  const configPath = path.join(promptingDir, 'contexts.yaml');
+  const configPath = path.join(promptingDir, 'workflows.yaml');
 
   if (!fs.existsSync(configPath)) {
     return null;
@@ -273,17 +273,58 @@ function loadFragment(fragmentPath) {
 }
 
 /**
+ * Resolve fragments for an operation (agent context only)
+ * Uses 4-section structure: matrix[op] → sets → fragments → filter by agent/ prefix
+ * @param {object} config - Loaded workflows.yaml
+ * @param {string} operation - Operation name (task-start, etc.)
+ * @returns {string[]} List of fragment paths for agent
+ */
+function resolveAgentFragments(config, operation) {
+  // Get set names for this operation, fallback to default
+  let setNames = config.matrix?.[operation];
+  if (!setNames) {
+    setNames = config.matrix?.['default'];
+    if (!setNames) {
+      return null;
+    }
+  }
+
+  // Expand sets to fragments
+  const allFragments = [];
+  for (const setName of setNames) {
+    const setFragments = config.sets?.[setName];
+    if (setFragments) {
+      allFragments.push(...setFragments);
+    }
+  }
+
+  // Filter by agent/ prefix (agent context only)
+  // Also include shared/* fragments
+  const filtered = allFragments.filter(f =>
+    f.startsWith('agent/') || f.startsWith('shared/')
+  );
+
+  return filtered.length > 0 ? filtered : null;
+}
+
+/**
  * Compose context from fragments for an operation
+ * Uses unified workflows.yaml: matrix[op] → sets → fragments
  * @param {string} operation - Operation type (task-start, etc.)
  * @param {boolean} debug - Add source comments to each fragment
  */
 function composeAgentContext(operation, debug = false) {
-  const config = loadContextsConfig();
-  if (!config || !config.agent) {
+  const config = loadWorkflowsConfig();
+  if (!config || !config.matrix || !config.sets) {
     return { content: '', sources: [] };
   }
 
-  const fragments = config.agent[operation] || config.agent['default'] || [];
+  // Resolve fragments for this operation
+  const fragments = resolveAgentFragments(config, operation);
+  if (!fragments) {
+    return { content: '', sources: [] };
+  }
+
   const parts = [];
   const sources = [];
 

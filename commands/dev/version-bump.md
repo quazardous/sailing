@@ -15,7 +15,7 @@ allowed-tools: Read, Edit, Bash, Grep
 ## Pre-flight (MANDATORY)
 
 ```bash
-rudder context:skill version-bump   # Execution context
+rudder context:load version-bump --role skill
 rudder versions                      # List components and current versions
 ```
 

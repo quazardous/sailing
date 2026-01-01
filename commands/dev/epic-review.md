@@ -18,7 +18,7 @@ You are acting as a **software architect** reviewing an epic prior to task break
 ## Pre-flight
 
 ```bash
-rudder context:agent epic-review               # Constitutional rules, CLI contract
+rudder context:load epic-review --role coordinator
 rudder epic:show ENNN                # Verify epic exists, see task counts
 rudder epic:show-memory ENNN --full  # Previous learnings + escalations
 ```
@@ -125,10 +125,3 @@ This command does **NOT**:
 - Make final decisions (user validates)
 - Bypass PRD constraints
 
----
-
-## Failure Philosophy
-
-- If epic scope is unclear → escalate, don't guess
-- If no good tech option exists → say so explicitly
-- **When in doubt: stop, log, escalate — never guess**

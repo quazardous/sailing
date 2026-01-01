@@ -9,7 +9,7 @@
 ## Pre-flight
 
 ```bash
-rudder context:agent merge                    # Constitutional rules, CLI contract
+rudder context:load merge --role coordinator
 rudder worktree:status --json                 # Current worktree state
 rudder worktree:preflight --json              # Blockers, merge order
 ```
@@ -182,11 +182,3 @@ This command does **NOT**:
 - Skip conflict resolution
 - Auto-merge without understanding
 
----
-
-## Failure Philosophy
-
-- Conflict is unclear → stop, log, escalate
-- Resolution ambiguous → present options to user
-- Test failures after merge → rollback, escalate
-- **When in doubt: stop, log, escalate — never guess**

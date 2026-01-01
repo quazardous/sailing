@@ -174,13 +174,13 @@ Optimized prompt fragments for agents and skill (read-only, updated by installer
 | `agent/` | Agent execution rules (rules-core, cli, logging, deps, stop, completion, memory) |
 | `skill/` | Skill orchestration (orchestration, reminders) |
 | `shared/` | Shared fragments (milestone, versioning) |
-| `contexts.yaml` | Mapping of commands to fragments |
+| `workflows.yaml` | Role-based context configuration |
 
 Access via CLI:
 ```bash
-rudder context:agent <command>   # Agent context
-rudder context:skill <command>   # Skill context
-rudder context:list              # All fragments
+rudder context:load <operation>  # Auto-resolves role from operation
+rudder context:load <op> --role agent  # Override role
+rudder context:list              # All roles, sets, operations
 ```
 
 ### `templates/`

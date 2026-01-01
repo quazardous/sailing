@@ -7,17 +7,19 @@ allowed-tools: Read, Edit, Glob, Task, Bash
 ## Pre-flight (MANDATORY)
 
 ```bash
-rudder context:skill task-start
+rudder context:load task-start --role skill
 ```
 
-Check the **Execution Mode** section in the output:
-- **subprocess**: Use `rudder agent:spawn TNNN`
-- **inline**: Use Task tool with agent prompt below
+The output includes a **Workflow: task-start** section with steps filtered for your execution mode:
+- **inline**: Steps include `context:load`, `memory:show`, `task:show` (for Task tool injection)
+- **subprocess**: Steps include `agent:spawn` (for subprocess execution)
 
-If **Worktree Isolation: enabled**, agent runs in isolated git branch.
+Follow the workflow steps exactly as shown. No conditionals to interpret — just execute the steps.
 
-**⚠️ NO AUTO-FALLBACK**: If worktree mode is enabled but fails (no git, no commits, spawn error):
-- DO NOT switch to inline mode on your own
+If **Worktree Isolation** section appears, agent runs in isolated git branch.
+
+**⚠️ NO AUTO-FALLBACK**: If subprocess/worktree mode fails:
+- DO NOT switch to inline mode silently
 - STOP and report the error to user
 - Constitutional rule: "When in doubt: stop, log, escalate — never guess."
 

@@ -1,32 +1,23 @@
-# Skill Reminders
+# Reminders
 
-## Memory checkpoint
+## Memory Sync
 
-After every 3-5 tasks:
-```bash
-rudder memory:sync
-```
+Every 3-5 tasks: `rudder memory:sync`
+
 If pending → consolidate before continuing.
 
-## Quality gates
-
-Before marking Done:
-- [ ] Agent provided 2+ log entries
-- [ ] Deliverables match requirements
-- [ ] No scope creep
-
-## Common mistakes
+## Common Mistakes
 
 - Forgetting memory:sync between batches
 - Not checking deps:ready before spawn
-- Accepting task without verifying logs
-- Letting agent commit to git (user responsibility)
+- Accepting task with <2 logs
+- Letting agent commit (user responsibility)
 
-## Authority model
+## Authority
 
-| Component | Authority |
-|-----------|-----------|
-| Skill (you) | Decisions, sequencing |
-| Agents | Execution only |
-| Rudder CLI | State mutations |
-| User | Git commits, approvals |
+| Who | Does |
+|-----|------|
+| Skill | Decisions |
+| Agents | Execution |
+| Rudder | State |
+| User | Git commits |

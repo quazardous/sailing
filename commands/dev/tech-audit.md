@@ -15,7 +15,7 @@ allowed-tools: Read, Glob, Grep, Task, WebSearch, WebFetch
 ## Pre-flight
 
 ```bash
-rudder context:agent tech-audit    # Constitutional rules, CLI contract
+rudder context:load tech-audit --role coordinator
 ```
 
 ---
@@ -108,10 +108,3 @@ This command does **NOT**:
 - Implement changes (separate task)
 - Skip user confirmation between passes
 
----
-
-## Failure Philosophy
-
-- If code purpose is unclear → escalate, don't assume
-- If no good alternative exists → say so explicitly
-- **When in doubt: stop, log, escalate — never guess**

@@ -17,8 +17,8 @@ This command creates **epics only**. Use `/dev:epic-breakdown` to create tasks a
 ## Pre-flight
 
 ```bash
-rudder context:agent prd-breakdown    # Constitutional rules, CLI contract
-rudder prd:show PRD-NNN   # Verify PRD exists and see current epics
+rudder context:load prd-breakdown --role coordinator
+rudder prd:show PRD-NNN               # Verify PRD exists and see current epics
 ```
 
 ---
@@ -156,48 +156,3 @@ This command does **NOT**:
 - Start implementation
 - Make architectural decisions not in PRD
 
----
-
-## Agent CLI Rules (MANDATORY)
-
-Agents MUST use Rudder CLI for all state operations. Never bypass with direct file access.
-
-### File Creation
-
-| Action | Use | NEVER |
-|--------|-----|-------|
-| Create epic | `rudder epic:create PRD-NNN "title"` | Write tool directly |
-| Create story | `rudder story:create PRD-NNN "title"` | Write tool directly |
-
-### Frontmatter Updates
-
-| Action | Use | NEVER |
-|--------|-----|-------|
-| Update status | `rudder epic:update ENNN --status wip` | Edit frontmatter directly |
-| Add to milestone | `rudder prd:milestone PRD-NNN M1 --add-epic ENNN` | Edit PRD frontmatter |
-| Set version | `rudder epic:update ENNN --target-version qdadm:0.22.0` | Edit target_versions |
-
-### Dependencies
-
-| Action | Use | NEVER |
-|--------|-----|-------|
-| Add epic blocker | `rudder deps:add ENNN --blocked-by E001` | Edit blocked_by in file |
-| Validate | `rudder deps:validate` | Manual dependency analysis |
-
-### Body Content (Edit tool OK)
-
-Use Edit tool ONLY for body content sections:
-- `## Description` - fill after rudder creates file
-- `## Acceptance Criteria` - add checkbox items
-- `## Technical Notes` - architecture guidance
-- `## Risks` - identified risks
-
-**Why?** Rudder maintains state.json consistency. Direct file edits bypass state tracking.
-
----
-
-## Failure Philosophy
-
-- PRD scope unclear → escalate, don't invent
-- Overlapping epic boundaries → flag, don't guess
-- **When in doubt: stop, log, escalate — never guess**

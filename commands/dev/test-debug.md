@@ -13,7 +13,7 @@ allowed-tools: Read, Edit, Glob, Grep, Task, Bash
 ## Pre-flight
 
 ```bash
-rudder context:agent test-debug    # Constitutional rules, CLI contract
+rudder context:load test-debug --role coordinator
 ```
 
 If `--task TNNN` provided:
@@ -107,7 +107,7 @@ After all individual fixes:
 
 ## Logging
 
-Use `bin/rudder task:log` during work. See logging rules in `rudder context:agent test-debug`.
+Use `bin/rudder task:log` during work. See logging rules in `rudder context:load test-debug`.
 
 ---
 
@@ -120,10 +120,3 @@ This command does **NOT**:
 - Modify test structure without respecting TESTING.md
 - Parallelize individual test fixes
 
----
-
-## Failure Philosophy
-
-- Lint first — syntax errors are often root cause
-- Escalate implementation bugs — don't hack tests
-- **When in doubt: stop, log, escalate — never guess**

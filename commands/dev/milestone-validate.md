@@ -9,14 +9,14 @@ allowed-tools: Read, Glob, Grep, Task, Bash
 **Purpose:** Validate milestone acceptance criteria and report results to main thread.
 
 > 📖 CLI reference: `bin/rudder -h`
-> 📖 Context: `rudder context:agent milestone-validate`
+> 📖 Context: `rudder context:load milestone-validate`
 
 ---
 
 ## Pre-flight
 
 ```bash
-rudder context:agent milestone-validate    # Constitutional rules, CLI contract
+rudder context:load milestone-validate --role coordinator
 ```
 
 ---
@@ -130,10 +130,3 @@ This command does **NOT**:
 - Trigger other commands
 - Decide next steps
 
----
-
-## Failure Philosophy
-
-- Report findings accurately
-- Propose actions but do not execute
-- **When in doubt: stop, log, escalate — never guess**

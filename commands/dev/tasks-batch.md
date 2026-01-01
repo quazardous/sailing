@@ -29,7 +29,7 @@ The batch runner prepares and launches work, then steps aside.
 ## Pre-flight (MANDATORY)
 
 ```bash
-rudder context:skill tasks-batch
+rudder context:load tasks-batch --role skill
 ```
 
 This tells you:
@@ -97,7 +97,7 @@ This tells you:
 
 6. **Spawn parallel agents**
 
-   Check your execution mode from `rudder context:skill tasks-batch` output.
+   Check your execution mode from `rudder context:load tasks-batch` output.
 
    **Mode: subprocess** (`use_subprocess: true`):
    ```bash
@@ -213,41 +213,8 @@ Any uncertainty is delegated to agents, who must stop and escalate.
 
 ---
 
-## Agent CLI Rules (MANDATORY)
-
-Both the orchestrator and spawned agents MUST use Rudder CLI. Never bypass with direct file access.
-
-### Orchestrator Commands
-
-| Action | Use | NEVER |
-|--------|-----|-------|
-| Find ready tasks | `rudder deps:ready --prd PRD-NNN --limit 6` | Grep/Glob task files |
-| Validate deps | `rudder deps:validate --fix` | Manual dependency analysis |
-| Mark in progress | `rudder task:update TNNN --status "In Progress"` | Edit frontmatter |
-
-### Agent Commands (via task-start template)
-
-| Action | Use | NEVER |
-|--------|-----|-------|
-| Show task | `rudder task:show TNNN` | Read task file for metadata |
-| Show memory | `rudder task:show-memory TNNN` | Read memory files directly |
-| Log progress | `rudder task:log TNNN "msg" --level` | Write to .log files |
-| Complete task | `rudder task:update TNNN --status Done` | Edit frontmatter |
-
-**Why?** Rudder maintains state.json consistency. Direct file access bypasses state tracking and breaks parallelization guarantees.
-
----
-
-## Limits & Constraints
+## Limits
 
 * **Max 6 agents per batch** (context & performance)
 * Parallelization allowed **only if tasks are dependency-independent**
 * If internal dependencies exist → run tasks **sequentially**, not in batch
-
----
-
-## Failure Philosophy
-
-* Coordination errors fail fast and visibly
-* Execution errors belong to agents
-* **When in doubt: stop, log, escalate — never guess**

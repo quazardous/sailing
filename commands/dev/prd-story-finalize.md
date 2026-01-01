@@ -140,10 +140,3 @@ This agent does **NOT**:
 - Start implementation
 - Make architectural decisions
 
----
-
-## Failure Philosophy
-
-- No matching task and unclear where to create → escalate
-- Story seems out of scope → escalate
-- **When in doubt: stop, log, escalate — never guess**

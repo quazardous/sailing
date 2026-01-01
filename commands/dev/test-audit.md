@@ -9,7 +9,7 @@ allowed-tools: Read, Glob, Grep, Task
 ## Pre-flight
 
 ```bash
-rudder context:agent test-audit    # Constitutional rules, CLI contract
+rudder context:load test-audit --role coordinator
 ```
 
 ## Pass 1: Analysis (agent)

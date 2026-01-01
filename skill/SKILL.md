@@ -15,26 +15,32 @@ Refs: `rudder paths roadmap`, **`.claude/TOOLSET.md`** (optional, user-created)
 Before ANY command execution:
 
 ```bash
-# Skill (main thread) loads its context:
-rudder context:skill <command>
-
-# Before spawning agent, provide agent context:
-rudder context:agent <command>
+rudder context:load <operation>    # Auto-resolves role from operation
 ```
 
-| Who | Command | When |
-|-----|---------|------|
-| **Skill** | `rudder context:skill task-start` | Before orchestrating task-start |
-| **Agent** | `rudder context:agent task-start` | Injected by skill when spawning |
+### Roles
 
-**This is not optional.** Context contains:
-- Constitutional rules
-- CLI contract
-- Logging requirements
-- Stop conditions
-- Memory sync protocol
+| Role | Description | Workflow | Project Files |
+|------|-------------|----------|---------------|
+| **agent** | Pure execution, no decisions | ❌ | subprocess: toolset, stack |
+| **coordinator** | Spawn agents, coordinate | ✅ | — |
+| **skill** | Full orchestration | ✅ | roadmap, postit, worktree |
 
-Without context, agents forget critical rules (e.g., minimum 2 log entries).
+### Examples
+
+```bash
+rudder context:load task-start      # Role: skill → full context + workflow
+rudder context:load epic-breakdown  # Role: coordinator → coordination context + workflow
+rudder context:load task-start --role agent  # Override → agent execution context only
+```
+
+**Role is auto-resolved** from `workflows.yaml` → `operations[op].roles[0]`.
+
+Use `--role <role>` to override (must be in allowed roles list).
+
+**No conditionals in the prompt.** The workflow is pre-filtered — just execute the steps shown.
+
+Source: `prompting/workflows.yaml`
 
 ---
 
@@ -137,11 +143,13 @@ Main thread → spawns → Next Agent
 |------|-------------|---------|
 | **ROADMAP.md** | Vision | Features, versions, milestones, backlog |
 | **POSTIT.md** | Triage | User scratch pad → Backlog or Task |
-| **prompting/** | Agent context | Optimized fragments for agents/skill |
+| **prompting/workflows.yaml** | Config | Context composition + workflow orchestration |
+| **prompting/\*.md** | Fragments | Agent/skill context fragments |
 
 **Context commands replace documentation reading:**
-- `rudder context:agent <cmd>` → agent execution rules
-- `rudder context:skill <cmd>` → skill orchestration rules
+- `rudder context:load <op>` → auto-resolves role, composes context
+- `rudder context:list` → list roles, sets, operations
+- `rudder workflow:show <op>` → workflow documentation
 - `rudder --help` → CLI mechanics
 
 **Rule**: One doc = one abstraction level. Don't mix vision with mechanics.
@@ -487,7 +495,7 @@ In doubt → Do what's possible → Stop → Escalate.
 
 ## Task Logging
 
-Logging rules are in `rudder context:agent <cmd>` (section: Logging Contract).
+Logging rules are in `rudder context:load <cmd>` (section: Logging Contract).
 
 ```bash
 rudder task:log TNNN "message" --level [-f file] [-c cmd] [-s snippet]

@@ -153,10 +153,3 @@ This agent does **NOT**:
 - Make architectural decisions
 - Start implementation
 
----
-
-## Failure Philosophy
-
-- User persona unclear → escalate, don't invent
-- Scope overlap between stories → flag, don't guess
-- **When in doubt: stop, log, escalate — never guess**

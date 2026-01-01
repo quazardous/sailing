@@ -10,9 +10,9 @@ import { getAgentConfig } from '../lib/config.js';
 import { addDynamicHelp } from '../lib/help.js';
 
 /**
- * Load workflows.yaml
+ * Load workflows.yaml (raw)
  */
-function loadWorkflows() {
+function loadWorkflowsConfig() {
   const promptingDir = getPrompting();
   const workflowPath = path.join(promptingDir, 'workflows.yaml');
 
@@ -22,6 +22,28 @@ function loadWorkflows() {
 
   const content = fs.readFileSync(workflowPath, 'utf8');
   return yaml.load(content);
+}
+
+/**
+ * Compose workflow objects from 4-section structure
+ * Merges operations[name] metadata with orchestration[name] steps
+ */
+function composeWorkflows(config) {
+  if (!config) return null;
+
+  const workflows = {};
+
+  // Only include operations that have orchestration defined
+  for (const [name, steps] of Object.entries(config.orchestration || {})) {
+    const opMeta = config.operations?.[name] || {};
+    workflows[name] = {
+      entity: opMeta.entity,
+      description: opMeta.description,
+      phases: steps  // Keep 'phases' internally for render functions
+    };
+  }
+
+  return workflows;
 }
 
 /**
@@ -170,16 +192,17 @@ export function registerWorkflowCommands(program) {
     .option('--verbose', 'Show output descriptions')
     .option('--json', 'JSON output')
     .action((name, options) => {
-      const workflows = loadWorkflows();
-      if (!workflows) {
+      const config = loadWorkflowsConfig();
+      if (!config) {
         console.error('Error: workflows.yaml not found');
         process.exit(1);
       }
 
-      const wf = workflows[name];
+      const workflows = composeWorkflows(config);
+      const wf = workflows?.[name];
       if (!wf) {
         console.error(`Error: Unknown workflow: ${name}`);
-        console.error(`Available: ${Object.keys(workflows).join(', ')}`);
+        console.error(`Available: ${Object.keys(workflows || {}).join(', ')}`);
         process.exit(1);
       }
 
@@ -207,12 +230,13 @@ export function registerWorkflowCommands(program) {
     .description('Show comparison matrix (inline vs subprocess)')
     .option('--json', 'JSON output')
     .action((options) => {
-      const workflows = loadWorkflows();
-      if (!workflows) {
+      const config = loadWorkflowsConfig();
+      if (!config) {
         console.error('Error: workflows.yaml not found');
         process.exit(1);
       }
 
+      const workflows = composeWorkflows(config);
       if (options.json) {
         jsonOut(workflows);
         return;
@@ -227,12 +251,13 @@ export function registerWorkflowCommands(program) {
     .option('--mode <mode>', 'Execution mode (inline, subprocess, auto)', 'auto')
     .option('--json', 'JSON output')
     .action((options) => {
-      const workflows = loadWorkflows();
-      if (!workflows) {
+      const config = loadWorkflowsConfig();
+      if (!config) {
         console.error('Error: workflows.yaml not found');
         process.exit(1);
       }
 
+      const workflows = composeWorkflows(config);
       const mode = options.mode === 'auto' ? getCurrentMode() : options.mode;
 
       if (options.json) {
@@ -248,20 +273,21 @@ export function registerWorkflowCommands(program) {
     .description('List available workflows')
     .option('--json', 'JSON output')
     .action((options) => {
-      const workflows = loadWorkflows();
-      if (!workflows) {
+      const config = loadWorkflowsConfig();
+      if (!config) {
         console.error('Error: workflows.yaml not found');
         process.exit(1);
       }
 
+      const workflows = composeWorkflows(config);
       if (options.json) {
-        jsonOut(Object.keys(workflows));
+        jsonOut(Object.keys(workflows || {}));
         return;
       }
 
       console.log('Available workflows:\n');
-      for (const [name, wf] of Object.entries(workflows)) {
-        console.log(`  ${name.padEnd(20)} ${wf.description}`);
+      for (const [name, wf] of Object.entries(workflows || {})) {
+        console.log(`  ${name.padEnd(20)} ${wf.description || ''}`);
       }
     });
 

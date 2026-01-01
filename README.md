@@ -120,8 +120,11 @@ your-project/
     ├── artefacts/          # ROADMAP, PRDs, Epics, Tasks
     ├── memory/             # Epic memory (persists learnings)
     ├── prompting/          # Agent context fragments
+    │   └── workflows.yaml  # ⭐ Central config (contexts + orchestration)
     └── templates/          # Entity templates
 ```
+
+> **Key file:** [`prompting/workflows.yaml`](prompting/workflows.yaml) — Single source of truth for context generation and workflow orchestration. Defines fragment sets, operation metadata, and mode-filtered workflow steps (inline vs subprocess).
 
 [Detailed structure →](docs/folders.md)
 

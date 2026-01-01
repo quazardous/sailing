@@ -1,267 +1,242 @@
-# Workflow Matrix - Single Source of Truth
-# Used by: rudder workflow:show, documentation generation
+# ═══════════════════════════════════════════════════════════════════════════════
+# WORKFLOWS.YAML — Single source of truth for context generation & orchestration
+# ═══════════════════════════════════════════════════════════════════════════════
 #
-# Structure:
-#   workflow:
-#     phases:
-#       - name: phase-name
-#         actor: skill | agent
-#         commands:
-#           - cmd: command with {ENTITY} placeholder
-#             mode: both | inline | subprocess
-#             purpose: why this command
-#             output: what it provides
+# 5 SECTIONS:
+# ┌─────────────┬──────────────────────────────────────────────────────────────┐
+# │ roles       │ Actor definitions (agent, coordinator, skill)               │
+# │ sets        │ Fragment bundles (DRY grouping, role-agnostic)              │
+# │ operations  │ Operation metadata (entity, role, description)              │
+# │ matrix      │ Operation → additional sets mapping                         │
+# │ orchestration│ Workflow steps with mode markers (inline|subprocess|both) │
+# └─────────────┴──────────────────────────────────────────────────────────────┘
+#
+# RESOLUTION FLOW:
+#   context:load <op> [--role R] →
+#     1. operations[op].roles[0] → default role (or R if --role specified)
+#     2. validate R ∈ operations[op].roles
+#     3. roles[R].base_sets → fragments
+#     4. matrix[op] → additional fragments
+#     5. roles[R].inject → project files (by mode)
+#     6. if roles[R].workflow → orchestration[op]
+#
+# CONSUMERS:
+#   context:load <op>   → auto-resolves role, composes context
+#   workflow:show <op>  → orchestration[op] rendered as documentation
+#
+# FRAGMENTS: prompting/<name>.md (no more agent/skill prefixes)
+#
+# ═══════════════════════════════════════════════════════════════════════════════
 
-task-start:
-  description: Execute a task implementation
-  entity: task
+# ─────────────────────────────────────────────────────────────────────────────
+# SECTION 1: Roles — Actor context composition
+# ─────────────────────────────────────────────────────────────────────────────
+# Hierarchy: agent < coordinator < skill
+#
+#   agent:       Pure execution, no orchestration, no project context
+#   coordinator: Orchestrates agents, focused on specific entity scope
+#   skill:       Full orchestration + project context (roadmap, postit)
+#
+# Each role defines:
+#   base_sets: fragments always included for this role
+#   inject:    project files to include (by mode: inline|subprocess|both)
+#   workflow:  whether orchestration steps are injected
 
-  phases:
+roles:
+  agent:
+    description: "Pure execution, no decisions"
+    base_sets: [core]
+    inject:
+      subprocess: [toolset, stack]
+    workflow: false
+
+  coordinator:
+    description: "Spawn agents, coordinate results"
+    base_sets: [core, coordination]
+    inject: {}
+    workflow: true
+
+  skill:
+    description: "Full orchestration, memory management"
+    base_sets: [core, coordination]
+    inject:
+      both: [roadmap, postit]
+      subprocess: [worktree]
+    workflow: true
+
+# ─────────────────────────────────────────────────────────────────────────────
+# SECTION 2: Sets — Reusable fragment bundles
+# ─────────────────────────────────────────────────────────────────────────────
+# Path: prompting/<path>.md (prefixes: agent/, skill/, shared/)
+# No more automatic filtering by prefix — sets are explicit
+
+sets:
+  core:         [agent/contract, agent/cli]
+  deps:         [agent/deps]
+  execution:    [agent/execution]
+  coordination: [skill/orchestration, skill/reminders]
+  milestone:    [shared/milestone]
+  versioning:   [shared/versioning]
+
+# ─────────────────────────────────────────────────────────────────────────────
+# SECTION 3: Operations — Metadata per operation
+# ─────────────────────────────────────────────────────────────────────────────
+# entity: used for display (TASK, EPIC, PRD)
+# roles:  allowed roles (first = default when no --role specified)
+# description: shown in workflow:list
+
+operations:
+  # Task operations
+  task-start:      { entity: task,   roles: [skill, agent], description: "Execute a task implementation" }
+  task-create:     { entity: task,   roles: [coordinator],  description: "Create a new task" }
+  task-done:       { entity: task,   roles: [skill, agent], description: "Mark task as complete" }
+  tasks-batch:     { entity: task,   roles: [skill],        description: "Start multiple tasks in parallel" }
+
+  # Epic operations
+  epic-create:     { entity: epic,   roles: [coordinator],  description: "Create a new epic" }
+  epic-breakdown:  { entity: epic,   roles: [coordinator],  description: "Decompose epic into tasks" }
+  epic-review:     { entity: epic,   roles: [coordinator],  description: "Review epic for tech decisions" }
+
+  # PRD operations
+  prd-create:      { entity: prd,    roles: [coordinator],  description: "Create a new PRD" }
+  prd-breakdown:   { entity: prd,    roles: [coordinator],  description: "Decompose PRD into epics" }
+  prd-review:      { entity: prd,    roles: [coordinator],  description: "Review PRD for completeness" }
+
+  # Validation operations
+  milestone-validate: { entity: milestone, roles: [coordinator],  description: "Validate milestone completion" }
+  version-bump:       { entity: version,   roles: [skill],              description: "Bump version and update changelog" }
+
+  # Audit operations
+  test-audit:      { entity: test,   roles: [coordinator],  description: "Audit test quality and structure" }
+  test-debug:      { entity: test,   roles: [coordinator],  description: "Debug failing tests" }
+  tech-audit:      { entity: code,   roles: [coordinator],  description: "Audit tech opportunities" }
+  merge:           { entity: task,   roles: [coordinator],  description: "Merge agent work" }
+
+  # Fallback
+  default:         { entity: unknown, roles: [agent], description: "Default fallback context" }
+
+# ─────────────────────────────────────────────────────────────────────────────
+# SECTION 4: Matrix — Operation → additional sets
+# ─────────────────────────────────────────────────────────────────────────────
+# These sets are ADDED to the role's base_sets
+# Only list operation-specific additions here
+
+matrix:
+  task-start:         [deps, execution]
+  task-done:          [execution]
+  tasks-batch:        [deps, execution]
+  epic-breakdown:     [deps]
+  epic-review:        [milestone]
+  prd-breakdown:      [deps, milestone]
+  prd-review:         [milestone, versioning]
+  milestone-validate: [milestone]
+  version-bump:       [versioning]
+  test-audit:         [execution]
+  test-debug:         [execution]
+  # Operations not listed get only their role's base_sets
+
+# ─────────────────────────────────────────────────────────────────────────────
+# SECTION 5: Orchestration — Programmatic workflow steps
+# ─────────────────────────────────────────────────────────────────────────────
+# Injected for roles with workflow: true, filtered by execution mode
+#
+# Step schema:
+#   cmd:       Command to run (placeholders: {TASK}, {EPIC}, {PRD})
+#   mode:      inline | subprocess | both
+#   actor:     skill | coordinator | agent (documentation only)
+#   purpose:   Description (shown in generated prompt)
+#   required:  true → marked **[required]** in output
+#   condition: config key → shown as _(if condition)_
+#   note:      Warning text → shown as ⚠
+#
+# Inline agent spawning:
+#   Use "context:load default" to give spawned agents basic rules (core set).
+#   Use "context:load <op> --role agent" only if operation allows agent role.
+
+orchestration:
+  task-start:
     - name: pre-flight
       actor: skill
       commands:
-        - cmd: memory:sync
-          mode: both
-          purpose: Consolidate pending logs before work
-          required: true
-
-        - cmd: deps:ready --task {TASK}
-          mode: both
-          purpose: Verify task unblocked
-          required: true
-
-        - cmd: task:show {TASK}
-          mode: both
-          purpose: Review requirements before spawning agent
-          required: true
-
+        - { cmd: "memory:sync", mode: both, purpose: "Consolidate pending logs", required: true }
+        - { cmd: "deps:ready --task {TASK}", mode: both, purpose: "Verify task unblocked", required: true }
+        - { cmd: "task:show {TASK}", mode: both, purpose: "Review requirements", required: true }
     - name: context-load
       actor: skill
       commands:
-        # Inline mode: skill assembles prompt for Task tool
-        - cmd: context:skill task-start
-          mode: inline
-          purpose: Skill orchestration context
-          output: orchestration rules, reminders
-
-        - cmd: context:agent task-start
-          mode: inline
-          purpose: Agent execution rules
-          output: constitutional rules, CLI contract
-
-        - cmd: memory:show {TASK}
-          mode: inline
-          purpose: Epic memory for agent
-          output: Agent Context section
-
-        - cmd: task:show {TASK}
-          mode: inline
-          purpose: Task content for agent
-          output: full task file
-
-        # Subprocess mode: skill spawns, agent claims
-        - cmd: context:skill task-start
-          mode: subprocess
-          purpose: Skill orchestration context
-          output: spawn instructions
-
-        - cmd: agent:spawn {TASK}
-          mode: subprocess
-          purpose: Launch agent subprocess
-          output: spawned agent PID
-
+        - { cmd: "context:load task-start --role agent", mode: inline, purpose: "Agent execution rules" }
+        - { cmd: "memory:show {TASK}", mode: inline, purpose: "Epic memory for agent" }
+        - { cmd: "task:show {TASK}", mode: inline, purpose: "Task content for agent" }
+        - { cmd: "agent:spawn {TASK}", mode: subprocess, purpose: "Launch agent subprocess" }
     - name: agent-init
       actor: agent
       commands:
-        # Inline: agent receives context from Task tool prompt (no commands)
-
-        # Subprocess: agent claims assignment
-        - cmd: assign:claim {TASK}
-          mode: subprocess
-          purpose: Get full compiled prompt
-          output: agent contract + memory + epic + task
-
+        - { cmd: "assign:claim {TASK}", mode: subprocess, purpose: "Get compiled prompt" }
     - name: execution
       actor: agent
       commands:
-        - cmd: task:log {TASK} "message" --level
-          mode: both
-          purpose: Log progress and insights
-          required: true
-          note: Minimum 2 entries (1 TIP required)
-
+        - { cmd: "task:log {TASK} \"message\" --level", mode: both, purpose: "Log progress", required: true, note: "Minimum 2 entries" }
     - name: completion
       actor: agent
       commands:
-        - cmd: assign:release {TASK}
-          mode: subprocess
-          purpose: Release assignment, update status
-          output: marks task Done
-
-      # Inline: skill handles completion
-
+        - { cmd: "assign:release {TASK}", mode: subprocess, purpose: "Release and update status" }
     - name: post-flight
       actor: skill
       commands:
-        - cmd: task:update {TASK} --status Done
-          mode: inline
-          purpose: Update task status after agent returns
+        - { cmd: "task:update {TASK} --status Done", mode: inline, purpose: "Update task status" }
+        - { cmd: "agent:status {TASK}", mode: subprocess, purpose: "Check completion" }
+        - { cmd: "agent:merge {TASK}", mode: subprocess, purpose: "Merge worktree", condition: use_worktrees }
 
-        - cmd: agent:status {TASK}
-          mode: subprocess
-          purpose: Check agent completion status
-
-        - cmd: agent:merge {TASK}
-          mode: subprocess
-          purpose: Merge worktree changes (if worktree mode)
-          condition: use_worktrees
-
-epic-breakdown:
-  description: Decompose epic into tasks
-  entity: epic
-
-  phases:
+  epic-breakdown:
     - name: pre-flight
-      actor: skill
+      actor: coordinator
       commands:
-        - cmd: memory:sync
-          mode: both
-          purpose: Consolidate pending logs
-
-        - cmd: epic:show {EPIC}
-          mode: both
-          purpose: Review epic before breakdown
-
+        - { cmd: "memory:sync", mode: both, purpose: "Consolidate pending logs" }
+        - { cmd: "epic:show {EPIC}", mode: both, purpose: "Review epic" }
     - name: context-load
-      actor: skill
+      actor: coordinator
       commands:
-        - cmd: context:skill epic-breakdown
-          mode: inline
-          purpose: Skill orchestration context
-
-        - cmd: context:agent epic-breakdown
-          mode: inline
-          purpose: Agent execution rules
-
-        - cmd: epic:show {EPIC} --full
-          mode: inline
-          purpose: Epic content for agent
-
-        - cmd: context:skill epic-breakdown
-          mode: subprocess
-          purpose: Skill orchestration context
-
-        - cmd: agent:spawn {EPIC} --operation epic-breakdown
-          mode: subprocess
-          purpose: Launch agent subprocess
-
+        - { cmd: "context:load default", mode: inline, purpose: "Agent rules" }
+        - { cmd: "epic:show {EPIC} --full", mode: inline, purpose: "Epic content" }
+        - { cmd: "agent:spawn {EPIC} --operation epic-breakdown", mode: subprocess, purpose: "Launch agent" }
     - name: agent-init
       actor: agent
       commands:
-        - cmd: assign:claim {EPIC}
-          mode: subprocess
-          purpose: Get compiled prompt with PRD + epic content
-
+        - { cmd: "assign:claim {EPIC}", mode: subprocess, purpose: "Get compiled prompt" }
     - name: execution
       actor: agent
       commands:
-        - cmd: task:create {EPIC} "title"
-          mode: both
-          purpose: Create tasks via rudder CLI
-
-        - cmd: deps:add {TASK} --blocked-by {TASK}
-          mode: both
-          purpose: Set task dependencies
-
-        - cmd: deps:validate --fix
-          mode: both
-          purpose: Validate dependency graph
-
+        - { cmd: "task:create {EPIC} \"title\"", mode: both, purpose: "Create tasks" }
+        - { cmd: "deps:add {TASK} --blocked-by {TASK}", mode: both, purpose: "Set dependencies" }
+        - { cmd: "deps:validate --fix", mode: both, purpose: "Validate graph" }
     - name: completion
-      actor: skill
+      actor: coordinator
       commands:
-        - cmd: story:validate {PRD}
-          mode: both
-          purpose: Check for orphan stories
+        - { cmd: "story:validate {PRD}", mode: both, purpose: "Check orphan stories" }
 
-prd-breakdown:
-  description: Decompose PRD into epics
-  entity: prd
-
-  phases:
+  prd-breakdown:
     - name: pre-flight
-      actor: skill
+      actor: coordinator
       commands:
-        - cmd: memory:sync
-          mode: both
-          purpose: Consolidate pending logs
-
-        - cmd: prd:show {PRD}
-          mode: both
-          purpose: Review PRD before breakdown
-
-    - name: context-load
-      actor: skill
-      commands:
-        - cmd: context:skill prd-breakdown
-          mode: inline
-          purpose: Skill orchestration context
-
-        - cmd: context:agent prd-breakdown
-          mode: inline
-          purpose: Agent execution rules
-
-        - cmd: prd:show {PRD} --full
-          mode: inline
-          purpose: PRD content for agent
-
+        - { cmd: "memory:sync", mode: both, purpose: "Consolidate logs" }
+        - { cmd: "prd:show {PRD}", mode: both, purpose: "Review PRD" }
     - name: execution
       actor: agent
       commands:
-        - cmd: epic:create {PRD} "title"
-          mode: both
-          purpose: Create epics via rudder CLI
+        - { cmd: "epic:create {PRD} \"title\"", mode: both, purpose: "Create epics" }
+        - { cmd: "prd:milestone {PRD} M1 --add-epic {EPIC}", mode: both, purpose: "Assign to milestone" }
 
-        - cmd: prd:milestone {PRD} M1 --add-epic {EPIC}
-          mode: both
-          purpose: Assign epics to milestones
-
-prd-review:
-  description: Review PRD for completeness
-  entity: prd
-
-  phases:
+  prd-review:
     - name: context-load
-      actor: skill
+      actor: coordinator
       commands:
-        - cmd: context:skill prd-review
-          mode: inline
-          purpose: Skill context
+        - { cmd: "context:load default", mode: inline, purpose: "Agent rules" }
+        - { cmd: "prd:show {PRD} --full", mode: inline, purpose: "PRD content" }
+        - { cmd: "versions", mode: inline, purpose: "Current versions" }
 
-        - cmd: context:agent prd-review
-          mode: inline
-          purpose: Agent rules
-
-        - cmd: prd:show {PRD} --full
-          mode: inline
-          purpose: PRD content
-
-        - cmd: versions
-          mode: inline
-          purpose: Current component versions
-
-milestone-validate:
-  description: Validate milestone completion
-  entity: milestone
-
-  phases:
+  milestone-validate:
     - name: execution
       actor: agent
       commands:
-        - cmd: prd:milestone {PRD} {MILESTONE} --check
-          mode: both
-          purpose: Check milestone criteria
-
-        - cmd: task:list --milestone {MILESTONE} --status
-          mode: both
-          purpose: Verify all tasks done
+        - { cmd: "prd:milestone {PRD} {MILESTONE} --check", mode: both, purpose: "Check criteria" }
+        - { cmd: "task:list --milestone {MILESTONE} --status", mode: both, purpose: "Verify tasks done" }

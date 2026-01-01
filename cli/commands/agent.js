@@ -62,7 +62,7 @@ export function registerAgentCommands(program) {
       const agentConfig = getAgentConfig();
       if (!agentConfig.use_subprocess) {
         console.error('ERROR: agent:spawn is disabled (use_subprocess: false)\n');
-        console.error('Use Task tool with `rudder context:agent <command>` to spawn agents inline.');
+        console.error('Use Task tool with `rudder context:load <operation> --role agent` to spawn agents inline.');
         process.exit(1);
       }
 
