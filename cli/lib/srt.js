@@ -139,14 +139,10 @@ export function generateSrtConfig(options) {
   const config = loadBaseSrtConfig(baseConfigPath);
 
   if (strictMode) {
-    // Strict mode: only essential paths + explicitly provided paths
-    // This is for worktree agents that should be sandboxed to their worktree
-    const homeDir = os.homedir();
-    config.filesystem.allowWrite = [
-      '/tmp',                         // Temp files
-      `${homeDir}/.claude`,           // Claude session data (required)
-      `${homeDir}/.claude.json`       // Claude config (required)
-    ];
+    // Strict mode: only /tmp + explicitly provided paths
+    // Agent uses sandboxHome (agentDir/home) so no need for real ~/.claude paths
+    // agentDir is in additionalWritePaths, which covers agentDir/home
+    config.filesystem.allowWrite = ['/tmp'];
     for (const p of additionalWritePaths) {
       if (p) {
         config.filesystem.allowWrite.push(p);
@@ -185,6 +181,7 @@ export function generateSrtConfig(options) {
  * @param {function} [options.onStdout] - Custom stdout handler (data => void)
  * @param {function} [options.onStderr] - Custom stderr handler (data => void)
  * @param {string} [options.mcpConfigPath] - Path to MCP config for agent (adds --mcp-config + --strict-mcp-config)
+ * @param {string} [options.sandboxHome] - Custom HOME directory for sandbox isolation
  * @returns {{ process: ChildProcess, pid: number, logFile?: string }}
  */
 export function spawnClaudeWithSrt(options) {
@@ -200,7 +197,8 @@ export function spawnClaudeWithSrt(options) {
     timeout,
     onStdout,
     onStderr,
-    mcpConfigPath
+    mcpConfigPath,
+    sandboxHome
   } = options;
 
   // Build claude args
@@ -259,15 +257,73 @@ export function spawnClaudeWithSrt(options) {
     logStream.write('='.repeat(50) + '\n\n');
   }
 
+  // Prepare environment
+  const spawnEnv = { ...process.env };
+  if (debug) spawnEnv.SRT_DEBUG = '1';
+
+  // Sandbox HOME isolation: Claude writes to isolated home instead of real ~/.claude.json
+  if (sandboxHome) {
+    ensureDir(sandboxHome);
+    ensureDir(path.join(sandboxHome, '.claude'));
+    spawnEnv.HOME = sandboxHome;
+
+    // Copy credentials from real ~/.claude.json and ~/.claude/.credentials.json
+    const realHome = os.homedir();
+    const realClaudeJson = path.join(realHome, '.claude.json');
+    const realCredentials = path.join(realHome, '.claude', '.credentials.json');
+    const sandboxClaudeJson = path.join(sandboxHome, '.claude.json');
+    const sandboxClaudeDir = path.join(sandboxHome, '.claude');
+    const sandboxCredentials = path.join(sandboxClaudeDir, '.credentials.json');
+
+    // Copy .claude.json with auth fields
+    if (fs.existsSync(realClaudeJson)) {
+      try {
+        const realConfig = JSON.parse(fs.readFileSync(realClaudeJson, 'utf8'));
+        const authFields = [
+          'oauthAccount', 'primaryApiKey', 'apiKey', 'anonymousId', 'userID',
+          'hasCompletedOnboarding', 'lastOnboardingVersion'
+        ];
+        const minimalConfig = {};
+        for (const field of authFields) {
+          if (realConfig[field] !== undefined) {
+            minimalConfig[field] = realConfig[field];
+          }
+        }
+        fs.writeFileSync(sandboxClaudeJson, JSON.stringify(minimalConfig, null, 2));
+      } catch {
+        // Ignore errors
+      }
+    }
+
+    // Copy .claude/.credentials.json (contains OAuth tokens)
+    if (fs.existsSync(realCredentials)) {
+      try {
+        fs.copyFileSync(realCredentials, sandboxCredentials);
+        // Schedule cleanup of credentials after Claude has started (5 seconds)
+        setTimeout(() => {
+          try {
+            if (fs.existsSync(sandboxCredentials)) fs.unlinkSync(sandboxCredentials);
+            if (fs.existsSync(sandboxClaudeJson)) fs.unlinkSync(sandboxClaudeJson);
+          } catch {
+            // Ignore cleanup errors
+          }
+        }, 5000);
+      } catch {
+        // Ignore errors
+      }
+    }
+
+    if (logStream) {
+      logStream.write(`Sandbox HOME: ${sandboxHome}\n`);
+    }
+  }
+
   // Spawn process
   const child = spawn(command, finalArgs, {
     cwd,
     stdio: ['pipe', 'pipe', 'pipe'],
     detached: false,
-    env: {
-      ...process.env,
-      ...(debug && { SRT_DEBUG: '1' })
-    }
+    env: spawnEnv
   });
 
   // Write prompt to stdin and close

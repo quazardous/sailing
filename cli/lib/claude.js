@@ -89,6 +89,9 @@ export function spawnClaude(options) {
     onStderr = () => {}; // swallow console output, log file still gets it
   }
 
+  // Sandbox HOME isolation: use agentDir/home to isolate Claude's config
+  const sandboxHome = sandbox && agentDir ? path.join(agentDir, 'home') : null;
+
   const result = spawnClaudeWithSrt({
     prompt,
     cwd,
@@ -98,14 +101,16 @@ export function spawnClaude(options) {
     riskyMode,
     timeout,
     onStderr,
-    mcpConfigPath
+    mcpConfigPath,
+    sandboxHome
   });
 
   return {
     ...result,
     srtConfig: srtConfigPath,
     mcpConfig: mcpConfigPath,
-    mcpServerPath: mcpInfo?.mcpServerPath
+    mcpServerPath: mcpInfo?.mcpServerPath,
+    sandboxHome
   };
 }
 
