@@ -12,7 +12,10 @@ import { createMission, validateMission, validateResult, getProtocolVersion } fr
 import { loadState, saveState } from '../lib/state.js';
 import { addDynamicHelp } from '../lib/help.js';
 import { getAgentConfig } from '../lib/config.js';
-import { createWorktree, getWorktreePath, getBranchName, worktreeExists, removeWorktree, getWorktreeStatus } from '../lib/worktree.js';
+import {
+  createWorktree, getWorktreePath, getBranchName, worktreeExists, removeWorktree, getWorktreeStatus,
+  ensureBranchHierarchy, syncParentBranch, getParentBranch
+} from '../lib/worktree.js';
 import { spawnClaude, buildPromptFromMission, getLogFilePath } from '../lib/claude.js';
 import { buildConflictMatrix, suggestMergeOrder, canMergeWithoutConflict } from '../lib/conflicts.js';
 
@@ -88,6 +91,37 @@ function extractEpicId(parent) {
   if (!parent) return null;
   const match = parent.match(/E\d+/);
   return match ? match[0] : null;
+}
+
+/**
+ * Find PRD file by ID
+ */
+function findPrdFile(prdId) {
+  const prdsDir = getPrdsDir();
+  if (!fs.existsSync(prdsDir)) return null;
+
+  for (const prdDir of fs.readdirSync(prdsDir)) {
+    if (prdDir.startsWith(prdId + '-') || prdDir === prdId) {
+      const prdFile = path.join(prdsDir, prdDir, 'prd.md');
+      if (fs.existsSync(prdFile)) return prdFile;
+    }
+  }
+  return null;
+}
+
+/**
+ * Get PRD branching strategy
+ * @param {string} prdId - PRD ID
+ * @returns {string} 'flat' | 'prd' | 'epic'
+ */
+function getPrdBranching(prdId) {
+  const prdFile = findPrdFile(prdId);
+  if (!prdFile) return 'flat';
+
+  const prd = loadFile(prdFile);
+  if (!prd || !prd.data) return 'flat';
+
+  return prd.data.branching || 'flat';
 }
 
 /**
@@ -439,6 +473,39 @@ export function registerAgentCommands(program) {
         }
       }
 
+      // Get branching strategy from PRD
+      const branching = getPrdBranching(prdId);
+      const branchContext = { prdId, epicId, branching };
+
+      // Ensure branch hierarchy exists and sync parent (if enabled)
+      if (useWorktree && branching !== 'flat') {
+        // 1. First ensure branch hierarchy exists (prd/epic branches)
+        const hierarchyResult = ensureBranchHierarchy(branchContext);
+        if (!options.json && !options.dryRun && hierarchyResult.created.length > 0) {
+          console.log('Created branches:');
+          hierarchyResult.created.forEach(b => console.log(`  ${b}`));
+        }
+        if (hierarchyResult.errors.length > 0) {
+          console.error('Branch creation errors:');
+          hierarchyResult.errors.forEach(e => console.error(`  ${e}`));
+          process.exit(1);
+        }
+
+        // 2. Sync parent branch with its upstream (one level only)
+        const syncResult = syncParentBranch(branchContext);
+
+        if (!options.json && !options.dryRun) {
+          if (syncResult.synced) {
+            console.log(`Synced: ${syncResult.synced}`);
+          }
+          if (syncResult.error) {
+            console.error(`Sync error: ${syncResult.error}`);
+            console.error('\nResolve conflicts manually or use /dev:merge skill.');
+            process.exit(1);
+          }
+        }
+      }
+
       // Get timeout
       const timeout = options.timeout || agentConfig.timeout || 600;
 
@@ -514,7 +581,10 @@ Start by running \`rudder assign:claim ${taskId}\` to get your instructions.
           process.exit(1);
         }
 
-        const result = createWorktree(taskId);
+        // Get parent branch based on branching strategy
+        const parentBranch = getParentBranch(taskId, branchContext);
+
+        const result = createWorktree(taskId, { baseBranch: parentBranch });
         if (!result.success) {
           console.error(`Failed to create worktree: ${result.error}`);
           process.exit(1);
@@ -523,13 +593,14 @@ Start by running \`rudder assign:claim ${taskId}\` to get your instructions.
         worktreeInfo = {
           path: result.path,
           branch: result.branch,
-          base_branch: result.baseBranch
+          base_branch: result.baseBranch,
+          branching  // Store strategy for later merge
         };
         cwd = result.path;
 
         if (!options.json) {
           console.log(`Worktree created: ${result.path}`);
-          console.log(`  Branch: ${result.branch}`);
+          console.log(`  Branch: ${result.branch} (from ${parentBranch})`);
         }
       }
 

@@ -22,6 +22,35 @@ export const CONFIG_SCHEMA = {
     default: 'main',
     description: 'Main branch name (main, master, develop, etc.)'
   },
+  'git.sync_before_spawn': {
+    type: 'boolean',
+    default: true,
+    description: 'Auto-sync parent branch from main before spawning task'
+  },
+  'git.merge_to_main': {
+    type: 'enum',
+    default: 'squash',
+    values: ['squash', 'merge', 'rebase'],
+    description: 'Strategy for final merge to main (PRD → main)'
+  },
+  'git.merge_to_prd': {
+    type: 'enum',
+    default: 'squash',
+    values: ['squash', 'merge', 'rebase'],
+    description: 'Strategy for merge to PRD branch (epic/task → prd)'
+  },
+  'git.merge_to_epic': {
+    type: 'enum',
+    default: 'merge',
+    values: ['squash', 'merge', 'rebase'],
+    description: 'Strategy for merge to epic branch (task → epic)'
+  },
+  'git.squash_level': {
+    type: 'enum',
+    default: 'prd',
+    values: ['task', 'epic', 'prd'],
+    description: 'At which level commits appear in main (task=all, prd=1 per PRD)'
+  },
   'agent.use_subprocess': {
     type: 'boolean',
     default: false,

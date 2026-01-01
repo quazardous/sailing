@@ -9,7 +9,7 @@ import path from 'path';
 import { execSync } from 'child_process';
 import { findProjectRoot, getWorktreesDir as _getWorktreesDir } from './core.js';
 import { ensureDir } from './paths.js';
-import { getGitConfig } from './config.js';
+import { getGitConfig, getConfigValue } from './config.js';
 
 /**
  * Get configured main branch name
@@ -169,6 +169,212 @@ export function ensureBranchHierarchy(context) {
   }
 
   return { branches, created, errors };
+}
+
+/**
+ * Get the branch hierarchy chain for sync propagation
+ * Returns array from main → ... → task parent (order: top to bottom)
+ * @param {object} context - { prdId, epicId, branching }
+ * @returns {string[]} Branch chain (e.g., ['main', 'prd/PRD-001', 'epic/E001'])
+ */
+export function getBranchHierarchy(context) {
+  const { prdId, epicId, branching = 'flat' } = context;
+  const mainBranch = getMainBranch();
+  const chain = [mainBranch];
+
+  if (branching === 'flat') {
+    return chain;
+  }
+
+  if (prdId && (branching === 'prd' || branching === 'epic')) {
+    chain.push(getPrdBranchName(prdId));
+  }
+
+  if (epicId && branching === 'epic') {
+    chain.push(getEpicBranchName(epicId));
+  }
+
+  return chain;
+}
+
+/**
+ * Check if a branch is behind another
+ * @param {string} branch - Branch to check
+ * @param {string} upstream - Upstream branch
+ * @returns {{ behind: number, ahead: number }}
+ */
+export function getBranchDivergence(branch, upstream) {
+  const projectRoot = findProjectRoot();
+
+  try {
+    const output = execSync(
+      `git rev-list --left-right --count "${upstream}...${branch}"`,
+      { cwd: projectRoot, encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'] }
+    ).trim();
+
+    const [aheadUpstream, behindUpstream] = output.split('\t').map(n => parseInt(n, 10) || 0);
+    return { behind: aheadUpstream, ahead: behindUpstream };
+  } catch {
+    return { behind: 0, ahead: 0 };
+  }
+}
+
+/**
+ * Sync (merge/rebase) a branch from its upstream
+ * @param {string} branch - Branch to sync
+ * @param {string} upstream - Upstream branch to sync from
+ * @param {string} strategy - 'merge' or 'rebase' (default: merge)
+ * @returns {{ success: boolean, synced: boolean, error?: string }}
+ */
+export function syncBranch(branch, upstream, strategy = 'merge') {
+  const projectRoot = findProjectRoot();
+
+  // Check divergence first
+  const div = getBranchDivergence(branch, upstream);
+  if (div.behind === 0) {
+    return { success: true, synced: false, message: 'Already up to date' };
+  }
+
+  try {
+    // Checkout branch, sync, then return to previous
+    const currentBranch = execSync('git rev-parse --abbrev-ref HEAD', {
+      cwd: projectRoot, encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe']
+    }).trim();
+
+    execSync(`git checkout "${branch}"`, {
+      cwd: projectRoot, encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe']
+    });
+
+    try {
+      if (strategy === 'rebase') {
+        execSync(`git rebase "${upstream}"`, {
+          cwd: projectRoot, encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe']
+        });
+      } else {
+        execSync(`git merge "${upstream}" --no-edit`, {
+          cwd: projectRoot, encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe']
+        });
+      }
+
+      // Return to original branch
+      execSync(`git checkout "${currentBranch}"`, {
+        cwd: projectRoot, encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe']
+      });
+
+      return { success: true, synced: true, behind: div.behind };
+    } catch (e) {
+      // Abort and return to original
+      try {
+        if (strategy === 'rebase') {
+          execSync('git rebase --abort', { cwd: projectRoot, stdio: ['pipe', 'pipe', 'pipe'] });
+        } else {
+          execSync('git merge --abort', { cwd: projectRoot, stdio: ['pipe', 'pipe', 'pipe'] });
+        }
+      } catch { /* ignore */ }
+
+      execSync(`git checkout "${currentBranch}"`, {
+        cwd: projectRoot, encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe']
+      });
+
+      return { success: false, synced: false, error: `Conflict during ${strategy}: ${e.message}` };
+    }
+  } catch (e) {
+    return { success: false, synced: false, error: e.message };
+  }
+}
+
+/**
+ * Sync parent branch from its upstream (one level only)
+ * Called before spawning task - syncs only the immediate parent
+ * @param {object} context - { prdId, epicId, branching }
+ * @returns {{ success: boolean, synced?: string, skipped?: string, error?: string, disabled?: boolean }}
+ */
+export function syncParentBranch(context) {
+  const syncEnabled = getConfigValue('git.sync_before_spawn');
+  if (!syncEnabled) {
+    return { success: true, disabled: true };
+  }
+
+  const chain = getBranchHierarchy(context);
+  if (chain.length < 2) {
+    // flat mode: no parent to sync
+    return { success: true, skipped: 'flat mode' };
+  }
+
+  // Get the last branch in the hierarchy (task's parent) and its upstream
+  const branch = chain[chain.length - 1];      // e.g., epic/E001
+  const upstream = chain[chain.length - 2];    // e.g., prd/PRD-001 or main
+
+  // Skip if branch doesn't exist yet
+  if (!branchExists(branch)) {
+    return { success: true, skipped: `${branch} (not created yet)` };
+  }
+
+  const result = syncBranch(branch, upstream, 'merge');
+  if (!result.success) {
+    return { success: false, error: `${branch}: ${result.error}` };
+  }
+
+  if (result.synced) {
+    return { success: true, synced: `${branch} ← ${upstream} (${result.behind} commits)` };
+  }
+
+  return { success: true, skipped: `${branch} (up to date)` };
+}
+
+/**
+ * Sync branch hierarchy upward (for epic/PRD completion)
+ * Called when finishing an epic or PRD - syncs upward to main
+ * @param {string} level - 'epic' | 'prd' - which level completed
+ * @param {object} context - { prdId, epicId, branching }
+ * @returns {{ success: boolean, synced: string[], errors: string[], skipped: string[] }}
+ */
+export function syncUpwardHierarchy(level, context) {
+  const { prdId, epicId, branching = 'flat' } = context;
+  const mainBranch = getMainBranch();
+  const synced = [];
+  const errors = [];
+  const skipped = [];
+
+  if (branching === 'flat') {
+    return { success: true, synced: [], errors: [], skipped: ['flat mode'] };
+  }
+
+  // Determine which syncs to perform based on completion level
+  const syncPairs = [];
+
+  if (level === 'epic' && branching === 'epic') {
+    // Epic completed: sync epic → prd
+    if (epicId && prdId) {
+      syncPairs.push({ branch: getEpicBranchName(epicId), upstream: getPrdBranchName(prdId) });
+    }
+  } else if (level === 'prd') {
+    // PRD completed: sync prd → main (and epic → prd if epic mode)
+    if (branching === 'epic' && epicId && prdId) {
+      syncPairs.push({ branch: getEpicBranchName(epicId), upstream: getPrdBranchName(prdId) });
+    }
+    if (prdId) {
+      syncPairs.push({ branch: getPrdBranchName(prdId), upstream: mainBranch });
+    }
+  }
+
+  for (const { branch, upstream } of syncPairs) {
+    if (!branchExists(branch)) {
+      skipped.push(`${branch} (not found)`);
+      continue;
+    }
+
+    const result = syncBranch(branch, upstream, 'merge');
+    if (!result.success) {
+      errors.push(`${branch}: ${result.error}`);
+    } else if (result.synced) {
+      synced.push(`${branch} ← ${upstream} (${result.behind} commits)`);
+    } else {
+      skipped.push(`${branch} (up to date)`);
+    }
+  }
+
+  return { success: errors.length === 0, synced, errors, skipped };
 }
 
 /**
