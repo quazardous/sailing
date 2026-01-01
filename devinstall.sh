@@ -19,7 +19,8 @@ BLUE='\033[0;34m'
 NC='\033[0m'
 
 FORCE=false
-FULL_MODE=false
+FIX=false
+USE_WORKTREE=false
 FOLDERS_PROFILE=""
 
 # Parse arguments
@@ -37,7 +38,8 @@ while [[ $# -gt 0 ]]; do
       echo
       echo "Options:"
       echo "  --force              Force overwrite existing files"
-      echo "  --full               Enable subprocess mode (worktrees, auto-spawn)"
+      echo "  --fix                Auto-fix configuration issues"
+      echo "  --use-worktree       Enable worktree mode (subprocess, isolation)"
       echo "  --folders-profile=X  Use folder profile: project (default), haven, sibling"
       echo "  --help, -h           Show this help"
       echo
@@ -52,8 +54,12 @@ while [[ $# -gt 0 ]]; do
       FORCE=true
       shift
       ;;
-    --full)
-      FULL_MODE=true
+    --fix)
+      FIX=true
+      shift
+      ;;
+    --use-worktree)
+      USE_WORKTREE=true
       shift
       ;;
     --folders-profile=*)
@@ -83,6 +89,11 @@ if [ -n "$FOLDERS_PROFILE" ]; then
       exit 1
       ;;
   esac
+fi
+
+# --use-worktree defaults to haven profile (avoid git pollution)
+if [ "$USE_WORKTREE" = true ] && [ -z "$FOLDERS_PROFILE" ]; then
+  FOLDERS_PROFILE="haven"
 fi
 
 echo -e "${BLUE}Sailing Dev Install${NC} (symlink mode)"
@@ -119,6 +130,25 @@ SKILL=".claude/skills/sailing"
 COMMANDS=".claude/commands/dev"
 # Note: templates and prompting use ^/ prefix in paths.yaml (no local copy)
 
+# Compute project hash (same as paths.js)
+compute_haven_path() {
+  local source
+  source=$(git remote get-url origin 2>/dev/null || realpath "$(pwd)")
+  local hash=$(echo -n "$source" | sha256sum | cut -c1-12)
+  echo "$HOME/.sailing/havens/$hash"
+}
+
+# Resolve %haven% placeholder in path
+resolve_path() {
+  local p="$1"
+  if [[ "$p" == *"%haven%"* ]]; then
+    local haven=$(compute_haven_path)
+    echo "${p/\%haven\%/$haven}"
+  else
+    echo "$p"
+  fi
+}
+
 # Read custom paths from existing paths.yaml (if any)
 CONFIG_FILE="${DEFAULT_SAILING_DIR}/paths.yaml"
 if [ -f "$CONFIG_FILE" ]; then
@@ -135,12 +165,13 @@ if [ -f "$CONFIG_FILE" ]; then
   CUSTOM_SKILL=$(parse_yaml_path "skill")
   CUSTOM_COMMANDS=$(parse_yaml_path "commands")
 
-  [ -n "$CUSTOM_ARTEFACTS" ] && ARTEFACTS="$CUSTOM_ARTEFACTS"
-  [ -n "$CUSTOM_MEMORY" ] && MEMORY="$CUSTOM_MEMORY"
-  [ -n "$CUSTOM_STATE" ] && STATE_FILE="$CUSTOM_STATE"
-  [ -n "$CUSTOM_COMPONENTS" ] && COMPONENTS_FILE="$CUSTOM_COMPONENTS"
-  [ -n "$CUSTOM_SKILL" ] && SKILL="$CUSTOM_SKILL"
-  [ -n "$CUSTOM_COMMANDS" ] && COMMANDS="$CUSTOM_COMMANDS"
+  # Resolve %haven% placeholders
+  [ -n "$CUSTOM_ARTEFACTS" ] && ARTEFACTS=$(resolve_path "$CUSTOM_ARTEFACTS")
+  [ -n "$CUSTOM_MEMORY" ] && MEMORY=$(resolve_path "$CUSTOM_MEMORY")
+  [ -n "$CUSTOM_STATE" ] && STATE_FILE=$(resolve_path "$CUSTOM_STATE")
+  [ -n "$CUSTOM_COMPONENTS" ] && COMPONENTS_FILE=$(resolve_path "$CUSTOM_COMPONENTS")
+  [ -n "$CUSTOM_SKILL" ] && SKILL=$(resolve_path "$CUSTOM_SKILL")
+  [ -n "$CUSTOM_COMMANDS" ] && COMMANDS=$(resolve_path "$CUSTOM_COMMANDS")
 fi
 
 # 5. Create necessary directories
@@ -191,8 +222,18 @@ create_symlink() {
   echo -e "  ${GREEN}Linked: $dest → $src${NC}"
 }
 
-# Skill
-create_symlink "$SCRIPT_DIR/skill" "$SKILL"
+# Skill (generate files, symlink created in section 13 based on mode)
+echo -e "${BLUE}Building skill files...${NC}"
+(cd "$SCRIPT_DIR/skill" && ./build.sh) || {
+  echo -e "${RED}Failed to build skill files${NC}"
+  exit 1
+}
+# Remove if old symlink (legacy devinstall)
+if [ -L "$SKILL" ]; then
+  rm "$SKILL"
+  echo -e "  ${YELLOW}Removed legacy symlink: $SKILL${NC}"
+fi
+mkdir -p "$SKILL"
 
 # Commands
 create_symlink "$SCRIPT_DIR/commands/dev" "$COMMANDS"
@@ -242,13 +283,22 @@ echo -e "${BLUE}Configuring repo paths...${NC}"
 configure_repo_path() {
   local key="$1"
   local value="^/$key"
+  local file="$DEFAULT_SAILING_DIR/paths.yaml"
 
-  if ! grep -q "^[[:space:]]*$key:" "$DEFAULT_SAILING_DIR/paths.yaml" 2>/dev/null; then
-    echo "  $key: $value" >> "$DEFAULT_SAILING_DIR/paths.yaml"
+  # Check non-comment lines only
+  local current=$(grep -E "^[[:space:]]*$key:" "$file" 2>/dev/null | grep -v "^[[:space:]]*#" | head -1)
+
+  if [ -z "$current" ]; then
+    echo "  $key: $value" >> "$file"
     echo -e "  ${GREEN}Added: $key: $value${NC}"
-  elif ! grep -q "$key:.*\^/$key" "$DEFAULT_SAILING_DIR/paths.yaml" 2>/dev/null; then
-    echo -e "  ${YELLOW}Warning: paths.yaml has custom $key path${NC}"
-    echo -e "  ${YELLOW}For devinstall, it MUST be: $key: $value${NC}"
+  elif ! echo "$current" | grep -q "\^/$key"; then
+    if [ "$FIX" = true ]; then
+      sed -i "s|^[[:space:]]*$key:.*|  $key: $value|" "$file"
+      echo -e "  ${GREEN}Fixed: $key: $value${NC}"
+    else
+      echo -e "  ${YELLOW}Warning: paths.yaml has custom $key path${NC}"
+      echo -e "  ${YELLOW}For devinstall, it MUST be: $key: $value (use --fix)${NC}"
+    fi
   else
     echo -e "  ${GREEN}OK: $key: $value${NC}"
   fi
@@ -299,6 +349,33 @@ if [ -n "$FOLDERS_PROFILE" ]; then
       fi
       ;;
     haven)
+      # Helper to check/fix haven paths
+      check_haven_path() {
+        local key="$1"
+        local expected="%haven%/$2"
+        local current=$(grep -E "^\s*$key:" "$PATHS_FILE" 2>/dev/null | sed 's/.*:\s*//' | tr -d '"' | tr -d "'")
+
+        if [ -z "$current" ]; then
+          echo "  $key: \"$expected\"" >> "$PATHS_FILE"
+          echo -e "  ${GREEN}Added: $key${NC}"
+        elif [[ "$current" != *"%haven%"* ]]; then
+          if [ "$FIX" = true ]; then
+            sed -i "s|$key:.*|$key: \"$expected\"|" "$PATHS_FILE"
+            echo -e "  ${GREEN}Fixed: $key → $expected${NC}"
+          else
+            echo -e "  ${YELLOW}Warning: $key should use %haven% (use --fix)${NC}"
+          fi
+        else
+          echo -e "  ${GREEN}OK: $key${NC}"
+        fi
+      }
+
+      check_haven_path "artefacts" "artefacts"
+      check_haven_path "memory" "memory"
+      check_haven_path "state" "state.json"
+      check_haven_path "components" "components.yaml"
+
+      # Worktrees and agents
       if ! grep -q "^worktrees:" "$PATHS_FILE" 2>/dev/null; then
         echo 'worktrees: "%haven%/worktrees"' >> "$PATHS_FILE"
         echo -e "  ${GREEN}Added: worktrees path${NC}"
@@ -322,11 +399,13 @@ if [ -n "$FOLDERS_PROFILE" ]; then
   echo
 fi
 
-# 13. Apply full mode (optional)
-if [ "$FULL_MODE" = true ]; then
-  echo -e "${BLUE}Enabling full mode (subprocess + worktrees)${NC}"
+# 13. Apply worktree mode and create SKILL.md symlink
+echo -e "${BLUE}Configuring skill mode...${NC}"
 
-  CONFIG_FILE="$DEFAULT_SAILING_DIR/config.yaml"
+CONFIG_FILE="$DEFAULT_SAILING_DIR/config.yaml"
+
+if [ "$USE_WORKTREE" = true ]; then
+  echo -e "  ${GREEN}Mode: worktree (subprocess + isolation)${NC}"
 
   # Create or update config.yaml
   if [ ! -f "$CONFIG_FILE" ]; then
@@ -344,7 +423,7 @@ agent:
   timeout: 3600
   merge_strategy: merge
 EOF
-    echo -e "  ${GREEN}Created: $CONFIG_FILE with subprocess+worktree mode enabled${NC}"
+    echo -e "  ${GREEN}Created: $CONFIG_FILE${NC}"
   else
     # Update or add use_subprocess
     if grep -q "use_subprocess:" "$CONFIG_FILE" 2>/dev/null; then
@@ -356,8 +435,6 @@ EOF
         echo -e "\nagent:\n  use_subprocess: true" >> "$CONFIG_FILE"
       fi
     fi
-    echo -e "  ${GREEN}Set: use_subprocess: true${NC}"
-
     # Update or add use_worktrees
     if grep -q "use_worktrees:" "$CONFIG_FILE" 2>/dev/null; then
       sed -i 's/use_worktrees:.*/use_worktrees: true/' "$CONFIG_FILE"
@@ -368,10 +445,48 @@ EOF
         echo -e "\nagent:\n  use_worktrees: true" >> "$CONFIG_FILE"
       fi
     fi
-    echo -e "  ${GREEN}Set: use_worktrees: true${NC}"
+    echo -e "  ${GREEN}Updated: $CONFIG_FILE${NC}"
   fi
+
+  # SKILL.md → source repo SKILL_WORKTREE.md
+  ln -sfn "$SCRIPT_DIR/skill/SKILL_WORKTREE.md" "$SKILL/SKILL.md"
+  echo -e "  ${GREEN}Linked: SKILL.md → SKILL_WORKTREE.md${NC}"
+
+  # Create haven convenience symlink for IDE
   echo
+  echo -e "${BLUE}Setting up haven symlink...${NC}"
+
+  HAVEN_PATH=$(bin/rudder paths haven 2>/dev/null | head -1)
+  if [ -z "$HAVEN_PATH" ]; then
+    echo -e "${YELLOW}Warning: Could not determine haven path${NC}"
+  else
+    # Expand ~ to $HOME
+    HAVEN_PATH="${HAVEN_PATH/#\~/$HOME}"
+
+    # Create haven directories
+    mkdir -p "$HAVEN_PATH/artefacts/prds"
+    mkdir -p "$HAVEN_PATH/memory"
+
+    # Create convenience symlink
+    ln -sfn "$HAVEN_PATH" "$DEFAULT_SAILING_DIR/haven"
+    echo -e "  ${GREEN}Linked: $DEFAULT_SAILING_DIR/haven → $HAVEN_PATH${NC}"
+
+    # Add to .gitignore
+    GITIGNORE=".gitignore"
+    [ ! -f "$GITIGNORE" ] && touch "$GITIGNORE"
+    if ! grep -qxF ".sailing/haven" "$GITIGNORE" 2>/dev/null; then
+      echo ".sailing/haven" >> "$GITIGNORE"
+      echo -e "  ${GREEN}Added to .gitignore: .sailing/haven${NC}"
+    fi
+  fi
+else
+  echo -e "  ${GREEN}Mode: inline (default)${NC}"
+
+  # SKILL.md → source repo SKILL_INLINE.md
+  ln -sfn "$SCRIPT_DIR/skill/SKILL_INLINE.md" "$SKILL/SKILL.md"
+  echo -e "  ${GREEN}Linked: SKILL.md → SKILL_INLINE.md${NC}"
 fi
+echo
 
 # Done
 echo -e "${GREEN}Dev install complete!${NC}"

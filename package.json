@@ -7,7 +7,8 @@
     "rudder": "./bin/rudder"
   },
   "scripts": {
-    "rudder": "node cli/rudder.js"
+    "rudder": "node cli/rudder.js",
+    "build:skill": "./skill/build.sh"
   },
   "dependencies": {
     "commander": "^12.1.0",

@@ -12,7 +12,7 @@
 #   --global              Install rudder CLI globally via npm
 #   --force               Force overwrite protected files
 #   --dry-run             Show what would be done without doing it
-#   --full                Enable subprocess mode (worktrees, auto-spawn)
+#   --use-worktree        Enable worktree mode (subprocess, isolation)
 #   --folders-profile=X   Use folder profile: project (default), haven, sibling
 #
 
@@ -42,8 +42,9 @@ DEFAULT_COMMANDS=".claude/commands/dev"
 # Parse arguments
 GLOBAL=false
 FORCE=false
+FIX=false
 DRY_RUN=false
-FULL_MODE=false
+USE_WORKTREE=false
 FOLDERS_PROFILE=""
 
 while [[ $# -gt 0 ]]; do
@@ -56,12 +57,16 @@ while [[ $# -gt 0 ]]; do
       FORCE=true
       shift
       ;;
+    --fix)
+      FIX=true
+      shift
+      ;;
     --dry-run)
       DRY_RUN=true
       shift
       ;;
-    --full)
-      FULL_MODE=true
+    --use-worktree)
+      USE_WORKTREE=true
       shift
       ;;
     --folders-profile=*)
@@ -90,6 +95,11 @@ if [ -n "$FOLDERS_PROFILE" ]; then
       exit 1
       ;;
   esac
+fi
+
+# --use-worktree defaults to haven profile (avoid git pollution)
+if [ "$USE_WORKTREE" = true ] && [ -z "$FOLDERS_PROFILE" ]; then
+  FOLDERS_PROFILE="haven"
 fi
 
 echo -e "${BLUE}Sailing Installer${NC}"
@@ -363,9 +373,15 @@ for subdir in agent skill shared; do
   fi
 done
 
-# Skill (always updated)
+# Skill (generate then copy - SKILL.md created based on mode in section 11)
+echo "Building skill files..."
+(cd "$SRC/skill" && ./build.sh) || {
+  echo -e "${RED}Failed to build skill files${NC}"
+  exit 1
+}
 echo "Installing skill..."
-copy_file "$SRC/skill/SKILL.md" "$SKILL/SKILL.md" false
+copy_file "$SRC/skill/SKILL_INLINE.md" "$SKILL/SKILL_INLINE.md" false
+copy_file "$SRC/skill/SKILL_WORKTREE.md" "$SKILL/SKILL_WORKTREE.md" false
 
 # Commands (always updated)
 echo "Installing commands..."
@@ -453,9 +469,38 @@ if [ -n "$FOLDERS_PROFILE" ]; then
 
   PATHS_FILE="$DEFAULT_SAILING_DIR/paths.yaml"
 
+  # Helper to check/fix haven paths (for haven profile with --fix)
+  check_haven_path() {
+    local key="$1"
+    local expected="%haven%/$2"
+    local current=$(grep -E "^\s*$key:" "$PATHS_FILE" 2>/dev/null | sed 's/.*:\s*//' | tr -d '"' | tr -d "'")
+
+    if [ -z "$current" ]; then
+      echo "  $key: \"$expected\"" >> "$PATHS_FILE"
+      echo -e "  ${GREEN}Added: $key${NC}"
+    elif [[ "$current" != *"%haven%"* ]]; then
+      if [ "$FIX" = true ]; then
+        sed -i "s|$key:.*|$key: \"$expected\"|" "$PATHS_FILE"
+        echo -e "  ${GREEN}Fixed: $key → $expected${NC}"
+      else
+        echo -e "  ${YELLOW}Warning: $key should use %haven% (use --fix)${NC}"
+      fi
+    else
+      echo -e "  ${GREEN}OK: $key${NC}"
+    fi
+  }
+
   # Check if paths.yaml already exists
   if [ -f "$PATHS_FILE" ] && [ "$FORCE" != "true" ]; then
-    echo -e "${YELLOW}paths.yaml already exists, skipping (use --force to overwrite)${NC}"
+    if [ "$FIX" = true ] && [ "$FOLDERS_PROFILE" = "haven" ]; then
+      echo -e "  ${BLUE}Checking haven paths...${NC}"
+      check_haven_path "artefacts" "artefacts"
+      check_haven_path "memory" "memory"
+      check_haven_path "state" "state.json"
+      check_haven_path "components" "components.yaml"
+    else
+      echo -e "${YELLOW}paths.yaml already exists, skipping (use --force to overwrite or --fix to update)${NC}"
+    fi
   else
     if [ "$DRY_RUN" = true ]; then
       echo "  Would create: $PATHS_FILE with profile $FOLDERS_PROFILE"
@@ -477,6 +522,8 @@ EOF
 # Everything in ~/.sailing/havens/<hash>/
 artefacts: "%haven%/artefacts"
 memory: "%haven%/memory"
+state: "%haven%/state.json"
+components: "%haven%/components.yaml"
 worktrees: "%haven%/worktrees"
 agents: "%haven%/agents"
 EOF
@@ -499,15 +546,18 @@ EOF
 fi
 
 # =============================================================================
-# 11. APPLY FULL MODE (optional)
+# 11. CONFIGURE SKILL MODE AND SKILL.md
 # =============================================================================
-if [ "$FULL_MODE" = true ]; then
-  echo -e "${BLUE}Enabling full mode (subprocess + worktrees)${NC}"
+echo -e "${BLUE}Configuring skill mode...${NC}"
 
-  CONFIG_FILE="$DEFAULT_SAILING_DIR/config.yaml"
+CONFIG_FILE="$DEFAULT_SAILING_DIR/config.yaml"
+
+if [ "$USE_WORKTREE" = true ]; then
+  echo -e "  ${GREEN}Mode: worktree (subprocess + isolation)${NC}"
 
   if [ "$DRY_RUN" = true ]; then
     echo "  Would set agent.use_subprocess: true and agent.use_worktrees: true in $CONFIG_FILE"
+    echo "  Would copy: SKILL_WORKTREE.md → SKILL.md"
   else
     # Create or update config.yaml
     if [ ! -f "$CONFIG_FILE" ]; then
@@ -525,7 +575,7 @@ agent:
   timeout: 3600
   merge_strategy: merge
 EOF
-      echo -e "  ${GREEN}Created: $CONFIG_FILE with subprocess+worktree mode enabled${NC}"
+      echo -e "  ${GREEN}Created: $CONFIG_FILE${NC}"
     else
       # Update or add use_subprocess
       if grep -q "use_subprocess:" "$CONFIG_FILE" 2>/dev/null; then
@@ -537,7 +587,6 @@ EOF
           echo -e "\nagent:\n  use_subprocess: true" >> "$CONFIG_FILE"
         fi
       fi
-      echo -e "  ${GREEN}Set: use_subprocess: true${NC}"
 
       # Update or add use_worktrees
       if grep -q "use_worktrees:" "$CONFIG_FILE" 2>/dev/null; then
@@ -549,11 +598,53 @@ EOF
           echo -e "\nagent:\n  use_worktrees: true" >> "$CONFIG_FILE"
         fi
       fi
-      echo -e "  ${GREEN}Set: use_worktrees: true${NC}"
+      echo -e "  ${GREEN}Updated: $CONFIG_FILE${NC}"
+    fi
+
+    # SKILL.md = SKILL_WORKTREE.md
+    cp "$SKILL/SKILL_WORKTREE.md" "$SKILL/SKILL.md"
+    echo -e "  ${GREEN}Created: SKILL.md (worktree mode)${NC}"
+
+    # Create haven convenience symlink for IDE
+    echo
+    echo -e "${BLUE}Setting up haven symlink...${NC}"
+
+    HAVEN_PATH=$(bin/rudder paths haven 2>/dev/null | head -1)
+    if [ -z "$HAVEN_PATH" ]; then
+      echo -e "${YELLOW}Warning: Could not determine haven path${NC}"
+    else
+      # Expand ~ to $HOME
+      HAVEN_PATH="${HAVEN_PATH/#\~/$HOME}"
+
+      # Create haven directories
+      mkdir -p "$HAVEN_PATH/artefacts/prds"
+      mkdir -p "$HAVEN_PATH/memory"
+
+      # Create convenience symlink
+      ln -sfn "$HAVEN_PATH" "$DEFAULT_SAILING_DIR/haven"
+      echo -e "  ${GREEN}Linked: $DEFAULT_SAILING_DIR/haven → $HAVEN_PATH${NC}"
+
+      # Add to .gitignore
+      GITIGNORE=".gitignore"
+      [ ! -f "$GITIGNORE" ] && touch "$GITIGNORE"
+      if ! grep -qxF ".sailing/haven" "$GITIGNORE" 2>/dev/null; then
+        echo ".sailing/haven" >> "$GITIGNORE"
+        echo -e "  ${GREEN}Added to .gitignore: .sailing/haven${NC}"
+      fi
     fi
   fi
-  echo
+else
+  echo -e "  ${GREEN}Mode: inline (default)${NC}"
+
+  if [ "$DRY_RUN" = true ]; then
+    echo "  Would copy: SKILL_INLINE.md → SKILL.md"
+  else
+    # SKILL.md = SKILL_INLINE.md
+    cp "$SKILL/SKILL_INLINE.md" "$SKILL/SKILL.md"
+    echo -e "  ${GREEN}Created: SKILL.md (inline mode)${NC}"
+  fi
 fi
+echo
 
 # =============================================================================
 # DONE

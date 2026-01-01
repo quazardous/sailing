@@ -416,9 +416,11 @@ export function getPathsInfo() {
   const getProjectPath = (key) => {
     const configuredPath = config.paths[key] || DEFAULT_PATHS[key];
     const absolute = getPath(key);
+    // Resolve placeholders for display, make relative to home if applicable
+    const relative = absolute ? toHomeRelative(absolute) : configuredPath;
     return {
-      template: `^/${configuredPath}`,
-      relative: configuredPath,
+      template: configuredPath,
+      relative,
       absolute
     };
   };

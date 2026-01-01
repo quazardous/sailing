@@ -209,6 +209,15 @@ function composeContext(operation, options = {}) {
   const parts = [];
   const sources = [];
 
+  // SKILL WORKTREE MODE: Inject warning at the very beginning
+  if (role === 'skill' && agentConfig.use_worktrees && agentConfig.use_subprocess) {
+    const worktreeModeWarning = loadFragment('skill/worktree-mode');
+    if (worktreeModeWarning) {
+      parts.push(worktreeModeWarning);
+      sources.push('skill/worktree-mode');
+    }
+  }
+
   for (const fragmentPath of fragments) {
     const content = loadFragment(fragmentPath);
     if (content) {
