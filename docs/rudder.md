@@ -44,6 +44,7 @@ bin/rudder deps:validate --fix   # Fix cycles/issues
 | `epic` | Epic operations (list, show, create, update) |
 | `task` | Task operations (list, show, create, update, next, start, done, log) |
 | `deps` | Dependency graph (tree, validate, impact, ready, critical) |
+| `artifact` | Edit PRD/Epic/Task content (show, edit, check, patch, ops) |
 | `memory` | Memory sync operations |
 | `permissions` | Claude Code permissions management |
 
@@ -113,6 +114,40 @@ bin/rudder task:log T042 "Cannot proceed, missing Y" --error
 ```
 
 Logs are consolidated into epic memory for future agents.
+
+## Artifact Editing
+
+Edit PRD/Epic/Task markdown content without knowing the file structure:
+
+```bash
+# Show artifact sections
+bin/rudder artifact:show T042 --list              # List sections
+bin/rudder artifact:show T042 --section "Deliverables"
+
+# Edit sections
+bin/rudder artifact:edit T042 --section "Deliverables" --content "- [x] Done"
+bin/rudder artifact:edit T042 --section "Notes" --append "New note"
+echo "Content" | bin/rudder artifact:edit T042 --section "Description"
+
+# Checkboxes
+bin/rudder artifact:check T042 "Create component"    # Check item
+bin/rudder artifact:uncheck T042 "Create component"  # Uncheck item
+
+# Aider-style patches (for agents)
+bin/rudder artifact:patch T042 <<'EOF'
+<<<<<<< SEARCH
+- [ ] Old item
+=======
+- [x] Old item
+- [ ] New item
+>>>>>>> REPLACE
+EOF
+
+# JSON ops (programmatic)
+echo '[{"op":"append","section":"Notes","content":"Appended"}]' | bin/rudder artifact:ops T042
+```
+
+Supported ops: `replace`, `append`, `prepend`, `check`, `uncheck`, `create`, `delete`, `search_replace`
 
 ## Dependencies
 

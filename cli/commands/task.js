@@ -12,6 +12,7 @@ import { nextId } from '../lib/state.js';
 import { parseUpdateOptions, addLogEntry } from '../lib/update.js';
 import { addDynamicHelp } from '../lib/help.js';
 import { formatId } from '../lib/config.js';
+import { parseSearchReplace, editArtifact } from '../lib/artifact.js';
 
 /**
  * Find a task file by ID
@@ -294,7 +295,8 @@ export function registerTaskCommands(program) {
         jsonOut({ id, title, parent: data.parent, file: taskPath });
       } else {
         console.log(`Created: ${id} - ${title}`);
-        console.log(`File: ${taskPath}`);
+        console.log(`  Edit:  rudder artifact:edit ${id} --section "Deliverables"`);
+        console.log(`  Patch: rudder task:patch ${id}`);
       }
     });
 
@@ -644,6 +646,75 @@ export function registerTaskCommands(program) {
             console.log(`   target: ${r.target_version} | status: ${r.status}`);
           });
         }
+      }
+    });
+
+  // task:patch - Apply SEARCH/REPLACE blocks to task
+  task.command('patch <id>')
+    .description('Apply SEARCH/REPLACE blocks to task (stdin or file)')
+    .option('-f, --file <path>', 'Read patch from file instead of stdin')
+    .option('--dry-run', 'Show what would be changed without applying')
+    .option('--json', 'JSON output')
+    .action(async (id, options) => {
+      const normalizedId = normalizeId(id);
+      const taskPath = findTaskFile(normalizedId);
+
+      if (!taskPath) {
+        console.error(`Task not found: ${id}`);
+        process.exit(1);
+      }
+
+      // Read patch content
+      let patchContent;
+      if (options.file) {
+        if (!fs.existsSync(options.file)) {
+          console.error(`Patch file not found: ${options.file}`);
+          process.exit(1);
+        }
+        patchContent = fs.readFileSync(options.file, 'utf8');
+      } else {
+        // Read from stdin
+        patchContent = await new Promise((resolve) => {
+          let data = '';
+          if (process.stdin.isTTY) { resolve(''); return; }
+          process.stdin.setEncoding('utf8');
+          process.stdin.on('readable', () => {
+            let chunk; while ((chunk = process.stdin.read()) !== null) data += chunk;
+          });
+          process.stdin.on('end', () => resolve(data));
+        });
+      }
+
+      if (!patchContent.trim()) {
+        console.error('No patch content provided');
+        process.exit(1);
+      }
+
+      const ops = parseSearchReplace(patchContent);
+      if (ops.length === 0) {
+        console.error('No valid SEARCH/REPLACE blocks found');
+        process.exit(1);
+      }
+
+      if (options.dryRun) {
+        if (options.json) {
+          jsonOut({ id: normalizedId, ops, dry_run: true });
+        } else {
+          console.log(`Would apply ${ops.length} patch(es) to ${normalizedId}`);
+        }
+        return;
+      }
+
+      const result = editArtifact(taskPath, ops);
+
+      if (options.json) {
+        jsonOut({ id: normalizedId, ...result });
+      } else if (result.success) {
+        console.log(`✓ Applied ${result.applied} patch(es) to ${normalizedId}`);
+      } else {
+        console.error(`✗ Applied ${result.applied}/${ops.length}, errors:`);
+        result.errors.forEach(e => console.error(`  - ${e}`));
+        process.exit(1);
       }
     });
 }

@@ -10,6 +10,7 @@ import { nextId } from '../lib/state.js';
 import { parseUpdateOptions } from '../lib/update.js';
 import { addDynamicHelp } from '../lib/help.js';
 import { formatId } from '../lib/config.js';
+import { parseSearchReplace, editArtifact } from '../lib/artifact.js';
 
 /**
  * Find an epic file by ID
@@ -273,8 +274,8 @@ updated: '${new Date().toISOString()}'
         jsonOut({ id, title, parent: data.parent, file: epicPath, memory: memoryFile });
       } else {
         console.log(`Created: ${id} - ${title}`);
-        console.log(`File: ${epicPath}`);
-        console.log(`Memory: ${memoryFile}`);
+        console.log(`  Edit:  rudder artifact:edit ${id} --section "Scope"`);
+        console.log(`  Patch: rudder epic:patch ${id}`);
       }
     });
 
@@ -539,5 +540,72 @@ updated: '${new Date().toISOString()}'
 
       fs.writeFileSync(memoryFile, content);
       console.log(`Added to ${epicId} [${section}]: ${message}`);
+    });
+
+  // epic:patch - Apply SEARCH/REPLACE blocks to epic
+  epic.command('patch <id>')
+    .description('Apply SEARCH/REPLACE blocks to epic (stdin or file)')
+    .option('-f, --file <path>', 'Read patch from file instead of stdin')
+    .option('--dry-run', 'Show what would be changed without applying')
+    .option('--json', 'JSON output')
+    .action(async (id, options) => {
+      const normalizedId = normalizeId(id);
+      const epicPath = findEpicFile(normalizedId);
+
+      if (!epicPath) {
+        console.error(`Epic not found: ${id}`);
+        process.exit(1);
+      }
+
+      let patchContent;
+      if (options.file) {
+        if (!fs.existsSync(options.file)) {
+          console.error(`Patch file not found: ${options.file}`);
+          process.exit(1);
+        }
+        patchContent = fs.readFileSync(options.file, 'utf8');
+      } else {
+        patchContent = await new Promise((resolve) => {
+          let data = '';
+          if (process.stdin.isTTY) { resolve(''); return; }
+          process.stdin.setEncoding('utf8');
+          process.stdin.on('readable', () => {
+            let chunk; while ((chunk = process.stdin.read()) !== null) data += chunk;
+          });
+          process.stdin.on('end', () => resolve(data));
+        });
+      }
+
+      if (!patchContent.trim()) {
+        console.error('No patch content provided');
+        process.exit(1);
+      }
+
+      const ops = parseSearchReplace(patchContent);
+      if (ops.length === 0) {
+        console.error('No valid SEARCH/REPLACE blocks found');
+        process.exit(1);
+      }
+
+      if (options.dryRun) {
+        if (options.json) {
+          jsonOut({ id: normalizedId, ops, dry_run: true });
+        } else {
+          console.log(`Would apply ${ops.length} patch(es) to ${normalizedId}`);
+        }
+        return;
+      }
+
+      const result = editArtifact(epicPath, ops);
+
+      if (options.json) {
+        jsonOut({ id: normalizedId, ...result });
+      } else if (result.success) {
+        console.log(`✓ Applied ${result.applied} patch(es) to ${normalizedId}`);
+      } else {
+        console.error(`✗ Applied ${result.applied}/${ops.length}, errors:`);
+        result.errors.forEach(e => console.error(`  - ${e}`));
+        process.exit(1);
+      }
     });
 }

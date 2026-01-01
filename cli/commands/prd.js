@@ -10,6 +10,8 @@ import { nextId } from '../lib/state.js';
 import { parseUpdateOptions } from '../lib/update.js';
 import { addDynamicHelp } from '../lib/help.js';
 import { formatId } from '../lib/config.js';
+import { parseSearchReplace, editArtifact } from '../lib/artifact.js';
+import { findPrdFile } from '../lib/entities.js';
 
 /**
  * Register PRD commands
@@ -209,7 +211,8 @@ export function registerPrdCommands(program) {
         jsonOut({ id, title, dir: prdDir, file: prdFile });
       } else {
         console.log(`Created: ${id} - ${title}`);
-        console.log(`File: ${prdFile}`);
+        console.log(`  Edit:  rudder artifact:edit ${id} --section "Vision"`);
+        console.log(`  Patch: rudder prd:patch ${id}`);
       }
     });
 
@@ -355,6 +358,72 @@ export function registerPrdCommands(program) {
           }
           console.log(`${milestoneId} epics: ${milestone.epics.join(', ') || '(none)'}`);
         }
+      }
+    });
+
+  // prd:patch - Apply SEARCH/REPLACE blocks to PRD
+  prd.command('patch <id>')
+    .description('Apply SEARCH/REPLACE blocks to PRD (stdin or file)')
+    .option('-f, --file <path>', 'Read patch from file instead of stdin')
+    .option('--dry-run', 'Show what would be changed without applying')
+    .option('--json', 'JSON output')
+    .action(async (id, options) => {
+      const prdPath = findPrdFile(id);
+
+      if (!prdPath) {
+        console.error(`PRD not found: ${id}`);
+        process.exit(1);
+      }
+
+      let patchContent;
+      if (options.file) {
+        if (!fs.existsSync(options.file)) {
+          console.error(`Patch file not found: ${options.file}`);
+          process.exit(1);
+        }
+        patchContent = fs.readFileSync(options.file, 'utf8');
+      } else {
+        patchContent = await new Promise((resolve) => {
+          let data = '';
+          if (process.stdin.isTTY) { resolve(''); return; }
+          process.stdin.setEncoding('utf8');
+          process.stdin.on('readable', () => {
+            let chunk; while ((chunk = process.stdin.read()) !== null) data += chunk;
+          });
+          process.stdin.on('end', () => resolve(data));
+        });
+      }
+
+      if (!patchContent.trim()) {
+        console.error('No patch content provided');
+        process.exit(1);
+      }
+
+      const ops = parseSearchReplace(patchContent);
+      if (ops.length === 0) {
+        console.error('No valid SEARCH/REPLACE blocks found');
+        process.exit(1);
+      }
+
+      if (options.dryRun) {
+        if (options.json) {
+          jsonOut({ id, ops, dry_run: true });
+        } else {
+          console.log(`Would apply ${ops.length} patch(es) to ${id}`);
+        }
+        return;
+      }
+
+      const result = editArtifact(prdPath, ops);
+
+      if (options.json) {
+        jsonOut({ id, ...result });
+      } else if (result.success) {
+        console.log(`✓ Applied ${result.applied} patch(es) to ${id}`);
+      } else {
+        console.error(`✗ Applied ${result.applied}/${ops.length}, errors:`);
+        result.errors.forEach(e => console.error(`  - ${e}`));
+        process.exit(1);
       }
     });
 }

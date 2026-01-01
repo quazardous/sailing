@@ -23,4 +23,4 @@ If unsure what to log → log what surprised you.
 rudder assign:release TNNN
 ```
 
-**Rejection triggers**: incomplete deliverables, <2 logs, missing TIP, frontmatter edited.
+**Rejection triggers**: incomplete deliverables, <2 logs, missing TIP, artifact edited with Edit tool (use rudder).
