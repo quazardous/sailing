@@ -27,6 +27,104 @@ export function registerMemoryCommands(program) {
 
   addDynamicHelp(memory, { entityType: 'memory' });
 
+  // memory:show <ID> - unified memory display
+  memory.command('show <id>')
+    .description('Show memory for any entity (auto-resolves task→epic)')
+    .option('--full', 'Show full memory (all sections)')
+    .option('--json', 'JSON output')
+    .action((id, options) => {
+      ensureMemoryDir();
+
+      const normalized = normalizeId(id);
+      let epicId = null;
+      let resolvedFrom = null;
+
+      // Resolve entity to epic
+      if (normalized.startsWith('E')) {
+        epicId = normalized;
+      } else if (normalized.startsWith('T')) {
+        const taskInfo = findTaskEpic(normalized);
+        if (!taskInfo) {
+          if (options.json) {
+            jsonOut({ error: `Task ${normalized} not found or has no parent epic` });
+          } else {
+            console.error(`Task ${normalized} not found or has no parent epic`);
+          }
+          process.exit(1);
+        }
+        epicId = taskInfo.epicId;
+        resolvedFrom = normalized;
+      } else {
+        if (options.json) {
+          jsonOut({ error: `Invalid ID: ${id} (expected ENNN or TNNN)` });
+        } else {
+          console.error(`Invalid ID: ${id} (expected ENNN or TNNN)`);
+        }
+        process.exit(1);
+      }
+
+      const memPath = memoryFilePath(epicId);
+
+      if (!memoryFileExists(epicId)) {
+        if (options.json) {
+          jsonOut({ epicId, exists: false, content: null });
+        } else {
+          console.log(`No memory for ${epicId}`);
+        }
+        return;
+      }
+
+      const content = fs.readFileSync(memPath, 'utf8');
+
+      if (options.full) {
+        if (options.json) {
+          jsonOut({
+            epicId,
+            resolvedFrom,
+            exists: true,
+            section: 'full',
+            content: content.trim()
+          });
+        } else {
+          if (resolvedFrom) {
+            console.log(`# Memory: ${epicId} (from ${resolvedFrom})\n`);
+          }
+          console.log(content.trim());
+        }
+        return;
+      }
+
+      // Extract Agent Context section only (default)
+      const match = content.match(/## Agent Context\s*([\s\S]*?)(?=\n## |$)/);
+      if (!match || !match[1].trim()) {
+        if (options.json) {
+          jsonOut({ epicId, resolvedFrom, exists: true, section: 'agent-context', content: '' });
+        } else {
+          console.log(`No agent context for ${epicId}`);
+        }
+        return;
+      }
+
+      const agentContext = match[1].replace(/<!--[\s\S]*?-->/g, '').trim();
+
+      if (options.json) {
+        jsonOut({
+          epicId,
+          resolvedFrom,
+          exists: true,
+          section: 'agent-context',
+          content: agentContext
+        });
+      } else {
+        if (resolvedFrom) {
+          console.log(`# Agent Context: ${epicId} (from ${resolvedFrom})\n`);
+        } else {
+          console.log(`# Agent Context: ${epicId}\n`);
+        }
+        console.log(agentContext);
+      }
+    });
+
   // memory:sync [ID] - merge task→epic logs, show content, create missing .md
   memory.command('sync')
     .description('Merge task→epic logs, show pending content')

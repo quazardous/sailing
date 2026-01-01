@@ -7,7 +7,7 @@ import path from 'path';
 import yaml from 'js-yaml';
 import { getPrompting, jsonOut, findProjectRoot, getPathsInfo } from '../lib/core.js';
 import { addDynamicHelp } from '../lib/help.js';
-import { detectMode, isAgentMode, getAgentInfo } from '../lib/agent-context.js';
+// detectMode, isAgentMode, getAgentInfo no longer used here (context:mode removed)
 import { getAgentConfig } from '../lib/config.js';
 
 /**
@@ -192,48 +192,9 @@ function listContexts(type) {
  */
 export function registerContextCommands(program) {
   const context = program.command('context')
-    .description('Context operations (optimized prompts for agents/skill)');
+    .description('Context operations (optimized prompts for skill orchestration)');
 
-  // context:agent
-  context.command('agent')
-    .description('Get agent execution context (optimized prompts)')
-    .argument('<command>', 'Command/operation name (task-start, prd-breakdown, etc.)')
-    .option('--sources', 'Show fragment sources used')
-    .option('--list', 'List available agent contexts')
-    .option('--json', 'JSON output')
-    .action((command, options) => {
-      if (options.list) {
-        const contexts = listContexts('agent');
-        if (options.json) {
-          jsonOut(contexts);
-        } else {
-          console.log('Available agent contexts:\n');
-          contexts.forEach(c => console.log(`  ${c}`));
-        }
-        return;
-      }
-
-      const result = composeContext('agent', command, { debug: options.sources });
-
-      if (options.json) {
-        jsonOut({
-          type: 'agent',
-          command,
-          sources: result.sources,
-          content: result.content
-        });
-        return;
-      }
-
-      if (options.sources) {
-        console.log(`# Agent Context: ${command}`);
-        console.log(`# Sources: ${result.sources.join(', ')}\n`);
-      }
-
-      console.log(result.content);
-    });
-
-  // context:skill
+  // context:skill (main entry point for skills)
   context.command('skill')
     .description('Get skill orchestration context (reminders, state)')
     .argument('<command>', 'Command/operation name (task-start, prd-breakdown, etc.)')
@@ -325,49 +286,21 @@ export function registerContextCommands(program) {
       console.log('       rudder context:skill <context>');
     });
 
-  // context:mode (detect execution mode)
-  context.command('mode')
-    .description('Detect execution mode (main or agent)')
-    .option('--json', 'JSON output')
-    .action((options) => {
-      const mode = detectMode();
-
-      if (options.json) {
-        jsonOut(mode);
-        return;
-      }
-
-      console.log(`Mode: ${mode.mode}`);
-      console.log(`Project: ${mode.projectRoot}`);
-
-      if (mode.mode === 'agent') {
-        console.log(`\nAgent Context:`);
-        console.log(`  Task: ${mode.taskId}`);
-        console.log(`  Mission: ${mode.missionPath}`);
-        console.log(`  Agent dir: ${mode.agentDir}`);
-      }
-    });
-
   // Add dynamic help
   addDynamicHelp(context, `
-• agent <context>
+• skill <context>         Get orchestration context for a skill
     --sources             Show fragment sources
     --list                List available contexts
     --json                JSON output
 
-• skill <context>
-    --sources             Show fragment sources
-    --list                List available contexts
+• show <fragment>         Debug: show raw fragment content
     --json                JSON output
 
-• show <fragment>
-    --json                JSON output
-
-• list
+• list                    Debug: list all available contexts
     --fragments           Show fragments for each context
     --json                JSON output
 
-• mode
-    --json                JSON output
+Note: For agent context, use 'rudder assign:claim <entity-id>' which includes
+agent contract + memory + entity content in a single compiled prompt.
 `);
 }

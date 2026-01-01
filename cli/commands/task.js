@@ -564,55 +564,8 @@ export function registerTaskCommands(program) {
       console.log(output);
     });
 
-  // task:show-memory - shortcut to show parent epic memory
-  task.command('show-memory <id>')
-    .description('Show parent epic memory (Agent Context only, or --full)')
-    .option('--full', 'Show full memory (all sections)')
-    .action((id, options) => {
-      const taskFile = findTaskFile(id);
-      if (!taskFile) {
-        console.error(`Task not found: ${id}`);
-        process.exit(1);
-      }
-
-      const file = loadFile(taskFile);
-      const parent = file.data?.parent || '';
-
-      // Extract epic ID from parent (e.g., "PRD-006 / E043" → "E043")
-      const epicMatch = parent.match(/E(\d+)/i);
-      if (!epicMatch) {
-        console.error(`No parent epic found for ${id}`);
-        process.exit(1);
-      }
-
-      const epicId = normalizeId(`E${epicMatch[1]}`);
-      const memoryFile = path.join(getMemoryDir(), `${epicId}.md`);
-
-      if (!fs.existsSync(memoryFile)) {
-        console.log(`No memory for ${epicId}`);
-        return;
-      }
-
-      const content = fs.readFileSync(memoryFile, 'utf8');
-
-      if (options.full) {
-        console.log(content.trim());
-      } else {
-        // Extract Agent Context section only
-        const match = content.match(/## Agent Context\s*([\s\S]*?)(?=\n## |$)/);
-        if (!match || !match[1].trim()) {
-          console.log(`No agent context for ${epicId}`);
-          return;
-        }
-        const context = match[1].replace(/<!--[\s\S]*?-->/g, '').trim();
-        if (!context) {
-          console.log(`No agent context for ${epicId}`);
-          return;
-        }
-        console.log(`# Agent Context: ${epicId}\n`);
-        console.log(context);
-      }
-    });
+  // task:show-memory - DEPRECATED: use memory:show instead
+  // Removed - use: rudder memory:show TNNN [--full] (auto-resolves to parent epic)
 
   // task:targets - find tasks with target_versions for a component
   task.command('targets <component>')

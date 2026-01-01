@@ -52,6 +52,62 @@ function findEpicFile(epicId) {
   return null;
 }
 
+/**
+ * Find PRD file by ID
+ */
+function findPrdFile(prdId) {
+  const prdsDir = getPrdsDir();
+  if (!fs.existsSync(prdsDir)) return null;
+
+  for (const prdDir of fs.readdirSync(prdsDir)) {
+    if (prdDir.startsWith(prdId + '-') || prdDir === prdId) {
+      const prdFile = path.join(prdsDir, prdDir, 'prd.md');
+      if (fs.existsSync(prdFile)) {
+        return prdFile;
+      }
+    }
+  }
+  return null;
+}
+
+/**
+ * Detect entity type from ID
+ * @returns {{ type: 'task'|'epic'|'prd', id: string }}
+ */
+function detectEntityType(id) {
+  const normalized = normalizeId(id);
+  if (normalized.startsWith('T')) {
+    return { type: 'task', id: normalized };
+  } else if (normalized.startsWith('E')) {
+    return { type: 'epic', id: normalized };
+  } else if (normalized.startsWith('PRD-') || normalized.match(/^PRD\d+$/i)) {
+    return { type: 'prd', id: normalized };
+  }
+  return { type: 'unknown', id: normalized };
+}
+
+/**
+ * Get PRD details for prompt
+ */
+function getPrdDetails(prdId) {
+  const prdFile = findPrdFile(prdId);
+  if (!prdFile) return null;
+
+  const raw = fs.readFileSync(prdFile, 'utf8');
+  return raw;
+}
+
+/**
+ * Get epic details for prompt (full file)
+ */
+function getEpicDetails(epicId) {
+  const epicFile = findEpicFile(epicId);
+  if (!epicFile) return null;
+
+  const raw = fs.readFileSync(epicFile, 'utf8');
+  return raw;
+}
+
 // Note: getAssignmentsDir() and getRunsDir() are imported from core.js
 // They handle path resolution and placeholders centrally
 
@@ -331,6 +387,301 @@ function getTaskDetails(taskId) {
 }
 
 /**
+ * Handle task claim (original behavior)
+ */
+function handleTaskClaim(taskId, options) {
+  const filePath = assignmentPath(taskId);
+  const operation = options.operation || 'task-start';
+
+  // Pre-flight check 1: Orphan run files
+  const orphans = findOrphanRuns();
+  if (orphans.length > 0 && !options.force) {
+    console.error(`STOP: Orphan agent run(s) detected:`);
+    for (const o of orphans) {
+      console.error(`  ${o.taskId} - started ${o.started_at}`);
+    }
+    console.error(`\nPrevious agent didn't release. Use --force to override.`);
+    console.error(`Or run: rudder assign:release ${orphans[0].taskId}`);
+    process.exit(1);
+  }
+
+  let assignment;
+  let tracked = false;
+  let epicId = null;
+
+  if (fs.existsSync(filePath)) {
+    assignment = yaml.load(fs.readFileSync(filePath, 'utf8'));
+    tracked = true;
+    epicId = assignment.epicId;
+
+    if (assignment.status === 'claimed') {
+      console.error(`Assignment already claimed at ${assignment.claimed_at}`);
+      process.exit(1);
+    }
+    if (assignment.status === 'complete') {
+      console.error(`Assignment already complete at ${assignment.completed_at}`);
+      process.exit(1);
+    }
+  } else {
+    const taskFile = findTaskFile(taskId);
+    if (!taskFile) {
+      console.error(`Task not found: ${taskId}`);
+      process.exit(1);
+    }
+
+    const file = loadFile(taskFile);
+    const parent = file.data?.parent || '';
+    const epicMatch = parent.match(/E(\d+)/i);
+    epicId = epicMatch ? normalizeId(`E${epicMatch[1]}`) : null;
+
+    assignment = { taskId, epicId, operation };
+  }
+
+  // Pre-flight check 2: Pending memory
+  const memoryCheck = checkPendingMemory(epicId);
+  if (memoryCheck.pending && !options.force) {
+    console.error(`STOP: Pending memory consolidation required:`);
+    for (const e of memoryCheck.epics) {
+      console.error(`  ${e} - has unconsolidated logs`);
+    }
+    console.error(`\nRun: rudder memory:sync`);
+    console.error(`Use --force to bypass (not recommended).`);
+    process.exit(1);
+  }
+
+  // Build compiled prompt
+  const promptParts = [];
+  const debug = options.debug;
+
+  // 1. Agent Contract
+  const agentContext = composeAgentContext(operation, debug);
+  if (agentContext.content) {
+    if (debug) {
+      promptParts.push(`<!-- section: Agent Contract (${agentContext.sources.length} fragments) -->\n${agentContext.content}`);
+    } else {
+      promptParts.push(agentContext.content);
+    }
+  }
+
+  // 2. Memory (from epic)
+  const memory = getTaskMemory(taskId);
+  if (memory.content) {
+    const config = loadPathsConfig();
+    const memoryPath = `${config.paths.memory}/${memory.epicId}.md`;
+    const header = debug
+      ? `<!-- section: Memory, source: ${memoryPath} -->\n# Memory: ${memory.epicId}`
+      : `# Memory: ${memory.epicId}`;
+    promptParts.push(`${header}\n\n${memory.content}`);
+  }
+
+  // 3. Epic Context
+  if (epicId) {
+    const epic = getEpicSummary(epicId);
+    if (epic) {
+      const epicPath = epic.filePath || `epics/${epicId}-*.md`;
+      const header = debug
+        ? `<!-- section: Epic, source: ${epicPath} -->\n# Epic: ${epic.id}`
+        : `# Epic: ${epic.id}`;
+      let epicSection = `${header}\n\n**Title**: ${epic.title}\n**Parent**: ${epic.parent}`;
+      if (epic.description) epicSection += `\n\n## Description\n\n${epic.description}`;
+      if (epic.techNotes) epicSection += `\n\n## Technical Notes\n\n${epic.techNotes}`;
+      promptParts.push(epicSection);
+    }
+  }
+
+  // 4. Task (full file)
+  const taskFile = findTaskFile(taskId);
+  const taskContent = getTaskDetails(taskId);
+  if (taskContent) {
+    const header = debug
+      ? `<!-- section: Task, source: ${taskFile} -->\n# Task: ${taskId}`
+      : `# Task: ${taskId}`;
+    promptParts.push(`${header}\n\n${taskContent}`);
+  }
+
+  const compiledPrompt = promptParts.join('\n\n---\n\n');
+
+  if (tracked) {
+    assignment.status = 'claimed';
+    assignment.claimed_at = new Date().toISOString();
+    fs.writeFileSync(filePath, yaml.dump(assignment));
+  }
+
+  createRunFile(taskId, operation);
+  const approach = options.approach || operation;
+  logToTask(taskId, `Starting: ${approach}`, 'INFO');
+
+  if (options.json) {
+    jsonOut({
+      entityType: 'task',
+      entityId: taskId,
+      operation,
+      sources: agentContext.sources,
+      memoryEpic: memory.epicId,
+      tracked,
+      prompt: compiledPrompt
+    });
+    return;
+  }
+
+  if (options.sources) {
+    console.log(`# Entity: ${taskId} (task)${tracked ? '' : ' (untracked)'}`);
+    console.log(`# Operation: ${operation}`);
+    console.log(`# Context sources: ${agentContext.sources.join(', ')}`);
+    if (memory.epicId) console.log(`# Memory from: ${memory.epicId}`);
+    console.log('\n');
+  }
+
+  console.log(compiledPrompt);
+}
+
+/**
+ * Handle epic claim
+ */
+function handleEpicClaim(epicId, options) {
+  const epicFile = findEpicFile(epicId);
+  if (!epicFile) {
+    console.error(`Epic not found: ${epicId}`);
+    process.exit(1);
+  }
+
+  const file = loadFile(epicFile);
+  const parent = file.data?.parent || '';
+  const prdMatch = parent.match(/PRD-\d+/i);
+  const prdId = prdMatch ? prdMatch[0] : null;
+
+  // Default operation for epics
+  const operation = options.operation || 'epic-breakdown';
+  const debug = options.debug;
+  const promptParts = [];
+
+  // 1. Agent Contract
+  const agentContext = composeAgentContext(operation, debug);
+  if (agentContext.content) {
+    if (debug) {
+      promptParts.push(`<!-- section: Agent Contract (${agentContext.sources.length} fragments) -->\n${agentContext.content}`);
+    } else {
+      promptParts.push(agentContext.content);
+    }
+  }
+
+  // 2. Memory (epic's own memory, full for breakdown/review)
+  const memoryDir = getMemoryDir();
+  const memoryFile = path.join(memoryDir, `${epicId}.md`);
+  if (fs.existsSync(memoryFile)) {
+    const memoryContent = fs.readFileSync(memoryFile, 'utf8').trim();
+    if (memoryContent) {
+      const header = debug
+        ? `<!-- section: Memory, source: ${memoryFile} -->\n# Memory: ${epicId}`
+        : `# Memory: ${epicId}`;
+      promptParts.push(`${header}\n\n${memoryContent}`);
+    }
+  }
+
+  // 3. PRD Context (if parent exists)
+  if (prdId) {
+    const prdFile = findPrdFile(prdId);
+    if (prdFile) {
+      const prdContent = fs.readFileSync(prdFile, 'utf8');
+      const header = debug
+        ? `<!-- section: PRD, source: ${prdFile} -->\n# PRD: ${prdId}`
+        : `# PRD: ${prdId}`;
+      promptParts.push(`${header}\n\n${prdContent}`);
+    }
+  }
+
+  // 4. Epic (full file)
+  const epicContent = getEpicDetails(epicId);
+  if (epicContent) {
+    const header = debug
+      ? `<!-- section: Epic, source: ${epicFile} -->\n# Epic: ${epicId}`
+      : `# Epic: ${epicId}`;
+    promptParts.push(`${header}\n\n${epicContent}`);
+  }
+
+  const compiledPrompt = promptParts.join('\n\n---\n\n');
+
+  if (options.json) {
+    jsonOut({
+      entityType: 'epic',
+      entityId: epicId,
+      operation,
+      sources: agentContext.sources,
+      prdId,
+      prompt: compiledPrompt
+    });
+    return;
+  }
+
+  if (options.sources) {
+    console.log(`# Entity: ${epicId} (epic)`);
+    console.log(`# Operation: ${operation}`);
+    console.log(`# Context sources: ${agentContext.sources.join(', ')}`);
+    if (prdId) console.log(`# Parent PRD: ${prdId}`);
+    console.log('\n');
+  }
+
+  console.log(compiledPrompt);
+}
+
+/**
+ * Handle PRD claim
+ */
+function handlePrdClaim(prdId, options) {
+  const prdFile = findPrdFile(prdId);
+  if (!prdFile) {
+    console.error(`PRD not found: ${prdId}`);
+    process.exit(1);
+  }
+
+  // Default operation for PRDs
+  const operation = options.operation || 'prd-breakdown';
+  const debug = options.debug;
+  const promptParts = [];
+
+  // 1. Agent Contract
+  const agentContext = composeAgentContext(operation, debug);
+  if (agentContext.content) {
+    if (debug) {
+      promptParts.push(`<!-- section: Agent Contract (${agentContext.sources.length} fragments) -->\n${agentContext.content}`);
+    } else {
+      promptParts.push(agentContext.content);
+    }
+  }
+
+  // 2. PRD (full file)
+  const prdContent = getPrdDetails(prdId);
+  if (prdContent) {
+    const header = debug
+      ? `<!-- section: PRD, source: ${prdFile} -->\n# PRD: ${prdId}`
+      : `# PRD: ${prdId}`;
+    promptParts.push(`${header}\n\n${prdContent}`);
+  }
+
+  const compiledPrompt = promptParts.join('\n\n---\n\n');
+
+  if (options.json) {
+    jsonOut({
+      entityType: 'prd',
+      entityId: prdId,
+      operation,
+      sources: agentContext.sources,
+      prompt: compiledPrompt
+    });
+    return;
+  }
+
+  if (options.sources) {
+    console.log(`# Entity: ${prdId} (prd)`);
+    console.log(`# Operation: ${operation}`);
+    console.log(`# Context sources: ${agentContext.sources.join(', ')}`);
+    console.log('\n');
+  }
+
+  console.log(compiledPrompt);
+}
+
+/**
  * Register assignment commands
  */
 export function registerAssignCommands(program) {
@@ -391,178 +742,32 @@ export function registerAssignCommands(program) {
       }
     });
 
-  // assign:claim TNNN
-  assign.command('claim <task-id>')
-    .description('Claim assignment and get compiled prompt (works without prior create)')
-    .option('--operation <op>', 'Operation type (default: task-start)', 'task-start')
-    .option('--approach <text>', 'Approach description for auto-log')
+  // assign:claim <entity-id> - unified context for tasks, epics, PRDs
+  assign.command('claim <entity-id>')
+    .description('Get compiled prompt for any entity (task, epic, or PRD)')
+    .option('--operation <op>', 'Operation type (auto-detected if not specified)')
+    .option('--approach <text>', 'Approach description for auto-log (tasks only)')
     .option('--force', 'Force claim even with orphan runs or pending memory')
     .option('--sources', 'Show fragment sources used')
     .option('--debug', 'Add source comments to each section')
     .option('--json', 'JSON output')
-    .action((taskId, options) => {
-      const normalized = normalizeId(taskId);
-      const filePath = assignmentPath(normalized);
+    .action((entityId, options) => {
+      const entity = detectEntityType(entityId);
 
-      // Pre-flight check 1: Orphan run files
-      const orphans = findOrphanRuns();
-      if (orphans.length > 0 && !options.force) {
-        console.error(`STOP: Orphan agent run(s) detected:`);
-        for (const o of orphans) {
-          console.error(`  ${o.taskId} - started ${o.started_at}`);
-        }
-        console.error(`\nPrevious agent didn't release. Use --force to override.`);
-        console.error(`Or run: rudder assign:release ${orphans[0].taskId}`);
+      if (entity.type === 'unknown') {
+        console.error(`Unknown entity type: ${entityId}`);
+        console.error(`Expected: TNNN (task), ENNN (epic), or PRD-NNN`);
         process.exit(1);
       }
 
-      let assignment;
-      let tracked = false;  // Whether we're tracking with a file
-      let epicId = null;
-
-      if (fs.existsSync(filePath)) {
-        // Existing assignment (worktree mode)
-        assignment = yaml.load(fs.readFileSync(filePath, 'utf8'));
-        tracked = true;
-        epicId = assignment.epicId;
-
-        if (assignment.status === 'claimed') {
-          console.error(`Assignment already claimed at ${assignment.claimed_at}`);
-          process.exit(1);
-        }
-
-        if (assignment.status === 'complete') {
-          console.error(`Assignment already complete at ${assignment.completed_at}`);
-          process.exit(1);
-        }
-      } else {
-        // No assignment file - just compile prompt (non-worktree mode)
-        const taskFile = findTaskFile(normalized);
-        if (!taskFile) {
-          console.error(`Task not found: ${normalized}`);
-          process.exit(1);
-        }
-
-        const file = loadFile(taskFile);
-        const parent = file.data?.parent || '';
-        const epicMatch = parent.match(/E(\d+)/i);
-        epicId = epicMatch ? normalizeId(`E${epicMatch[1]}`) : null;
-
-        assignment = {
-          taskId: normalized,
-          epicId,
-          operation: options.operation
-        };
-        // Don't create file - just generate prompt
+      // Route to appropriate handler
+      if (entity.type === 'task') {
+        handleTaskClaim(entity.id, options);
+      } else if (entity.type === 'epic') {
+        handleEpicClaim(entity.id, options);
+      } else if (entity.type === 'prd') {
+        handlePrdClaim(entity.id, options);
       }
-
-      // Pre-flight check 2: Pending memory
-      const memoryCheck = checkPendingMemory(epicId);
-      if (memoryCheck.pending && !options.force) {
-        console.error(`STOP: Pending memory consolidation required:`);
-        for (const e of memoryCheck.epics) {
-          console.error(`  ${e} - has unconsolidated logs`);
-        }
-        console.error(`\nRun: rudder memory:sync`);
-        console.error(`Then consolidate logs into ENNN.md files.`);
-        console.error(`Use --force to bypass (not recommended).`);
-        process.exit(1);
-      }
-
-      // Build compiled prompt
-      const promptParts = [];
-      const debug = options.debug;
-
-      // 1. Agent Contract (from context:agent fragments)
-      const agentContext = composeAgentContext(assignment.operation, debug);
-      if (agentContext.content) {
-        // No separate header - fragments compose directly
-        if (debug) {
-          promptParts.push(`<!-- section: Agent Contract (${agentContext.sources.length} fragments) -->\n${agentContext.content}`);
-        } else {
-          promptParts.push(agentContext.content);
-        }
-      }
-
-      // 2. Memory (from epic)
-      const memory = getTaskMemory(normalized);
-      if (memory.content) {
-        const config = loadPathsConfig();
-        const memoryPath = `${config.paths.memory}/${memory.epicId}.md`;
-        const header = debug
-          ? `<!-- section: Memory, source: ${memoryPath} -->\n# Memory: ${memory.epicId}`
-          : `# Memory: ${memory.epicId}`;
-        promptParts.push(`${header}\n\n${memory.content}`);
-      }
-
-      // 3. Epic Context
-      if (assignment.epicId) {
-        const epic = getEpicSummary(assignment.epicId);
-        if (epic) {
-          const epicPath = epic.filePath || `epics/${assignment.epicId}-*.md`;
-          const header = debug
-            ? `<!-- section: Epic, source: ${epicPath} -->\n# Epic: ${epic.id}`
-            : `# Epic: ${epic.id}`;
-          let epicSection = `${header}\n\n**Title**: ${epic.title}\n**Parent**: ${epic.parent}`;
-          if (epic.description) {
-            epicSection += `\n\n## Description\n\n${epic.description}`;
-          }
-          if (epic.techNotes) {
-            epicSection += `\n\n## Technical Notes\n\n${epic.techNotes}`;
-          }
-          promptParts.push(epicSection);
-        }
-      }
-
-      // 4. Task (full file)
-      const taskFile = findTaskFile(normalized);
-      const taskContent = getTaskDetails(normalized);
-      if (taskContent) {
-        const header = debug
-          ? `<!-- section: Task, source: ${taskFile} -->\n# Task: ${normalized}`
-          : `# Task: ${normalized}`;
-        promptParts.push(`${header}\n\n${taskContent}`);
-      }
-
-      const compiledPrompt = promptParts.join('\n\n---\n\n');
-
-      // Update assignment status only if tracked (worktree mode)
-      if (tracked) {
-        assignment.status = 'claimed';
-        assignment.claimed_at = new Date().toISOString();
-        fs.writeFileSync(filePath, yaml.dump(assignment));
-      }
-
-      // Create run file (mark agent as running)
-      createRunFile(normalized, assignment.operation);
-
-      // Auto-log start
-      const approach = options.approach || assignment.operation;
-      logToTask(normalized, `Starting: ${approach}`, 'INFO');
-
-      if (options.json) {
-        jsonOut({
-          taskId: normalized,
-          operation: assignment.operation,
-          sources: agentContext.sources,
-          memoryEpic: memory.epicId,
-          tracked,
-          prompt: compiledPrompt
-        });
-        return;
-      }
-
-      if (options.sources) {
-        console.log(`# Assignment: ${normalized}${tracked ? '' : ' (untracked)'}`);
-        console.log(`# Operation: ${assignment.operation}`);
-        console.log(`# Context sources: ${agentContext.sources.join(', ')}`);
-        if (memory.epicId) {
-          console.log(`# Memory from: ${memory.epicId}`);
-        }
-        console.log('\n');
-      }
-
-      console.log(compiledPrompt);
     });
 
   // assign:release TNNN

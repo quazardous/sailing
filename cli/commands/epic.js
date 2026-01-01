@@ -332,39 +332,8 @@ updated: '${new Date().toISOString()}'
       }
     });
 
-  // epic:show-memory
-  epic.command('show-memory <id>')
-    .description('Show epic memory (Agent Context only, or --full)')
-    .option('--full', 'Show full memory (all sections)')
-    .action((id, options) => {
-      const epicId = normalizeId(id);
-      const memoryFile = path.join(getMemoryDir(), `${epicId}.md`);
-
-      if (!fs.existsSync(memoryFile)) {
-        console.log(`No memory for ${epicId}`);
-        return;
-      }
-
-      const content = fs.readFileSync(memoryFile, 'utf8');
-
-      if (options.full) {
-        console.log(content.trim());
-      } else {
-        // Extract Agent Context section only
-        const match = content.match(/## Agent Context\s*([\s\S]*?)(?=\n## |$)/);
-        if (!match || !match[1].trim()) {
-          console.log(`No agent context for ${epicId}`);
-          return;
-        }
-        const context = match[1].replace(/<!--[\s\S]*?-->/g, '').trim();
-        if (!context) {
-          console.log(`No agent context for ${epicId}`);
-          return;
-        }
-        console.log(`# Agent Context: ${epicId}\n`);
-        console.log(context);
-      }
-    });
+  // epic:show-memory - DEPRECATED: use memory:show instead
+  // Removed - use: rudder memory:show ENNN [--full]
 
   // epic:dump-logs
   epic.command('dump-logs <id>')
