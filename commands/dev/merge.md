@@ -74,7 +74,19 @@ rudder worktree:cleanup TNNN
 
 ### 3. If Conflicts → Resolve with Context
 
-Load context for intelligent resolution:
+#### Create Merge Branch
+
+Use the **merge branch nomenclature** to isolate conflict resolution:
+
+```bash
+# Naming: merge/<source>-to-<target>
+git checkout -b merge/T042-to-E001 epic/E001   # or main for flat mode
+
+# Attempt merge
+git merge task/T042 --no-commit
+```
+
+#### Load Context for Resolution
 
 ```bash
 # Get epic memory (patterns, decisions)
@@ -84,14 +96,14 @@ rudder epic:show-memory ENNN --full
 rudder task:show TNNN
 
 # Get modified files
-git diff main...origin/agent/TNNN --name-only
+git diff main...task/TNNN --name-only
 ```
 
 #### Resolution Strategy
 
 1. **Understand the conflict**:
    - What did the agent change?
-   - What changed on main since agent started?
+   - What changed on parent since agent started?
    - Are changes complementary or contradictory?
 
 2. **Resolve by type**:
@@ -100,20 +112,37 @@ git diff main...origin/agent/TNNN --name-only
    - **Delete vs modify**: Keep the intended behavior
    - **Config/version**: Usually take newer
 
-3. **Apply resolution**:
+3. **Apply resolution on merge branch**:
    ```bash
-   git checkout main
-   git merge origin/agent/TNNN --no-commit
+   # Resolve conflicts on merge/T042-to-E001
    # ... resolve conflicts ...
    git add -A
-   git commit -m "merge: T042 (resolved conflicts)"
-   git push origin main
+   git commit -m "merge(T042): resolved conflicts with E001"
    ```
 
-4. **Cleanup**:
+4. **Fast-forward parent**:
    ```bash
+   git checkout epic/E001    # or main
+   git merge merge/T042-to-E001 --ff-only
+   git push origin epic/E001
+   ```
+
+5. **Cleanup**:
+   ```bash
+   git branch -d merge/T042-to-E001
+   git branch -d task/T042
    rudder worktree:cleanup TNNN
    ```
+
+#### Branch Nomenclature
+
+| Type | Pattern | Example |
+|------|---------|---------|
+| Merge | `merge/<source>-to-<target>` | `merge/T042-to-E001` |
+| Reconcile | `reconcile/<entity>` | `reconcile/E001` |
+| Task | `task/<id>` | `task/T042` |
+| Epic | `epic/<id>` | `epic/E001` |
+| PRD | `prd/<id>` | `prd/PRD-001` |
 
 ---
 

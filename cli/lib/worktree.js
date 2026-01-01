@@ -64,6 +64,56 @@ export function getEpicBranchName(epicId) {
 }
 
 /**
+ * Get branch name for a merge operation
+ * Used when merging source into target with potential conflicts
+ * @param {string} sourceId - Source entity ID (e.g., T042, E001)
+ * @param {string} targetId - Target entity ID (e.g., E001, PRD-001, or 'main')
+ * @returns {string} Branch name (e.g., merge/T042-to-E001)
+ */
+export function getMergeBranchName(sourceId, targetId) {
+  return `merge/${sourceId}-to-${targetId}`;
+}
+
+/**
+ * Get branch name for reconciliation (sync from parent)
+ * Used when pulling changes from parent branch
+ * @param {string} branchId - Entity ID being reconciled (e.g., E001, T042)
+ * @returns {string} Branch name (e.g., reconcile/E001)
+ */
+export function getReconcileBranchName(branchId) {
+  return `reconcile/${branchId}`;
+}
+
+/**
+ * Parse a merge branch name to extract source and target
+ * @param {string} branchName - Branch name (e.g., merge/T042-to-E001)
+ * @returns {{ source: string, target: string }|null}
+ */
+export function parseMergeBranchName(branchName) {
+  const match = branchName.match(/^merge\/([^-]+)-to-(.+)$/);
+  if (!match) return null;
+  return { source: match[1], target: match[2] };
+}
+
+/**
+ * Check if a branch is a merge branch
+ * @param {string} branchName - Branch name
+ * @returns {boolean}
+ */
+export function isMergeBranch(branchName) {
+  return branchName.startsWith('merge/');
+}
+
+/**
+ * Check if a branch is a reconcile branch
+ * @param {string} branchName - Branch name
+ * @returns {boolean}
+ */
+export function isReconcileBranch(branchName) {
+  return branchName.startsWith('reconcile/');
+}
+
+/**
  * Check if a branch exists
  * @param {string} branchName - Full branch name
  * @returns {boolean}
