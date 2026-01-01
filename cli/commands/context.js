@@ -209,6 +209,13 @@ function composeContext(operation, options = {}) {
   const parts = [];
   const sources = [];
 
+  // MODE HEADER: Inject execution mode info at the very beginning
+  const modeHeader = [
+    `<!-- mode: ${execMode} | worktrees: ${agentConfig.use_worktrees ? 'enabled' : 'disabled'} -->`
+  ].join('\n');
+  parts.push(modeHeader);
+  sources.push('mode-header');
+
   // SKILL WORKTREE MODE: Inject warning at the very beginning
   if (role === 'skill' && agentConfig.use_worktrees && agentConfig.use_subprocess) {
     const worktreeModeWarning = loadFragment('skill/worktree-mode');

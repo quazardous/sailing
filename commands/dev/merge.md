@@ -1,6 +1,6 @@
 # Merge Agent
 
-**Purpose:** Merge agent work from a PR/worktree branch into main, handling conflicts with full context.
+**Purpose:** Merge agent work into the target branch, handling conflicts with full context.
 
 > 📖 CLI reference: `bin/rudder -h`
 
@@ -12,23 +12,12 @@
 
 ```bash
 rudder context:load merge --role coordinator
-rudder worktree:status --json                 # Current worktree state
-rudder worktree:preflight --json              # Blockers, merge order
+rudder task:show TNNN
 ```
 
-## Prerequisites
-
-Before running this command:
-
-1. Task agent has completed (status: completed)
-2. PR exists (if using PR workflow) OR worktree has commits
-3. No uncommitted changes on main branch
-
-## Merge Mode Resolution
-
-- If `--pr` is provided → **PR workflow** (`gh pr merge`)
-- Else if worktree exists → **branch merge** (`origin/agent/TNNN`)
-- Mixing modes is forbidden
+Check the mode header at context start:
+- `worktrees: disabled` → use **Standard Workflow**
+- `worktrees: enabled` → use **Worktree Workflow**
 
 ---
 
@@ -37,14 +26,75 @@ Before running this command:
 ```bash
 /dev:merge T042           # Merge specific task
 /dev:merge --all          # Merge all ready tasks (in order)
-/dev:merge --pr 123       # Merge by PR number
+/dev:merge --pr 123       # Merge by PR number (worktree mode)
 ```
 
 ---
 
-## Workflow
+# Standard Workflow (No Worktrees)
 
-### 1. Assess Merge State
+Default mode. Agent work is on feature branches or direct commits.
+
+## 1. Locate Changes
+
+```bash
+# Check task status
+rudder task:show TNNN
+
+# Find commits (convention: feat(TNNN): ...)
+git log --oneline --grep="TNNN" main
+git log --oneline --author="agent" --since="1 day ago"
+```
+
+## 2. Review Changes
+
+```bash
+# See what changed
+git diff main...HEAD --stat
+git log main..HEAD --oneline
+```
+
+## 3. Merge
+
+```bash
+# Simple fast-forward if possible
+git checkout main
+git pull origin main
+git merge --ff-only feature/TNNN 2>/dev/null || git merge feature/TNNN --no-edit
+
+# Or cherry-pick specific commits
+git cherry-pick <commit-sha>
+```
+
+## 4. Cleanup
+
+```bash
+# Delete merged branch
+git branch -d feature/TNNN
+
+# Mark task done
+rudder task:update TNNN --status Done
+```
+
+---
+
+# Worktree Workflow
+
+When worktrees are enabled, agents work in isolated git worktrees with dedicated branches.
+
+## Pre-flight (Worktree)
+
+```bash
+rudder worktree:status --json                 # Current worktree state
+rudder worktree:preflight --json              # Blockers, merge order
+```
+
+## Merge Mode Resolution
+
+- If `--pr` is provided → **PR workflow** (`gh pr merge`)
+- Else if worktree exists → **branch merge** (`origin/agent/TNNN`)
+
+## 1. Assess Merge State
 
 ```bash
 # Get task/PR info
@@ -56,7 +106,7 @@ git fetch origin
 git merge-tree $(git merge-base main origin/agent/TNNN) main origin/agent/TNNN
 ```
 
-### 2. If No Conflicts → Fast Merge
+## 2. If No Conflicts → Fast Merge
 
 ```bash
 # Via GitHub CLI (preferred)
@@ -72,9 +122,9 @@ git push origin main
 rudder worktree:cleanup TNNN
 ```
 
-### 3. If Conflicts → Resolve with Context
+## 3. If Conflicts → Resolve with Context
 
-#### Create Merge Branch
+### Create Merge Branch
 
 Use the **merge branch nomenclature** to isolate conflict resolution:
 
@@ -86,7 +136,7 @@ git checkout -b merge/T042-to-E001 epic/E001   # or main for flat mode
 git merge task/T042 --no-commit
 ```
 
-#### Load Context for Resolution
+### Load Context for Resolution
 
 ```bash
 # Get epic memory (patterns, decisions)
@@ -99,7 +149,7 @@ rudder task:show TNNN
 git diff main...task/TNNN --name-only
 ```
 
-#### Resolution Strategy
+### Resolution Strategy
 
 1. **Understand the conflict**:
    - What did the agent change?
@@ -134,7 +184,7 @@ git diff main...task/TNNN --name-only
    rudder worktree:cleanup TNNN
    ```
 
-#### Branch Nomenclature
+### Branch Nomenclature
 
 | Type | Pattern | Example |
 |------|---------|---------|
@@ -148,7 +198,7 @@ git diff main...task/TNNN --name-only
 
 ## Context for Resolution
 
-When resolving conflicts, the agent has access to:
+When resolving conflicts, the coordinator has access to:
 
 | Context | Source | Purpose |
 |---------|--------|---------|
@@ -160,26 +210,15 @@ When resolving conflicts, the agent has access to:
 
 ---
 
-## Output
-
-Returns to main thread:
-
-- Merge status (success, conflicts resolved, failed)
-- Files merged/resolved
-- Conflicts encountered (if any)
-- Cleanup status
-
-**This command does NOT update task status.** Main thread decides whether to mark task Done.
-
-A successful merge does not imply functional correctness. Tests and validation remain user responsibility.
-
----
-
-## Multi-Agent Merge (--all)
+## Multi-Task Merge (--all)
 
 When merging multiple tasks:
 
 ```bash
+# Standard mode: merge by commit order
+git log --oneline --grep="T0" main | head -10
+
+# Worktree mode: use preflight for order
 rudder worktree:preflight --json
 # Returns: merge_order: [T042, T043, T044]
 ```
@@ -215,6 +254,21 @@ rudder task:log TNNN "Conflict resolution: kept agent's version (newer API)" --i
 
 ---
 
+## Output
+
+Returns to main thread:
+
+- Merge status (success, conflicts resolved, failed)
+- Files merged/resolved
+- Conflicts encountered (if any)
+- Cleanup status
+
+**This command does NOT update task status.** Main thread decides whether to mark task Done.
+
+A successful merge does not imply functional correctness. Tests and validation remain user responsibility.
+
+---
+
 ## Non-Goals
 
 This command does **NOT**:
@@ -223,4 +277,3 @@ This command does **NOT**:
 - Modify task scope
 - Skip conflict resolution
 - Auto-merge without understanding
-
