@@ -99,6 +99,12 @@ This tells you:
 
    Check your execution mode from `rudder context:load tasks-batch` output.
 
+   **If spawning fails mid-batch:**
+   - Do NOT attempt recovery
+   - Report which tasks are already marked In Progress
+   - User decides whether to reset them
+   - This command is NOT idempotent — re-running may spawn duplicate work
+
    **Mode: subprocess** (`use_subprocess: true`):
    ```bash
    # Spawn each task as a separate Claude process
@@ -130,11 +136,17 @@ This tells you:
    # Check for conflicts between agents
    rudder agent:conflicts
 
-   # Merge each completed agent (order matters if conflicts!)
+   # Merge each completed agent
    rudder agent:merge T101
    rudder agent:merge T102
    # Or reject failed work: rudder agent:reject T103
    ```
+
+   **If conflicts exist:**
+   - STOP
+   - Report conflicts to user
+   - Do NOT attempt reordering or partial merges
+   - User decides merge order or resolution
 
    **Mode: inline**:
    * Wait for Task tool agents to complete
@@ -185,11 +197,22 @@ This returns your complete execution context. Read and follow strictly.
 
 Implement the deliverables. No scope expansion.
 
+**Logging contract:**
+- Log once when starting (approach)
+- Log once before returning control (result or blocker)
+- Minimum 2 logs required.
+
+**If you cannot complete:** emit `--error` log, stop, return control.
+
+**You MUST NOT commit, push, or modify git state.**
+
 ## 3. Complete
 
 ```bash
-rudder assign:complete {TNNN}
+rudder assign:release {TNNN}
 ```
+
+`assign:release` releases the assignment. Task status update is done separately via `task:update`.
 
 The `assign:claim` command returns the compiled context:
 - Agent Contract (constitutional rules, CLI contract, logging protocol)
@@ -216,5 +239,6 @@ Any uncertainty is delegated to agents, who must stop and escalate.
 ## Limits
 
 * **Max 6 agents per batch** (context & performance)
+* If more than 6 tasks ready → run multiple batches sequentially
 * Parallelization allowed **only if tasks are dependency-independent**
 * If internal dependencies exist → run tasks **sequentially**, not in batch
