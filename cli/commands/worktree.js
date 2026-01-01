@@ -7,7 +7,7 @@ import path from 'path';
 import { execSync } from 'child_process';
 import { findProjectRoot, jsonOut } from '../lib/core.js';
 import { loadState, saveState } from '../lib/state.js';
-import { getAgentConfig } from '../lib/config.js';
+import { getAgentConfig, getGitConfig } from '../lib/config.js';
 import { addDynamicHelp } from '../lib/help.js';
 import {
   listAgentWorktrees,
@@ -18,7 +18,6 @@ import {
   branchExists,
   getMainBranch as getConfiguredMainBranch
 } from '../lib/worktree.js';
-import { getGitConfig } from '../lib/config.js';
 import {
   buildConflictMatrix,
   suggestMergeOrder,
@@ -29,221 +28,86 @@ import {
   diagnoseAgentState,
   getRecommendedActions
 } from '../lib/state-machine/index.js';
+import {
+  getMainBranch as getGitMainBranch,
+  getStatus as getGitStatus,
+  getDivergence,
+  fetch as gitFetch
+} from '../lib/git.js';
+import {
+  detectProvider,
+  checkCli as checkPrCli,
+  getStatus as getPrStatusFromLib,
+  create as createPrFromLib
+} from '../lib/pr.js';
+import {
+  diagnose as diagnoseReconciliation,
+  diagnoseWorktrees as diagnoseWorktreesReconciliation,
+  reconcileBranch,
+  pruneOrphans,
+  report as reconciliationReport,
+  BranchState
+} from '../lib/reconciliation.js';
 
-/**
- * Detect PR provider from git remote
- */
-function detectPrProvider(projectRoot) {
-  try {
-    const remote = execSync('git remote get-url origin', {
-      cwd: projectRoot,
-      encoding: 'utf8',
-      stdio: ['pipe', 'pipe', 'pipe']
-    }).trim();
-
-    if (remote.includes('github.com') || remote.includes('github:')) {
-      return 'github';
-    } else if (remote.includes('gitlab.com') || remote.includes('gitlab:')) {
-      return 'gitlab';
-    }
-    return null;
-  } catch {
-    return null;
-  }
-}
-
-/**
- * Check if gh/glab CLI is available
- */
-function checkPrCli(provider) {
-  const cmd = provider === 'github' ? 'gh' : 'glab';
-  try {
-    execSync(`${cmd} --version`, { stdio: 'pipe' });
-    return { available: true, cmd };
-  } catch {
-    return { available: false, cmd };
-  }
-}
-
-/**
- * Get main branch name
- */
-function getMainBranch(projectRoot) {
-  try {
-    // Try to get default branch from remote
-    const ref = execSync('git symbolic-ref refs/remotes/origin/HEAD', {
-      cwd: projectRoot,
-      encoding: 'utf8',
-      stdio: ['pipe', 'pipe', 'pipe']
-    }).trim();
-    return ref.replace('refs/remotes/origin/', '');
-  } catch {
-    // Fallback to common names
-    try {
-      execSync('git rev-parse --verify main', { cwd: projectRoot, stdio: 'pipe' });
-      return 'main';
-    } catch {
-      try {
-        execSync('git rev-parse --verify master', { cwd: projectRoot, stdio: 'pipe' });
-        return 'master';
-      } catch {
-        return 'main';
-      }
-    }
-  }
-}
 
 /**
  * Get main branch status
  */
 function getMainBranchStatus(projectRoot) {
-  const mainBranch = getMainBranch(projectRoot);
+  const mainBranch = getGitMainBranch();
+  const gitStatus = getGitStatus(projectRoot);
   const result = {
     branch: mainBranch,
-    clean: true,
-    uncommitted: 0,
+    clean: gitStatus.clean,
+    uncommitted: gitStatus.files.length,
     ahead: 0,
     behind: 0,
     upToDate: true
   };
 
-  try {
-    // Check for uncommitted changes
-    const status = execSync('git status --porcelain', {
-      cwd: projectRoot,
-      encoding: 'utf8',
-      stdio: ['pipe', 'pipe', 'pipe']
-    }).trim();
-
-    if (status) {
-      result.clean = false;
-      result.uncommitted = status.split('\n').filter(l => l.trim()).length;
-    }
-
-    // Fetch to check remote status
-    try {
-      execSync('git fetch origin --quiet', {
-        cwd: projectRoot,
-        stdio: ['pipe', 'pipe', 'pipe'],
-        timeout: 10000
-      });
-    } catch {
-      // Fetch failed, skip remote comparison
-      return result;
-    }
-
-    // Check ahead/behind
-    try {
-      const counts = execSync(`git rev-list --left-right --count origin/${mainBranch}...HEAD`, {
-        cwd: projectRoot,
-        encoding: 'utf8',
-        stdio: ['pipe', 'pipe', 'pipe']
-      }).trim().split('\t');
-
-      result.behind = parseInt(counts[0], 10) || 0;
-      result.ahead = parseInt(counts[1], 10) || 0;
-      result.upToDate = result.behind === 0;
-    } catch {
-      // May fail if no tracking
-    }
-  } catch (e) {
-    result.error = e.message;
+  // Fetch to check remote status
+  const fetchResult = gitFetch({ cwd: projectRoot });
+  if (!fetchResult.success) {
+    return result;
   }
+
+  // Check ahead/behind
+  const divergence = getDivergence('HEAD', `origin/${mainBranch}`, projectRoot);
+  result.ahead = divergence.ahead;
+  result.behind = divergence.behind;
+  result.upToDate = divergence.behind === 0;
 
   return result;
 }
 
 /**
- * Get PR status for a branch
+ * Get PR status for a branch (wrapper for pr.js)
  */
 function getPrStatus(taskId, projectRoot, provider) {
   const branch = getBranchName(taskId);
-  const cmd = provider === 'github' ? 'gh' : 'glab';
-
-  try {
-    if (provider === 'github') {
-      const output = execSync(`gh pr view ${branch} --json state,url,number,mergeable`, {
-        cwd: projectRoot,
-        encoding: 'utf8',
-        stdio: ['pipe', 'pipe', 'pipe']
-      });
-      return JSON.parse(output);
-    } else if (provider === 'gitlab') {
-      const output = execSync(`glab mr view ${branch} -F json`, {
-        cwd: projectRoot,
-        encoding: 'utf8',
-        stdio: ['pipe', 'pipe', 'pipe']
-      });
-      return JSON.parse(output);
-    }
-  } catch {
-    return null;
-  }
+  return getPrStatusFromLib(branch, projectRoot, provider);
 }
 
 /**
- * Create PR for a task
+ * Create PR for a task (wrapper for pr.js)
  */
-function createPr(taskId, options, projectRoot, provider) {
-  const branch = getBranchName(taskId);
+function createPr(taskId, options, projectRoot) {
   const state = loadState();
   const agentInfo = state.agents?.[taskId];
 
   // Get task info for PR title/body
   let title = `${taskId}: Agent work`;
-  let body = `Task: ${taskId}`;
-
   if (agentInfo?.task_title) {
     title = `${taskId}: ${agentInfo.task_title}`;
   }
-  if (agentInfo?.epic_id) {
-    body += `\nEpic: ${agentInfo.epic_id}`;
-  }
-  if (agentInfo?.prd_id) {
-    body += `\nPRD: ${agentInfo.prd_id}`;
-  }
 
-  // Push branch first
-  try {
-    execSync(`git push -u origin ${branch}`, {
-      cwd: projectRoot,
-      encoding: 'utf8',
-      stdio: ['pipe', 'pipe', 'pipe']
-    });
-  } catch (e) {
-    throw new Error(`Failed to push branch: ${e.message}`);
-  }
-
-  // Create PR
-  const draftFlag = options.draft ? '--draft' : '';
-
-  try {
-    if (provider === 'github') {
-      const output = execSync(
-        `gh pr create --head ${branch} --title "${title}" --body "${body}" ${draftFlag}`,
-        {
-          cwd: projectRoot,
-          encoding: 'utf8',
-          stdio: ['pipe', 'pipe', 'pipe']
-        }
-      );
-      return { url: output.trim(), provider: 'github' };
-    } else if (provider === 'gitlab') {
-      const output = execSync(
-        `glab mr create --source-branch ${branch} --title "${title}" --description "${body}" ${draftFlag ? '--draft' : ''}`,
-        {
-          cwd: projectRoot,
-          encoding: 'utf8',
-          stdio: ['pipe', 'pipe', 'pipe']
-        }
-      );
-      // Parse URL from output
-      const urlMatch = output.match(/https:\/\/[^\s]+/);
-      return { url: urlMatch ? urlMatch[0] : output.trim(), provider: 'gitlab' };
-    }
-  } catch (e) {
-    throw new Error(`Failed to create PR: ${e.message}`);
-  }
+  return createPrFromLib(taskId, {
+    cwd: projectRoot,
+    title,
+    draft: options.draft,
+    epicId: agentInfo?.epic_id,
+    prdId: agentInfo?.prd_id
+  });
 }
 
 /**
@@ -264,7 +128,7 @@ export function registerWorktreeCommands(program) {
       const state = loadState();
       const agents = state.agents || {};
       const config = getAgentConfig();
-      const provider = config.pr_provider === 'auto' ? detectPrProvider(projectRoot) : config.pr_provider;
+      const provider = config.pr_provider === 'auto' ? detectProvider(projectRoot) : config.pr_provider;
 
       // Get main branch status
       const mainStatus = getMainBranchStatus(projectRoot);
@@ -385,7 +249,7 @@ export function registerWorktreeCommands(program) {
       const state = loadState();
       const agents = state.agents || {};
       const config = getAgentConfig();
-      const provider = config.pr_provider === 'auto' ? detectPrProvider(projectRoot) : config.pr_provider;
+      const provider = config.pr_provider === 'auto' ? detectProvider(projectRoot) : config.pr_provider;
 
       const blockers = [];
       const warnings = [];
@@ -523,7 +387,7 @@ export function registerWorktreeCommands(program) {
 
       // Detect provider
       const config = getAgentConfig();
-      const provider = config.pr_provider === 'auto' ? detectPrProvider(projectRoot) : config.pr_provider;
+      const provider = config.pr_provider === 'auto' ? detectProvider(projectRoot) : config.pr_provider;
 
       if (!provider) {
         console.error('Cannot detect PR provider. Set agent.pr_provider in config.');
@@ -539,7 +403,7 @@ export function registerWorktreeCommands(program) {
 
       // Check worktree has commits
       const worktreePath = getWorktreePath(taskId);
-      const mainBranch = getMainBranch(projectRoot);
+      const mainBranch = getGitMainBranch();
 
       try {
         const count = execSync(`git rev-list --count HEAD ^${mainBranch}`, {
@@ -598,7 +462,7 @@ export function registerWorktreeCommands(program) {
       // Check PR status if exists
       if (agentInfo.pr_url && !options.force) {
         const config = getAgentConfig();
-        const provider = config.pr_provider === 'auto' ? detectPrProvider(projectRoot) : config.pr_provider;
+        const provider = config.pr_provider === 'auto' ? detectProvider(projectRoot) : config.pr_provider;
 
         if (provider) {
           const prStatus = getPrStatus(taskId, projectRoot, provider);
@@ -667,7 +531,7 @@ export function registerWorktreeCommands(program) {
       const state = loadState();
       const agents = state.agents || {};
       const config = getAgentConfig();
-      const provider = config.pr_provider === 'auto' ? detectPrProvider(projectRoot) : config.pr_provider;
+      const provider = config.pr_provider === 'auto' ? detectProvider(projectRoot) : config.pr_provider;
 
       const actions = [];
 
@@ -1111,6 +975,114 @@ export function registerWorktreeCommands(program) {
           console.log(`\nNext: When all epics complete, promote prd to main`);
         } else {
           console.log(`\n✓ PRD merged to main. Ready for release.`);
+        }
+      }
+    });
+
+  // worktree:reconcile - diagnose and fix branch state
+  worktree.command('reconcile')
+    .description('Diagnose and reconcile branch state (sync, prune orphans)')
+    .option('--prd <id>', 'PRD ID for context')
+    .option('--epic <id>', 'Epic ID for context')
+    .option('--sync', 'Sync branches that are behind')
+    .option('--prune', 'Prune orphaned branches')
+    .option('--force', 'Force prune even if not fully merged')
+    .option('--dry-run', 'Show what would be done without doing it')
+    .option('--json', 'JSON output')
+    .action((options) => {
+      const projectRoot = findProjectRoot();
+      const gitConfig = getGitConfig();
+
+      // Build context
+      const context = {
+        prdId: options.prd,
+        epicId: options.epic,
+        branching: gitConfig?.branching || 'flat'
+      };
+
+      // Diagnose
+      const diag = diagnoseReconciliation(context);
+      const wtDiag = diagnoseWorktreesReconciliation();
+
+      // If no action requested, just report
+      if (!options.sync && !options.prune) {
+        if (options.json) {
+          jsonOut({
+            diagnosis: diag,
+            worktrees: wtDiag,
+            hasIssues: diag.issues.length > 0 || wtDiag.issues.length > 0
+          });
+        } else {
+          console.log(reconciliationReport(context));
+        }
+        return;
+      }
+
+      const results = {
+        synced: [],
+        pruned: [],
+        errors: []
+      };
+
+      // Sync branches
+      if (options.sync) {
+        for (const h of diag.hierarchy) {
+          if (h.state === BranchState.BEHIND || h.state === BranchState.DIVERGED) {
+            const result = reconcileBranch(h.branch, h.parent, {
+              strategy: gitConfig?.merge_strategy || 'merge',
+              dryRun: options.dryRun
+            });
+
+            if (result.success && result.action === 'synced') {
+              results.synced.push(`${h.branch} ← ${h.parent}`);
+            } else if (result.action === 'would_sync') {
+              results.synced.push(`[dry-run] ${h.branch} ← ${h.parent}`);
+            } else if (!result.success) {
+              results.errors.push(`${h.branch}: ${result.error}`);
+            }
+          }
+        }
+      }
+
+      // Prune orphans
+      if (options.prune) {
+        const pruneResult = pruneOrphans({
+          dryRun: options.dryRun,
+          force: options.force
+        });
+
+        results.pruned = pruneResult.pruned.map(b =>
+          options.dryRun ? `[dry-run] ${b}` : b
+        );
+        results.errors.push(...pruneResult.errors);
+      }
+
+      // Output
+      if (options.json) {
+        jsonOut({
+          success: results.errors.length === 0,
+          synced: results.synced,
+          pruned: results.pruned,
+          errors: results.errors
+        });
+      } else {
+        if (results.synced.length > 0) {
+          console.log('Synced branches:');
+          results.synced.forEach(s => console.log(`  ✓ ${s}`));
+        }
+
+        if (results.pruned.length > 0) {
+          console.log('Pruned branches:');
+          results.pruned.forEach(p => console.log(`  ✓ ${p}`));
+        }
+
+        if (results.errors.length > 0) {
+          console.log('Errors:');
+          results.errors.forEach(e => console.log(`  ✗ ${e}`));
+        }
+
+        if (results.synced.length === 0 && results.pruned.length === 0 && results.errors.length === 0) {
+          console.log('✓ Everything is in sync, no orphans found.');
         }
       }
     });

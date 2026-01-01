@@ -1,27 +1,31 @@
 /**
  * Agent commands for rudder CLI
- * Manages agent lifecycle: dispatch, collect, status
+ * Manages agent lifecycle: spawn, collect, status, merge
  */
 import fs from 'fs';
 import path from 'path';
 import yaml from 'js-yaml';
 import { execSync } from 'child_process';
-import { findProjectRoot, loadFile, jsonOut, getPrdsDir, getMemoryDir } from '../lib/core.js';
+import { findProjectRoot, loadFile, jsonOut } from '../lib/core.js';
 import { resolvePlaceholders, resolvePath, ensureDir } from '../lib/paths.js';
-import { createMission, validateMission, validateResult, getProtocolVersion } from '../lib/agent-schema.js';
+import { createMission, validateMission, validateResult } from '../lib/agent-schema.js';
 import { loadState, saveState } from '../lib/state.js';
 import { addDynamicHelp } from '../lib/help.js';
 import { getAgentConfig } from '../lib/config.js';
 import {
-  createWorktree, getWorktreePath, getBranchName, worktreeExists, removeWorktree, getWorktreeStatus,
+  createWorktree, getWorktreePath, getBranchName, worktreeExists, removeWorktree,
   ensureBranchHierarchy, syncParentBranch, getParentBranch
 } from '../lib/worktree.js';
 import { spawnClaude, buildPromptFromMission, getLogFilePath } from '../lib/claude.js';
-import { buildConflictMatrix, suggestMergeOrder, canMergeWithoutConflict } from '../lib/conflicts.js';
+import { buildConflictMatrix, suggestMergeOrder } from '../lib/conflicts.js';
+import {
+  findTaskFile, findEpicFile, findMemoryFile,
+  extractPrdId, extractEpicId, getPrdBranching,
+  findDevMd, findToolset
+} from '../lib/entities.js';
 
 /**
  * Get agents base directory (overridable via paths.yaml: agents)
- * Default: %haven%/agents
  */
 function getAgentsBaseDir() {
   const custom = resolvePath('agents');
@@ -36,141 +40,6 @@ function getAgentDir(taskId) {
 }
 
 /**
- * Find task file by ID
- */
-function findTaskFile(taskId) {
-  const prdsDir = getPrdsDir();
-  if (!fs.existsSync(prdsDir)) return null;
-
-  for (const prdDir of fs.readdirSync(prdsDir)) {
-    const tasksDir = path.join(prdsDir, prdDir, 'tasks');
-    if (!fs.existsSync(tasksDir)) continue;
-
-    for (const file of fs.readdirSync(tasksDir)) {
-      if (file.startsWith(taskId + '-') && file.endsWith('.md')) {
-        return path.join(tasksDir, file);
-      }
-    }
-  }
-  return null;
-}
-
-/**
- * Find epic file by ID
- */
-function findEpicFile(epicId) {
-  const prdsDir = getPrdsDir();
-  if (!fs.existsSync(prdsDir)) return null;
-
-  for (const prdDir of fs.readdirSync(prdsDir)) {
-    const epicsDir = path.join(prdsDir, prdDir, 'epics');
-    if (!fs.existsSync(epicsDir)) continue;
-
-    for (const file of fs.readdirSync(epicsDir)) {
-      if (file.startsWith(epicId + '-') && file.endsWith('.md')) {
-        return path.join(epicsDir, file);
-      }
-    }
-  }
-  return null;
-}
-
-/**
- * Extract PRD ID from parent field (e.g., "PRD-001 / E002" -> "PRD-001")
- */
-function extractPrdId(parent) {
-  if (!parent) return null;
-  const match = parent.match(/PRD-\d+/);
-  return match ? match[0] : null;
-}
-
-/**
- * Extract Epic ID from parent field (e.g., "PRD-001 / E002" -> "E002")
- */
-function extractEpicId(parent) {
-  if (!parent) return null;
-  const match = parent.match(/E\d+/);
-  return match ? match[0] : null;
-}
-
-/**
- * Find PRD file by ID
- */
-function findPrdFile(prdId) {
-  const prdsDir = getPrdsDir();
-  if (!fs.existsSync(prdsDir)) return null;
-
-  for (const prdDir of fs.readdirSync(prdsDir)) {
-    if (prdDir.startsWith(prdId + '-') || prdDir === prdId) {
-      const prdFile = path.join(prdsDir, prdDir, 'prd.md');
-      if (fs.existsSync(prdFile)) return prdFile;
-    }
-  }
-  return null;
-}
-
-/**
- * Get PRD branching strategy
- * @param {string} prdId - PRD ID
- * @returns {string} 'flat' | 'prd' | 'epic'
- */
-function getPrdBranching(prdId) {
-  const prdFile = findPrdFile(prdId);
-  if (!prdFile) return 'flat';
-
-  const prd = loadFile(prdFile);
-  if (!prd || !prd.data) return 'flat';
-
-  return prd.data.branching || 'flat';
-}
-
-/**
- * Find DEV.md file (check project root and common locations)
- */
-function findDevMd() {
-  const projectRoot = findProjectRoot();
-  const candidates = [
-    path.join(projectRoot, 'DEV.md'),
-    path.join(projectRoot, 'DEVELOPMENT.md'),
-    path.join(projectRoot, 'docs', 'DEV.md'),
-    path.join(projectRoot, 'docs', 'DEVELOPMENT.md')
-  ];
-
-  for (const candidate of candidates) {
-    if (fs.existsSync(candidate)) {
-      return candidate;
-    }
-  }
-  return null;
-}
-
-/**
- * Find TOOLSET.md file
- */
-function findToolset() {
-  const projectRoot = findProjectRoot();
-  const candidates = [
-    path.join(projectRoot, '.claude', 'TOOLSET.md'),
-    path.join(projectRoot, 'TOOLSET.md')
-  ];
-
-  for (const candidate of candidates) {
-    if (fs.existsSync(candidate)) {
-      return candidate;
-    }
-  }
-  return null;
-}
-
-/**
- * Find memory file for epic
- */
-function findMemoryFile(epicId) {
-  const memoryPath = path.join(getMemoryDir(), `${epicId}.md`);
-  return fs.existsSync(memoryPath) ? memoryPath : null;
-}
-
-/**
  * Register agent commands
  */
 export function registerAgentCommands(program) {
@@ -179,183 +48,7 @@ export function registerAgentCommands(program) {
 
   addDynamicHelp(agent, { entityType: 'agent' });
 
-  // agent:dispatch (DEPRECATED - use agent:spawn)
-  agent.command('dispatch <task-id>')
-    .description('[DEPRECATED] Use agent:spawn instead')
-    .option('--timeout <seconds>', 'Execution timeout (default: 600)', parseInt, 600)
-    .option('--worktree', 'Create isolated worktree for agent (overrides config)')
-    .option('--no-worktree', 'Skip worktree creation (overrides config)')
-    .option('--dry-run', 'Show mission without creating files')
-    .option('--json', 'JSON output')
-    .action((taskId, options) => {
-      // Normalize task ID
-      taskId = taskId.toUpperCase();
-      if (!taskId.startsWith('T')) {
-        taskId = 'T' + taskId;
-      }
-
-      // Find task file
-      const taskFile = findTaskFile(taskId);
-      if (!taskFile) {
-        console.error(`Task not found: ${taskId}`);
-        process.exit(1);
-      }
-
-      // Load task data
-      const task = loadFile(taskFile);
-      if (!task) {
-        console.error(`Could not load task file: ${taskFile}`);
-        process.exit(1);
-      }
-
-      // Extract IDs
-      const prdId = extractPrdId(task.data.parent);
-      const epicId = extractEpicId(task.data.parent);
-
-      if (!prdId || !epicId) {
-        console.error(`Could not extract PRD/Epic IDs from parent: ${task.data.parent}`);
-        process.exit(1);
-      }
-
-      // Find context files
-      const epicFile = findEpicFile(epicId);
-      const devMd = findDevMd();
-      const toolset = findToolset();
-      const memory = findMemoryFile(epicId);
-
-      if (!epicFile) {
-        console.error(`Epic file not found: ${epicId}`);
-        process.exit(1);
-      }
-
-      // Build instruction from task body
-      const instruction = task.body.trim();
-
-      // Create mission
-      const mission = createMission({
-        task_id: taskId,
-        epic_id: epicId,
-        prd_id: prdId,
-        instruction: instruction,
-        dev_md: devMd || '',
-        epic_file: epicFile,
-        task_file: taskFile,
-        memory: memory,
-        toolset: toolset,
-        constraints: {
-          no_git_commit: true
-        },
-        timeout: options.timeout
-      });
-
-      // Validate mission
-      const errors = validateMission(mission);
-      if (errors.length > 0) {
-        console.error('Invalid mission:');
-        errors.forEach(e => console.error(`  - ${e}`));
-        process.exit(1);
-      }
-
-      // Determine agent directory
-      const agentDir = ensureDir(getAgentDir(taskId));
-      const missionFile = path.join(agentDir, 'mission.yaml');
-
-      if (options.dryRun) {
-        // Check worktree config for dry-run display
-        const agentConfig = getAgentConfig();
-        let useWorktree = agentConfig.use_worktrees;
-        if (options.worktree === true) useWorktree = true;
-        else if (options.worktree === false) useWorktree = false;
-
-        console.log('Mission (dry run):\n');
-        console.log(yaml.dump(mission));
-        console.log(`\nWould create: ${missionFile}`);
-        if (useWorktree) {
-          console.log(`Would create worktree: ${getWorktreePath(taskId)}`);
-          console.log(`Would create branch: ${getBranchName(taskId)}`);
-        }
-        return;
-      }
-
-      // Check if already dispatched
-      const state = loadState();
-      if (!state.agents) state.agents = {};
-
-      if (state.agents[taskId] && state.agents[taskId].status === 'dispatched') {
-        console.error(`Task ${taskId} is already dispatched`);
-        console.error(`  Mission: ${missionFile}`);
-        process.exit(1);
-      }
-
-      // Determine if worktree should be created
-      const agentConfig = getAgentConfig();
-      let useWorktree = agentConfig.use_worktrees;
-
-      // CLI flags override config
-      if (options.worktree === true) {
-        useWorktree = true;
-      } else if (options.worktree === false) {
-        useWorktree = false;
-      }
-
-      // Create worktree if enabled
-      let worktreeInfo = null;
-      if (useWorktree) {
-        if (worktreeExists(taskId)) {
-          console.error(`Worktree already exists for ${taskId}`);
-          console.error(`  Path: ${getWorktreePath(taskId)}`);
-          process.exit(1);
-        }
-
-        const result = createWorktree(taskId);
-        if (!result.success) {
-          console.error(`Failed to create worktree: ${result.error}`);
-          process.exit(1);
-        }
-
-        worktreeInfo = {
-          path: result.path,
-          branch: result.branch,
-          base_branch: result.baseBranch
-        };
-
-        if (!options.json && !options.dryRun) {
-          console.log(`Worktree created: ${result.path}`);
-          console.log(`  Branch: ${result.branch}`);
-        }
-      }
-
-      // Write mission file
-      fs.writeFileSync(missionFile, yaml.dump(mission));
-
-      // Update state
-      state.agents[taskId] = {
-        status: 'dispatched',
-        started_at: new Date().toISOString(),
-        mission_file: missionFile,
-        ...(worktreeInfo && { worktree: worktreeInfo })
-      };
-      saveState(state);
-
-      if (options.json) {
-        jsonOut({
-          task_id: taskId,
-          mission_file: missionFile,
-          agent_dir: agentDir,
-          ...(worktreeInfo && { worktree: worktreeInfo })
-        });
-      } else {
-        console.log(`Dispatched: ${taskId}`);
-        console.log(`  Mission: ${missionFile}`);
-        console.log(`  Agent dir: ${agentDir}`);
-        if (worktreeInfo) {
-          console.log(`  Worktree: ${worktreeInfo.path}`);
-          console.log(`  Branch: ${worktreeInfo.branch}`);
-        }
-      }
-    });
-
-  // agent:spawn - merged dispatch + run with bootstrap prompt
+  // agent:spawn - creates worktree, spawns Claude with bootstrap prompt
   agent.command('spawn <task-id>')
     .description('Spawn agent to execute task (creates worktree, spawns Claude)')
     .option('--timeout <seconds>', 'Execution timeout (default: 600)', parseInt)
@@ -508,6 +201,7 @@ export function registerAgentCommands(program) {
 
       // Get timeout
       const timeout = options.timeout || agentConfig.timeout || 600;
+      const projectRoot = findProjectRoot();
 
       // Create mission.yaml for debug/trace
       const mission = createMission({
@@ -515,11 +209,11 @@ export function registerAgentCommands(program) {
         epic_id: epicId,
         prd_id: prdId,
         instruction: task.body.trim(),
-        dev_md: findDevMd() || '',
+        dev_md: findDevMd(projectRoot) || '',
         epic_file: findEpicFile(epicId),
         task_file: taskFile,
         memory: findMemoryFile(epicId),
-        toolset: findToolset(),
+        toolset: findToolset(projectRoot),
         constraints: { no_git_commit: true },
         timeout
       });
@@ -846,121 +540,6 @@ Start by running \`rudder assign:claim ${taskId}\` to get your instructions.
 
         if (!options.json) {
           process.stdout.write('.');
-        }
-      }
-    });
-
-  // agent:run (DEPRECATED - use agent:spawn)
-  agent.command('run <task-id>')
-    .description('[DEPRECATED] Use agent:spawn instead')
-    .option('--timeout <seconds>', 'Execution timeout in seconds (overrides config)', parseInt)
-    .option('--stderr-to-file [path]', 'Redirect stderr to file only (default: run.log)')
-    .option('--json', 'JSON output')
-    .action((taskId, options) => {
-      taskId = taskId.toUpperCase();
-      if (!taskId.startsWith('T')) taskId = 'T' + taskId;
-
-      const state = loadState();
-      const agentInfo = state.agents?.[taskId];
-
-      if (!agentInfo) {
-        console.error(`No agent found for task: ${taskId}`);
-        console.error('Use agent:dispatch first to create a mission');
-        process.exit(1);
-      }
-
-      if (agentInfo.status !== 'dispatched') {
-        console.error(`Agent ${taskId} is not in dispatched state (current: ${agentInfo.status})`);
-        process.exit(1);
-      }
-
-      // Load mission file
-      const missionFile = agentInfo.mission_file;
-      if (!fs.existsSync(missionFile)) {
-        console.error(`Mission file not found: ${missionFile}`);
-        process.exit(1);
-      }
-
-      let mission;
-      try {
-        const content = fs.readFileSync(missionFile, 'utf8');
-        mission = yaml.load(content);
-      } catch (e) {
-        console.error(`Error reading mission file: ${e.message}`);
-        process.exit(1);
-      }
-
-      // Determine working directory
-      let cwd;
-      if (agentInfo.worktree) {
-        cwd = agentInfo.worktree.path;
-        if (!fs.existsSync(cwd)) {
-          console.error(`Worktree not found: ${cwd}`);
-          process.exit(1);
-        }
-      } else {
-        // Use project root if no worktree
-        cwd = findProjectRoot();
-      }
-
-      // Get timeout from options, mission, or config
-      const config = getAgentConfig();
-      const timeout = options.timeout || mission.timeout || config.timeout;
-
-      // Build prompt from mission
-      const prompt = buildPromptFromMission(mission);
-      const logFile = getLogFilePath(taskId);
-
-      // Spawn Claude
-      const agentDir = getAgentDir(taskId);
-      const result = spawnClaude({
-        prompt,
-        cwd,
-        logFile,
-        timeout,
-        agentDir,
-        stderrToFile: options.stderrToFile
-      });
-
-      // Update state with PID
-      state.agents[taskId] = {
-        ...agentInfo,
-        status: 'running',
-        pid: result.pid,
-        log_file: result.logFile,
-        run_started_at: new Date().toISOString()
-      };
-      saveState(state);
-
-      // Handle process exit
-      result.process.on('exit', (code, signal) => {
-        const currentState = loadState();
-        if (currentState.agents[taskId]) {
-          currentState.agents[taskId].status = code === 0 ? 'dispatched' : 'error';
-          currentState.agents[taskId].exit_code = code;
-          currentState.agents[taskId].exit_signal = signal;
-          currentState.agents[taskId].run_ended_at = new Date().toISOString();
-          delete currentState.agents[taskId].pid;
-          saveState(currentState);
-        }
-      });
-
-      if (options.json) {
-        jsonOut({
-          task_id: taskId,
-          pid: result.pid,
-          cwd,
-          log_file: result.logFile,
-          timeout
-        });
-      } else {
-        console.log(`Running: ${taskId}`);
-        console.log(`  PID: ${result.pid}`);
-        console.log(`  CWD: ${cwd}`);
-        console.log(`  Log: ${result.logFile}`);
-        console.log(`  Timeout: ${timeout}s`);
-        if (agentInfo.worktree) {
-          console.log(`  Worktree: ${agentInfo.worktree.branch}`);
         }
       }
     });
