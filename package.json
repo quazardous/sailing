@@ -10,7 +10,9 @@
   "scripts": {
     "rudder": "node cli/rudder.js",
     "mcp": "node mcp/rudder-server.js",
-    "build:skill": "./skill/build.sh"
+    "build:skill": "./skill/build.sh",
+    "test": "node --test test/*.test.js",
+    "test:watch": "node --test --watch test/*.test.js"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.25.1",

@@ -1,0 +1,407 @@
+/**
+ * Artifact Editing Library
+ *
+ * Provides section-based editing for sailing markdown artifacts (PRD, Epic, Task).
+ * Supports CLI commands and Aider-style SEARCH/REPLACE blocks for agents.
+ */
+
+import fs from 'fs';
+import path from 'path';
+
+/**
+ * Parse markdown content into frontmatter and sections
+ * @param {string} content - Raw markdown content
+ * @returns {{ frontmatter: string, sections: Map<string, string>, order: string[] }}
+ */
+export function parseMarkdownSections(content) {
+  const lines = content.split('\n');
+  let frontmatter = '';
+  let inFrontmatter = false;
+  let frontmatterEnd = 0;
+
+  // Extract frontmatter
+  if (lines[0] === '---') {
+    inFrontmatter = true;
+    for (let i = 1; i < lines.length; i++) {
+      if (lines[i] === '---') {
+        frontmatterEnd = i + 1;
+        frontmatter = lines.slice(0, frontmatterEnd).join('\n');
+        break;
+      }
+    }
+  }
+
+  // Parse sections (## headings)
+  const sections = new Map();
+  const order = [];
+  let currentSection = null;
+  let currentContent = [];
+  let preamble = []; // Content before first section
+
+  for (let i = frontmatterEnd; i < lines.length; i++) {
+    const line = lines[i];
+    const headingMatch = line.match(/^## (.+)$/);
+
+    if (headingMatch) {
+      // Save previous section
+      if (currentSection) {
+        sections.set(currentSection, currentContent.join('\n').trim());
+      } else if (currentContent.length > 0) {
+        preamble = currentContent;
+      }
+
+      // Start new section
+      currentSection = headingMatch[1].trim();
+      order.push(currentSection);
+      currentContent = [];
+    } else {
+      currentContent.push(line);
+    }
+  }
+
+  // Save last section
+  if (currentSection) {
+    sections.set(currentSection, currentContent.join('\n').trim());
+  }
+
+  return {
+    frontmatter,
+    preamble: preamble.join('\n').trim(),
+    sections,
+    order
+  };
+}
+
+/**
+ * Serialize sections back to markdown
+ * @param {{ frontmatter: string, preamble?: string, sections: Map<string, string>, order: string[] }} parsed
+ * @returns {string}
+ */
+export function serializeSections(parsed) {
+  const { frontmatter, preamble, sections, order } = parsed;
+  const parts = [];
+
+  if (frontmatter) {
+    parts.push(frontmatter);
+    parts.push(''); // Empty line after frontmatter
+  }
+
+  if (preamble) {
+    parts.push(preamble);
+    parts.push('');
+  }
+
+  for (const name of order) {
+    if (sections.has(name)) {
+      parts.push(`## ${name}`);
+      const content = sections.get(name);
+      if (content) {
+        parts.push('');
+        parts.push(content);
+      }
+      parts.push('');
+    }
+  }
+
+  return parts.join('\n').trimEnd() + '\n';
+}
+
+/**
+ * Apply a single operation to sections
+ * @param {Map<string, string>} sections - Sections map
+ * @param {string[]} order - Section order
+ * @param {object} op - Operation to apply
+ * @returns {{ success: boolean, error?: string }}
+ */
+export function applyOp(sections, order, op) {
+  switch (op.op) {
+    case 'replace': {
+      if (!sections.has(op.section)) {
+        return { success: false, error: `Section not found: ${op.section}` };
+      }
+      sections.set(op.section, op.content);
+      return { success: true };
+    }
+
+    case 'append': {
+      if (!sections.has(op.section)) {
+        return { success: false, error: `Section not found: ${op.section}` };
+      }
+      const current = sections.get(op.section);
+      const separator = current && !current.endsWith('\n') ? '\n' : '';
+      sections.set(op.section, current + separator + op.content);
+      return { success: true };
+    }
+
+    case 'prepend': {
+      if (!sections.has(op.section)) {
+        return { success: false, error: `Section not found: ${op.section}` };
+      }
+      const current = sections.get(op.section);
+      sections.set(op.section, op.content + (current ? '\n' + current : ''));
+      return { success: true };
+    }
+
+    case 'check': {
+      return toggleCheckbox(sections, op.section, op.item, true);
+    }
+
+    case 'uncheck': {
+      return toggleCheckbox(sections, op.section, op.item, false);
+    }
+
+    case 'delete': {
+      if (!sections.has(op.section)) {
+        return { success: false, error: `Section not found: ${op.section}` };
+      }
+      sections.delete(op.section);
+      const idx = order.indexOf(op.section);
+      if (idx !== -1) order.splice(idx, 1);
+      return { success: true };
+    }
+
+    case 'create': {
+      if (sections.has(op.section)) {
+        return { success: false, error: `Section already exists: ${op.section}` };
+      }
+      sections.set(op.section, op.content || '');
+      if (op.after && order.includes(op.after)) {
+        const idx = order.indexOf(op.after);
+        order.splice(idx + 1, 0, op.section);
+      } else {
+        order.push(op.section);
+      }
+      return { success: true };
+    }
+
+    default:
+      return { success: false, error: `Unknown operation: ${op.op}` };
+  }
+}
+
+/**
+ * Toggle checkbox in a section
+ * @param {Map<string, string>} sections
+ * @param {string} sectionName
+ * @param {string} itemText
+ * @param {boolean} checked
+ * @returns {{ success: boolean, error?: string }}
+ */
+function toggleCheckbox(sections, sectionName, itemText, checked) {
+  if (!sections.has(sectionName)) {
+    return { success: false, error: `Section not found: ${sectionName}` };
+  }
+
+  const content = sections.get(sectionName);
+  const lines = content.split('\n');
+  let found = false;
+
+  const updatedLines = lines.map(line => {
+    // Match checkbox pattern: - [ ] or - [x] or - [X]
+    const checkboxMatch = line.match(/^(\s*-\s*)\[([ xX])\](\s*.*)$/);
+    if (checkboxMatch) {
+      const [, prefix, , rest] = checkboxMatch;
+      const lineText = rest.trim();
+
+      // Match by item text (partial match, case-insensitive)
+      if (lineText.toLowerCase().includes(itemText.toLowerCase())) {
+        found = true;
+        return `${prefix}[${checked ? 'x' : ' '}]${rest}`;
+      }
+    }
+    return line;
+  });
+
+  if (!found) {
+    return { success: false, error: `Checkbox item not found: ${itemText}` };
+  }
+
+  sections.set(sectionName, updatedLines.join('\n'));
+  return { success: true };
+}
+
+/**
+ * Apply multiple operations
+ * @param {Map<string, string>} sections
+ * @param {string[]} order
+ * @param {object[]} ops
+ * @returns {{ success: boolean, applied: number, errors: string[] }}
+ */
+export function applyOps(sections, order, ops) {
+  const errors = [];
+  let applied = 0;
+
+  for (const op of ops) {
+    const result = applyOp(sections, order, op);
+    if (result.success) {
+      applied++;
+    } else {
+      errors.push(result.error);
+    }
+  }
+
+  return {
+    success: errors.length === 0,
+    applied,
+    errors
+  };
+}
+
+/**
+ * Parse Aider-style SEARCH/REPLACE blocks into ops
+ * @param {string} input - Input containing SEARCH/REPLACE blocks
+ * @returns {object[]} Array of ops
+ */
+export function parseSearchReplace(input) {
+  const ops = [];
+  const blockRegex = /<<<<<<< SEARCH\n([\s\S]*?)\n=======\n([\s\S]*?)\n>>>>>>> REPLACE/g;
+
+  let match;
+  while ((match = blockRegex.exec(input)) !== null) {
+    const [, searchBlock, replaceBlock] = match;
+    ops.push({
+      op: 'search_replace',
+      search: searchBlock,
+      replace: replaceBlock
+    });
+  }
+
+  return ops;
+}
+
+/**
+ * Apply SEARCH/REPLACE operation to raw content
+ * @param {string} content - Full file content
+ * @param {string} search - Text to search for
+ * @param {string} replace - Replacement text
+ * @returns {{ success: boolean, content?: string, error?: string }}
+ */
+export function applySearchReplace(content, search, replace) {
+  // Normalize line endings
+  const normalizedContent = content.replace(/\r\n/g, '\n');
+  const normalizedSearch = search.replace(/\r\n/g, '\n').trim();
+  const normalizedReplace = replace.replace(/\r\n/g, '\n').trim();
+
+  if (!normalizedContent.includes(normalizedSearch)) {
+    // Try fuzzy match (ignore leading/trailing whitespace per line)
+    const searchLines = normalizedSearch.split('\n').map(l => l.trim());
+    const contentLines = normalizedContent.split('\n');
+
+    let startIdx = -1;
+    for (let i = 0; i <= contentLines.length - searchLines.length; i++) {
+      let match = true;
+      for (let j = 0; j < searchLines.length; j++) {
+        if (contentLines[i + j].trim() !== searchLines[j]) {
+          match = false;
+          break;
+        }
+      }
+      if (match) {
+        startIdx = i;
+        break;
+      }
+    }
+
+    if (startIdx === -1) {
+      return { success: false, error: 'SEARCH block not found in content' };
+    }
+
+    // Replace with proper indentation preserved from first line
+    const indent = contentLines[startIdx].match(/^(\s*)/)[1];
+    const replaceLines = normalizedReplace.split('\n').map((line, idx) => {
+      if (idx === 0) return indent + line.trim();
+      // Preserve relative indentation
+      const lineIndent = line.match(/^(\s*)/)[1];
+      return indent + line;
+    });
+
+    contentLines.splice(startIdx, searchLines.length, ...replaceLines);
+    return { success: true, content: contentLines.join('\n') };
+  }
+
+  // Exact match
+  const newContent = normalizedContent.replace(normalizedSearch, normalizedReplace);
+  return { success: true, content: newContent };
+}
+
+/**
+ * Read artifact file, apply ops, write back
+ * @param {string} filePath - Path to markdown file
+ * @param {object[]} ops - Operations to apply
+ * @returns {{ success: boolean, applied: number, errors: string[] }}
+ */
+export function editArtifact(filePath, ops) {
+  if (!fs.existsSync(filePath)) {
+    return { success: false, applied: 0, errors: [`File not found: ${filePath}`] };
+  }
+
+  let content = fs.readFileSync(filePath, 'utf8');
+  const errors = [];
+  let applied = 0;
+
+  // Handle search_replace ops on raw content first
+  const searchReplaceOps = ops.filter(op => op.op === 'search_replace');
+  const sectionOps = ops.filter(op => op.op !== 'search_replace');
+
+  for (const op of searchReplaceOps) {
+    const result = applySearchReplace(content, op.search, op.replace);
+    if (result.success) {
+      content = result.content;
+      applied++;
+    } else {
+      errors.push(result.error);
+    }
+  }
+
+  // Handle section-based ops
+  if (sectionOps.length > 0) {
+    const parsed = parseMarkdownSections(content);
+    const result = applyOps(parsed.sections, parsed.order, sectionOps);
+    applied += result.applied;
+    errors.push(...result.errors);
+
+    if (result.applied > 0) {
+      content = serializeSections(parsed);
+    }
+  }
+
+  // Write back if any ops applied
+  if (applied > 0) {
+    fs.writeFileSync(filePath, content);
+  }
+
+  return {
+    success: errors.length === 0,
+    applied,
+    errors
+  };
+}
+
+/**
+ * List sections in an artifact
+ * @param {string} filePath - Path to markdown file
+ * @returns {string[]} Section names
+ */
+export function listSections(filePath) {
+  if (!fs.existsSync(filePath)) {
+    return [];
+  }
+  const content = fs.readFileSync(filePath, 'utf8');
+  const parsed = parseMarkdownSections(content);
+  return parsed.order;
+}
+
+/**
+ * Get content of a specific section
+ * @param {string} filePath - Path to markdown file
+ * @param {string} sectionName - Section name
+ * @returns {string|null} Section content or null if not found
+ */
+export function getSection(filePath, sectionName) {
+  if (!fs.existsSync(filePath)) {
+    return null;
+  }
+  const content = fs.readFileSync(filePath, 'utf8');
+  const parsed = parseMarkdownSections(content);
+  return parsed.sections.get(sectionName) ?? null;
+}

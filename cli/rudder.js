@@ -67,6 +67,7 @@ import { registerSandboxCommands } from './commands/sandbox.js';
 import { registerWorktreeCommands } from './commands/worktree.js';
 import { registerSpawnCommands } from './commands/spawn.js';
 import { registerWorkflowCommands } from './commands/workflow.js';
+import { registerArtifactCommands } from './commands/artifact.js';
 
 // Expand colon syntax: task:list → task list (first arg only, if it looks like group:command)
 let commandExpanded = false;
@@ -106,6 +107,7 @@ registerSandboxCommands(program);
 registerWorktreeCommands(program);
 registerSpawnCommands(program);
 registerWorkflowCommands(program);
+registerArtifactCommands(program);
 registerUtilCommands(program);
 registerPermissionsCommands(program);
 
