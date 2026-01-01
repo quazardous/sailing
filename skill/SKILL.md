@@ -15,7 +15,7 @@ Refs: `rudder paths roadmap`, **`.claude/TOOLSET.md`** (optional, user-created)
 Before ANY command execution:
 
 ```bash
-rudder context:load <operation>    # Auto-resolves role from operation
+rudder context:load <operation> --role <role>
 ```
 
 ### Roles
@@ -31,14 +31,12 @@ rudder context:load <operation>    # Auto-resolves role from operation
 ### Examples
 
 ```bash
-rudder context:load task-start      # Role: skill → full context + workflow
-rudder context:load epic-breakdown  # Role: coordinator → coordination context + workflow
-rudder context:load task-start --role agent  # Override → agent execution context only
+rudder context:load task-start --role skill        # Full context + workflow
+rudder context:load epic-breakdown --role coordinator  # Coordination context + workflow
+rudder context:load task-start --role agent        # Agent execution context only
 ```
 
-**Role is auto-resolved** from `workflows.yaml` → `operations[op].roles[0]`.
-
-Use `--role <role>` to override (must be in allowed roles list).
+**--role is required.**
 
 **No conditionals in the prompt.** The workflow is pre-filtered — just execute the steps shown.
 
@@ -149,7 +147,7 @@ Main thread → spawns → Next Agent
 | **prompting/\*.md** | Fragments | Agent/skill context fragments |
 
 **Context commands replace documentation reading:**
-- `rudder context:load <op>` → auto-resolves role, composes context
+- `rudder context:load <op> --role <role>` → composes context for role
 - `rudder context:list` → list roles, sets, operations
 - `rudder workflow:show <op>` → workflow documentation
 - `rudder --help` → CLI mechanics

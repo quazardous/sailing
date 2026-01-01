@@ -12,16 +12,15 @@
 # └─────────────┴──────────────────────────────────────────────────────────────┘
 #
 # RESOLUTION FLOW:
-#   context:load <op> [--role R] →
-#     1. operations[op].roles[0] → default role (or R if --role specified)
-#     2. validate R ∈ operations[op].roles
-#     3. roles[R].base_sets → fragments
-#     4. matrix[op] → additional fragments
-#     5. roles[R].inject → project files (by mode)
-#     6. if roles[R].workflow → orchestration[op]
+#   context:load <op> --role R →
+#     1. validate R ∈ operations[op].roles
+#     2. roles[R].base_sets → fragments
+#     3. matrix[op] → additional fragments
+#     4. roles[R].inject → project files (by mode)
+#     5. if roles[R].workflow → orchestration[op]
 #
 # CONSUMERS:
-#   context:load <op>   → auto-resolves role, composes context
+#   context:load <op> --role R → composes context for role R
 #   workflow:show <op>  → orchestration[op] rendered as documentation
 #
 # FRAGMENTS: prompting/<name>.md (no more agent/skill prefixes)
@@ -150,7 +149,7 @@ matrix:
 #   note:      Warning text → shown as ⚠
 #
 # Inline agent spawning:
-#   Use "context:load default" to give spawned agents basic rules (core set).
+#   Use "context:load default --role agent" for basic agent rules (core set).
 #   Use "context:load <op> --role agent" only if operation allows agent role.
 
 orchestration:
@@ -196,7 +195,7 @@ orchestration:
     - name: context-load
       actor: coordinator
       commands:
-        - { cmd: "context:load default", mode: inline, purpose: "Agent rules" }
+        - { cmd: "context:load default --role agent", mode: inline, purpose: "Agent rules" }
         - { cmd: "epic:show {EPIC} --full", mode: inline, purpose: "Epic content" }
         - { cmd: "agent:spawn {EPIC} --operation epic-breakdown", mode: subprocess, purpose: "Launch agent" }
     - name: agent-init
@@ -230,7 +229,7 @@ orchestration:
     - name: context-load
       actor: coordinator
       commands:
-        - { cmd: "context:load default", mode: inline, purpose: "Agent rules" }
+        - { cmd: "context:load default --role agent", mode: inline, purpose: "Agent rules" }
         - { cmd: "prd:show {PRD} --full", mode: inline, purpose: "PRD content" }
         - { cmd: "versions", mode: inline, purpose: "Current versions" }
 

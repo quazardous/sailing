@@ -299,12 +299,12 @@ export function registerContextCommands(program) {
   const context = program.command('context')
     .description('Context operations (role-based prompts)');
 
-  // context:load - main entry point (auto-resolves role)
+  // context:load - main entry point (role required)
   context.command('load')
-    .description('Load context for an operation (auto-resolves role)')
+    .description('Load context for an operation (--role required)')
     .argument('<operation>', 'Operation name (task-start, prd-breakdown, etc.)')
     .option('--sources', 'Show fragment sources used')
-    .option('--role <role>', 'Override role (agent, coordinator, skill)')
+    .requiredOption('--role <role>', 'Role: agent, coordinator, or skill')
     .option('--list', 'List available operations')
     .option('--json', 'JSON output')
     .action((operation, options) => {
