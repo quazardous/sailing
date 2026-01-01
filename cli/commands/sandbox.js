@@ -5,8 +5,9 @@
 import fs from 'fs';
 import path from 'path';
 import os from 'os';
-import { execSync, spawnSync } from 'child_process';
+import { execSync } from 'child_process';
 import { getPathsInfo, findProjectRoot } from '../lib/core.js';
+import { spawnClaudeWithSrt, generateSrtConfig, loadBaseSrtConfig } from '../lib/srt.js';
 
 /**
  * Detect OS and required dependencies
@@ -99,46 +100,6 @@ function checkSrt() {
 }
 
 /**
- * Generate default srt config
- */
-function generateDefaultConfig(projectRoot) {
-  const homeDir = os.homedir();
-
-  return {
-    network: {
-      allowedDomains: [
-        'api.anthropic.com',
-        '*.anthropic.com',
-        'sentry.io',
-        'statsig.anthropic.com',
-        'github.com',
-        '*.github.com',
-        'api.github.com',
-        'raw.githubusercontent.com',
-        'registry.npmjs.org',
-        '*.npmjs.org'
-      ],
-      deniedDomains: []
-    },
-    filesystem: {
-      allowWrite: [
-        '.',
-        `${homeDir}/.claude`,
-        `${homeDir}/.claude.json`,
-        `${homeDir}/.npm/_logs`,
-        '/tmp'
-      ],
-      denyWrite: [],
-      denyRead: [
-        `${homeDir}/.ssh`,
-        `${homeDir}/.gnupg`,
-        `${homeDir}/.aws`
-      ]
-    }
-  };
-}
-
-/**
  * sandbox:check - Check srt installation and dependencies
  */
 function sandboxCheck(args, options) {
@@ -202,7 +163,6 @@ function sandboxCheck(args, options) {
  */
 function sandboxInit(args, options) {
   const paths = getPathsInfo();
-  const projectRoot = findProjectRoot();
 
   if (!paths.srtConfig) {
     console.error('Error: Cannot determine srt config path');
@@ -218,8 +178,9 @@ function sandboxInit(args, options) {
     return;
   }
 
-  // Generate config
-  const config = generateDefaultConfig(projectRoot);
+  // Generate config using lib (with current dir as additional path)
+  const config = loadBaseSrtConfig();
+  config.filesystem.allowWrite.unshift('.'); // Add current dir
 
   // Ensure directory exists
   const dir = path.dirname(configPath);
@@ -314,60 +275,54 @@ export function registerSandboxCommands(program) {
         process.exit(1);
       }
 
-      // Build claude args
-      const claudeArgs = [];
+      const useSandbox = options.sandbox !== false;
+      const paths = getPathsInfo();
 
-      // Skip permissions flag
-      if (options.dangerouslySkipPermissions) {
-        claudeArgs.push('--dangerously-skip-permissions');
+      // Generate temp srt config with workdir added to allowWrite
+      let srtConfigPath = null;
+      if (useSandbox) {
+        srtConfigPath = generateSrtConfig({
+          baseConfigPath: paths.srtConfig?.absolute,
+          outputPath: path.join(cwd, 'srt-settings.json'),
+          additionalWritePaths: [cwd]
+        });
       }
 
-      // Additional args from --claude-args
+      // Build extra args
+      const extraArgs = [];
       if (options.claudeArgs) {
-        claudeArgs.push(...options.claudeArgs.split(/\s+/));
+        extraArgs.push(...options.claudeArgs.split(/\s+/));
       }
 
-      // Prompt
-      claudeArgs.push('-p', prompt);
-
-      // Build command
-      let cmd, args;
-      if (options.sandbox !== false) {
-        const paths = getPathsInfo();
-        cmd = 'srt';
-        args = [];
-
-        // Debug mode
-        if (options.debug) {
-          args.push('--debug');
-        }
-
-        // Use project config if available
-        if (paths.srtConfig && fs.existsSync(paths.srtConfig.absolute)) {
-          args.push('--settings', paths.srtConfig.absolute);
-        }
-
-        args.push('claude', ...claudeArgs);
-      } else {
-        cmd = 'claude';
-        args = claudeArgs;
-      }
+      // Session log file
+      const sessionLog = path.join(cwd, 'session.log');
 
       console.error(`CWD: ${cwd}`);
-      console.error(`CMD: ${cmd} ${args.join(' ')}`);
+      console.error(`LOG: ${sessionLog}`);
+      console.error(`Sandbox: ${useSandbox ? 'enabled' : 'disabled'}`);
       console.error('---');
 
-      // Run synchronously with stdio inherited
-      const result = spawnSync(cmd, args, {
+      // Spawn using shared lib
+      const result = spawnClaudeWithSrt({
+        prompt,
         cwd,
-        stdio: 'inherit',
-        env: {
-          ...process.env,
-          ...(options.debug && { SRT_DEBUG: '1' })
-        }
+        logFile: sessionLog,
+        sandbox: useSandbox,
+        srtConfigPath,
+        riskyMode: options.dangerouslySkipPermissions,
+        extraArgs,
+        debug: options.debug
       });
 
-      process.exit(result.status || 0);
+      // Handle exit
+      result.process.on('exit', (code) => {
+        process.exit(code || 0);
+      });
+
+      result.process.on('error', (err) => {
+        console.error(`Error: ${err.message}`);
+        process.exit(1);
+      });
     });
 
 }

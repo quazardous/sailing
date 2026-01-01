@@ -298,12 +298,15 @@ Start by running \`rudder assign:claim ${taskId}\` to get your instructions.
       const logFile = getLogFilePath(taskId);
 
       // Spawn Claude with bootstrap prompt
+      // Includes MCP config for restricted rudder access (agent can only access its task)
       const spawnResult = spawnClaude({
         prompt: bootstrapPrompt,
         cwd,
         logFile,
         timeout,
         agentDir,
+        taskId,                           // For MCP server task restriction
+        projectRoot,                      // For MCP server rudder commands
         stderrToFile: options.stderrToFile
       });
 
@@ -314,6 +317,9 @@ Start by running \`rudder assign:claim ${taskId}\` to get your instructions.
         pid: spawnResult.pid,
         mission_file: missionFile,
         log_file: spawnResult.logFile,
+        srt_config: spawnResult.srtConfig,
+        mcp_config: spawnResult.mcpConfig,
+        mcp_server: spawnResult.mcpServerPath,
         timeout,
         ...(worktreeInfo && { worktree: worktreeInfo })
       };

@@ -4,13 +4,16 @@
   "type": "module",
   "description": "Project governance CLI for sailing workflow - PRD/Epic/Task management",
   "bin": {
-    "rudder": "./bin/rudder"
+    "rudder": "./bin/rudder",
+    "rudder-mcp": "./mcp/rudder-server.js"
   },
   "scripts": {
     "rudder": "node cli/rudder.js",
+    "mcp": "node mcp/rudder-server.js",
     "build:skill": "./skill/build.sh"
   },
   "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.25.1",
     "commander": "^12.1.0",
     "gray-matter": "^4.0.3",
     "js-yaml": "^4.1.0"
