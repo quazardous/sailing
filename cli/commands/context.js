@@ -210,21 +210,11 @@ function composeContext(operation, options = {}) {
   const sources = [];
 
   // MODE HEADER: Inject execution mode info at the very beginning
-  const modeHeader = [
-    `<!-- mode: ${execMode} | worktrees: ${agentConfig.use_worktrees ? 'enabled' : 'disabled'} -->`
-  ].join('\n');
+  const modeHeader = `<!-- mode: ${execMode} | worktrees: ${agentConfig.use_worktrees ? 'enabled' : 'disabled'} -->`;
   parts.push(modeHeader);
   sources.push('mode-header');
 
-  // SKILL WORKTREE MODE: Inject warning at the very beginning
-  if (role === 'skill' && agentConfig.use_worktrees && agentConfig.use_subprocess) {
-    const worktreeModeWarning = loadFragment('skill/worktree-mode');
-    if (worktreeModeWarning) {
-      parts.push(worktreeModeWarning);
-      sources.push('skill/worktree-mode');
-    }
-  }
-
+  // Load base fragments
   for (const fragmentPath of fragments) {
     const content = loadFragment(fragmentPath);
     if (content) {
@@ -240,16 +230,59 @@ function composeContext(operation, options = {}) {
     process.exit(1);
   }
 
-  // Apply role-based injections
+  // ─────────────────────────────────────────────────────────────────────────
+  // INJECTION SYSTEM: Apply role-based injections from workflows.yaml
+  // ─────────────────────────────────────────────────────────────────────────
+  // Dimensions:
+  //   - both:       always applied
+  //   - inline:     when execMode === 'inline'
+  //   - subprocess: when execMode === 'subprocess'
+  //   - worktrees:  when agentConfig.use_worktrees === true
+  //
+  // Each dimension can be:
+  //   - Array of project file keys: [roadmap, postit]
+  //   - Object with files/fragments/exclude: { files: [...], fragments: [...], exclude: [...] }
+  // ─────────────────────────────────────────────────────────────────────────
+
   const inject = roleDef.inject || {};
   const projectFiles = [];
+  const additionalFragments = [];
+  const excludeFragments = new Set();
 
-  // Collect project files to inject based on mode
-  if (inject.both) {
-    projectFiles.push(...inject.both);
+  /**
+   * Process an inject dimension (both, inline, subprocess, worktrees)
+   */
+  function processInjectDimension(dimension) {
+    if (!dimension) return;
+
+    if (Array.isArray(dimension)) {
+      // Legacy format: array of project file keys
+      projectFiles.push(...dimension);
+    } else if (typeof dimension === 'object') {
+      // New format: { files, fragments, exclude }
+      if (dimension.files) projectFiles.push(...dimension.files);
+      if (dimension.fragments) additionalFragments.push(...dimension.fragments);
+      if (dimension.exclude) dimension.exclude.forEach(f => excludeFragments.add(f));
+    }
   }
-  if (inject[execMode]) {
-    projectFiles.push(...inject[execMode]);
+
+  // Apply dimensions in order
+  processInjectDimension(inject.both);
+  processInjectDimension(inject[execMode]);
+  if (agentConfig.use_worktrees) {
+    processInjectDimension(inject.worktrees);
+  }
+
+  // Load additional fragments (from inject dimensions)
+  for (const fragmentPath of additionalFragments) {
+    if (excludeFragments.has(fragmentPath)) continue;
+    const content = loadFragment(fragmentPath);
+    if (content) {
+      parts.push(content);
+      sources.push(fragmentPath);
+    } else if (options.debug) {
+      console.error(`Warning: Inject fragment not found: ${fragmentPath}`);
+    }
   }
 
   // Inject orchestration workflow if role.workflow is true
@@ -261,21 +294,8 @@ function composeContext(operation, options = {}) {
     }
   }
 
-  // Add worktree-specific guidance if enabled and subprocess mode
-  if (agentConfig.use_worktrees && agentConfig.use_subprocess) {
-    // Only for roles that have worktree in inject.subprocess
-    if (inject.subprocess?.includes('worktree')) {
-      const worktreeFragment = loadFragment('shared/worktree');
-      if (worktreeFragment) {
-        parts.push(worktreeFragment);
-        sources.push('shared/worktree');
-      }
-    }
-  }
-
   // Load project files
   for (const key of projectFiles) {
-    if (key === 'worktree') continue; // Handled above with special logic
     const projectFile = loadProjectFile(key);
     if (projectFile) {
       parts.push(projectFile.content);

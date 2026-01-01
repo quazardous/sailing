@@ -50,12 +50,16 @@ roles:
         files: [toolset, stack]           # Project files to inject
         fragments: [agent/mcp-rudder]     # Fragments to add (MCP instructions)
         exclude: [agent/cli]              # Fragments to exclude (bash commands)
+      worktrees:                          # When use_worktrees is enabled
+        fragments: [shared/worktree]
     workflow: false
 
   coordinator:
     description: "Spawn agents, coordinate results"
     base_sets: [core, coordination]
-    inject: {}
+    inject:
+      worktrees:                          # When use_worktrees is enabled
+        fragments: [shared/worktree-coordinator]
     workflow: true
 
   skill:
@@ -63,7 +67,8 @@ roles:
     base_sets: [core, coordination]
     inject:
       both: [roadmap, postit]
-      subprocess: [worktree]
+      worktrees:                          # When use_worktrees is enabled
+        fragments: [skill/worktree-mode, shared/worktree]
     workflow: true
 
 # ─────────────────────────────────────────────────────────────────────────────
