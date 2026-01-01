@@ -42,11 +42,25 @@ This returns your complete execution context:
 - Epic context (tech notes, constraints)
 - Task details (deliverables, workflow)
 
+`assign:claim` returns a **snapshot**. If input changes, task must be re-claimed or reset by skill.
+
 **Read and follow the contract strictly.**
 
 ## 2. Execute
 
 Implement the deliverables. No scope expansion.
+
+**Logging contract:**
+- Log once when starting (approach)
+- Log once before returning control (result or blocker)
+- Minimum 2 logs required. Logs are consumed by next agent — if you don't log it, the system repeats the mistake.
+
+**If you cannot complete the task:**
+1. Emit one `--error` log explaining why
+2. Stop execution
+3. Return control without attempting partial fixes
+
+**You MUST NOT commit, push, or modify git state.** Worktree is disposable.
 
 ## Modes
 
