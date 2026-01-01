@@ -25,15 +25,20 @@ export function generateAgentSrtConfig(options) {
   const { agentDir, cwd, logFile } = options;
   const paths = getPathsInfo();
 
+  // Get haven directory (parent of agents directory)
+  // Agents need write access to runs/, memory/, artefacts/ etc.
+  const agentsBaseDir = path.dirname(agentDir);  // .../agents
+  const havenDir = path.dirname(agentsBaseDir);  // .../havens/<hash>
+
   return generateSrtConfig({
     baseConfigPath: paths.srtConfig?.absolute,
     outputPath: path.join(agentDir, 'srt-settings.json'),
     additionalWritePaths: [
       cwd,                          // Worktree directory
-      agentDir,                     // Agent directory (for mission, result files)
-      path.dirname(logFile)         // Log directory
+      havenDir,                     // Entire haven directory (agents, runs, memory, artefacts)
+      path.dirname(logFile)         // Log directory (usually same as agentDir)
     ],
-    strictMode: true                // Agents can ONLY write to worktree + /tmp
+    strictMode: true                // Agents can ONLY write to worktree + haven + /tmp
   });
 }
 
@@ -90,7 +95,9 @@ export function spawnClaude(options) {
   }
 
   // Sandbox HOME isolation: use agentDir/home to isolate Claude's config
-  const sandboxHome = sandbox && agentDir ? path.join(agentDir, 'home') : null;
+  // DISABLED for debugging - using normal HOME
+  // const sandboxHome = sandbox && agentDir ? path.join(agentDir, 'home') : null;
+  const sandboxHome = null;
 
   const result = spawnClaudeWithSrt({
     prompt,

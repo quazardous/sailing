@@ -139,10 +139,15 @@ export function generateSrtConfig(options) {
   const config = loadBaseSrtConfig(baseConfigPath);
 
   if (strictMode) {
-    // Strict mode: only /tmp + explicitly provided paths
-    // Agent uses sandboxHome (agentDir/home) so no need for real ~/.claude paths
-    // agentDir is in additionalWritePaths, which covers agentDir/home
-    config.filesystem.allowWrite = ['/tmp'];
+    // Strict mode: only essential paths + explicitly provided paths
+    // This is for worktree agents that should be sandboxed to their worktree
+    const homeDir = os.homedir();
+    config.filesystem.allowWrite = [
+      '/tmp',                         // Temp files
+      `${homeDir}/.claude`,           // Claude session data (required)
+      `${homeDir}/.claude.json`,      // Claude config (required)
+      `${homeDir}/.cache/claude-cli-nodejs`  // Claude cache (required)
+    ];
     for (const p of additionalWritePaths) {
       if (p) {
         config.filesystem.allowWrite.push(p);
@@ -275,21 +280,10 @@ export function spawnClaudeWithSrt(options) {
     const sandboxClaudeDir = path.join(sandboxHome, '.claude');
     const sandboxCredentials = path.join(sandboxClaudeDir, '.credentials.json');
 
-    // Copy .claude.json with auth fields
+    // Copy .claude.json (full copy - Claude needs various fields to work)
     if (fs.existsSync(realClaudeJson)) {
       try {
-        const realConfig = JSON.parse(fs.readFileSync(realClaudeJson, 'utf8'));
-        const authFields = [
-          'oauthAccount', 'primaryApiKey', 'apiKey', 'anonymousId', 'userID',
-          'hasCompletedOnboarding', 'lastOnboardingVersion'
-        ];
-        const minimalConfig = {};
-        for (const field of authFields) {
-          if (realConfig[field] !== undefined) {
-            minimalConfig[field] = realConfig[field];
-          }
-        }
-        fs.writeFileSync(sandboxClaudeJson, JSON.stringify(minimalConfig, null, 2));
+        fs.copyFileSync(realClaudeJson, sandboxClaudeJson);
       } catch {
         // Ignore errors
       }
@@ -299,11 +293,11 @@ export function spawnClaudeWithSrt(options) {
     if (fs.existsSync(realCredentials)) {
       try {
         fs.copyFileSync(realCredentials, sandboxCredentials);
-        // Schedule cleanup of credentials after Claude has started (5 seconds)
+        // Schedule cleanup of credentials.json only (not .claude.json which Claude needs)
+        // 5 seconds is enough for Claude to read and cache the tokens
         setTimeout(() => {
           try {
             if (fs.existsSync(sandboxCredentials)) fs.unlinkSync(sandboxCredentials);
-            if (fs.existsSync(sandboxClaudeJson)) fs.unlinkSync(sandboxClaudeJson);
           } catch {
             // Ignore cleanup errors
           }
