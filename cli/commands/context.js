@@ -7,7 +7,6 @@ import path from 'path';
 import yaml from 'js-yaml';
 import { getPrompting, jsonOut, findProjectRoot, getPathsInfo } from '../lib/core.js';
 import { addDynamicHelp } from '../lib/help.js';
-// detectMode, isAgentMode, getAgentInfo no longer used here (context:mode removed)
 import { getAgentConfig } from '../lib/config.js';
 
 /**
@@ -192,7 +191,46 @@ function listContexts(type) {
  */
 export function registerContextCommands(program) {
   const context = program.command('context')
-    .description('Context operations (optimized prompts for skill orchestration)');
+    .description('Context operations (optimized prompts for agents/skill)');
+
+  // context:agent - used by skill to inject context when spawning inline agents (Task tool)
+  context.command('agent')
+    .description('Get agent execution context (for inline Task tool injection)')
+    .argument('<command>', 'Command/operation name (task-start, prd-breakdown, etc.)')
+    .option('--sources', 'Show fragment sources used')
+    .option('--list', 'List available agent contexts')
+    .option('--json', 'JSON output')
+    .action((command, options) => {
+      if (options.list) {
+        const contexts = listContexts('agent');
+        if (options.json) {
+          jsonOut(contexts);
+        } else {
+          console.log('Available agent contexts:\n');
+          contexts.forEach(c => console.log(`  ${c}`));
+        }
+        return;
+      }
+
+      const result = composeContext('agent', command, { debug: options.sources });
+
+      if (options.json) {
+        jsonOut({
+          type: 'agent',
+          command,
+          sources: result.sources,
+          content: result.content
+        });
+        return;
+      }
+
+      if (options.sources) {
+        console.log(`# Agent Context: ${command}`);
+        console.log(`# Sources: ${result.sources.join(', ')}\n`);
+      }
+
+      console.log(result.content);
+    });
 
   // context:skill (main entry point for skills)
   context.command('skill')
@@ -288,6 +326,11 @@ export function registerContextCommands(program) {
 
   // Add dynamic help
   addDynamicHelp(context, `
+• agent <context>         Get agent context (for inline Task tool injection)
+    --sources             Show fragment sources
+    --list                List available contexts
+    --json                JSON output
+
 • skill <context>         Get orchestration context for a skill
     --sources             Show fragment sources
     --list                List available contexts
@@ -300,7 +343,8 @@ export function registerContextCommands(program) {
     --fragments           Show fragments for each context
     --json                JSON output
 
-Note: For agent context, use 'rudder assign:claim <entity-id>' which includes
-agent contract + memory + entity content in a single compiled prompt.
+Usage by execution mode:
+  Inline mode:     skill uses 'context:agent <cmd>' in Task tool prompt
+  Subprocess mode: agent calls 'rudder assign:claim <entity-id>'
 `);
 }
