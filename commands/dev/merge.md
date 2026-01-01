@@ -90,7 +90,7 @@ git merge task/T042 --no-commit
 
 ```bash
 # Get epic memory (patterns, decisions)
-rudder epic:show-memory ENNN --full
+rudder memory:show ENNN --full
 
 # Get task details (what was intended)
 rudder task:show TNNN
@@ -153,7 +153,7 @@ When resolving conflicts, the agent has access to:
 | Context | Source | Purpose |
 |---------|--------|---------|
 | Task description | `rudder task:show TNNN` | What was the agent trying to do |
-| Epic memory | `rudder epic:show-memory ENNN` | Patterns, tips, prior decisions |
+| Epic memory | `rudder memory:show ENNN --full` | Patterns, tips, prior decisions |
 | Main changes | `git log main --since="agent start"` | What changed on main |
 | Conflict details | `git diff --check` | Exact conflict locations |
 | DEV.md | Project root | Tech stack, conventions |
