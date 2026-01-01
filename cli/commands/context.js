@@ -249,15 +249,11 @@ function composeContext(operation, options = {}) {
   if (agentConfig.use_worktrees && agentConfig.use_subprocess) {
     // Only for roles that have worktree in inject.subprocess
     if (inject.subprocess?.includes('worktree')) {
-      const worktreeInfo = `### Worktree Isolation
-
-Agents run in isolated git worktrees:
-- After completion: \`rudder agent:status <TASK>\`
-- To merge: \`rudder agent:merge <TASK>\`
-- To discard: \`rudder agent:reject <TASK>\`
-- Check conflicts: \`rudder agent:conflicts\``;
-      parts.push(worktreeInfo);
-      sources.push('config:worktree');
+      const worktreeFragment = loadFragment('shared/worktree');
+      if (worktreeFragment) {
+        parts.push(worktreeFragment);
+        sources.push('shared/worktree');
+      }
     }
   }
 
