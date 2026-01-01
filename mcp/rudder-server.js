@@ -191,6 +191,20 @@ const TOOLS = [
       type: 'object',
       properties: {}
     }
+  },
+  {
+    name: 'cli',
+    description: 'Execute any rudder CLI command. Use exactly as documented (without "rudder" prefix). Examples: "task:log T042 \\"msg\\" --info", "deps:show T042", "artifact:edit T042 --section Notes --append \\"text\\""',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        command: {
+          type: 'string',
+          description: 'Rudder command (without "rudder" prefix). Example: task:log T042 "message" --info'
+        }
+      },
+      required: ['command']
+    }
   }
 ];
 
@@ -279,6 +293,29 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
     case 'status':
       result = runRudder('status');
       break;
+
+    case 'cli': {
+      // Generic CLI passthrough - validate task access if restricted
+      const cmd = args.command;
+
+      // Extract task ID from command if present (T followed by digits)
+      const taskMatch = cmd.match(/\bT(\d{3,})\b/i);
+      if (taskMatch && taskId) {
+        const cmdTaskId = `T${taskMatch[1]}`.toUpperCase();
+        if (!validateTaskAccess(cmdTaskId)) {
+          return {
+            content: [{
+              type: 'text',
+              text: `Access denied: This agent can only access task ${taskId}`
+            }],
+            isError: true
+          };
+        }
+      }
+
+      result = runRudder(cmd);
+      break;
+    }
 
     default:
       return {
