@@ -46,7 +46,10 @@ roles:
     description: "Pure execution, no decisions"
     base_sets: [core]
     inject:
-      subprocess: [toolset, stack]
+      subprocess:
+        files: [toolset, stack]           # Project files to inject
+        fragments: [agent/mcp-rudder]     # Fragments to add (MCP instructions)
+        exclude: [agent/cli]              # Fragments to exclude (bash commands)
     workflow: false
 
   coordinator:

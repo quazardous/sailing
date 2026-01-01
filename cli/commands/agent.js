@@ -212,29 +212,40 @@ export function registerAgentCommands(program) {
       });
       const missionFile = path.join(agentDir, 'mission.yaml');
 
-      // Build bootstrap prompt
+      // Build bootstrap prompt - uses MCP rudder tool (not bash)
       const bootstrapPrompt = `# Agent Bootstrap: ${taskId}
 
 You are an autonomous agent assigned to task ${taskId}.
 
+## MCP Rudder Tool
+
+You have access to a **rudder** MCP tool for all sailing operations. Use it like this:
+
+\`\`\`
+Tool: mcp__rudder__cli
+Arguments: { "command": "..." }
+\`\`\`
+
+**Do NOT use Bash to run \`rudder\` commands.** Use the MCP tool.
+
 ## Instructions
 
-1. **Get your context** by running:
-   \`\`\`bash
-   rudder assign:claim ${taskId}
+1. **Get your context** by calling:
+   \`\`\`json
+   { "command": "assign:claim ${taskId}" }
    \`\`\`
    This will output your full instructions, memory, and task details.
 
 2. **Execute the task** according to the deliverables.
 
 3. **Log tips** during your work (at least 1):
-   \`\`\`bash
-   rudder task:log ${taskId} "useful insight for future agents" --tip
+   \`\`\`json
+   { "command": "task:log ${taskId} \\"useful insight for future agents\\" --tip" }
    \`\`\`
 
-4. **When complete**, run:
-   \`\`\`bash
-   rudder assign:release ${taskId}
+4. **When complete**, call:
+   \`\`\`json
+   { "command": "assign:release ${taskId}" }
    \`\`\`
 
 ## Constraints
@@ -243,7 +254,7 @@ You are an autonomous agent assigned to task ${taskId}.
 - Follow the task deliverables exactly
 - Log meaningful tips for knowledge transfer
 
-Start by running \`rudder assign:claim ${taskId}\` to get your instructions.
+Start by calling the rudder MCP tool with \`assign:claim ${taskId}\` to get your instructions.
 `;
 
       if (options.dryRun) {
