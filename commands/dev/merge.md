@@ -4,6 +4,8 @@
 
 > 📖 CLI reference: `bin/rudder -h`
 
+**Authority:** This command is executed by main thread or authorized coordinator. It MUST NOT be invoked by agents.
+
 ---
 
 ## Pre-flight
@@ -21,6 +23,12 @@ Before running this command:
 1. Task agent has completed (status: completed)
 2. PR exists (if using PR workflow) OR worktree has commits
 3. No uncommitted changes on main branch
+
+## Merge Mode Resolution
+
+- If `--pr` is provided → **PR workflow** (`gh pr merge`)
+- Else if worktree exists → **branch merge** (`origin/agent/TNNN`)
+- Mixing modes is forbidden
 
 ---
 
@@ -132,7 +140,9 @@ Returns to main thread:
 - Conflicts encountered (if any)
 - Cleanup status
 
-**Main thread decides next action.** This command handles one merge at a time.
+**This command does NOT update task status.** Main thread decides whether to mark task Done.
+
+A successful merge does not imply functional correctness. Tests and validation remain user responsibility.
 
 ---
 
@@ -163,7 +173,10 @@ rudder worktree:preflight --json
 
 ---
 
-## Logging
+## Logging (REQUIRED)
+
+**At least one `--info` log is REQUIRED after successful merge.**
+**Conflict resolution MUST emit at least one `--tip` log.**
 
 ```bash
 rudder task:log TNNN "Merged to main" --info
