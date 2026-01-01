@@ -54,7 +54,7 @@ function checkGitState(projectRoot) {
     });
   } catch {
     issues.push('Repository has no commits');
-    actions.push({ type: 'manual', cmd: 'git commit --allow-empty -m "initial"', msg: 'Create initial commit' });
+    actions.push({ type: 'escalate', msg: 'Escalate: repository needs initial commit' });
     return { ready: false, issues, actions, fatal: true };
   }
 
@@ -63,9 +63,8 @@ function checkGitState(projectRoot) {
   if (!status.clean) {
     issues.push(`${status.files.length} uncommitted changes`);
     actions.push({
-      type: 'commit',
-      cmd: 'git add -A && git commit -m "wip"',
-      msg: 'Commit or stash changes before spawn'
+      type: 'escalate',
+      msg: 'Escalate: uncommitted changes must be resolved'
     });
   }
 

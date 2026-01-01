@@ -124,10 +124,8 @@ export function registerAgentCommands(program) {
         try {
           execSync('git rev-parse --git-dir 2>/dev/null', gitOpts);
         } catch {
-          console.error('ERROR: use_worktrees requires a git repository\n');
-          console.error('Either:');
-          console.error('  1. Initialize git: git init && git add -A && git commit -m "init"');
-          console.error('  2. Or disable worktrees: --no-worktree');
+          console.error('BLOCKED: use_worktrees requires a git repository\n');
+          console.error('Escalate for resolution.');
           process.exit(1);
         }
 
@@ -135,12 +133,10 @@ export function registerAgentCommands(program) {
         try {
           const status = execSync('git status --porcelain', gitOpts).trim();
           if (status) {
-            console.error('ERROR: Working directory has uncommitted changes\n');
+            console.error('BLOCKED: Working directory has uncommitted changes\n');
             console.error('Worktree isolation requires a clean working directory.');
-            console.error('Either:');
-            console.error('  1. Commit or stash your changes: git add -A && git commit -m "wip"');
-            console.error('  2. Or disable worktrees: --no-worktree');
-            console.error('\nUncommitted files:');
+            console.error('Escalate for resolution.\n');
+            console.error('Uncommitted files:');
             status.split('\n').slice(0, 10).forEach(line => console.error(`  ${line}`));
             if (status.split('\n').length > 10) {
               console.error(`  ... and ${status.split('\n').length - 10} more`);
@@ -156,12 +152,9 @@ export function registerAgentCommands(program) {
         try {
           execSync('git rev-parse HEAD 2>/dev/null', gitOpts);
         } catch {
-          console.error('ERROR: No commits in repository\n');
+          console.error('BLOCKED: No commits in repository\n');
           console.error('Git worktree requires at least one commit to create branches.');
-          console.error('This is a git limitation, not a sailing restriction.\n');
-          console.error('Either:');
-          console.error('  1. Create initial commit: git add -A && git commit -m "init"');
-          console.error('  2. Or use inline mode: --no-worktree');
+          console.error('Escalate for resolution.');
           process.exit(1);
         }
       }

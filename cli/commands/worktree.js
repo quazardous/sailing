@@ -299,9 +299,9 @@ export function registerWorktreeCommands(program) {
       let recommendedAction = null;
       if (!canSpawn) {
         if (blockers.some(b => b.includes('uncommitted'))) {
-          recommendedAction = 'Commit or stash changes: git add -A && git commit -m "wip"';
+          recommendedAction = 'Escalate: uncommitted changes';
         } else if (blockers.some(b => b.includes('No commits'))) {
-          recommendedAction = 'Create initial commit: git add -A && git commit -m "init"';
+          recommendedAction = 'Escalate: repository needs initial commit';
         }
       } else if (pendingMerges.length > 0) {
         const mergeOrder = suggestMergeOrder(conflictMatrix);

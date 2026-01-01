@@ -261,7 +261,7 @@ export function getRecommendedActions(diagnosis) {
       actions.push('agent:kill - Update state to reflect terminated process');
     }
     if (issue.includes('uncommitted changes')) {
-      actions.push('Commit or stash changes before proceeding');
+      actions.push('Escalate: uncommitted changes must be resolved');
     }
     if (issue.includes('no merge in progress')) {
       actions.push('agent:show - Verify actual state');
