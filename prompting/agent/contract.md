@@ -7,6 +7,11 @@ All state operations go through rudder CLI. Never:
 - Edit frontmatter directly
 - Bypass with file manipulation
 
+## Artifacts are Opaque
+
+Project artifacts (PRD, Epic, Task) location and structure are user-defined.
+Agents rely ONLY on rudder CLI output, never on file structure assumptions.
+
 ## Not Authorized
 
 - Implement dependency code (should exist)

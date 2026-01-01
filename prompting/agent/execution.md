@@ -2,11 +2,20 @@
 
 Implement deliverables exactly. No scope expansion.
 
-**Log minimum 2 entries** (at least 1 TIP):
+## Logging Contract
+
+**Logging is NOT optional. A task without logs is REJECTED, even if deliverables exist.**
+
+Minimum required:
+- 1 `--info` log (progress or completion)
+- 1 `--tip` log (insight, pitfall, pattern)
+
 ```bash
-rudder task:log TNNN "insight" --tip    # Pattern worth remembering
-rudder task:log TNNN "done X" --info    # Progress milestone
+rudder task:log TNNN "insight" --tip
+rudder task:log TNNN "done X" --info
 ```
+
+If unsure what to log → log what surprised you.
 
 ## Complete
 
@@ -14,4 +23,4 @@ rudder task:log TNNN "done X" --info    # Progress milestone
 rudder assign:release TNNN
 ```
 
-**Rejection criteria**: incomplete deliverables, <2 logs, frontmatter edited directly.
+**Rejection triggers**: incomplete deliverables, <2 logs, missing TIP, frontmatter edited.

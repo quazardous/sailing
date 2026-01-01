@@ -42,3 +42,17 @@ When merging multiple agents:
 1. Run `agent:conflicts` first
 2. Merge in dependency order (no blockers first)
 3. If file conflicts exist, merge one-by-one with `/dev:merge`
+
+### Recovery Rules
+
+An agent worktree can be:
+- **Resumed**: new input provided, partial work reused
+- **Reset**: work discarded, fresh agent spawned
+
+**Agents MUST NOT attempt recovery by themselves.**
+
+Only skill decides:
+- Resume → `agent:resume TNNN`
+- Reset → `agent:reject TNNN` + respawn
+
+Agents are disposable. This is by design.
