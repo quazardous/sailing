@@ -45,7 +45,7 @@ for (let i = 0; i < args.length; i++) {
   const arg = args[i];
 
   // Commands
-  if (arg === 'start' || arg === 'status' || arg === 'stop') {
+  if (arg === 'start' || arg === 'status' || arg === 'stop' || arg === 'log') {
     command = arg;
   }
   // Options
@@ -77,6 +77,7 @@ Commands:
   start     Start MCP server (default, daemon mode)
   status    Check if server is running
   stop      Stop MCP server
+  log       Tail MCP server logs (tail -f)
 
 Options:
   -f, --foreground   Run in foreground (default: daemon)
@@ -91,6 +92,7 @@ Examples:
   rudder-mcp start -f      # Start in foreground
   rudder-mcp status        # Check status
   rudder-mcp stop          # Stop server
+  rudder-mcp log           # Tail logs
 `);
 }
 
@@ -261,6 +263,40 @@ function handleStart() {
   }
 }
 
+/**
+ * Handle log command
+ */
+function handleLog() {
+  const logFile = path.join(havenPath, 'mcp.log');
+
+  if (!fs.existsSync(logFile)) {
+    console.error(`Log file not found: ${logFile}`);
+    console.error('Start the MCP server first: rudder-mcp start');
+    process.exit(1);
+  }
+
+  console.log(`Tailing ${logFile} (Ctrl+C to stop)\n`);
+
+  const child = spawn('tail', ['-f', logFile], {
+    stdio: 'inherit'
+  });
+
+  child.on('error', (err) => {
+    console.error(`Failed to tail log: ${err.message}`);
+    process.exit(1);
+  });
+
+  // Forward signals
+  process.on('SIGINT', () => {
+    child.kill('SIGINT');
+    process.exit(0);
+  });
+  process.on('SIGTERM', () => {
+    child.kill('SIGTERM');
+    process.exit(0);
+  });
+}
+
 // Execute command
 switch (command) {
   case 'status':
@@ -268,6 +304,9 @@ switch (command) {
     break;
   case 'stop':
     handleStop();
+    break;
+  case 'log':
+    handleLog();
     break;
   case 'start':
   default:

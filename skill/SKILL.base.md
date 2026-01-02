@@ -10,39 +10,6 @@ Refs: `rudder paths roadmap`, **`.claude/TOOLSET.md`** (optional, user-created)
 
 ---
 
-## Pre-flight: Context Loading (MANDATORY)
-
-Before ANY command execution:
-
-```bash
-rudder context:load <operation> --role <role>
-```
-
-### Roles
-
-| Role | Description | Workflow | Injected Files |
-|------|-------------|----------|----------------|
-| **agent** | Pure execution, no decisions | ❌ | subprocess: toolset, stack |
-| **coordinator** | Spawn agents, coordinate | ✅ | — |
-| **skill** | Full orchestration | ✅ | roadmap, postit |
-
-
-### Examples
-
-```bash
-rudder context:load task-start --role skill        # Full context + workflow
-rudder context:load epic-breakdown --role coordinator  # Coordination context + workflow
-rudder context:load task-start --role agent        # Agent execution context only
-```
-
-**--role is required.**
-
-**No conditionals in the prompt.** The workflow is pre-filtered — just execute the steps shown.
-
-Source: `prompting/workflows.yaml`
-
----
-
 ## Constitutional Layer (Tier 0)
 
 These invariants are immutable. Everything else submits to them.
@@ -52,61 +19,53 @@ These invariants are immutable. Everything else submits to them.
 2. Main thread makes all decisions.
 3. Agents execute and return output. They never chain, infer, or decide.
 4. When in doubt: stop, log, escalate. Never guess.
-5. Memory that is not consolidated before execution is considered lost. Lost memory is a system failure.
+5. Memory that is not consolidated before execution is considered lost.
 6. Use rudder commands for metadata queries. Never grep/search task files directly.
 ```
 
-### Authority Model
+---
+
+## Authority Model
 
 | Component | Authority |
 |-----------|-----------|
-| **Main thread** | Decisions, sequencing, orchestration |
-| **Agents/Commands** | Execution only, return output |
-| **Rudder CLI** | State mutations (status, versions, deps) |
+| **Main thread (skill)** | Decisions, sequencing, orchestration |
+| **Coordinator** | High-level /dev commands, creates artefacts, returns output |
+| **Agent** | Pure execution, implements deliverables, returns output |
+| **Rudder CLI** | State mutations, context guidance, role enforcement |
 | **User** | Git commits, approvals, final decisions |
 
-### Rudder as Single Source of Truth
+---
 
-During task execution phases, **rudder CLI is the ONLY authority** for:
+## Role Model
 
-| Data | Authoritative Command | NEVER use |
-|------|----------------------|-----------|
-| Task metadata | `rudder task:show TNNN` | Grep/Read on .md files |
-| Task list/status | `rudder task:list` | Search/Glob for task files |
-| Dependencies | `rudder deps:show TNNN` | Grep for `blocked_by` |
-| Ready tasks | `rudder deps:ready` | Manual dependency analysis |
-| Target versions | `rudder task:targets <comp>` | Grep for `target_versions` |
-| Epic/PRD status | `rudder status` | File reads + status parsing |
-| PRD milestones | `rudder prd:milestone PRD M1 --add-epic ENNN` | Edit PRD frontmatter |
-| Versions | `rudder versions` | JSON parsing of package.json |
-| Memory pending | `rudder memory:sync` | Glob for .log files |
-| Epic memory | `rudder epic:show-memory ENNN` | Read .sailing/memory/*.md |
-| Paths | `rudder paths <key>` | Hardcoded paths |
+| Role | Description | Can Spawn | Can Decide | Sees Memory |
+|------|-------------|-----------|------------|-------------|
+| **skill** | Main orchestrator | ✓ | ✓ | Full |
+| **coordinator** | /dev commands | ✓ (batch) | ❌ returns output | Full (`--full`) |
+| **agent** | Task execution | ❌ | ❌ | Agent Context only |
 
-**Why**: Rudder handles path resolution, status normalization, dependency graph, and state consistency. Direct file access bypasses these guarantees.
+**Enforcement**: CLI commands validate role. Wrong role = blocked.
 
-**If rudder is not found**:
-1. Check your working directory (`pwd`) — you may be in a subproject
-2. Use absolute path: `<project_root>/bin/rudder`
-3. If still not found → **STOP and escalate**. NEVER bypass by editing files directly.
+---
 
-Editing task/epic/PRD files to change status or milestones is a **Constitutional violation**.
-
-### Control Flow
+## Control Flow
 
 ```
-Main thread → spawns → Agent
-                         ↓
-                     executes
-                         ↓
-                     returns Output
-                         ↓
+Main thread → spawns → Agent/Coordinator
+                              ↓
+                          executes
+                              ↓
+                        returns Output
+                              ↓
 Main thread ← receives ← Output
      ↓
-Decision Point
+Decision Point (skill only)
      ↓
 Main thread → spawns → Next Agent
 ```
+
+Agents and coordinators NEVER chain. They return output and stop.
 
 ---
 
@@ -121,459 +80,94 @@ Main thread → spawns → Next Agent
 
 ### Tier 1 — Safety (must be followed)
 
-- **Memory Sync before any task execution** (see Memory Sync section)
+- Memory sync before task execution
 - Dependency check before parallelization
 - No git commit/push by agents
 - No direct frontmatter edits — use Rudder
-- Specs locked during implementation — ask only if blocked
+- Specs locked during implementation
 
 ### Tier 2 — Operational (preferred practices)
 
 - Max 6 parallel agents
 - Read TOOLSET.md before implementation (if exists)
-- Create PRD/Epic/Task via `rudder` CLI (never manually)
-- Keep docs at one abstraction level per section
+- Create artefacts via `rudder` CLI (never manually)
 
 ---
 
-## Documentation Structure
+## Memory Philosophy
 
-| File | Abstraction | Content |
-|------|-------------|---------|
-| **ROADMAP.md** | Vision | Features, versions, milestones, backlog |
-| **POSTIT.md** | Triage | User scratch pad → Backlog or Task |
-| **prompting/workflows.yaml** | Config | Context composition + workflow orchestration |
-| **prompting/\*.md** | Fragments | Agent/skill context fragments |
+**Memory = institutional knowledge. Logs = raw observations.**
 
-**Context commands replace documentation reading:**
-- `rudder context:load <op> --role <role>` → composes context for role
-- `rudder context:list` → list roles, sets, operations
-- `rudder workflow:show <op>` → workflow documentation
-- `rudder --help` → CLI mechanics
+```
+Agents PRODUCE logs → task:log
+Skill CONSOLIDATES logs → memory files
+Memory GUIDES future agents
+```
 
-**Rule**: One doc = one abstraction level. Don't mix vision with mechanics.
+Memory not consolidated before execution is considered **lost**.
+Lost memory is a **system failure**.
 
 ---
 
-## Dependency Rules
-
-### Sequential Only (arrows = dependency)
+## Artefact Hierarchy
 
 ```
-prd-review ──────► prd-story (if needed) ──► prd-breakdown
-prd-breakdown ───► epic-review ───► epic-breakdown
-epic-breakdown ──► prd-story-finalize (if orphan stories) ──► task-start
-test-audit ──────► test-debug
-tech-audit ──────► tasks-rewrite
-milestone-validate ► roadmap-sync
+ROADMAP.md          Vision, versions, milestones
+    └── PRD-NNN     Product requirements
+        ├── Stories     Narrative context (passive)
+        └── E-NNN       Epics (technical scope)
+            └── T-NNN   Tasks (implementation units)
 ```
 
-If user requests both sides of an arrow → **sequential, not parallel**.
-
-### Parallel OK
-
-- Same command, different independent targets
-- Different commands with no arrow between them
-- Tasks with no `blocked_by` relationship
-- Use `/dev:tasks-batch` for parallel task execution
-
-### Selecting Tasks for Batch Execution
-
-```bash
-# Get ready tasks for a PRD, sorted by impact
-rudder deps:ready --prd PRD-006 --limit 6
-
-# Or filter by epic
-rudder deps:ready --epic E048 --limit 4
-```
-
-**CRITICAL**: Tasks returned by `deps:ready` are **guaranteed independent**.
-- A task is "ready" only if ALL its blockers are "Done"
-- Therefore, two ready tasks cannot block each other
-- NO manual inter-dependency check needed
-
-### Before Spawning Multiple Agents
-
-1. Use `rudder deps:ready` output — tasks are pre-validated
-2. Validate no structural issues: `rudder deps:validate`
+Each level has one abstraction. Don't mix.
 
 ---
 
-## Memory Sync (MANDATORY)
+## Context Loading
 
-**No task may be spawned until previous logs are consolidated.**
+Before ANY /dev command: `rudder context:load <operation> --role <role>`
 
-This applies BEFORE any task execution, regardless of context:
-- First task of an epic? → Memory Sync (previous epic work may exist)
-- Resuming a blocked task? → Memory Sync (previous attempt may have logged)
-- Continuing after task completion? → Memory Sync
+The CLI provides:
+- Role-appropriate context (what you need to know)
+- Workflow steps (what you need to do)
+- Guidance (how to handle edge cases)
 
-### Command
-
-```bash
-rudder memory:sync [ID]          # Merge task→epic logs, show pending content, create .md
-```
-
-- `ID` optional: `ENNN` or `TNNN` (resolves to parent epic)
-- Auto-creates missing `ENNN.md` files from template
-- `--no-create` to skip .md creation
-
-### Workflow
-
-```bash
-# 1. Run memory:sync (merges TNNN.log → ENNN.log, shows content)
-rudder memory:sync
-
-# If "No pending logs" → proceed to task execution
-
-# If "MEMORY SYNC REQUIRED":
-#   - Logs are displayed in the output — DO NOT read .md files separately
-#   - Consolidate displayed content into ENNN.md (see Level Mapping)
-#   - Clean up:
-rudder epic:clean-logs ENNN
-```
-
-### Level Mapping (automatic)
-
-| Log Level | → Memory Section |
-|-----------|------------------|
-| `[TIP]` | Agent Context |
-| `[ERROR]`, `[CRITICAL]` | Escalation |
-| `[INFO]`, `[WARN]` | Changelog |
-
-### Skill Responsibility
-
-```
-Agents PRODUCE logs (via task:log).
-Agents DO NOT interpret or consolidate logs.
-
-The skill MUST:
-1. Run memory:sync before any task execution
-2. If logs pending → consolidate manually into ENNN.md
-3. Run epic:clean-logs ENNN after consolidation
-4. Re-run memory:sync → must show "No pending logs"
-```
-
-**CRITICAL**: `memory:sync` output is the ONLY source for consolidation work:
-- It lists which ENNN need consolidation (by epic ID)
-- It displays the log CONTENT inline — no need to read files
-- NEVER use Search/Glob to find memory files — use `memory:sync` output
-
-### Invariant
-
-Memory that is not consolidated before execution is considered lost.
-Lost memory is a system failure.
+**No conditionals in output** — pre-filtered for your role.
 
 ---
 
-## Decision Points
-
-Main thread receives output, then decides next action.
-
-Format: `Output received → Decision → Next command`
-
-### After memory:sync (run BEFORE any work)
-| Output | → Next |
-|--------|--------|
-| `✓ No pending logs` | Proceed with planned work |
-| `⚠ MEMORY SYNC REQUIRED` + log content | Consolidate displayed content into ENNN.md, then `rudder epic:clean-logs ENNN` |
-
-> **Key**: The epic IDs and log content are IN the output. Do NOT search for files.
-
-### After PRD review
-| Output | → Next |
-|--------|--------|
-| ROADMAP misaligned | `/dev:roadmap-sync` |
-| Stories needed | `/dev:prd-story` |
-| Stories not needed, versions defined | `/dev:prd-breakdown` |
-
-### After PRD story
-| Output | → Next |
-|--------|--------|
-| Stories created | `/dev:prd-breakdown` |
-
-### After PRD breakdown
-| Output | → Next |
-|--------|--------|
-| Epic needs tech choices | `/dev:epic-review` (recommended) |
-| Epic has Technical Notes | `/dev:epic-breakdown` |
-
-> **Why epic-review matters**: Tasks inherit decisions, not questions. Review once at epic level so tasks execute without thinking.
-
-### After epic breakdown
-| Output | → Next |
-|--------|--------|
-| Tasks ready, orphan stories | `/dev:prd-story-finalize` (fix before implementation) |
-| Tasks ready, no orphans | `/dev:task-start` or `/dev:tasks-batch` |
-| More epics pending | `/dev:epic-breakdown` (next epic) |
-
-> **Orphan check**: Run `rudder story:validate PRD-NNN` after epic-breakdown.
-
-### After task completion
-| Output | → Next |
-|--------|--------|
-| Task has `target_versions` | `/dev:version-bump` |
-| All epic tasks done | Epic auto-marked Done |
-| All milestone tasks done | `/dev:milestone-validate` |
-
-### After milestone validation
-| Output | → Next |
-|--------|--------|
-| All criteria pass | `/dev:roadmap-sync` |
-| Failures found | Reopen tasks or create bugfix |
-
-### After tech-audit
-| Output | → Next |
-|--------|--------|
-| Major refactor needed | New PRD |
-| Existing tasks affected | `/dev:tasks-rewrite` |
-
-### After test-audit
-| Output | → Next |
-|--------|--------|
-| Issues found | Create tasks or fix directly |
-
----
-
-## Agent Delegation
-
-Commands spawn agents. Agents return output. Main thread decides next.
-
-### Planning Commands
-| Command | Returns |
-|---------|---------|
-| `/dev:prd-review` | Improvements, version recommendations, stories recommendation |
-| `/dev:prd-story` | Created stories (when stories needed) |
-| `/dev:prd-breakdown` | Created epics, escalated questions |
-| `/dev:epic-review` | Tech recommendations, risks |
-| `/dev:epic-breakdown` | Created tasks, dependency graph, story validation status |
-| `/dev:prd-story-finalize` | Fixed orphan stories (when orphans exist) |
-
-### Implementation Commands
-| Command | Returns |
-|---------|---------|
-| `/dev:task-start` | Implementation result, blockers encountered |
-| `/dev:tasks-batch` | Multiple task results |
-| `/dev:task-done` | Cascade status (epic/PRD completion) |
-
-### Audit Commands
-| Command | Returns |
-|---------|---------|
-| `/dev:milestone-validate` | Pass/fail per criterion, escalation report |
-| `/dev:tech-audit` | Opportunities, recommendations |
-| `/dev:test-audit` | Cheater tests, structure violations |
-| `/dev:test-debug` | Fixed tests, escalated issues |
-
----
-
-## What Commands Do NOT Do
-
-Commands are scoped. They do NOT:
+## What Agents Do NOT Do
 
 - **Chain** to other commands
-- **Decide** next steps (main thread decides)
+- **Decide** next steps
 - **Commit** to git
-- **Modify** scope beyond their mandate
-- **Guess** when specs are unclear
+- **Modify** scope beyond mandate
+- **Guess** when specs unclear
 
-If a command needs something outside its scope → return output, let main thread handle.
+If blocked → log, return output, let skill handle.
 
 ---
 
 ## Git Rules
 
-| Action | Allowed? |
-|--------|----------|
-| `git status`, `git diff`, `git log` | ✅ Read-only |
-| File creation/modification | ✅ Via Write/Edit |
-| `git add` | ⚠️ Only if explicitly requested |
-| `git commit`, `git push` | ❌ Never |
+| Action | skill | coordinator | agent |
+|--------|-------|-------------|-------|
+| Read (`status`, `diff`, `log`) | ✓ | ✓ | ✓ |
+| File modification | ✓ | ✓ | ✓ |
+| `git add` | ✓ explicit | ❌ | ❌ |
+| `git commit/push` | ❌ | ❌ | ❌ |
 
-User controls all commits. Agent work = uncommitted changes for review.
-
----
-
-## Rudder CLI
-
-Authoritative state management tool. Run `bin/rudder -h` for full reference.
-
-### Core Commands (illustrative)
-
-```bash
-# These examples show typical usage. Always verify with rudder -h.
-rudder task:next              # Find ready task
-rudder task:start T042        # Set In Progress
-rudder task:done T042 -m "x"  # Set Done + log
-rudder deps:show T042         # Check blockers
-rudder deps:validate --fix    # Fix issues
-```
-
-### Rules
-
-1. **Create files via Rudder** — Never create PRD/Epic/Task/Story files manually
-   ```bash
-   rudder prd:create "Title"           # Creates PRD with template
-   rudder story:create PRD-001 "Title" --type user  # Creates Story
-   rudder epic:create PRD-001 "Title"  # Creates Epic with template
-   rudder task:create PRD-001/E001 "Title"  # Creates Task with template
-   ```
-
-2. **Update state via Rudder** — Never edit frontmatter directly
-   ```bash
-   rudder task:update T042 --status wip --priority high
-   ```
-
-3. **Edit body via Edit tool** — Description, Deliverables, Technical Details
-   - Use `Edit` to modify specific sections, don't rewrite entire file
+User controls all commits.
 
 ---
 
-## Valid Statuses
+## Escalation Pattern
 
-| Entity | Flow |
-|--------|------|
-| **PRD** | Draft → In Review → Approved → In Progress → Done |
-| **Epic** | Not Started → In Progress → Done |
-| **Task** | Not Started → In Progress → Blocked → Done → Cancelled |
+When uncertain:
 
----
+1. **Do what's possible** — partial progress is valuable
+2. **Log the issue** — `task:log --error` or `--critical`
+3. **Stop cleanly** — return output describing the block
+4. **Never force** — don't push through misaligned specs
 
-## Stories
-
-Stories provide narrative context. They are **passive** (no status tracking).
-
-### Types
-
-| Type | Format | Subject |
-|------|--------|---------|
-| `user` | As/I want/So that | User personas |
-| `technical` | Subject/Must/Benefit | Pages, services, components |
-| `api` | Endpoint/Consumer/Contract | API endpoints |
-
-### Rules
-
-- Every story MUST be referenced by at least one task
-- Not every task needs stories
-- Stories don't have status (narrative only)
-- Use `rudder story:validate` to check for orphans
-
-### CLI
-
-```bash
-rudder story:create PRD-001 "Title" --type user
-rudder story:list PRD-001
-rudder story:validate PRD-001     # Check for orphans
-rudder story:orphans PRD-001      # List orphan stories
-```
-
----
-
-## Code in Specs
-
-Code snippets become obsolete. Describe WHAT, not HOW.
-
-| Level | Code? |
-|-------|-------|
-| PRD | Never |
-| Epic | Rare (pseudo-code only) |
-| Task | Exceptional (workflow description preferred) |
-
----
-
-## Task vs Codebase Drift
-
-Task descriptions may drift from codebase reality.
-
-1. **Assess**: Blocking or minor?
-2. **Understand**: Is codebase evolution justified or a bug?
-3. **Never force**: Don't push through a task that doesn't fit
-
-In doubt → Do what's possible → Stop → Escalate.
-
----
-
-## Task Logging
-
-Logging rules are in `rudder context:load <cmd>` (section: Logging Contract).
-
-```bash
-rudder task:log TNNN "message" --level [-f file] [-c cmd] [-s snippet]
-```
-
-| Level | When |
-|-------|------|
-| `--info` | Progress milestones |
-| `--tip` | Patterns, commands to remember |
-| `--warn` | Issues, workarounds |
-| `--error` | Significant problems |
-| `--critical` | Cannot continue |
-
-**Granularity**: Don't log everything. Only patterns, issues, commands worth remembering.
-
-Systemic issues → `rudder feedback add "..." --task TNNN`
-
----
-
-## Epic Memory
-
-Memory files are managed by rudder (`memory:sync`, `epic:show-memory`, `epic:ensure-memory`).
-
-| Section | Content | Audience |
-|---------|---------|----------|
-| **Agent Context** | Tips, commands, patterns | Task agents |
-| **Escalation** | Errors, critical issues | Review/breakdown |
-| **Changelog** | What was done, by which tasks | Review/breakdown |
-
-**Rule**: Consolidation = compilation, NOT copy-paste of raw logs.
-
-### Reading Memory
-
-| Command | Shows | Used by |
-|---------|-------|---------|
-| `task:show-memory TNNN` | Agent Context only | Task agents |
-| `epic:show-memory ENNN` | Agent Context only | Task agents |
-| `epic:show-memory ENNN --full` | All sections | Review/breakdown agents |
-
-**NEVER** use `Read` tool on `.sailing/memory/*.md` files directly. Always use the commands above.
-
-**Rule**: Task agents see Agent Context only. High-level agents (epic-review, epic-breakdown) use `--full` to see escalations and full context.
-
-### Writing Memory
-
-**Skill responsibility**: Before launching epic work, consolidate previous logs.
-
-```bash
-# 1. Sync (merges TNNN.log → ENNN.log, shows content, creates .md if missing)
-rudder memory:sync
-
-# 2. If logs pending: COMPILE into ENNN.md (not copy!)
-#   - [TIP] entries → Agent Context (strip prefix, keep actionable tip)
-#   - [ERROR/CRITICAL] → Escalation (keep [TNNN] for traceability)
-#   - [INFO/WARN] → Changelog (chronological, with [TNNN] refs)
-
-# 3. Clean up
-rudder epic:clean-logs ENNN      # Delete ENNN.log
-```
-
-**Consolidation = Compilation, NOT copy-paste.**
-
-### During Task (agent)
-
-```bash
-rudder task:show-memory TNNN     # Read Agent Context (auto-resolves parent)
-rudder task:log TNNN "..." --level  # Log during work
-```
-
-### Flow
-
-```
-[Previous work]
-     ↓
-memory:sync → ENNN.log displayed → consolidate into ENNN.md → epic:clean-logs
-     ↓
-[New work]
-     ↓
-task:show-memory (read Agent Context) → task:log → TNNN.log
-     ↓
-[Next cycle...]
-```
+The skill decides how to proceed.

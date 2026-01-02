@@ -191,8 +191,7 @@ orchestration:
       actor: skill
       commands:
         - { cmd: "task:update {TASK} --status Done", mode: inline, purpose: "Update task status" }
-        - { cmd: "agent:status {TASK}", mode: subprocess, purpose: "Check completion" }
-        - { cmd: "agent:merge {TASK}", mode: subprocess, purpose: "Merge worktree", condition: use_worktrees }
+        - { cmd: "agent:reap {TASK}", mode: subprocess, purpose: "Harvest: wait, merge, cleanup, update status" }
 
   epic-breakdown:
     - name: pre-flight

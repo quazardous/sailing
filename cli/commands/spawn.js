@@ -228,13 +228,18 @@ export function registerSpawnCommands(program) {
 
   addDynamicHelp(spawn, { entityType: 'spawn' });
 
-  // spawn:preflight - comprehensive check before spawning
+  // spawn:preflight (DEPRECATED - agent:spawn is now optimistic)
   spawn.command('preflight')
-    .description('Check if agent spawn is possible, return actions needed')
+    .description('[DEPRECATED] Pre-spawn check → agent:spawn now handles this automatically')
     .argument('<task-id>', 'Task ID to check')
     .option('--json', 'JSON output')
     .option('--for-merge', 'Allow spawn for merge/conflict resolution (conflicts become warnings)')
     .action((taskId, options) => {
+      if (!options.json) {
+        console.error('⚠️  DEPRECATED: spawn:preflight is deprecated.');
+        console.error('   agent:spawn now handles pre-flight checks automatically.\n');
+      }
+
       taskId = taskId.toUpperCase();
       if (!taskId.startsWith('T')) taskId = 'T' + taskId;
 
@@ -357,12 +362,17 @@ export function registerSpawnCommands(program) {
       }
     });
 
-  // spawn:postflight - check after agent completes
+  // spawn:postflight (DEPRECATED - use agent:reap)
   spawn.command('postflight')
-    .description('Check agent result and suggest next action')
+    .description('[DEPRECATED] Post-spawn check → use agent:reap instead')
     .argument('<task-id>', 'Task ID to check')
     .option('--json', 'JSON output')
     .action((taskId, options) => {
+      if (!options.json) {
+        console.error('⚠️  DEPRECATED: spawn:postflight is deprecated. Use agent:reap instead.');
+        console.error('   agent:reap handles wait, merge, cleanup, and status update.\n');
+      }
+
       taskId = taskId.toUpperCase();
       if (!taskId.startsWith('T')) taskId = 'T' + taskId;
 

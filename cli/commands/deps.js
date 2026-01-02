@@ -713,12 +713,19 @@ export function registerDepsCommands(program) {
   // deps:ready
   deps.command('ready')
     .description('Ready tasks sorted by impact (best to work on first)')
+    .option('--role <role>', 'Role context: agent blocked, skill/coordinator allowed')
     .option('--prd <id>', 'Filter by PRD')
     .option('--epic <id>', 'Filter by epic')
     .option('-t, --tag <tag>', 'Filter by tag (repeatable, AND logic)', (v, arr) => arr.concat(v), [])
     .option('-l, --limit <n>', 'Limit results', parseInt)
     .option('--json', 'JSON output')
     .action((options) => {
+      // Role enforcement: agents don't query dependencies
+      if (options.role === 'agent') {
+        console.error('ERROR: deps:ready cannot be called with --role agent');
+        console.error('Agents execute assigned tasks. Skill/coordinator manage dependencies.');
+        process.exit(1);
+      }
       const { tasks, blocks } = buildDependencyGraph();
       const epics = buildEpicDependencyMap();
       const ready = [];
@@ -963,8 +970,16 @@ export function registerDepsCommands(program) {
   // deps:show
   deps.command('show <id>')
     .description('Show dependencies (TNNN for task, ENNN for epic with blockers)')
+    .option('--role <role>', 'Role context: agent blocked, skill/coordinator allowed')
     .option('--json', 'JSON output')
     .action((id, options) => {
+      // Role enforcement: agents don't query dependencies
+      if (options.role === 'agent') {
+        console.error('ERROR: deps:show cannot be called with --role agent');
+        console.error('Agents execute assigned tasks. Use task:show-memory for context.');
+        process.exit(1);
+      }
+
       const { tasks, blocks } = buildDependencyGraph();
       const epics = buildEpicDependencyMap();
       const normalizedId = normalizeId(id);

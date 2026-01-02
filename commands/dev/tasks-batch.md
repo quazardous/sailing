@@ -126,27 +126,27 @@ This tells you:
    └─ Task(T104) ─┘
    ```
 
-7. **Collect results**
+7. **Reap results**
 
-   **Mode: subprocess + worktree**:
+   **Mode: subprocess**:
    ```bash
-   # Check agent status
-   rudder agent:status
-
-   # Check for conflicts between agents
-   rudder agent:conflicts
-
-   # Merge each completed agent
-   rudder agent:merge T101
-   rudder agent:merge T102
-   # Or reject failed work: rudder agent:reject T103
+   # Reap each agent (wait, merge, cleanup, update status)
+   rudder agent:reap T101
+   rudder agent:reap T102
+   rudder agent:reap T103
    ```
 
-   **If conflicts exist:**
-   - STOP
-   - Report conflicts to user
-   - Do NOT attempt reordering or partial merges
-   - User decides merge order or resolution
+   `agent:reap` handles everything automatically:
+   - Waits if agent still running
+   - Auto-commits uncommitted changes
+   - Merges if no conflicts
+   - Cleans up worktree
+   - Updates task status (Done/Blocked)
+
+   **If reap fails (conflicts, errors):**
+   - Command outputs next steps
+   - Follow the guidance or escalate to user
+   - Example: `/dev:merge T042` for conflict resolution
 
    **Mode: inline**:
    * Wait for Task tool agents to complete

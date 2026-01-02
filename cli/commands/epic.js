@@ -125,9 +125,17 @@ export function registerEpicCommands(program) {
   // epic:show
   epic.command('show <id>')
     .description('Show epic details (tasks count by status)')
+    .option('--role <role>', 'Role context: agent blocked, skill/coordinator allowed')
     .option('--raw', 'Dump raw markdown file')
     .option('--json', 'JSON output')
     .action((id, options) => {
+      // Role enforcement: agents don't access epics directly
+      if (options.role === 'agent') {
+        console.error('ERROR: epic:show cannot be called with --role agent');
+        console.error('Agents access task-level only. Use task:show-memory for context.');
+        process.exit(1);
+      }
+
       const result = findEpicFile(id);
       if (!result) {
         console.error(`Epic not found: ${id}`);

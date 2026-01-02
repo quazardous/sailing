@@ -146,6 +146,7 @@ export function registerTaskCommands(program) {
   // task:show
   task.command('show <id>')
     .description('Show task details (blockers, dependents, ready status)')
+    .option('--role <role>', 'Role context: agent (minimal), skill/coordinator (full)')
     .option('--raw', 'Dump raw markdown file')
     .option('--json', 'JSON output')
     .action((id, options) => {
@@ -163,6 +164,30 @@ export function registerTaskCommands(program) {
       }
 
       const file = loadFile(taskFile);
+      const isAgentRole = options.role === 'agent';
+
+      // Agent role: minimal output (just what's needed to execute)
+      if (isAgentRole) {
+        const result = {
+          id: file.data.id,
+          title: file.data.title,
+          status: file.data.status,
+          parent: file.data.parent
+        };
+
+        if (options.json) {
+          jsonOut(result);
+        } else {
+          console.log(`# ${file.data.id}: ${file.data.title}\n`);
+          console.log(`Status: ${file.data.status}`);
+          console.log(`Parent: ${file.data.parent || '-'}`);
+          console.log(`\n→ Use task:show-memory ${file.data.id} for Agent Context`);
+          console.log(`→ Use Read tool on ${taskFile} for full deliverables`);
+        }
+        return;
+      }
+
+      // Full output for skill/coordinator
       const { tasks, blocks } = buildDependencyGraph();
       const normalizedId = normalizeId(id);
       const task = tasks.get(normalizedId);

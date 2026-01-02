@@ -51,6 +51,7 @@ export function registerAgentCommands(program) {
   // agent:spawn - creates worktree, spawns Claude with bootstrap prompt
   agent.command('spawn <task-id>')
     .description('Spawn agent to execute task (creates worktree, spawns Claude)')
+    .option('--role <role>', 'Role context (skill, coordinator) - agent role blocked')
     .option('--timeout <seconds>', 'Execution timeout (default: 600)', parseInt)
     .option('--worktree', 'Create isolated worktree (overrides config)')
     .option('--no-worktree', 'Skip worktree creation (overrides config)')
@@ -58,6 +59,13 @@ export function registerAgentCommands(program) {
     .option('--dry-run', 'Show what would be done without spawning')
     .option('--json', 'JSON output')
     .action(async (taskId, options) => {
+      // Role enforcement: agents cannot spawn other agents
+      if (options.role === 'agent') {
+        console.error('ERROR: agent:spawn cannot be called with --role agent');
+        console.error('Agents cannot spawn other agents. Only skill or coordinator can spawn.');
+        process.exit(1);
+      }
+
       // Check subprocess mode is enabled
       const agentConfig = getAgentConfig();
       if (!agentConfig.use_subprocess) {
@@ -95,15 +103,130 @@ export function registerAgentCommands(program) {
         process.exit(1);
       }
 
-      // Check if already running
+      // Optimistic spawn: check existing state and auto-handle simple cases
       const state = loadState();
       if (!state.agents) state.agents = {};
+      const projectRoot = findProjectRoot();
+
+      // Helper for escalation with next steps
+      const escalate = (reason, nextSteps) => {
+        if (options.json) {
+          jsonOut({
+            task_id: taskId,
+            status: 'blocked',
+            reason,
+            next_steps: nextSteps
+          });
+        } else {
+          console.error(`\nBLOCKED: ${reason}\n`);
+          console.error('Next steps:');
+          nextSteps.forEach(step => console.error(`  ${step}`));
+        }
+        process.exit(1);
+      };
 
       if (state.agents[taskId]) {
-        const status = state.agents[taskId].status;
-        if (status === 'running' || status === 'spawned') {
-          console.error(`Agent ${taskId} is already running (status: ${status})`);
-          process.exit(1);
+        const agentInfo = state.agents[taskId];
+        const status = agentInfo.status;
+
+        // Check if process is actually running
+        let isRunning = false;
+        if (agentInfo.pid) {
+          try {
+            process.kill(agentInfo.pid, 0);
+            isRunning = true;
+          } catch { /* not running */ }
+        }
+
+        if (isRunning) {
+          escalate(`Agent ${taskId} is still running (PID ${agentInfo.pid})`, [
+            `agent:wait ${taskId}     # Wait for completion`,
+            `agent:kill ${taskId}     # Force terminate`,
+            `agent:reap ${taskId}     # Wait + harvest results`
+          ]);
+        }
+
+        // Check worktree state
+        if (agentInfo.worktree) {
+          const worktreePath = agentInfo.worktree.path;
+          const branch = agentInfo.worktree.branch;
+
+          if (fs.existsSync(worktreePath)) {
+            // Check for uncommitted changes
+            let isDirty = false;
+            let hasCommits = false;
+            try {
+              const gitStatus = execSync('git status --porcelain', {
+                cwd: worktreePath,
+                encoding: 'utf8',
+                stdio: ['pipe', 'pipe', 'pipe']
+              }).trim();
+              isDirty = gitStatus.length > 0;
+
+              // Check commits ahead of base
+              const baseBranch = agentInfo.worktree.base_branch || 'main';
+              const ahead = execSync(`git rev-list --count ${baseBranch}..HEAD`, {
+                cwd: worktreePath,
+                encoding: 'utf8',
+                stdio: ['pipe', 'pipe', 'pipe']
+              }).trim();
+              hasCommits = parseInt(ahead, 10) > 0;
+            } catch { /* ignore */ }
+
+            // Completed agent with work to merge
+            if ((status === 'completed' || status === 'reaped') && (isDirty || hasCommits)) {
+              escalate(`Agent ${taskId} has unmerged work`, [
+                `agent:reap ${taskId}     # Merge + cleanup + respawn`,
+                `agent:reject ${taskId}   # Discard work`
+              ]);
+            }
+
+            // Agent has uncommitted work but didn't complete properly
+            if (isDirty && !['completed', 'reaped'].includes(status)) {
+              escalate(`Agent ${taskId} has uncommitted changes (status: ${status})`, [
+                `agent:reap ${taskId}     # Try to harvest`,
+                `agent:reject ${taskId}   # Discard work`
+              ]);
+            }
+
+            // Has commits but not merged
+            if (hasCommits && !['reaped'].includes(status)) {
+              escalate(`Agent ${taskId} has ${hasCommits} commit(s) not merged`, [
+                `agent:reap ${taskId}     # Merge + cleanup`,
+                `agent:reject ${taskId}   # Discard work`
+              ]);
+            }
+
+            // Clean worktree, can reuse - auto-cleanup
+            if (!isDirty && !hasCommits) {
+              if (!options.json) {
+                console.log(`Auto-cleaning previous ${taskId} (no changes)...`);
+              }
+              removeWorktree(taskId, { force: true });
+              delete state.agents[taskId];
+              saveState(state);
+            }
+          } else {
+            // Worktree doesn't exist, just clear state
+            if (!options.json) {
+              console.log(`Clearing stale state for ${taskId}...`);
+            }
+            delete state.agents[taskId];
+            saveState(state);
+          }
+        } else {
+          // No worktree mode - clear completed/error states
+          if (['completed', 'error', 'reaped', 'rejected'].includes(status)) {
+            if (!options.json) {
+              console.log(`Clearing previous ${taskId} (${status})...`);
+            }
+            delete state.agents[taskId];
+            saveState(state);
+          } else {
+            escalate(`Agent ${taskId} in unexpected state: ${status}`, [
+              `agent:clear ${taskId}    # Force clear state`
+            ]);
+          }
         }
       }
 
@@ -117,7 +240,6 @@ export function registerAgentCommands(program) {
 
       // Verify git repo and clean state if worktree mode is enabled
       if (useWorktree) {
-        const projectRoot = findProjectRoot();
         const gitOpts = { cwd: projectRoot, encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'] };
 
         // Check git repo exists
@@ -194,7 +316,6 @@ export function registerAgentCommands(program) {
 
       // Get timeout
       const timeout = options.timeout || agentConfig.timeout || 600;
-      const projectRoot = findProjectRoot();
 
       // Create mission.yaml for debug/trace
       // In worktree mode, agent must NOT commit (skill handles it)
@@ -529,13 +650,16 @@ Start by calling the rudder MCP tool with \`assign:claim ${taskId}\` to get your
       }
     });
 
-  // agent:wait
+  // agent:wait (DEPRECATED - use agent:reap)
   agent.command('wait <task-id>')
-    .description('Wait for agent to complete (polls for sentinel/result)')
+    .description('[DEPRECATED] Wait for agent to complete → use agent:reap instead')
     .option('--timeout <seconds>', 'Timeout in seconds (default: 3600)', parseInt, 3600)
     .option('--interval <seconds>', 'Poll interval in seconds (default: 5)', parseInt, 5)
     .option('--json', 'JSON output')
     .action(async (taskId, options) => {
+      console.error('⚠️  DEPRECATED: agent:wait is deprecated. Use agent:reap instead.');
+      console.error('   agent:reap waits, merges, cleans up, and updates status.\n');
+
       taskId = taskId.toUpperCase();
       if (!taskId.startsWith('T')) taskId = 'T' + taskId;
 
@@ -599,11 +723,14 @@ Start by calling the rudder MCP tool with \`assign:claim ${taskId}\` to get your
       }
     });
 
-  // agent:collect
+  // agent:collect (DEPRECATED - use agent:reap)
   agent.command('collect <task-id>')
-    .description('Collect agent result and update task status')
+    .description('[DEPRECATED] Collect agent result → use agent:reap instead')
     .option('--json', 'JSON output')
     .action((taskId, options) => {
+      console.error('⚠️  DEPRECATED: agent:collect is deprecated. Use agent:reap instead.');
+      console.error('   agent:reap collects, merges, cleans up, and updates status.\n');
+
       // Normalize task ID
       taskId = taskId.toUpperCase();
       if (!taskId.startsWith('T')) {
@@ -812,13 +939,269 @@ Start by calling the rudder MCP tool with \`assign:claim ${taskId}\` to get your
       }
     });
 
-  // agent:merge
+  // agent:reap - unified harvest: wait, collect, merge, cleanup, update status
+  agent.command('reap <task-id>')
+    .description('Harvest agent work: wait, merge, cleanup, update status (or escalate)')
+    .option('--role <role>', 'Role context (skill, coordinator) - agent role blocked')
+    .option('--no-wait', 'Skip waiting if agent not complete')
+    .option('--timeout <seconds>', 'Wait timeout (default: 300)', parseInt, 300)
+    .option('--json', 'JSON output')
+    .action(async (taskId, options) => {
+      // Role enforcement: agents cannot reap
+      if (options.role === 'agent') {
+        console.error('ERROR: agent:reap cannot be called with --role agent');
+        console.error('Agents cannot harvest. Only skill or coordinator can reap.');
+        process.exit(1);
+      }
+
+      taskId = taskId.toUpperCase();
+      if (!taskId.startsWith('T')) taskId = 'T' + taskId;
+
+      const state = loadState();
+      const agentInfo = state.agents?.[taskId];
+      const projectRoot = findProjectRoot();
+      const config = getAgentConfig();
+
+      // Helper for escalation
+      const escalate = (reason, nextSteps) => {
+        if (options.json) {
+          jsonOut({
+            task_id: taskId,
+            status: 'blocked',
+            reason,
+            next_steps: nextSteps
+          });
+        } else {
+          console.error(`\nBLOCKED: ${reason}\n`);
+          console.error('Next steps:');
+          nextSteps.forEach(step => console.error(`  ${step}`));
+        }
+        process.exit(1);
+      };
+
+      // 1. Check agent exists
+      if (!agentInfo) {
+        escalate(`No agent found for task ${taskId}`, [
+          `agent:spawn ${taskId}    # Start agent first`
+        ]);
+      }
+
+      // 2. Check if still running
+      if (agentInfo.pid) {
+        try {
+          process.kill(agentInfo.pid, 0);
+          // Process still running
+          if (options.wait === false) {
+            escalate(`Agent ${taskId} is still running (PID ${agentInfo.pid})`, [
+              `agent:wait ${taskId}     # Wait for completion`,
+              `agent:kill ${taskId}     # Force terminate`
+            ]);
+          }
+          // Wait for completion
+          if (!options.json) {
+            console.log(`Waiting for ${taskId} (timeout: ${options.timeout}s)...`);
+          }
+          const startTime = Date.now();
+          const timeoutMs = options.timeout * 1000;
+          while (true) {
+            const completion = checkAgentCompletion(taskId);
+            if (completion.complete) break;
+            if (Date.now() - startTime > timeoutMs) {
+              escalate(`Timeout waiting for agent ${taskId}`, [
+                `agent:wait ${taskId} --timeout 3600    # Wait longer`,
+                `agent:kill ${taskId}                   # Force terminate`
+              ]);
+            }
+            await new Promise(r => setTimeout(r, 5000));
+            if (!options.json) process.stdout.write('.');
+          }
+          if (!options.json) console.log(' done');
+        } catch {
+          // Process not running, continue
+        }
+      }
+
+      // 3. Check completion
+      const completion = checkAgentCompletion(taskId);
+      if (!completion.complete) {
+        escalate(`Agent ${taskId} did not complete`, [
+          `agent:status ${taskId}    # Check status`,
+          `agent:reject ${taskId}    # Discard incomplete work`
+        ]);
+      }
+
+      // 4. Determine result status
+      let resultStatus = 'completed';
+      const agentDir = getAgentDir(taskId);
+      const resultFile = path.join(agentDir, 'result.yaml');
+      if (fs.existsSync(resultFile)) {
+        try {
+          const result = yaml.load(fs.readFileSync(resultFile, 'utf8'));
+          resultStatus = result.status || 'completed';
+        } catch { /* ignore */ }
+      }
+
+      // 5. Handle worktree mode
+      if (agentInfo.worktree) {
+        const worktreePath = agentInfo.worktree.path;
+        const branch = agentInfo.worktree.branch;
+
+        if (!fs.existsSync(worktreePath)) {
+          escalate(`Worktree not found: ${worktreePath}`, [
+            `agent:clear ${taskId}    # Clear stale state`
+          ]);
+        }
+
+        // 5a. Auto-commit if dirty
+        try {
+          const gitStatus = execSync('git status --porcelain', {
+            cwd: worktreePath,
+            encoding: 'utf8',
+            stdio: ['pipe', 'pipe', 'pipe']
+          }).trim();
+
+          if (gitStatus) {
+            if (!options.json) {
+              console.log(`⚠️  Auto-committing ${gitStatus.split('\n').length} uncommitted file(s)`);
+            }
+            execSync('git add -A', { cwd: worktreePath, stdio: 'pipe' });
+            execSync(`git commit -m "chore(${taskId}): auto-commit agent changes"`, {
+              cwd: worktreePath,
+              stdio: 'pipe'
+            });
+          }
+        } catch (e) {
+          // Commit failed or nothing to commit
+        }
+
+        // 5b. Check for conflicts
+        try {
+          const mergeBase = execSync(`git merge-base HEAD ${branch}`, {
+            cwd: projectRoot,
+            encoding: 'utf8',
+            stdio: ['pipe', 'pipe', 'pipe']
+          }).trim();
+
+          const mergeTree = execSync(`git merge-tree ${mergeBase} HEAD ${branch}`, {
+            cwd: projectRoot,
+            encoding: 'utf8',
+            stdio: ['pipe', 'pipe', 'pipe']
+          });
+
+          if (mergeTree.includes('<<<<<<<') || mergeTree.includes('>>>>>>>')) {
+            // Extract conflicting files
+            const conflictFiles = [];
+            const lines = mergeTree.split('\n');
+            for (const line of lines) {
+              if (line.startsWith('changed in both')) {
+                const match = line.match(/changed in both\s+(.+)/);
+                if (match) conflictFiles.push(match[1]);
+              }
+            }
+
+            escalate(`Merge conflicts detected`, [
+              `/dev:merge ${taskId}                           # Guided conflict resolution`,
+              ``,
+              `Manual resolution:`,
+              `  git checkout -b merge/${taskId}-to-main main`,
+              `  git merge ${branch} --no-commit`,
+              `  # ... resolve conflicts ...`,
+              `  git commit -m "merge(${taskId}): resolved conflicts"`,
+              `  git checkout main && git merge merge/${taskId}-to-main --ff-only`,
+              `  agent:clear ${taskId}`,
+              ...(conflictFiles.length > 0 ? [``, `Conflicting files:`, ...conflictFiles.map(f => `  ${f}`)] : [])
+            ]);
+          }
+        } catch (e) {
+          escalate(`Cannot check merge status: ${e.message}`, [
+            `git fetch origin`,
+            `agent:reap ${taskId}    # Retry`
+          ]);
+        }
+
+        // 5c. Merge (no conflicts)
+        const strategy = config.merge_strategy || 'merge';
+        try {
+          if (!options.json) {
+            console.log(`Merging ${branch} → main (${strategy})...`);
+          }
+
+          if (strategy === 'squash') {
+            execSync(`git merge --squash ${branch}`, { cwd: projectRoot, stdio: 'pipe' });
+            execSync(`git commit -m "feat(${taskId}): ${agentInfo.worktree.branch}"`, {
+              cwd: projectRoot,
+              stdio: 'pipe'
+            });
+          } else if (strategy === 'rebase') {
+            execSync(`git rebase ${branch}`, { cwd: projectRoot, stdio: 'pipe' });
+          } else {
+            execSync(`git merge ${branch} --no-edit`, { cwd: projectRoot, stdio: 'pipe' });
+          }
+        } catch (e) {
+          escalate(`Merge failed: ${e.message}`, [
+            `/dev:merge ${taskId}    # Manual resolution`
+          ]);
+        }
+
+        // 5d. Cleanup worktree
+        const removeResult = removeWorktree(taskId, { force: true });
+        if (!options.json && !removeResult.success) {
+          console.error(`Warning: Failed to cleanup worktree: ${removeResult.error}`);
+        }
+
+        if (!options.json) {
+          console.log(`✓ Merged and cleaned up ${taskId}`);
+        }
+      }
+
+      // 6. Update task status
+      const taskStatus = resultStatus === 'completed' ? 'Done' : 'Blocked';
+      try {
+        execSync(`${process.argv[0]} ${process.argv[1]} task:update ${taskId} --status "${taskStatus}"`, {
+          cwd: projectRoot,
+          encoding: 'utf8',
+          stdio: 'pipe'
+        });
+        if (!options.json) {
+          console.log(`✓ Task ${taskId} → ${taskStatus}`);
+        }
+      } catch (e) {
+        if (!options.json) {
+          console.error(`Warning: Could not update task status: ${e.message}`);
+        }
+      }
+
+      // 7. Update agent state
+      state.agents[taskId] = {
+        ...agentInfo,
+        status: 'reaped',
+        result_status: resultStatus,
+        reaped_at: new Date().toISOString()
+      };
+      saveState(state);
+
+      if (options.json) {
+        jsonOut({
+          task_id: taskId,
+          status: 'success',
+          result_status: resultStatus,
+          task_status: taskStatus,
+          merged: !!agentInfo.worktree,
+          cleaned_up: !!agentInfo.worktree
+        });
+      }
+    });
+
+  // agent:merge (DEPRECATED - use agent:reap)
   agent.command('merge <task-id>')
-    .description('Merge agent worktree changes into main branch')
+    .description('[DEPRECATED] Merge agent worktree → use agent:reap instead')
     .option('--strategy <type>', 'Merge strategy: merge|squash|rebase (default from config)')
     .option('--no-cleanup', 'Keep worktree after merge')
     .option('--json', 'JSON output')
     .action((taskId, options) => {
+      console.error('⚠️  DEPRECATED: agent:merge is deprecated. Use agent:reap instead.');
+      console.error('   agent:reap handles merge, cleanup, and status update.\n');
+
       taskId = taskId.toUpperCase();
       if (!taskId.startsWith('T')) taskId = 'T' + taskId;
 

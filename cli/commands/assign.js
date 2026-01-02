@@ -687,6 +687,7 @@ export function registerAssignCommands(program) {
   // assign:claim <entity-id> - unified context for tasks, epics, PRDs
   assign.command('claim <entity-id>')
     .description('Get compiled prompt for any entity (task, epic, or PRD)')
+    .option('--role <role>', 'Role context: agent allowed, skill/coordinator blocked')
     .option('--operation <op>', 'Operation type (auto-detected if not specified)')
     .option('--approach <text>', 'Approach description for auto-log (tasks only)')
     .option('--force', 'Force claim even with orphan runs or pending memory')
@@ -694,6 +695,13 @@ export function registerAssignCommands(program) {
     .option('--debug', 'Add source comments to each section')
     .option('--json', 'JSON output')
     .action((entityId, options) => {
+      // Role enforcement: only agents claim tasks
+      if (options.role === 'skill' || options.role === 'coordinator') {
+        console.error(`ERROR: assign:claim cannot be called with --role ${options.role}`);
+        console.error('Only agents claim assignments. Skill/coordinator use agent:spawn.');
+        process.exit(1);
+      }
+
       const entity = detectEntityType(entityId);
 
       if (entity.type === 'unknown') {
