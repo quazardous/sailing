@@ -37,42 +37,197 @@ export function findMcpServerPath(projectRoot) {
 }
 
 /**
- * Generate MCP config for agent with restricted rudder access
+ * Find an available TCP port
+ * @returns {Promise<number>} Available port number
+ */
+export function getAvailablePort() {
+  return new Promise((resolve, reject) => {
+    const server = require('net').createServer();
+    server.listen(0, '127.0.0.1', () => {
+      const port = server.address().port;
+      server.close(() => resolve(port));
+    });
+    server.on('error', reject);
+  });
+}
+
+/**
+ * Check if MCP server is already running for a haven
+ * @param {string} havenDir - Haven directory
+ * @returns {{ running: boolean, socket?: string, pid?: number }}
+ */
+export function checkMcpServer(havenDir) {
+  const socketPath = path.join(havenDir, 'mcp.sock');
+  const pidFile = path.join(havenDir, 'mcp.pid');
+
+  if (!fs.existsSync(socketPath) || !fs.existsSync(pidFile)) {
+    return { running: false };
+  }
+
+  // Check if PID is still running
+  try {
+    const pid = parseInt(fs.readFileSync(pidFile, 'utf8').trim(), 10);
+    process.kill(pid, 0); // Signal 0 = check if process exists
+    return { running: true, socket: socketPath, pid };
+  } catch (e) {
+    // Process not running, clean up stale files
+    try { fs.unlinkSync(socketPath); } catch {}
+    try { fs.unlinkSync(pidFile); } catch {}
+    return { running: false };
+  }
+}
+
+/**
+ * Start external MCP server (outside sandbox)
+ * Uses Unix socket at haven level (shared by all agents).
+ * Automatically reuses existing server if already running.
+ *
+ * @param {object} options - Options
+ * @param {string} options.havenDir - Haven directory (socket lives here)
+ * @param {string} options.projectRoot - Project root path
+ * @returns {Promise<{ socket: string, pid: number, mcpServerPath: string, reused: boolean }>}
+ */
+export async function startExternalMcpServer(options) {
+  const { havenDir, projectRoot } = options;
+
+  // Check if already running
+  const existing = checkMcpServer(havenDir);
+  if (existing.running) {
+    return {
+      socket: existing.socket,
+      pid: existing.pid,
+      mcpServerPath: findMcpServerPath(projectRoot),
+      reused: true
+    };
+  }
+
+  const mcpServerPath = findMcpServerPath(projectRoot);
+  const socketPath = path.join(havenDir, 'mcp.sock');
+
+  return new Promise((resolve, reject) => {
+    const child = spawn('node', [
+      mcpServerPath,
+      '--socket', socketPath,
+      '--project-root', projectRoot
+    ], {
+      cwd: projectRoot,
+      stdio: ['ignore', 'pipe', 'pipe'],
+      detached: true  // Run independently of parent
+    });
+
+    // Wait for the server to output the socket path (confirmation it started)
+    let startupOutput = '';
+    const timeout = setTimeout(() => {
+      child.kill();
+      reject(new Error('MCP server startup timeout'));
+    }, 5000);
+
+    child.stdout.on('data', (data) => {
+      startupOutput += data.toString();
+      if (startupOutput.includes(socketPath)) {
+        clearTimeout(timeout);
+        // Unref so parent can exit independently
+        child.unref();
+
+        // Save PID to file
+        const pidFile = path.join(havenDir, 'mcp.pid');
+        fs.writeFileSync(pidFile, String(child.pid));
+
+        resolve({
+          socket: socketPath,
+          pid: child.pid,
+          mcpServerPath,
+          reused: false
+        });
+      }
+    });
+
+    child.stderr.on('data', (data) => {
+      // Log to stderr for debugging
+      process.stderr.write(`[MCP] ${data}`);
+    });
+
+    child.on('error', (err) => {
+      clearTimeout(timeout);
+      reject(err);
+    });
+
+    child.on('exit', (code) => {
+      if (code !== 0 && code !== null) {
+        clearTimeout(timeout);
+        reject(new Error(`MCP server exited with code ${code}`));
+      }
+    });
+  });
+}
+
+/**
+ * Generate MCP config for agent
+ * Supports three modes:
+ * - externalSocket: Connect to Unix socket via socat (preferred for sandbox)
+ * - externalPort: Connect to TCP port via socat (fallback)
+ * - internal: Spawn MCP server as child process (no sandbox)
+ *
  * @param {object} options - Options
  * @param {string} options.outputPath - Where to write the MCP config
- * @param {string} options.taskId - Task ID to restrict access to
  * @param {string} options.projectRoot - Project root path
- * @param {string} [options.mcpServerPath] - Override MCP server path (auto-detected if not provided)
- * @returns {{ configPath: string, mcpServerPath: string, taskId: string, projectRoot: string }}
+ * @param {string} [options.externalSocket] - Unix socket path for external MCP
+ * @param {number} [options.externalPort] - TCP port for external MCP (fallback)
+ * @param {string} [options.taskId] - Task ID (only for internal mode)
+ * @returns {{ configPath: string, mode: string }}
  */
 export function generateAgentMcpConfig(options) {
-  const { outputPath, taskId, projectRoot, mcpServerPath: customMcpPath } = options;
+  const { outputPath, projectRoot, externalSocket, externalPort, taskId } = options;
 
-  // Find MCP server path (project-specific or fallback)
-  const mcpServerPath = customMcpPath || findMcpServerPath(projectRoot);
+  let config;
+  let mode;
 
-  const config = {
-    mcpServers: {
-      rudder: {
-        command: 'node',
-        args: [
-          mcpServerPath,
-          '--task-id', taskId,
-          '--project-root', projectRoot
-        ]
+  if (externalSocket) {
+    // Unix socket mode: use socat to bridge to Unix socket (preferred)
+    config = {
+      mcpServers: {
+        rudder: {
+          command: 'socat',
+          args: ['-', `UNIX-CONNECT:${externalSocket}`]
+        }
       }
+    };
+    mode = 'socket';
+  } else if (externalPort) {
+    // TCP port mode: use socat to bridge to TCP server (fallback)
+    config = {
+      mcpServers: {
+        rudder: {
+          command: 'socat',
+          args: ['-', `TCP:127.0.0.1:${externalPort}`]
+        }
+      }
+    };
+    mode = 'tcp';
+  } else {
+    // Internal MCP mode: spawn server as child process (no sandbox)
+    const mcpServerPath = findMcpServerPath(projectRoot);
+    const args = [mcpServerPath, '--project-root', projectRoot];
+    if (taskId) {
+      args.push('--task-id', taskId);
     }
-  };
+    config = {
+      mcpServers: {
+        rudder: {
+          command: 'node',
+          args
+        }
+      }
+    };
+    mode = 'internal';
+  }
 
   ensureDir(path.dirname(outputPath));
   fs.writeFileSync(outputPath, JSON.stringify(config, null, 2));
 
-  // Return object with paths for debugging
   return {
     configPath: outputPath,
-    mcpServerPath,
-    taskId,
-    projectRoot
+    mode
   };
 }
 

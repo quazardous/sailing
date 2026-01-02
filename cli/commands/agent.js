@@ -57,7 +57,7 @@ export function registerAgentCommands(program) {
     .option('--stderr-to-file [path]', 'Redirect stderr to file only (default: run.log)')
     .option('--dry-run', 'Show what would be done without spawning')
     .option('--json', 'JSON output')
-    .action((taskId, options) => {
+    .action(async (taskId, options) => {
       // Check subprocess mode is enabled
       const agentConfig = getAgentConfig();
       if (!agentConfig.use_subprocess) {
@@ -197,6 +197,8 @@ export function registerAgentCommands(program) {
       const projectRoot = findProjectRoot();
 
       // Create mission.yaml for debug/trace
+      // In worktree mode, agent must NOT commit (skill handles it)
+      // Without worktree, agent must commit before release
       const mission = createMission({
         task_id: taskId,
         epic_id: epicId,
@@ -207,12 +209,24 @@ export function registerAgentCommands(program) {
         task_file: taskFile,
         memory: findMemoryFile(epicId),
         toolset: findToolset(projectRoot),
-        constraints: { no_git_commit: true },
+        constraints: { no_git_commit: useWorktree },
         timeout
       });
       const missionFile = path.join(agentDir, 'mission.yaml');
 
       // Build bootstrap prompt - uses MCP rudder tool (not bash)
+      // Commit instructions depend on worktree mode:
+      // - With worktree: skill handles commits, agent must NOT commit
+      // - Without worktree: agent must commit before releasing task
+      const commitInstructions = useWorktree
+        ? `- **NO git commit** - worktree mode: skill handles commits after review
+- Follow the task deliverables exactly
+- Log meaningful tips for knowledge transfer`
+        : `- **MUST commit before release**: Stage and commit your changes with a clear message before calling assign:release
+- Follow the task deliverables exactly
+- Log meaningful tips for knowledge transfer
+- Use conventional commit format: \`feat(scope): description\` or \`fix(scope): description\``;
+
       const bootstrapPrompt = `# Agent Bootstrap: ${taskId}
 
 You are an autonomous agent assigned to task ${taskId}.
@@ -250,9 +264,7 @@ Arguments: { "command": "..." }
 
 ## Constraints
 
-- NO git commit (user will commit after review)
-- Follow the task deliverables exactly
-- Log meaningful tips for knowledge transfer
+${commitInstructions}
 
 Start by calling the rudder MCP tool with \`assign:claim ${taskId}\` to get your instructions.
 `;
@@ -315,7 +327,7 @@ Start by calling the rudder MCP tool with \`assign:claim ${taskId}\` to get your
 
       // Spawn Claude with bootstrap prompt
       // Includes MCP config for restricted rudder access (agent can only access its task)
-      const spawnResult = spawnClaude({
+      const spawnResult = await spawnClaude({
         prompt: bootstrapPrompt,
         cwd,
         logFile,
@@ -336,6 +348,8 @@ Start by calling the rudder MCP tool with \`assign:claim ${taskId}\` to get your
         srt_config: spawnResult.srtConfig,
         mcp_config: spawnResult.mcpConfig,
         mcp_server: spawnResult.mcpServerPath,
+        mcp_port: spawnResult.mcpPort,       // External MCP port (if used)
+        mcp_pid: spawnResult.mcpPid,         // External MCP server PID (if used)
         timeout,
         ...(worktreeInfo && { worktree: worktreeInfo })
       };
@@ -350,6 +364,32 @@ Start by calling the rudder MCP tool with \`assign:claim ${taskId}\` to get your
           currentState.agents[taskId].exit_signal = signal;
           currentState.agents[taskId].ended_at = new Date().toISOString();
           delete currentState.agents[taskId].pid;
+
+          // Check for uncommitted changes (dirty worktree detection)
+          // In worktree mode: expected (skill handles commits)
+          // Without worktree: warning if agent forgot to commit
+          try {
+            const gitStatus = execSync('git status --porcelain', {
+              cwd,
+              encoding: 'utf8',
+              stdio: ['pipe', 'pipe', 'pipe']
+            }).trim();
+
+            if (gitStatus) {
+              currentState.agents[taskId].dirty_worktree = true;
+              currentState.agents[taskId].uncommitted_files = gitStatus.split('\n').length;
+
+              if (!useWorktree) {
+                // Non-worktree mode: agent should have committed
+                console.error(`\n⚠️  WARNING: Agent ${taskId} left uncommitted changes`);
+                console.error(`   ${gitStatus.split('\n').length} file(s) modified but not committed.`);
+                console.error(`   Agent should have committed before releasing task.\n`);
+              }
+            }
+          } catch (e) {
+            // Git check failed, ignore
+          }
+
           saveState(currentState);
 
           // Auto-create PR if enabled and agent completed successfully

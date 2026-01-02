@@ -1,0 +1,16 @@
+#!/bin/bash
+#
+# Rudder MCP Server wrapper
+#
+# Same project detection as rudder CLI.
+# Manages the MCP server for sandboxed agents.
+#
+# Usage:
+#   rudder-mcp start           # Start in foreground
+#   rudder-mcp start -d        # Start as daemon
+#   rudder-mcp status          # Check if running
+#   rudder-mcp stop            # Stop server
+#
+
+SCRIPT_DIR="$(dirname "$(realpath "$0")")"
+exec node "$SCRIPT_DIR/../cli/mcp-server.js" "$@"

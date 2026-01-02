@@ -317,7 +317,20 @@ The log shows:
 3. **Local processes**: srt doesn't sandbox child processes spawned by Claude
 4. **Always review**: Sandbox is defense-in-depth, not a replacement for code review
 
+## External MCP Architecture
+
+When sandbox is enabled for agents, the MCP server runs **outside** the sandbox to provide haven write access. The agent connects via a socat TCP bridge:
+
+```
+Agent (sandboxed) → socat → TCP:127.0.0.1:PORT → MCP Server (unsandboxed) → rudder
+```
+
+This allows strict sandbox restrictions (worktree-only writes) while still enabling rudder operations.
+
+See [MCP Server Documentation](mcp.md) for details.
+
 ## References
 
 - [sandbox-runtime GitHub](https://github.com/anthropic-experimental/sandbox-runtime)
 - [Claude Code Sandboxing Docs](https://docs.anthropic.com/en/docs/claude-code/sandboxing)
+- [Rudder MCP Server](mcp.md)

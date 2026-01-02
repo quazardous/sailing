@@ -89,6 +89,37 @@ rudder worktree:status --json                 # Current worktree state
 rudder worktree:preflight --json              # Blockers, merge order
 ```
 
+## 0. Handle Uncommitted Changes
+
+**Before any merge operation**, check if the worktree has uncommitted changes:
+
+```bash
+cd <worktree-path>
+git status --porcelain
+```
+
+If there are uncommitted changes:
+
+1. **Stage all changes**:
+   ```bash
+   git add -A
+   ```
+
+2. **Auto-commit with warning**:
+   ```bash
+   git commit -m "chore(TNNN): auto-commit uncommitted agent changes"
+   ```
+
+3. **Log the auto-commit**:
+   ```bash
+   rudder task:log TNNN "Auto-committed uncommitted changes before merge" --warn
+   ```
+
+4. **Warn the user**:
+   > ⚠️ Agent left uncommitted changes. Auto-committed before merge.
+
+**Why**: Agents in worktree mode are told not to commit (skill handles it). This ensures their work is preserved even if they forgot to save.
+
 ## Merge Mode Resolution
 
 - If `--pr` is provided → **PR workflow** (`gh pr merge`)

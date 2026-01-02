@@ -60,7 +60,8 @@ Implement the deliverables. No scope expansion.
 2. Stop execution
 3. Return control without attempting partial fixes
 
-**You MUST NOT commit, push, or modify git state.** Worktree is disposable.
+**Worktree mode**: You MUST NOT commit - skill handles commits after merge.
+**Non-worktree mode**: You MUST commit your changes before calling `assign:release`.
 
 ## Modes
 

@@ -6,9 +6,16 @@
  * Agents can interact with rudder without needing filesystem write access.
  *
  * Usage:
- *   node mcp/rudder-server.js [--task-id TNNN] [--project-root /path]
+ *   node mcp/rudder-server.js [--task-id TNNN] [--project-root /path] [--port PORT] [--socket PATH]
  *
- * The --task-id option restricts operations to a specific task (for agent isolation).
+ * Options:
+ *   --task-id       Restrict operations to a specific task (for agent isolation)
+ *   --project-root  Project root path
+ *   --port          Listen on TCP port instead of stdio (for external MCP)
+ *   --socket        Listen on Unix socket instead of stdio (for external MCP)
+ *
+ * When --port or --socket is used, the server runs outside the sandbox and agents
+ * connect via socat bridge.
  */
 
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
@@ -18,7 +25,9 @@ import {
   ListToolsRequestSchema,
 } from '@modelcontextprotocol/sdk/types.js';
 import { execSync } from 'child_process';
+import fs from 'fs';
 import path from 'path';
+import net from 'net';
 import { fileURLToPath } from 'url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -27,12 +36,18 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const args = process.argv.slice(2);
 let taskId = null;
 let projectRoot = path.resolve(__dirname, '..');
+let port = null;
+let socketPath = null;
 
 for (let i = 0; i < args.length; i++) {
   if (args[i] === '--task-id' && args[i + 1]) {
     taskId = args[++i];
   } else if (args[i] === '--project-root' && args[i + 1]) {
     projectRoot = args[++i];
+  } else if (args[i] === '--port' && args[i + 1]) {
+    port = parseInt(args[++i], 10);
+  } else if (args[i] === '--socket' && args[i + 1]) {
+    socketPath = args[++i];
   }
 }
 
@@ -221,19 +236,211 @@ const server = new Server(
   }
 );
 
-// Handle list tools
+// Handle list tools (stdio mode)
 server.setRequestHandler(ListToolsRequestSchema, async () => {
   return { tools: TOOLS };
 });
 
-// Handle tool calls
-server.setRequestHandler(CallToolRequestSchema, async (request) => {
+// Handle tool calls (stdio mode) - uses shared handleToolCall()
+server.setRequestHandler(CallToolRequestSchema, handleToolCall);
+
+/**
+ * Create a transport adapter for TCP socket
+ * MCP uses JSON-RPC over newline-delimited JSON
+ */
+class SocketTransport {
+  constructor(socket) {
+    this.socket = socket;
+    this._onMessage = null;
+    this._onClose = null;
+    this._onError = null;
+    this._buffer = '';
+
+    socket.on('data', (data) => {
+      this._buffer += data.toString();
+      this._processBuffer();
+    });
+
+    socket.on('close', () => {
+      if (this._onClose) this._onClose();
+    });
+
+    socket.on('error', (err) => {
+      if (this._onError) this._onError(err);
+    });
+  }
+
+  _processBuffer() {
+    // MCP uses newline-delimited JSON
+    let newlineIndex;
+    while ((newlineIndex = this._buffer.indexOf('\n')) !== -1) {
+      const line = this._buffer.slice(0, newlineIndex);
+      this._buffer = this._buffer.slice(newlineIndex + 1);
+
+      if (line.trim() && this._onMessage) {
+        try {
+          const message = JSON.parse(line);
+          this._onMessage(message);
+        } catch (e) {
+          console.error('Failed to parse MCP message:', e);
+        }
+      }
+    }
+  }
+
+  set onmessage(handler) {
+    this._onMessage = handler;
+  }
+
+  set onclose(handler) {
+    this._onClose = handler;
+  }
+
+  set onerror(handler) {
+    this._onError = handler;
+  }
+
+  async start() {
+    // Nothing to do for socket transport
+  }
+
+  async send(message) {
+    const json = JSON.stringify(message);
+    this.socket.write(json + '\n');
+  }
+
+  async close() {
+    this.socket.end();
+  }
+}
+
+/**
+ * Create connection handler for TCP/Unix socket servers
+ */
+function createConnectionHandler(mode) {
+  return async (socket) => {
+    const clientInfo = mode === 'tcp'
+      ? `${socket.remoteAddress}:${socket.remotePort}`
+      : 'unix socket';
+    log(`Client connected from ${clientInfo}`);
+
+    // Create a new server instance for this connection
+    const clientServer = new Server(
+      { name: 'rudder-mcp', version: '1.0.0' },
+      { capabilities: { tools: {} } }
+    );
+
+    // Copy handlers to client server
+    clientServer.setRequestHandler(ListToolsRequestSchema, async () => {
+      log('tools/list requested');
+      return { tools: TOOLS };
+    });
+
+    clientServer.setRequestHandler(CallToolRequestSchema, async (request) => {
+      return handleToolCall(request);
+    });
+
+    const transport = new SocketTransport(socket);
+    await clientServer.connect(transport);
+
+    socket.on('close', () => {
+      log('Client disconnected');
+    });
+  };
+}
+
+// Start server
+async function main() {
+  if (port) {
+    // TCP mode: listen on port
+    const tcpServer = net.createServer(createConnectionHandler('tcp'));
+
+    tcpServer.listen(port, '127.0.0.1', () => {
+      console.error(`Rudder MCP Server started (TCP mode)`);
+      console.error(`  Listening on: 127.0.0.1:${port}`);
+      if (taskId) {
+        console.error(`  Restricted to task: ${taskId}`);
+      }
+      console.error(`  Project root: ${projectRoot}`);
+      // Output port for parent process to read
+      console.log(port);
+    });
+
+  } else if (socketPath) {
+    // Unix socket mode: listen on socket file
+    // Remove old socket file if exists
+    try {
+      fs.unlinkSync(socketPath);
+    } catch (e) {
+      // Ignore if doesn't exist
+    }
+
+    // PID file in same directory as socket
+    const pidFile = socketPath.replace(/\.sock$/, '.pid');
+
+    const unixServer = net.createServer(createConnectionHandler('unix'));
+
+    unixServer.listen(socketPath, () => {
+      // Write PID file
+      fs.writeFileSync(pidFile, String(process.pid));
+
+      console.error(`Rudder MCP Server started (Unix socket mode)`);
+      console.error(`  Listening on: ${socketPath}`);
+      console.error(`  PID file: ${pidFile}`);
+      if (taskId) {
+        console.error(`  Restricted to task: ${taskId}`);
+      }
+      console.error(`  Project root: ${projectRoot}`);
+      // Output socket path for parent process to read
+      console.log(socketPath);
+    });
+
+    // Cleanup socket and PID on exit
+    process.on('SIGINT', () => {
+      try { fs.unlinkSync(socketPath); } catch (e) {}
+      try { fs.unlinkSync(pidFile); } catch (e) {}
+      process.exit(0);
+    });
+    process.on('SIGTERM', () => {
+      try { fs.unlinkSync(socketPath); } catch (e) {}
+      try { fs.unlinkSync(pidFile); } catch (e) {}
+      process.exit(0);
+    });
+
+  } else {
+    // Stdio mode (original behavior)
+    const transport = new StdioServerTransport();
+    await server.connect(transport);
+
+    console.error(`Rudder MCP Server started`);
+    if (taskId) {
+      console.error(`  Restricted to task: ${taskId}`);
+    }
+    console.error(`  Project root: ${projectRoot}`);
+  }
+}
+
+/**
+ * Log with timestamp
+ */
+function log(msg) {
+  const ts = new Date().toISOString();
+  console.error(`[${ts}] ${msg}`);
+}
+
+/**
+ * Handle tool call (extracted for reuse in TCP mode)
+ */
+async function handleToolCall(request) {
   const { name, arguments: args } = request.params;
+
+  log(`Tool call: ${name} ${JSON.stringify(args)}`);
 
   // Validate task access for task-specific operations
   const taskOps = ['task_log', 'task_show', 'task_show_memory', 'assign_claim', 'assign_release', 'deps_show', 'task_targets'];
   if (taskOps.includes(name) && args.task_id) {
     if (!validateTaskAccess(args.task_id)) {
+      log(`Access denied for task ${args.task_id}`);
       return {
         content: [{
           type: 'text',
@@ -318,6 +525,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
     }
 
     default:
+      log(`Unknown tool: ${name}`);
       return {
         content: [{ type: 'text', text: `Unknown tool: ${name}` }],
         isError: true
@@ -325,10 +533,12 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
   }
 
   if (result.success) {
+    log(`Tool ${name} succeeded (${result.output.length} chars)`);
     return {
       content: [{ type: 'text', text: result.output }]
     };
   } else {
+    log(`Tool ${name} failed: ${result.error}`);
     return {
       content: [{
         type: 'text',
@@ -337,19 +547,6 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       isError: true
     };
   }
-});
-
-// Start server
-async function main() {
-  const transport = new StdioServerTransport();
-  await server.connect(transport);
-
-  // Log to stderr (not stdout, which is for MCP protocol)
-  console.error(`Rudder MCP Server started`);
-  if (taskId) {
-    console.error(`  Restricted to task: ${taskId}`);
-  }
-  console.error(`  Project root: ${projectRoot}`);
 }
 
 main().catch((error) => {
