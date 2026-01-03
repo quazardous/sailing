@@ -9,18 +9,18 @@
  * state.json remains for simple counters (prd, epic, task, story)
  */
 import path from 'path';
-import { resolvePlaceholders } from './paths.js';
+import { resolvePlaceholders, resolvePath } from './paths.js';
 import { Collection } from './jsondb.js';
 
 let agentsDb = null;
 let runsDb = null;
 
 /**
- * Get database directory
+ * Get database directory (configurable via paths.yaml: db)
  */
 function getDbDir() {
-  const havenPath = resolvePlaceholders('%haven%');
-  return path.join(havenPath, 'db');
+  const custom = resolvePath('db');
+  return custom || resolvePlaceholders('%haven%/db');
 }
 
 /**
