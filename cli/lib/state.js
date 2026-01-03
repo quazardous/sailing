@@ -7,6 +7,61 @@ import path from 'path';
 import { getStateFile, findPrdDirs, findFiles, getSailingDir } from './core.js';
 
 /**
+ * Acquire exclusive lock on state file
+ * Uses a simple .lock file with PID and timestamp
+ * @param {number} timeout - Max wait time in ms (default 5000)
+ * @returns {string} Lock file path
+ */
+function acquireLock(timeout = 5000) {
+  const stateFile = getStateFile();
+  const lockFile = stateFile + '.lock';
+  const startTime = Date.now();
+  const pid = process.pid;
+
+  while (Date.now() - startTime < timeout) {
+    try {
+      // Try to create lock file exclusively
+      fs.writeFileSync(lockFile, JSON.stringify({ pid, time: Date.now() }), { flag: 'wx' });
+      return lockFile;
+    } catch (err) {
+      if (err.code === 'EEXIST') {
+        // Lock exists - check if stale (> 30s old)
+        try {
+          const lockData = JSON.parse(fs.readFileSync(lockFile, 'utf8'));
+          if (Date.now() - lockData.time > 30000) {
+            // Stale lock - remove it
+            fs.unlinkSync(lockFile);
+            continue;
+          }
+        } catch {
+          // Can't read lock - try to remove
+          try { fs.unlinkSync(lockFile); } catch { /* ignore */ }
+          continue;
+        }
+        // Wait and retry
+        const waitMs = 50 + Math.random() * 50;
+        const waitUntil = Date.now() + waitMs;
+        while (Date.now() < waitUntil) { /* busy wait */ }
+      } else {
+        throw err;
+      }
+    }
+  }
+  throw new Error(`Failed to acquire state lock after ${timeout}ms`);
+}
+
+/**
+ * Release lock on state file
+ */
+function releaseLock(lockFile) {
+  try {
+    fs.unlinkSync(lockFile);
+  } catch {
+    // Ignore errors
+  }
+}
+
+/**
  * Load state from file, auto-initializing if needed
  */
 export function loadState() {
@@ -53,6 +108,24 @@ export function loadState() {
 export function saveState(state) {
   const stateFile = getStateFile();
   fs.writeFileSync(stateFile, JSON.stringify(state, null, 2) + '\n');
+}
+
+/**
+ * Atomically update state with locking
+ * Prevents race conditions when multiple processes update simultaneously
+ * @param {function} updateFn - Function that receives current state and returns updated state
+ * @returns {object} The updated state
+ */
+export function updateStateAtomic(updateFn) {
+  const lockFile = acquireLock();
+  try {
+    const state = loadState();
+    const updatedState = updateFn(state);
+    saveState(updatedState);
+    return updatedState;
+  } finally {
+    releaseLock(lockFile);
+  }
 }
 
 /**

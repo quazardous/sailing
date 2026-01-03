@@ -9,7 +9,7 @@ import { execSync } from 'child_process';
 import { findProjectRoot, loadFile, jsonOut } from '../lib/core.js';
 import { resolvePlaceholders, resolvePath, ensureDir } from '../lib/paths.js';
 import { createMission, validateMission, validateResult } from '../lib/agent-schema.js';
-import { loadState, saveState } from '../lib/state.js';
+import { loadState, saveState, updateStateAtomic } from '../lib/state.js';
 import { addDynamicHelp } from '../lib/help.js';
 import { getAgentConfig } from '../lib/config.js';
 import {
@@ -459,8 +459,8 @@ Start by calling the rudder MCP tool with \`assign:claim ${taskId}\` to get your
         stderrToFile: options.stderrToFile
       });
 
-      // Update state
-      state.agents[taskId] = {
+      // Update state atomically to prevent race condition with parallel spawns
+      const agentEntry = {
         status: 'spawned',
         spawned_at: new Date().toISOString(),
         pid: spawnResult.pid,
@@ -474,58 +474,67 @@ Start by calling the rudder MCP tool with \`assign:claim ${taskId}\` to get your
         timeout,
         ...(worktreeInfo && { worktree: worktreeInfo })
       };
-      saveState(state);
+      updateStateAtomic(s => {
+        if (!s.agents) s.agents = {};
+        s.agents[taskId] = agentEntry;
+        return s;
+      });
 
       // Handle process exit
       spawnResult.process.on('exit', (code, signal) => {
-        const currentState = loadState();
-        if (currentState.agents[taskId]) {
-          currentState.agents[taskId].status = code === 0 ? 'completed' : 'error';
-          currentState.agents[taskId].exit_code = code;
-          currentState.agents[taskId].exit_signal = signal;
-          currentState.agents[taskId].ended_at = new Date().toISOString();
-          delete currentState.agents[taskId].pid;
+        // Check for uncommitted changes before updating state
+        let dirtyWorktree = false;
+        let uncommittedFiles = 0;
+        try {
+          const gitStatus = execSync('git status --porcelain', {
+            cwd,
+            encoding: 'utf8',
+            stdio: ['pipe', 'pipe', 'pipe']
+          }).trim();
 
-          // Check for uncommitted changes (dirty worktree detection)
-          // In worktree mode: expected (skill handles commits)
-          // Without worktree: warning if agent forgot to commit
+          if (gitStatus) {
+            dirtyWorktree = true;
+            uncommittedFiles = gitStatus.split('\n').length;
+
+            if (!useWorktree) {
+              // Non-worktree mode: agent should have committed
+              console.error(`\n⚠️  WARNING: Agent ${taskId} left uncommitted changes`);
+              console.error(`   ${uncommittedFiles} file(s) modified but not committed.`);
+              console.error(`   Agent should have committed before releasing task.\n`);
+            }
+          }
+        } catch (e) {
+          // Git check failed, ignore
+        }
+
+        // Update state atomically
+        const updatedState = updateStateAtomic(s => {
+          if (s.agents?.[taskId]) {
+            s.agents[taskId].status = code === 0 ? 'completed' : 'error';
+            s.agents[taskId].exit_code = code;
+            s.agents[taskId].exit_signal = signal;
+            s.agents[taskId].ended_at = new Date().toISOString();
+            delete s.agents[taskId].pid;
+            if (dirtyWorktree) {
+              s.agents[taskId].dirty_worktree = true;
+              s.agents[taskId].uncommitted_files = uncommittedFiles;
+            }
+          }
+          return s;
+        });
+
+        // Auto-create PR if enabled and agent completed successfully
+        if (code === 0 && agentConfig.auto_pr && updatedState.agents?.[taskId]?.worktree) {
           try {
-            const gitStatus = execSync('git status --porcelain', {
-              cwd,
+            const draftFlag = agentConfig.pr_draft ? '--draft' : '';
+            execSync(`${process.argv[0]} ${process.argv[1]} worktree pr ${taskId} ${draftFlag} --json`, {
+              cwd: projectRoot,
               encoding: 'utf8',
               stdio: ['pipe', 'pipe', 'pipe']
-            }).trim();
-
-            if (gitStatus) {
-              currentState.agents[taskId].dirty_worktree = true;
-              currentState.agents[taskId].uncommitted_files = gitStatus.split('\n').length;
-
-              if (!useWorktree) {
-                // Non-worktree mode: agent should have committed
-                console.error(`\n⚠️  WARNING: Agent ${taskId} left uncommitted changes`);
-                console.error(`   ${gitStatus.split('\n').length} file(s) modified but not committed.`);
-                console.error(`   Agent should have committed before releasing task.\n`);
-              }
-            }
+            });
+            console.log(`Auto-PR created for ${taskId}`);
           } catch (e) {
-            // Git check failed, ignore
-          }
-
-          saveState(currentState);
-
-          // Auto-create PR if enabled and agent completed successfully
-          if (code === 0 && agentConfig.auto_pr && currentState.agents[taskId].worktree) {
-            try {
-              const draftFlag = agentConfig.pr_draft ? '--draft' : '';
-              execSync(`${process.argv[0]} ${process.argv[1]} worktree pr ${taskId} ${draftFlag} --json`, {
-                cwd: projectRoot,
-                encoding: 'utf8',
-                stdio: ['pipe', 'pipe', 'pipe']
-              });
-              console.log(`Auto-PR created for ${taskId}`);
-            } catch (e) {
-              console.error(`Auto-PR failed for ${taskId}: ${e.message}`);
-            }
+            console.error(`Auto-PR failed for ${taskId}: ${e.message}`);
           }
         }
       });
@@ -905,6 +914,136 @@ Start by calling the rudder MCP tool with \`assign:claim ${taskId}\` to get your
       }
 
       console.log(`\nTo update task status: rudder task:update ${taskId} --status "${taskStatus}"`);
+    });
+
+  // agent:sync - reconcile state.json with reality (worktrees, agents dirs)
+  agent.command('sync')
+    .description('Sync state.json with actual worktrees/agents (recover from ghosts)')
+    .option('--dry-run', 'Show what would be done without making changes')
+    .option('--json', 'JSON output')
+    .action((options) => {
+      const config = getAgentConfig();
+      const havenPath = resolvePlaceholders('%haven%');
+      const worktreesDir = path.join(havenPath, 'worktrees');
+      const agentsDir = path.join(havenPath, 'agents');
+
+      const state = loadState();
+      if (!state.agents) state.agents = {};
+
+      const changes = { added: [], updated: [], orphaned: [] };
+
+      // Scan worktrees directory
+      if (fs.existsSync(worktreesDir)) {
+        const worktrees = fs.readdirSync(worktreesDir).filter(d =>
+          d.startsWith('T') && fs.statSync(path.join(worktreesDir, d)).isDirectory()
+        );
+
+        for (const taskId of worktrees) {
+          const worktreePath = path.join(worktreesDir, taskId);
+          const agentDir = path.join(agentsDir, taskId);
+          const missionFile = path.join(agentDir, 'mission.yaml');
+          const logFile = path.join(agentDir, 'run.log');
+
+          // Check if agent entry exists in state
+          if (!state.agents[taskId]) {
+            // Orphaned worktree - create agent entry from reality
+            const entry = {
+              status: 'orphaned',
+              recovered_at: new Date().toISOString(),
+              worktree: {
+                path: worktreePath,
+                branch: `task/${taskId}`
+              }
+            };
+
+            // Try to get more info from files
+            if (fs.existsSync(missionFile)) {
+              entry.mission_file = missionFile;
+            }
+            if (fs.existsSync(logFile)) {
+              entry.log_file = logFile;
+              // Check if log indicates completion
+              try {
+                const logContent = fs.readFileSync(logFile, 'utf8');
+                if (logContent.includes('exit code: 0') || logContent.includes('Exit code: 0')) {
+                  entry.status = 'completed';
+                }
+              } catch { /* ignore */ }
+            }
+
+            // Check for uncommitted changes
+            try {
+              const gitStatus = execSync('git status --porcelain', {
+                cwd: worktreePath,
+                encoding: 'utf8',
+                stdio: ['pipe', 'pipe', 'pipe']
+              }).trim();
+              if (gitStatus) {
+                entry.dirty_worktree = true;
+                entry.uncommitted_files = gitStatus.split('\n').length;
+              }
+            } catch { /* ignore */ }
+
+            if (!options.dryRun) {
+              state.agents[taskId] = entry;
+            }
+            changes.added.push({ taskId, status: entry.status });
+          } else if (state.agents[taskId].status === 'spawned') {
+            // Check if process is actually running
+            const pid = state.agents[taskId].pid;
+            let isRunning = false;
+            if (pid) {
+              try {
+                process.kill(pid, 0);
+                isRunning = true;
+              } catch { /* not running */ }
+            }
+
+            if (!isRunning) {
+              // Process died without updating state
+              if (!options.dryRun) {
+                state.agents[taskId].status = 'orphaned';
+                state.agents[taskId].orphaned_at = new Date().toISOString();
+                delete state.agents[taskId].pid;
+              }
+              changes.updated.push({ taskId, from: 'spawned', to: 'orphaned' });
+            }
+          }
+        }
+      }
+
+      // Find orphaned entries in state (no worktree exists)
+      for (const taskId of Object.keys(state.agents)) {
+        const worktreePath = path.join(worktreesDir, taskId);
+        if (!fs.existsSync(worktreePath) && state.agents[taskId].worktree) {
+          changes.orphaned.push({ taskId, status: state.agents[taskId].status });
+        }
+      }
+
+      if (!options.dryRun) {
+        saveState(state);
+      }
+
+      if (options.json) {
+        jsonOut({ changes, dry_run: options.dryRun });
+      } else {
+        const prefix = options.dryRun ? '[DRY-RUN] ' : '';
+        if (changes.added.length > 0) {
+          console.log(`${prefix}Added ${changes.added.length} orphaned agent(s):`);
+          changes.added.forEach(c => console.log(`  + ${c.taskId}: ${c.status}`));
+        }
+        if (changes.updated.length > 0) {
+          console.log(`${prefix}Updated ${changes.updated.length} agent(s):`);
+          changes.updated.forEach(c => console.log(`  ~ ${c.taskId}: ${c.from} → ${c.to}`));
+        }
+        if (changes.orphaned.length > 0) {
+          console.log(`${prefix}Orphaned entries (worktree missing):`);
+          changes.orphaned.forEach(c => console.log(`  ? ${c.taskId}: ${c.status}`));
+        }
+        if (changes.added.length === 0 && changes.updated.length === 0 && changes.orphaned.length === 0) {
+          console.log('State is in sync with reality');
+        }
+      }
     });
 
   // agent:clear
