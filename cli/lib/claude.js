@@ -152,9 +152,8 @@ export async function spawnClaude(options) {
   }
 
   // Sandbox HOME isolation: use agentDir/home to isolate Claude's config
-  // DISABLED for debugging - using normal HOME
-  // const sandboxHome = sandbox && agentDir ? path.join(agentDir, 'home') : null;
-  const sandboxHome = null;
+  // Required to prevent race conditions when spawning multiple agents in parallel
+  const sandboxHome = sandbox && agentDir ? path.join(agentDir, 'home') : null;
 
   const result = spawnClaudeWithSrt({
     prompt,
