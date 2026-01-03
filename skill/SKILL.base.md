@@ -99,10 +99,13 @@ Agents and coordinators NEVER chain. They return output and stop.
 **Memory = institutional knowledge. Logs = raw observations.**
 
 ```
-Agents PRODUCE logs → task:log
+Agents PRODUCE logs → task:log (CLI command, NOT files)
 Skill CONSOLIDATES logs → memory files
 Memory GUIDES future agents
 ```
+
+⚠️ **NEVER create log files directly** (no `.tip-log.txt`, no `*.log` files).
+Always use: `rudder task:log TNNN "message" --tip`
 
 Memory not consolidated before execution is considered **lost**.
 Lost memory is a **system failure**.
