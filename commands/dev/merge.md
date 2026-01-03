@@ -69,8 +69,11 @@ git cherry-pick <commit-sha>
 ## 4. Cleanup
 
 ```bash
-# Delete merged branch
-git branch -d feature/TNNN
+# If using worktree mode:
+rudder worktree cleanup TNNN --force
+
+# If standard mode (no worktree):
+git branch -d task/TNNN
 
 # Mark task done
 rudder task:update TNNN --status Done
@@ -85,8 +88,8 @@ When worktrees are enabled, agents work in isolated git worktrees with dedicated
 ## Pre-flight (Worktree)
 
 ```bash
-rudder worktree:status --json                 # Current worktree state
-rudder worktree:preflight --json              # Blockers, merge order
+rudder worktree status --json                 # Current worktree state
+rudder worktree preflight --json              # Blockers, merge order
 ```
 
 ## 0. Handle Uncommitted Changes
@@ -130,7 +133,7 @@ If there are uncommitted changes:
 ```bash
 # Get task/PR info
 rudder task:show TNNN
-rudder worktree:status --json
+rudder worktree status --json
 
 # Check for conflicts
 git fetch origin
@@ -150,7 +153,7 @@ git merge origin/agent/TNNN --no-edit
 git push origin main
 
 # Cleanup
-rudder worktree:cleanup TNNN
+rudder worktree cleanup TNNN
 ```
 
 ## 3. If Conflicts → Resolve with Context
@@ -210,9 +213,10 @@ git diff main...task/TNNN --name-only
 
 5. **Cleanup**:
    ```bash
+   # Merge branch (temporary)
    git branch -d merge/T042-to-E001
-   git branch -d task/T042
-   rudder worktree:cleanup TNNN
+   # Worktree + task branch (via rudder to update state)
+   rudder worktree cleanup TNNN --force
    ```
 
 ### Branch Nomenclature
@@ -250,7 +254,7 @@ When merging multiple tasks:
 git log --oneline --grep="T0" main | head -10
 
 # Worktree mode: use preflight for order
-rudder worktree:preflight --json
+rudder worktree preflight --json
 # Returns: merge_order: [T042, T043, T044]
 ```
 
