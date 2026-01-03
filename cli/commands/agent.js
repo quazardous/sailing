@@ -18,7 +18,7 @@ import { addDynamicHelp } from '../lib/help.js';
 import { getAgentConfig } from '../lib/config.js';
 import {
   createWorktree, getWorktreePath, getBranchName, worktreeExists, removeWorktree,
-  ensureBranchHierarchy, syncParentBranch, getParentBranch
+  ensureBranchHierarchy, syncParentBranch, getParentBranch, getMainBranch
 } from '../lib/worktree.js';
 import { spawnClaude, buildPromptFromMission, getLogFilePath } from '../lib/claude.js';
 import { buildConflictMatrix, suggestMergeOrder } from '../lib/conflicts.js';
@@ -410,10 +410,52 @@ Start by calling the rudder MCP tool with \`assign:claim ${taskId}\` to get your
       let cwd = findProjectRoot();
 
       if (useWorktree) {
+        // Handle orphaned worktree (exists on disk but not in state.json)
         if (worktreeExists(taskId)) {
-          console.error(`Worktree already exists for ${taskId}`);
-          console.error(`  Path: ${getWorktreePath(taskId)}`);
-          process.exit(1);
+          const worktreePath = getWorktreePath(taskId);
+          const branch = getBranchName(taskId);
+
+          // Check if worktree is clean (reusable)
+          let isDirty = false;
+          let hasCommits = false;
+          const mainBranch = getMainBranch();
+
+          try {
+            const gitStatus = execSync('git status --porcelain', {
+              cwd: worktreePath,
+              encoding: 'utf8',
+              stdio: ['pipe', 'pipe', 'pipe']
+            }).trim();
+            isDirty = gitStatus.length > 0;
+
+            // Check commits ahead of main
+            const ahead = execSync(`git rev-list --count ${mainBranch}..HEAD`, {
+              cwd: worktreePath,
+              encoding: 'utf8',
+              stdio: ['pipe', 'pipe', 'pipe']
+            }).trim();
+            hasCommits = parseInt(ahead, 10) > 0;
+          } catch { /* ignore */ }
+
+          if (isDirty || hasCommits) {
+            // Worktree has work that might be lost
+            escalate(`Orphaned worktree exists for ${taskId}`, [
+              `Path: ${worktreePath}`,
+              `Branch: ${branch}`,
+              isDirty ? `Has uncommitted changes` : `Has ${hasCommits} commit(s) ahead of ${mainBranch}`,
+              ``,
+              `Options:`,
+              `  agent:sync                # Recover into state`,
+              `  agent:reject ${taskId}    # Discard work`,
+              `  worktree remove ${taskId} # Manual cleanup`
+            ]);
+          } else {
+            // Clean worktree - auto-cleanup and proceed
+            if (!options.json) {
+              console.log(`Auto-cleaning orphaned worktree for ${taskId}...`);
+            }
+            removeWorktree(taskId, { force: true });
+          }
         }
 
         // Get parent branch based on branching strategy
