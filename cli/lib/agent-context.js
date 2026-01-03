@@ -49,8 +49,8 @@ function findMissionFile() {
   const projectRoot = findProjectRoot();
 
   // Check for mission.yaml in agent folder pattern
-  // If we're in a worktree at %haven%/agents/TNNN/worktree
-  // mission.yaml would be at %haven%/agents/TNNN/mission.yaml
+  // If we're in a worktree at ${haven}/agents/TNNN/worktree
+  // mission.yaml would be at ${haven}/agents/TNNN/mission.yaml
   const cwd = process.cwd();
   const cwdParts = cwd.split(path.sep);
 
@@ -72,8 +72,8 @@ function findMissionFile() {
   // Check if we're in a worktree and the parent has mission.yaml
   const worktreeInfo = checkGitWorktree();
   if (worktreeInfo.isWorktree) {
-    // Worktree might be at %haven%/agents/TNNN/worktree
-    // Mission would be at %haven%/agents/TNNN/mission.yaml
+    // Worktree might be at ${haven}/agents/TNNN/worktree
+    // Mission would be at ${haven}/agents/TNNN/mission.yaml
     const worktreeParent = path.dirname(projectRoot);
     const missionPath = path.join(worktreeParent, 'mission.yaml');
     if (fs.existsSync(missionPath)) {

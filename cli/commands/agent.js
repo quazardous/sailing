@@ -33,7 +33,7 @@ import {
  */
 function getAgentsBaseDir() {
   const custom = resolvePath('agents');
-  return custom || resolvePlaceholders('%haven%/agents');
+  return custom || resolvePlaceholders('${haven}/agents');
 }
 
 /**
@@ -1016,7 +1016,7 @@ Start by calling the rudder MCP tool with \`assign:claim ${taskId}\` to get your
     .option('--json', 'JSON output')
     .action((options) => {
       const config = getAgentConfig();
-      const havenPath = resolvePlaceholders('%haven%');
+      const havenPath = resolvePlaceholders('${haven}');
       const worktreesDir = path.join(havenPath, 'worktrees');
       const agentsDir = path.join(havenPath, 'agents');
 

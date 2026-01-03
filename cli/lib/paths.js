@@ -2,16 +2,16 @@
  * Path resolution system with placeholder support
  *
  * Built-in placeholders:
- *   %home%         → user home directory (~/)
- *   %project%      → project root directory (^/)
- *   %project_name% → project directory name
- *   %project_hash% → SHA256 of git remote or realpath (first 12 chars)
- *   %haven%        → project haven directory (~/.sailing/havens/%project_hash%)
- *   %sibling%      → sibling directory for isolation (%project%/../%project_name%-sailing)
+ *   ${home}         → user home directory (~/)
+ *   ${project}      → project root directory (^/)
+ *   ${project_name} → project directory name
+ *   ${project_hash} → SHA256 of git remote or realpath (first 12 chars)
+ *   ${haven}        → project haven directory (~/.sailing/havens/${project_hash})
+ *   ${sibling}      → sibling directory for isolation (${project}/../${project_name}-sailing)
  *
  * Shortcuts:
- *   ~/  → %home%/
- *   ^/  → %project%/
+ *   ~/  → ${home}/
+ *   ^/  → ${project}/
  *
  * All placeholders can be overridden in paths.yaml (no circular refs allowed)
  */
@@ -96,7 +96,7 @@ function loadCustomPlaceholders() {
  * Resolve placeholders in a string
  * Supports recursive resolution (max depth to prevent infinite loops)
  *
- * @param {string} str - String with %placeholder% patterns
+ * @param {string} str - String with ${placeholder} patterns
  * @param {number} depth - Current recursion depth
  * @returns {string} Resolved string
  */
@@ -118,23 +118,23 @@ export function resolvePlaceholders(str, depth = 0) {
 
   let result = str;
 
-  // Resolve shortcuts: ~/ → %home%/, ^/ → %project%/
+  // Resolve shortcuts: ~/ → ${home}/, ^/ → ${project}/
   if (result.startsWith('~/')) {
-    result = '%home%/' + result.slice(2);
+    result = '${home}/' + result.slice(2);
   } else if (result.startsWith('^/')) {
-    result = '%project%/' + result.slice(2);
+    result = '${project}/' + result.slice(2);
   }
   let hasPlaceholder = true;
 
   // Keep resolving until no more placeholders
   while (hasPlaceholder) {
     hasPlaceholder = false;
-    result = result.replace(/%([a-z_]+)%/g, (match, name) => {
+    result = result.replace(/\$\{([a-z_]+)\}/g, (match, name) => {
       if (name in all) {
         hasPlaceholder = true;
         const value = all[name];
         // Recursively resolve if value contains placeholders
-        return typeof value === 'string' && value.includes('%')
+        return typeof value === 'string' && value.includes('${')
           ? resolvePlaceholders(value, depth + 1)
           : value;
       }

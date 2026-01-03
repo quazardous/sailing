@@ -495,18 +495,18 @@ if [ -n "$FOLDERS_PROFILE" ]; then
   # Helper to check/fix haven paths (for haven profile with --fix)
   check_haven_path() {
     local key="$1"
-    local expected="%haven%/$2"
+    local expected="\${haven}/$2"
     local current=$(grep -E "^\s*$key:" "$PATHS_FILE" 2>/dev/null | sed 's/.*:\s*//' | tr -d '"' | tr -d "'")
 
     if [ -z "$current" ]; then
-      echo "  $key: \"$expected\"" >> "$PATHS_FILE"
+      echo "  $key: $expected" >> "$PATHS_FILE"
       echo -e "  ${GREEN}Added: $key${NC}"
-    elif [[ "$current" != *"%haven%"* ]]; then
+    elif [[ "$current" != *"\${haven}"* ]] && [[ "$current" != *"%haven%"* ]]; then
       if [ "$FIX" = true ]; then
-        sed -i "s|$key:.*|$key: \"$expected\"|" "$PATHS_FILE"
+        sed -i "s|$key:.*|$key: $expected|" "$PATHS_FILE"
         echo -e "  ${GREEN}Fixed: $key → $expected${NC}"
       else
-        echo -e "  ${YELLOW}Warning: $key should use %haven% (use --fix)${NC}"
+        echo -e "  ${YELLOW}Warning: $key should use \${haven} (use --fix)${NC}"
       fi
     else
       echo -e "  ${GREEN}OK: $key${NC}"
@@ -515,6 +515,20 @@ if [ -n "$FOLDERS_PROFILE" ]; then
 
   # Check if paths.yaml already exists
   if [ -f "$PATHS_FILE" ] && [ "$FORCE" != "true" ]; then
+    # Migrate old %placeholder% to ${placeholder} syntax
+    if grep -q '%haven%\|%sibling%\|%project_hash%' "$PATHS_FILE" 2>/dev/null; then
+      if [ "$FIX" = true ]; then
+        if [ "$DRY_RUN" = true ]; then
+          echo "  Would migrate: %placeholder% → \${placeholder}"
+        else
+          sed -i 's/%haven%/${haven}/g; s/%sibling%/${sibling}/g; s/%project_hash%/${project_hash}/g' "$PATHS_FILE"
+          echo -e "  ${GREEN}Migrated: %placeholder% → \${placeholder}${NC}"
+        fi
+      else
+        echo -e "  ${YELLOW}Warning: paths.yaml uses old %placeholder% syntax${NC}"
+        echo -e "  ${YELLOW}Run with --fix to migrate to \${placeholder}${NC}"
+      fi
+    fi
     if [ "$FIX" = true ] && [ "$FOLDERS_PROFILE" = "haven" ]; then
       echo -e "  ${BLUE}Checking haven paths...${NC}"
       check_haven_path "artefacts" "artefacts"
@@ -533,32 +547,32 @@ if [ -n "$FOLDERS_PROFILE" ]; then
           cat > "$PATHS_FILE" << 'EOF'
 # Folder profile: project
 # Worktrees in haven, artefacts in project
-artefacts: ".sailing/artefacts"
-memory: ".sailing/memory"
-worktrees: "%haven%/worktrees/%project_hash%"
-agents: "%haven%/agents"
+artefacts: .sailing/artefacts
+memory: .sailing/memory
+worktrees: ${haven}/worktrees/${project_hash}
+agents: ${haven}/agents
 EOF
           ;;
         haven)
           cat > "$PATHS_FILE" << 'EOF'
 # Folder profile: haven
 # Everything in ~/.sailing/havens/<hash>/
-artefacts: "%haven%/artefacts"
-memory: "%haven%/memory"
-state: "%haven%/state.json"
-components: "%haven%/components.yaml"
-worktrees: "%haven%/worktrees"
-agents: "%haven%/agents"
+artefacts: ${haven}/artefacts
+memory: ${haven}/memory
+state: ${haven}/state.json
+components: ${haven}/components.yaml
+worktrees: ${haven}/worktrees
+agents: ${haven}/agents
 EOF
           ;;
         sibling)
           cat > "$PATHS_FILE" << 'EOF'
 # Folder profile: sibling
 # Worktrees in sibling directory
-artefacts: ".sailing/artefacts"
-memory: ".sailing/memory"
-worktrees: "%sibling%/worktrees"
-agents: "%sibling%/agents"
+artefacts: .sailing/artefacts
+memory: .sailing/memory
+worktrees: ${sibling}/worktrees
+agents: ${sibling}/agents
 EOF
           ;;
       esac

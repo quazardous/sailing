@@ -270,7 +270,7 @@ updated: '${now}'
  * Get path to project memory file (MEMORY.md in artefacts)
  */
 export function projectMemoryFilePath() {
-  const artefactsPath = resolvePath('artefacts') || resolvePlaceholders('%haven%/artefacts');
+  const artefactsPath = resolvePath('artefacts') || resolvePlaceholders('${haven}/artefacts');
   return path.join(artefactsPath, 'MEMORY.md');
 }
 

@@ -342,7 +342,40 @@ echo
 echo -e "${BLUE}Checking protected files...${NC}"
 
 do_mkdir "$(dirname "$COMPONENTS_FILE")"
-do_cp "$SCRIPT_DIR/dist/paths.yaml-dist" "$DEFAULT_SAILING_DIR/paths.yaml" true
+
+# Generate paths.yaml from schema if it doesn't exist
+PATHS_FILE="$DEFAULT_SAILING_DIR/paths.yaml"
+if [ ! -f "$PATHS_FILE" ] || [ "$FORCE" = true ]; then
+  # Determine profile based on --use-worktree
+  PATHS_PROFILE="${FOLDERS_PROFILE:-}"
+  if [ "$DRY_RUN" = true ]; then
+    echo "  Would generate: paths.yaml (profile: ${PATHS_PROFILE:-default})"
+  else
+    if [ -n "$PATHS_PROFILE" ]; then
+      bin/rudder paths:init --profile "$PATHS_PROFILE" --force 2>/dev/null
+    else
+      bin/rudder paths:init --force 2>/dev/null
+    fi
+    echo -e "  ${GREEN}Generated: paths.yaml${NC}"
+  fi
+else
+  echo -e "  ${GREEN}Exists: paths.yaml${NC}"
+  # Migrate old %placeholder% to ${placeholder} syntax
+  if grep -q '%haven%\|%sibling%\|%project_hash%' "$PATHS_FILE" 2>/dev/null; then
+    if [ "$FIX" = true ]; then
+      if [ "$DRY_RUN" = true ]; then
+        echo "  Would migrate: %placeholder% → \${placeholder}"
+      else
+        sed -i 's/%haven%/${haven}/g; s/%sibling%/${sibling}/g; s/%project_hash%/${project_hash}/g' "$PATHS_FILE"
+        echo -e "  ${GREEN}Migrated: %placeholder% → \${placeholder}${NC}"
+      fi
+    else
+      echo -e "  ${YELLOW}Warning: paths.yaml uses old %placeholder% syntax${NC}"
+      echo -e "  ${YELLOW}Run with --fix to migrate to \${placeholder}${NC}"
+    fi
+  fi
+fi
+
 do_cp "$SCRIPT_DIR/dist/components.yaml-dist" "$COMPONENTS_FILE" true
 do_cp "$SCRIPT_DIR/dist/ROADMAP.md-dist" "$ARTEFACTS/ROADMAP.md" true
 do_cp "$SCRIPT_DIR/dist/POSTIT.md-dist" "$ARTEFACTS/POSTIT.md" true
@@ -363,27 +396,24 @@ echo
 # 9. Configure repo paths in paths.yaml (must use ^/ prefix for devinstall)
 echo -e "${BLUE}Configuring repo paths...${NC}"
 
+# For devinstall, prompting and templates must point to source repo
 configure_repo_path() {
   local key="$1"
   local value="^/$key"
-  local file="$DEFAULT_SAILING_DIR/paths.yaml"
+  local current=$(bin/rudder paths:get "$key" --raw 2>/dev/null)
 
-  # Check non-comment lines only
-  local current=$(grep -E "^[[:space:]]*$key:" "$file" 2>/dev/null | grep -v "^[[:space:]]*#" | head -1)
-
-  if [ -z "$current" ]; then
-    echo "  $key: $value" >> "$file"
-    echo -e "  ${GREEN}Added: $key: $value${NC}"
-  elif ! echo "$current" | grep -q "\^/$key"; then
-    if [ "$FIX" = true ]; then
-      sed -i "s|^[[:space:]]*$key:.*|  $key: $value|" "$file"
-      echo -e "  ${GREEN}Fixed: $key: $value${NC}"
+  if [ "$current" = "$value" ]; then
+    echo -e "  ${GREEN}OK: $key: $value${NC}"
+  elif [ "$FIX" = true ] || [ -z "$current" ] || [ "$current" = ".sailing/$key" ]; then
+    if [ "$DRY_RUN" = true ]; then
+      echo "  Would set: $key: $value"
     else
-      echo -e "  ${YELLOW}Warning: paths.yaml has custom $key path${NC}"
-      echo -e "  ${YELLOW}For devinstall, it MUST be: $key: $value (use --fix)${NC}"
+      bin/rudder paths:set "$key" "$value" 2>/dev/null
+      echo -e "  ${GREEN}Set: $key: $value${NC}"
     fi
   else
-    echo -e "  ${GREEN}OK: $key: $value${NC}"
+    echo -e "  ${YELLOW}Warning: paths.yaml has custom $key path${NC}"
+    echo -e "  ${YELLOW}For devinstall, it MUST be: $key: $value (use --fix)${NC}"
   fi
 }
 
@@ -410,73 +440,39 @@ bin/rudder permissions:fix || {
 }
 echo
 
-# 12. Apply folder profile (optional)
+# 12. Verify folder profile paths (paths:init already applied profile defaults)
 if [ -n "$FOLDERS_PROFILE" ]; then
-  echo -e "${BLUE}Applying folder profile: $FOLDERS_PROFILE${NC}"
+  echo -e "${BLUE}Verifying folder profile: $FOLDERS_PROFILE${NC}"
 
-  PATHS_FILE="$DEFAULT_SAILING_DIR/paths.yaml"
+  # paths:init with --profile already set correct defaults
+  # Just verify critical paths are correct
+  verify_path() {
+    local key="$1"
+    local expected="$2"
+    local current=$(bin/rudder paths:get "$key" --raw 2>/dev/null)
 
-  # For devinstall, we always preserve ^/ prefixes for prompting/templates
-  # Only configure worktrees/agents paths based on profile
+    if [ "$current" = "$expected" ]; then
+      echo -e "  ${GREEN}OK: $key${NC}"
+    elif [ -z "$current" ]; then
+      bin/rudder paths:set "$key" "$expected" 2>/dev/null
+      echo -e "  ${GREEN}Set: $key${NC}"
+    else
+      echo -e "  ${YELLOW}Custom: $key = $current${NC}"
+    fi
+  }
 
   case "$FOLDERS_PROFILE" in
-    project)
-      # Append worktree paths if not present
-      if ! grep -q "^worktrees:" "$PATHS_FILE" 2>/dev/null; then
-        echo 'worktrees: "%haven%/worktrees/%project_hash%"' >> "$PATHS_FILE"
-        echo -e "  ${GREEN}Added: worktrees path${NC}"
-      fi
-      if ! grep -q "^agents:" "$PATHS_FILE" 2>/dev/null; then
-        echo 'agents: "%haven%/agents"' >> "$PATHS_FILE"
-        echo -e "  ${GREEN}Added: agents path${NC}"
-      fi
-      ;;
     haven)
-      # Helper to check/fix haven paths
-      check_haven_path() {
-        local key="$1"
-        local expected="%haven%/$2"
-        local current=$(grep -E "^\s*$key:" "$PATHS_FILE" 2>/dev/null | sed 's/.*:\s*//' | tr -d '"' | tr -d "'")
-
-        if [ -z "$current" ]; then
-          echo "  $key: \"$expected\"" >> "$PATHS_FILE"
-          echo -e "  ${GREEN}Added: $key${NC}"
-        elif [[ "$current" != *"%haven%"* ]]; then
-          if [ "$FIX" = true ]; then
-            sed -i "s|$key:.*|$key: \"$expected\"|" "$PATHS_FILE"
-            echo -e "  ${GREEN}Fixed: $key → $expected${NC}"
-          else
-            echo -e "  ${YELLOW}Warning: $key should use %haven% (use --fix)${NC}"
-          fi
-        else
-          echo -e "  ${GREEN}OK: $key${NC}"
-        fi
-      }
-
-      check_haven_path "artefacts" "artefacts"
-      check_haven_path "memory" "memory"
-      check_haven_path "state" "state.json"
-      check_haven_path "components" "components.yaml"
-
-      # Worktrees and agents
-      if ! grep -q "^worktrees:" "$PATHS_FILE" 2>/dev/null; then
-        echo 'worktrees: "%haven%/worktrees"' >> "$PATHS_FILE"
-        echo -e "  ${GREEN}Added: worktrees path${NC}"
-      fi
-      if ! grep -q "^agents:" "$PATHS_FILE" 2>/dev/null; then
-        echo 'agents: "%haven%/agents"' >> "$PATHS_FILE"
-        echo -e "  ${GREEN}Added: agents path${NC}"
-      fi
+      verify_path "worktrees" "%haven%/worktrees"
+      verify_path "agents" "%haven%/agents"
       ;;
     sibling)
-      if ! grep -q "^worktrees:" "$PATHS_FILE" 2>/dev/null; then
-        echo 'worktrees: "%sibling%/worktrees"' >> "$PATHS_FILE"
-        echo -e "  ${GREEN}Added: worktrees path${NC}"
-      fi
-      if ! grep -q "^agents:" "$PATHS_FILE" 2>/dev/null; then
-        echo 'agents: "%sibling%/agents"' >> "$PATHS_FILE"
-        echo -e "  ${GREEN}Added: agents path${NC}"
-      fi
+      verify_path "worktrees" "%sibling%/worktrees"
+      verify_path "agents" "%sibling%/agents"
+      ;;
+    project)
+      verify_path "worktrees" "%haven%/worktrees/%project_hash%"
+      verify_path "agents" "%haven%/agents"
       ;;
   esac
   echo

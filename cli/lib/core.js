@@ -65,7 +65,7 @@ const expandHome = expandPath;
  *
  * Path prefixes:
  *   (none)   → relative to project root
- *   %haven%  → haven directory (~/.sailing/havens/<hash>)
+ *   ${haven}  → haven directory (~/.sailing/havens/<hash>)
  *   ~/       → home directory
  *   ^/       → sailing repo root (devinstall only)
  */
@@ -88,12 +88,12 @@ const DEFAULT_PATHS = {
   postit:     { path: '.sailing/artefacts/POSTIT.md', type: 'file' },
 
   // Haven directories (per-project isolation outside project root)
-  haven:        { path: '%haven%', type: 'dir' },
-  agents:       { path: '%haven%/agents', type: 'dir' },
-  worktrees:    { path: '%haven%/worktrees', type: 'dir' },
-  runs:         { path: '%haven%/runs', type: 'dir' },
-  assignments:  { path: '%haven%/assignments', type: 'dir' },
-  srtConfig:    { path: '%haven%/srt-settings.json', type: 'file' }
+  haven:        { path: '${haven}', type: 'dir' },
+  agents:       { path: '${haven}/agents', type: 'dir' },
+  worktrees:    { path: '${haven}/worktrees', type: 'dir' },
+  runs:         { path: '${haven}/runs', type: 'dir' },
+  assignments:  { path: '${haven}/assignments', type: 'dir' },
+  srtConfig:    { path: '${haven}/srt-settings.json', type: 'file' }
 };
 
 // Cached config
@@ -235,9 +235,9 @@ export function loadPathsConfig() {
  *   /          → absolute path
  *   ~/         → home directory
  *   ^/         → sailing repo root (devinstall mode only)
- *   %haven%    → per-project haven directory
- *   %home%     → home directory
- *   %project%  → project root
+ *   ${haven}    → per-project haven directory
+ *   ${home}     → home directory
+ *   ${project}  → project root
  */
 export function getPath(key) {
   const config = loadPathsConfig();
@@ -252,8 +252,8 @@ export function getPath(key) {
 
   if (!configuredPath) return null;
 
-  // Handle %placeholder% paths first
-  if (configuredPath.includes('%')) {
+  // Handle ${placeholder} paths first
+  if (configuredPath.includes('${')) {
     return resolvePlaceholders(configuredPath);
   }
 
@@ -389,7 +389,7 @@ export function getPathsInfo() {
   const componentsPath = getComponentsFile();
 
   // Resolve haven base path
-  const havenPath = resolvePlaceholders('%haven%');
+  const havenPath = resolvePlaceholders('${haven}');
   const home = os.homedir();
 
   // Helper to make path relative to home (~/...)
@@ -404,7 +404,7 @@ export function getPathsInfo() {
   const getHavenPath = (key, subpath) => {
     const custom = resolvePath(key);
     const resolved = custom || path.join(havenPath, subpath);
-    const template = custom ? config.paths?.[key] : `%haven%/${subpath}`;
+    const template = custom ? config.paths?.[key] : '${haven}/' + subpath;
     return {
       template,
       relative: toHomeRelative(resolved),
@@ -444,7 +444,7 @@ export function getPathsInfo() {
     config: getProjectPath('config'),
     // Haven-based paths (with override support)
     haven: {
-      template: '%haven%',
+      template: '${haven}',
       relative: toHomeRelative(havenPath),
       absolute: havenPath
     },

@@ -175,7 +175,7 @@ export function registerDbCommands(program) {
     .option('--dry-run', 'Show what would be migrated')
     .action(async (options) => {
       // Read from haven's state.json (not project's)
-      const havenPath = resolvePlaceholders('%haven%');
+      const havenPath = resolvePlaceholders('${haven}');
       const stateFile = path.join(havenPath, 'state.json');
 
       if (!fs.existsSync(stateFile)) {

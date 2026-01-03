@@ -2,7 +2,7 @@
  * Database layer for sailing runtime state
  * Uses custom jsondb for concurrent-safe JSON storage
  *
- * Files stored in %haven%/db/:
+ * Files stored in ${haven}/db/:
  *   - agents.json: Agent tracking
  *   - runs.json: Run history
  *
@@ -20,7 +20,7 @@ let runsDb = null;
  */
 function getDbDir() {
   const custom = resolvePath('db');
-  return custom || resolvePlaceholders('%haven%/db');
+  return custom || resolvePlaceholders('${haven}/db');
 }
 
 /**
