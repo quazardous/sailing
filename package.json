@@ -1,6 +1,6 @@
 {
   "name": "@quazardous/sailing",
-  "version": "1.6.0",
+  "version": "1.6.1",
   "type": "module",
   "description": "Project governance CLI for sailing workflow - PRD/Epic/Task management",
   "bin": {

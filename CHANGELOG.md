@@ -2,6 +2,23 @@
 
 All notable changes to the Sailing Framework will be documented in this file.
 
+## [1.6.1] - 2026-01-03
+
+### Added
+- `shared/artefact-editing.md` fragment for CLI editing rules
+- `editing` set in workflows.yaml for operations that edit artefacts
+
+### Fixed
+- Bootstrap prompt: explicit warning against creating log files (.tip-log.txt)
+- Constitutional rule #4: NEVER Edit/Write artefacts directly
+- All skills updated to use `:patch` instead of Edit tool
+- `skill/gates.md`: removed "Allowed edits (Edit tool)" section
+- Consistent messaging across all prompting fragments
+
+### Changed
+- Artefact editing pattern: `rudder <entity>:patch` for body, `:update` for frontmatter
+- Operations prd-breakdown, epic-breakdown, epic-review, prd-story, prd-story-finalize now include `editing` set
+
 ## [1.6.0] - 2026-01-03
 
 ### Added
