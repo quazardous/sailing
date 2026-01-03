@@ -2,6 +2,37 @@
 
 All notable changes to the Sailing Framework will be documented in this file.
 
+## [1.5.0] - 2026-01-03
+
+### Added
+- Custom `jsondb` library for concurrent-safe JSON storage
+  - Plain JSON files (human-readable, easy to debug)
+  - File-based locking with stale detection (30s timeout)
+  - Atomic writes (temp file + rename)
+  - MongoDB-like API: find, insert, update, remove
+  - Query operators: `$gt`, `$gte`, `$lt`, `$lte`, `$ne`, `$in`, `$exists`
+  - Update operators: `$set`, `$unset`, `$inc`, `$push`
+- `db:` command group for database management
+  - `db:status` - show database info and counts
+  - `db:agents` - list all agents
+  - `db:agent <id>` - show agent details
+  - `db:delete/clear` - remove agents
+  - `db:runs <id>` - show run history
+  - `db:migrate` - migrate from state.json
+  - `db:compact` - compact database files
+- `agent:sync` command to reconcile state with reality (recover ghosts)
+- Configurable `db` path via paths.yaml (default: `%haven%/db`)
+
+### Fixed
+- Ghost agents: parallel spawns no longer overwrite each other
+  - Atomic state updates with file locking in state.js
+- `~/.claude.json` corruption during parallel agent spawns
+  - Re-enabled sandboxHome isolation per agent
+
+### Changed
+- Agent tracking moved from state.json to jsondb (agents.json, runs.json)
+- state.json now only stores counters (prd, epic, task, story)
+
 ## [1.4.0] - 2025-12-31
 
 ### Added
