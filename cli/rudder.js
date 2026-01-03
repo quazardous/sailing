@@ -68,6 +68,7 @@ import { registerWorktreeCommands } from './commands/worktree.js';
 import { registerSpawnCommands } from './commands/spawn.js';
 import { registerWorkflowCommands } from './commands/workflow.js';
 import { registerArtifactCommands } from './commands/artifact.js';
+import { registerDbCommands } from './commands/db.js';
 
 // Expand colon syntax: task:list → task list (first arg only, if it looks like group:command)
 let commandExpanded = false;
@@ -108,6 +109,7 @@ registerWorktreeCommands(program);
 registerSpawnCommands(program);
 registerWorkflowCommands(program);
 registerArtifactCommands(program);
+registerDbCommands(program);
 registerUtilCommands(program);
 registerPermissionsCommands(program);
 
