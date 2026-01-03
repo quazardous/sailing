@@ -2,6 +2,31 @@
 
 All notable changes to the Sailing Framework will be documented in this file.
 
+## [1.6.0] - 2026-01-03
+
+### Added
+- Hierarchical memory system: Task → Epic → PRD → Project
+  - Template-based creation (memory-epic.md, memory-prd.md, memory-dist.md)
+  - `memory:sync` auto-creates missing PRD/epic memory files
+  - `prd:create` auto-creates PRD memory file
+  - Contextual escalation guide in `memory:sync` output
+- Install scripts: `--dry-run` support for both devinstall.sh and install.sh
+
+### Fixed
+- `listSailingBranches` now strips `+` prefix (git worktree indicator)
+- Spawn handles orphaned worktrees intelligently:
+  - Clean orphan → auto-cleanup and proceed
+  - Dirty/has commits → escalate with recovery options
+- Delete orphaned branches (0 commits ahead) and recreate from current parent
+  - Ensures worktree starts from latest baseBranch (main, prd/*, epic/*)
+- `merge.md` command syntax: `worktree X` not `worktree:X`
+- Use `rudder worktree cleanup` for state-aware cleanup
+
+### Changed
+- Install scripts refactored with utility functions (do_mkdir, do_cp, do_ln, do_write)
+- Protected files pattern for user-editable configs
+- MEMORY.md included in haven artefacts
+
 ## [1.5.0] - 2026-01-03
 
 ### Added
