@@ -1,13 +1,15 @@
 /**
  * Database management commands for rudder CLI
- * CRUD operations on sailing.db tables
+ * CRUD operations on JSON collections (agents.json, runs.json)
  */
+import fs from 'fs';
+import path from 'path';
 import { jsonOut } from '../lib/core.js';
 import {
-  getDb, getAgent, getAllAgents, deleteAgent, clearAllAgents,
+  getAgentsDb, getRunsDb, getAgent, getAllAgents, deleteAgent, clearAllAgents,
   upsertAgent, getRunsForTask, migrateFromStateJson
 } from '../lib/db.js';
-import { loadState, saveState } from '../lib/state.js';
+import { resolvePlaceholders } from '../lib/paths.js';
 import { addDynamicHelp } from '../lib/help.js';
 
 /**
@@ -15,31 +17,38 @@ import { addDynamicHelp } from '../lib/help.js';
  */
 export function registerDbCommands(program) {
   const db = program.command('db')
-    .description('Database management (sailing.db)');
+    .description('Database management (NeDB JSON files)');
 
   addDynamicHelp(db, { entityType: 'db' });
 
   // db:status - show database info
   db.command('status')
-    .description('Show database status and table counts')
+    .description('Show database status and collection counts')
     .option('--json', 'JSON output')
-    .action((options) => {
-      const database = getDb();
+    .action(async (options) => {
+      const agents = await getAllAgents();
+      const agentsDb = getAgentsDb();
+      const runsDb = getRunsDb();
+      const runs = await runsDb.find({});
 
-      const agentCount = database.prepare('SELECT COUNT(*) as count FROM agents').get().count;
-      const runCount = database.prepare('SELECT COUNT(*) as count FROM runs').get().count;
-
-      const statusCounts = database.prepare(`
-        SELECT status, COUNT(*) as count FROM agents GROUP BY status
-      `).all();
+      const statusCounts = {};
+      agents.forEach(a => {
+        statusCounts[a.status] = (statusCounts[a.status] || 0) + 1;
+      });
 
       if (options.json) {
-        jsonOut({ agents: agentCount, runs: runCount, byStatus: statusCounts });
+        jsonOut({
+          agents: agents.length,
+          runs: runs.length,
+          byStatus: statusCounts
+        });
       } else {
-        console.log('Database: sailing.db\n');
-        console.log(`Agents: ${agentCount}`);
-        statusCounts.forEach(s => console.log(`  ${s.status}: ${s.count}`));
-        console.log(`\nRuns: ${runCount}`);
+        console.log('Database: jsondb (plain JSON files)\n');
+        console.log(`Agents: ${agents.length}`);
+        Object.entries(statusCounts).forEach(([status, count]) => {
+          console.log(`  ${status}: ${count}`);
+        });
+        console.log(`\nRuns: ${runs.length}`);
       }
     });
 
@@ -49,8 +58,8 @@ export function registerDbCommands(program) {
     .description('List all agents')
     .option('--status <status>', 'Filter by status')
     .option('--json', 'JSON output')
-    .action((options) => {
-      const agents = getAllAgents({ status: options.status });
+    .action(async (options) => {
+      const agents = await getAllAgents({ status: options.status });
 
       if (options.json) {
         jsonOut(agents);
@@ -71,11 +80,11 @@ export function registerDbCommands(program) {
   db.command('agent <task-id>')
     .description('Show agent details')
     .option('--json', 'JSON output')
-    .action((taskId, options) => {
+    .action(async (taskId, options) => {
       taskId = taskId.toUpperCase();
       if (!taskId.startsWith('T')) taskId = 'T' + taskId;
 
-      const agent = getAgent(taskId);
+      const agent = await getAgent(taskId);
 
       if (!agent) {
         console.error(`Agent not found: ${taskId}`);
@@ -90,7 +99,7 @@ export function registerDbCommands(program) {
         if (agent.pid) console.log(`PID: ${agent.pid}`);
         if (agent.spawnedAt) console.log(`Spawned: ${agent.spawnedAt}`);
         if (agent.endedAt) console.log(`Ended: ${agent.endedAt}`);
-        if (agent.exitCode !== null) console.log(`Exit code: ${agent.exitCode}`);
+        if (agent.exitCode !== undefined) console.log(`Exit code: ${agent.exitCode}`);
         if (agent.worktree) {
           console.log(`\nWorktree:`);
           console.log(`  Path: ${agent.worktree.path}`);
@@ -106,17 +115,17 @@ export function registerDbCommands(program) {
   // db:delete - delete agent entry
   db.command('delete <task-id>')
     .description('Delete agent entry')
-    .action((taskId) => {
+    .action(async (taskId) => {
       taskId = taskId.toUpperCase();
       if (!taskId.startsWith('T')) taskId = 'T' + taskId;
 
-      const agent = getAgent(taskId);
+      const agent = await getAgent(taskId);
       if (!agent) {
         console.error(`Agent not found: ${taskId}`);
         process.exit(1);
       }
 
-      deleteAgent(taskId);
+      await deleteAgent(taskId);
       console.log(`Deleted: ${taskId}`);
     });
 
@@ -124,13 +133,13 @@ export function registerDbCommands(program) {
   db.command('clear')
     .description('Clear all agents')
     .option('--confirm', 'Confirm deletion')
-    .action((options) => {
+    .action(async (options) => {
       if (!options.confirm) {
         console.error('Use --confirm to clear all agents');
         process.exit(1);
       }
 
-      const count = clearAllAgents();
+      const count = await clearAllAgents();
       console.log(`Cleared ${count} agent(s)`);
     });
 
@@ -138,11 +147,11 @@ export function registerDbCommands(program) {
   db.command('runs <task-id>')
     .description('Show run history for a task')
     .option('--json', 'JSON output')
-    .action((taskId, options) => {
+    .action(async (taskId, options) => {
       taskId = taskId.toUpperCase();
       if (!taskId.startsWith('T')) taskId = 'T' + taskId;
 
-      const runs = getRunsForTask(taskId);
+      const runs = await getRunsForTask(taskId);
 
       if (options.json) {
         jsonOut(runs);
@@ -152,20 +161,29 @@ export function registerDbCommands(program) {
           return;
         }
         console.log(`Runs for ${taskId}:\n`);
-        runs.forEach((r, i) => {
-          const status = r.exit_code === 0 ? '✓' : r.exit_code === null ? '…' : '✗';
-          console.log(`  ${status} Run #${r.id}: ${r.started_at}`);
-          if (r.ended_at) console.log(`    Ended: ${r.ended_at}, exit: ${r.exit_code}`);
+        runs.forEach((r) => {
+          const status = r.exitCode === 0 ? '✓' : r.exitCode === undefined ? '…' : '✗';
+          console.log(`  ${status} Run ${r._id}: ${r.startedAt}`);
+          if (r.endedAt) console.log(`    Ended: ${r.endedAt}, exit: ${r.exitCode}`);
         });
       }
     });
 
-  // db:migrate - migrate from state.json
+  // db:migrate - migrate from haven's state.json
   db.command('migrate')
-    .description('Migrate agents from state.json to sailing.db')
+    .description('Migrate agents from haven state.json to jsondb')
     .option('--dry-run', 'Show what would be migrated')
-    .action((options) => {
-      const state = loadState();
+    .action(async (options) => {
+      // Read from haven's state.json (not project's)
+      const havenPath = resolvePlaceholders('%haven%');
+      const stateFile = path.join(havenPath, 'state.json');
+
+      if (!fs.existsSync(stateFile)) {
+        console.log('No haven state.json found');
+        return;
+      }
+
+      const state = JSON.parse(fs.readFileSync(stateFile, 'utf8'));
 
       if (!state.agents || Object.keys(state.agents).length === 0) {
         console.log('No agents in state.json to migrate');
@@ -175,60 +193,32 @@ export function registerDbCommands(program) {
       const count = Object.keys(state.agents).length;
 
       if (options.dryRun) {
-        console.log(`Would migrate ${count} agent(s):`);
+        console.log(`Would migrate ${count} agent(s) from ${stateFile}:`);
         Object.entries(state.agents).forEach(([taskId, data]) => {
           console.log(`  ${taskId}: ${data.status}`);
         });
         return;
       }
 
-      const migrated = migrateFromStateJson(state.agents);
-      console.log(`Migrated ${migrated} agent(s) to sailing.db`);
+      const migrated = await migrateFromStateJson(state.agents);
+      console.log(`Migrated ${migrated} agent(s) to jsondb`);
 
       // Remove agents from state.json (keep counters)
       delete state.agents;
-      saveState(state);
+      fs.writeFileSync(stateFile, JSON.stringify(state, null, 2) + '\n');
       console.log('Removed agents from state.json');
     });
 
-  // db:sql - run raw SQL query
-  db.command('sql <query>')
-    .description('Run raw SQL query (read-only)')
-    .option('--write', 'Allow write operations')
-    .option('--json', 'JSON output')
-    .action((query, options) => {
-      const database = getDb();
+  // db:compact - compact database files
+  db.command('compact')
+    .description('Compact database files (remove deleted entries)')
+    .action(async () => {
+      const agentsDb = getAgentsDb();
+      const runsDb = getRunsDb();
 
-      // Safety check for writes
-      const isWrite = /^\s*(INSERT|UPDATE|DELETE|DROP|CREATE|ALTER)/i.test(query);
-      if (isWrite && !options.write) {
-        console.error('Write operations require --write flag');
-        process.exit(1);
-      }
+      await agentsDb.compactDatafile();
+      await runsDb.compactDatafile();
 
-      try {
-        if (isWrite) {
-          const result = database.prepare(query).run();
-          if (options.json) {
-            jsonOut(result);
-          } else {
-            console.log(`Changes: ${result.changes}`);
-          }
-        } else {
-          const rows = database.prepare(query).all();
-          if (options.json) {
-            jsonOut(rows);
-          } else {
-            if (rows.length === 0) {
-              console.log('No results');
-            } else {
-              console.table(rows);
-            }
-          }
-        }
-      } catch (err) {
-        console.error(`SQL error: ${err.message}`);
-        process.exit(1);
-      }
+      console.log('Compacted: agents.json, runs.json');
     });
 }

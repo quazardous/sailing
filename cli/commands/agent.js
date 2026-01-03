@@ -11,8 +11,8 @@ import { resolvePlaceholders, resolvePath, ensureDir } from '../lib/paths.js';
 import { createMission, validateMission, validateResult } from '../lib/agent-schema.js';
 import { loadState, saveState } from '../lib/state.js';
 import {
-  getDb, upsertAgent, getAgent, getAllAgents, deleteAgent, clearAllAgents,
-  updateAgentStatus, createRun, completeRun, migrateFromStateJson
+  upsertAgent, getAgent, getAllAgents, deleteAgent, clearAllAgents,
+  updateAgentStatus, createRun, completeRun
 } from '../lib/db.js';
 import { addDynamicHelp } from '../lib/help.js';
 import { getAgentConfig } from '../lib/config.js';
