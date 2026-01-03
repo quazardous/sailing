@@ -14,7 +14,7 @@
 1. Run pre-flight commands (memory:sync, deps:ready)
 2. Workflow shows `agent:spawn` → you MUST spawn
 3. Wait for agent completion
-4. Merge via `agent:merge` or reject via `agent:reject`
+4. Reap via `agent:reap` or reject via `agent:reject`
 
 ## Violations = Immediate Stop
 

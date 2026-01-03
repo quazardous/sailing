@@ -13,7 +13,7 @@ completed  failed/blocked
   ↓              ↓
 agent:conflicts  agent:reject TNNN
   ↓
-  ├─ no conflicts → agent:merge TNNN
+  ├─ no conflicts → agent:reap TNNN
   └─ conflicts → /dev:merge TNNN (manual resolution)
 ```
 
@@ -23,7 +23,7 @@ agent:conflicts  agent:reject TNNN
 |-------|--------|----------|
 | `agent:status` | completed | `agent:conflicts` |
 | `agent:status` | failed | `agent:reject` or investigate |
-| `agent:conflicts` | none | `agent:merge TNNN` |
+| `agent:conflicts` | none | `agent:reap TNNN` |
 | `agent:conflicts` | file overlap | `/dev:merge TNNN` |
 
 ### Commands
@@ -32,7 +32,7 @@ agent:conflicts  agent:reject TNNN
 |---------|---------|
 | `agent:status [TNNN]` | Check agent completion state |
 | `agent:conflicts` | Show file overlap between parallel agents |
-| `agent:merge TNNN` | Fast merge (no conflicts) |
+| `agent:reap TNNN` | Wait, merge, cleanup, update status |
 | `agent:reject TNNN` | Discard agent work, set task blocked |
 | `/dev:merge TNNN` | Merge with conflict resolution context |
 
@@ -46,14 +46,14 @@ When merging multiple agents:
 ### Recovery Rules
 
 An agent worktree can be:
-- **Resumed**: new input provided, partial work reused
-- **Reset**: work discarded, fresh agent spawned
+- **Resumed**: reuse worktree, inject new context
+- **Reset**: discard work, fresh agent spawned
 
 **Agents MUST NOT attempt recovery by themselves.**
 
 Only skill decides:
-- Resume → `agent:resume TNNN`
-- Reset → `agent:reject TNNN` + respawn
+- Resume → `agent:spawn TNNN --resume`
+- Reset → `agent:reject TNNN` + `agent:spawn TNNN`
 
 Agents are disposable. This is by design.
 

@@ -17,14 +17,21 @@ Rudder is the ONLY interface for sailing artifacts. **NEVER use Edit tool on `.s
 | Log progress | `rudder task:log TNNN "msg" --info` |
 | Log insight | `rudder task:log TNNN "msg" --tip` |
 
-## Write Content (body sections)
+## Write Content (body)
 
 | Action | Command |
 |--------|---------|
-| Edit section | `rudder artifact:edit TNNN --section "Deliverables" --content "..."` |
-| Append | `rudder artifact:edit TNNN --section "Notes" --append "..."` |
-| Check item | `rudder artifact:check TNNN "item text"` |
-| Patch (agents) | `rudder task:patch TNNN` with SEARCH/REPLACE blocks |
+| Patch content | `cat <<'PATCH' \| rudder task:patch TNNN` |
+| Check deliverable | `rudder artifact:check TNNN "item text"` |
+
+Patch syntax (stdin):
+```
+<<<<<<< SEARCH
+old content
+=======
+new content
+>>>>>>> REPLACE
+```
 
 ## Allowed Edit Tool Usage
 
