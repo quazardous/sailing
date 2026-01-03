@@ -12,6 +12,7 @@ import { addDynamicHelp } from '../lib/help.js';
 import { formatId } from '../lib/config.js';
 import { parseSearchReplace, editArtifact } from '../lib/artifact.js';
 import { findPrdFile } from '../lib/entities.js';
+import { createPrdMemoryFile } from '../lib/memory.js';
 
 /**
  * Register PRD commands
@@ -206,6 +207,9 @@ export function registerPrdCommands(program) {
 
       const prdFile = path.join(prdDir, 'prd.md');
       saveFile(prdFile, data, body);
+
+      // Create PRD memory file
+      createPrdMemoryFile(id);
 
       if (options.json) {
         jsonOut({ id, title, dir: prdDir, file: prdFile });

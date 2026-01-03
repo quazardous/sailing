@@ -1,11 +1,40 @@
 /**
  * Memory operations library
  * Centralized functions for memory file manipulation
+ *
+ * Hierarchy: Task → Epic → PRD → Project
+ * - Task logs: temporary, merged into epic
+ * - Epic memory: curated tips/issues for epic scope
+ * - PRD memory: cross-epic patterns, escalated by skill
+ * - Project memory: architectural decisions, universal patterns
  */
 import fs from 'fs';
 import path from 'path';
 import { findPrdDirs, findFiles, loadFile, getMemoryDir } from './core.js';
+import { resolvePlaceholders, resolvePath } from './paths.js';
 import { normalizeId } from './normalize.js';
+
+/**
+ * Get templates directory
+ */
+function getTemplatesDir() {
+  const custom = resolvePath('templates');
+  if (custom) return custom;
+  // Fallback to sailing repo templates
+  const sailingRoot = resolvePlaceholders('^/');
+  return path.join(sailingRoot, 'templates');
+}
+
+/**
+ * Load template file content
+ */
+function loadTemplate(templateName) {
+  const templatePath = path.join(getTemplatesDir(), templateName);
+  if (fs.existsSync(templatePath)) {
+    return fs.readFileSync(templatePath, 'utf8');
+  }
+  return null;
+}
 
 // Dynamic getter for memory directory
 export function getMemoryDirPath() {
@@ -148,13 +177,23 @@ export function parseLogLevels(content) {
 }
 
 /**
- * Create memory file from template
+ * Create epic memory file from template
  */
 export function createMemoryFile(epicId) {
   ensureMemoryDir();
   const mdPath = memoryFilePath(epicId);
   const now = new Date().toISOString();
-  const content = `---
+
+  // Try to load template
+  let content = loadTemplate('memory-epic.md');
+  if (content) {
+    content = content
+      .replace(/E0000/g, epicId)
+      .replace(/created: ''/g, `created: '${now}'`)
+      .replace(/updated: ''/g, `updated: '${now}'`);
+  } else {
+    // Fallback if template not found
+    content = `---
 epic: ${epicId}
 created: '${now}'
 updated: '${now}'
@@ -164,24 +203,190 @@ updated: '${now}'
 
 ## Agent Context
 
-<!--
-Actionable tips for agents. NO [TIP] prefix.
--->
-
 ## Escalation
 
-<!--
-Issues requiring attention. Keep [TNNN] for traceability.
--->
-
 ## Changelog
-
-<!--
-Chronological, with [TNNN] refs. NOT raw logs.
--->
 `;
+  }
+
   fs.writeFileSync(mdPath, content);
   return mdPath;
+}
+
+// ============ PRD Memory ============
+
+/**
+ * Get path to PRD memory file
+ */
+export function prdMemoryFilePath(prdId) {
+  return path.join(getMemoryDirPath(), `${normalizeId(prdId)}.md`);
+}
+
+/**
+ * Check if PRD memory exists
+ */
+export function prdMemoryExists(prdId) {
+  return fs.existsSync(prdMemoryFilePath(prdId));
+}
+
+/**
+ * Create PRD memory file from template
+ */
+export function createPrdMemoryFile(prdId) {
+  ensureMemoryDir();
+  const mdPath = prdMemoryFilePath(prdId);
+  const now = new Date().toISOString();
+
+  let content = loadTemplate('memory-prd.md');
+  if (content) {
+    content = content
+      .replace(/PRD-000/g, prdId)
+      .replace(/created: ''/g, `created: '${now}'`)
+      .replace(/updated: ''/g, `updated: '${now}'`);
+  } else {
+    content = `---
+prd: ${prdId}
+created: '${now}'
+updated: '${now}'
+---
+
+# Memory: ${prdId}
+
+## Cross-Epic Patterns
+
+## Decisions
+
+## Escalation
+`;
+  }
+
+  fs.writeFileSync(mdPath, content);
+  return mdPath;
+}
+
+// ============ Project Memory ============
+
+/**
+ * Get path to project memory file (MEMORY.md in artefacts)
+ */
+export function projectMemoryFilePath() {
+  const artefactsPath = resolvePath('artefacts') || resolvePlaceholders('%haven%/artefacts');
+  return path.join(artefactsPath, 'MEMORY.md');
+}
+
+/**
+ * Check if project memory exists
+ */
+export function projectMemoryExists() {
+  return fs.existsSync(projectMemoryFilePath());
+}
+
+/**
+ * Create project memory file from template
+ */
+export function createProjectMemoryFile(projectName = '') {
+  const mdPath = projectMemoryFilePath();
+  const dir = path.dirname(mdPath);
+  if (!fs.existsSync(dir)) {
+    fs.mkdirSync(dir, { recursive: true });
+  }
+
+  const now = new Date().toISOString();
+
+  let content = loadTemplate('memory-dist.md');
+  if (content) {
+    content = content
+      .replace(/project: ''/g, `project: '${projectName}'`)
+      .replace(/updated: ''/g, `updated: '${now}'`);
+  } else {
+    content = `---
+project: '${projectName}'
+updated: '${now}'
+---
+
+# Project Memory
+
+## Architecture Decisions
+
+## Patterns & Conventions
+
+## Lessons Learned
+`;
+  }
+
+  fs.writeFileSync(mdPath, content);
+  return mdPath;
+}
+
+// ============ Hierarchical Memory ============
+
+/**
+ * Find parent PRD for an epic
+ * Returns normalized PRD ID (e.g., "PRD-001")
+ */
+export function findEpicPrd(epicId) {
+  for (const prdDir of findPrdDirs()) {
+    const epicsDir = path.join(prdDir, 'epics');
+    const epicFiles = findFiles(epicsDir, new RegExp(`^${epicId}.*\\.md$`));
+    if (epicFiles.length > 0) {
+      const dirName = path.basename(prdDir);
+      // Extract PRD-NNN from directory name like "PRD-001-title-slug"
+      const match = dirName.match(/^(PRD-\d+)/i);
+      if (match) {
+        return normalizeId(match[1]);
+      }
+      return normalizeId(dirName);
+    }
+  }
+  return null;
+}
+
+/**
+ * Get hierarchical memory content for a task/epic
+ * Returns: { project, prd, epic } with content for each level
+ */
+export function getHierarchicalMemory(id) {
+  const result = { project: null, prd: null, epic: null };
+
+  // Resolve epic ID
+  let epicId = null;
+  if (id.startsWith('T')) {
+    const taskInfo = findTaskEpic(id);
+    if (taskInfo) epicId = taskInfo.epicId;
+  } else if (id.startsWith('E')) {
+    epicId = normalizeId(id);
+  }
+
+  // Get epic memory
+  if (epicId && memoryFileExists(epicId)) {
+    result.epic = {
+      id: epicId,
+      path: memoryFilePath(epicId),
+      content: fs.readFileSync(memoryFilePath(epicId), 'utf8')
+    };
+  }
+
+  // Get PRD memory
+  if (epicId) {
+    const prdId = findEpicPrd(epicId);
+    if (prdId && prdMemoryExists(prdId)) {
+      result.prd = {
+        id: prdId,
+        path: prdMemoryFilePath(prdId),
+        content: fs.readFileSync(prdMemoryFilePath(prdId), 'utf8')
+      };
+    }
+  }
+
+  // Get project memory
+  if (projectMemoryExists()) {
+    result.project = {
+      path: projectMemoryFilePath(),
+      content: fs.readFileSync(projectMemoryFilePath(), 'utf8')
+    };
+  }
+
+  return result;
 }
 
 /**

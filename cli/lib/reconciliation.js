@@ -80,7 +80,7 @@ export function listSailingBranches() {
 
     if (!output) return [];
     return output.split('\n')
-      .map(b => b.trim().replace(/^\*\s*/, ''))
+      .map(b => b.trim().replace(/^[\*\+]\s*/, ''))  // Strip both * (current) and + (worktree) prefixes
       .filter(b => b);
   } catch {
     return [];

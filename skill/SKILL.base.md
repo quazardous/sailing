@@ -41,9 +41,9 @@ These invariants are immutable. Everything else submits to them.
 
 | Role | Description | Can Spawn | Can Decide | Sees Memory |
 |------|-------------|-----------|------------|-------------|
-| **skill** | Main orchestrator | ✓ | ✓ | Full |
+| **skill** | Main orchestrator | ✓ | ✓ | Full hierarchy (Project→PRD→Epic) |
 | **coordinator** | /dev commands | ✓ (batch) | ❌ returns output | Full (`--full`) |
-| **agent** | Task execution | ❌ | ❌ | Agent Context only |
+| **agent** | Task execution | ❌ | ❌ | Agent Context only (Epic level) |
 
 **Enforcement**: CLI commands validate role. Wrong role = blocked.
 
@@ -106,6 +106,19 @@ Memory GUIDES future agents
 
 Memory not consolidated before execution is considered **lost**.
 Lost memory is a **system failure**.
+
+---
+
+## Memory Hierarchy
+
+```
+MEMORY.md (project)      ← Universal patterns, architecture decisions
+    └── PRD-NNN.md       ← Cross-epic patterns for this PRD
+        └── ENNN.md      ← Epic-specific agent context
+            └── TNNN.log ← Raw task logs (temporary)
+```
+
+Run `rudder memory:sync` — it provides contextual escalation guidance.
 
 ---
 

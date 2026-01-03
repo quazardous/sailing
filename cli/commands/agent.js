@@ -9,7 +9,7 @@ import { execSync } from 'child_process';
 import { findProjectRoot, loadFile, jsonOut } from '../lib/core.js';
 import { resolvePlaceholders, resolvePath, ensureDir } from '../lib/paths.js';
 import { createMission, validateMission, validateResult } from '../lib/agent-schema.js';
-import { loadState, saveState } from '../lib/state.js';
+import { loadState, saveState, updateStateAtomic } from '../lib/state.js';
 import {
   upsertAgent, getAgent, getAllAgents, deleteAgent, clearAllAgents,
   updateAgentStatus, createRun, completeRun

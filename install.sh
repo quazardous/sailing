@@ -300,6 +300,7 @@ PROTECTED_FILES=(
   "$DEFAULT_SAILING_DIR/components.yaml"
   "$ARTEFACTS/ROADMAP.md"
   "$ARTEFACTS/POSTIT.md"
+  "$ARTEFACTS/MEMORY.md"
 )
 
 copy_file() {
@@ -415,6 +416,7 @@ copy_file "$SRC/dist/paths.yaml-dist" "$DEFAULT_SAILING_DIR/paths.yaml" true
 copy_file "$SRC/dist/components.yaml-dist" "$DEFAULT_SAILING_DIR/components.yaml" true
 copy_file "$SRC/dist/ROADMAP.md-dist" "$ARTEFACTS/ROADMAP.md" true
 copy_file "$SRC/dist/POSTIT.md-dist" "$ARTEFACTS/POSTIT.md" true
+copy_file "$SRC/dist/MEMORY.md-dist" "$ARTEFACTS/MEMORY.md" true
 
 # =============================================================================
 # LEGACY HANDLING - Remove old core/ directory (replaced by prompting/)
@@ -638,19 +640,23 @@ EOF
       HAVEN_PATH="${HAVEN_PATH/#\~/$HOME}"
 
       # Create haven directories
-      mkdir -p "$HAVEN_PATH/artefacts/prds"
-      mkdir -p "$HAVEN_PATH/memory"
+      create_dir "$HAVEN_PATH/artefacts/prds"
+      create_dir "$HAVEN_PATH/memory"
 
       # Create convenience symlink
-      ln -sfn "$HAVEN_PATH" "$DEFAULT_SAILING_DIR/haven"
-      echo -e "  ${GREEN}Linked: $DEFAULT_SAILING_DIR/haven → $HAVEN_PATH${NC}"
+      if [ "$DRY_RUN" = true ]; then
+        echo "  Would link: $DEFAULT_SAILING_DIR/haven → $HAVEN_PATH"
+      else
+        ln -sfn "$HAVEN_PATH" "$DEFAULT_SAILING_DIR/haven"
+        echo -e "  ${GREEN}Linked: $DEFAULT_SAILING_DIR/haven → $HAVEN_PATH${NC}"
 
-      # Add to .gitignore
-      GITIGNORE=".gitignore"
-      [ ! -f "$GITIGNORE" ] && touch "$GITIGNORE"
-      if ! grep -qxF ".sailing/haven" "$GITIGNORE" 2>/dev/null; then
-        echo ".sailing/haven" >> "$GITIGNORE"
-        echo -e "  ${GREEN}Added to .gitignore: .sailing/haven${NC}"
+        # Add to .gitignore
+        GITIGNORE=".gitignore"
+        [ ! -f "$GITIGNORE" ] && touch "$GITIGNORE"
+        if ! grep -qxF ".sailing/haven" "$GITIGNORE" 2>/dev/null; then
+          echo ".sailing/haven" >> "$GITIGNORE"
+          echo -e "  ${GREEN}Added to .gitignore: .sailing/haven${NC}"
+        fi
       fi
     fi
   fi

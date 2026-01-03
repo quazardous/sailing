@@ -30,8 +30,9 @@ paths:
 
   # Project-centric files (auto-injected into context)
   # Agent context (use_subprocess=true): toolset, stack
-  # Skill context (main thread): roadmap, postit
+  # Skill context (main thread): roadmap, postit, project-memory
   toolset: .claude/TOOLSET.md      # Build/test commands (subprocess mode)
   stack: STACK.md                   # Tech stack (subprocess mode)
-  roadmap: .sailing/artefacts/ROADMAP.md  # Vision docs (skill only)
-  postit: .sailing/artefacts/POSTIT.md    # Backlog (skill only)
+  roadmap: .sailing/artefacts/ROADMAP.md     # Vision docs (skill only)
+  postit: .sailing/artefacts/POSTIT.md       # Backlog (skill only)
+  project-memory: .sailing/artefacts/MEMORY.md  # Project-level memory (all agents)
