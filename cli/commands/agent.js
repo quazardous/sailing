@@ -381,6 +381,7 @@ Arguments: { "command": "..." }
    \`\`\`json
    { "command": "task:log ${taskId} \\"useful insight for future agents\\" --tip" }
    \`\`\`
+   ⚠️ **NEVER create log files** (no .tip-log.txt, no *.log). Use the MCP tool above.
 
 4. **When complete**, call:
    \`\`\`json

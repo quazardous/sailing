@@ -91,11 +91,15 @@ rudder epic:show-memory ENNN --full  # Previous learnings + escalations
 
 ## Materialization
 
-After user validates recommendations, update the epic file:
+After user validates recommendations, update the epic via `epic:patch`:
 
-**Edit `## Technical Notes` section:**
+⚠️ **NEVER use Edit tool directly on artefacts.**
 
-```markdown
+```bash
+cat <<'PATCH' | rudder epic:patch ENNN
+<<<<<<< SEARCH
+## Technical Notes
+=======
 ## Technical Notes
 
 **Context**: Problem, constraints, target version
@@ -112,6 +116,13 @@ After user validates recommendations, update the epic file:
 
 **Risks**
 - Learning curve, perf, maintenance, licensing
+>>>>>>> REPLACE
+PATCH
+```
+
+For frontmatter (target versions), use `epic:update`:
+```bash
+rudder epic:update ENNN --target-version vue:3.5.0 --target-version pinia:2.1.0
 ```
 
 ---

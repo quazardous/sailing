@@ -87,13 +87,36 @@ bin/rudder epic:create <PRD-NNN> "<title>" [--target-version=<comp:ver>] [--tag=
 # Example with tag propagation:
 # If PRD has tags: [api, security]
 bin/rudder epic:create PRD-001 "API Authentication" --tag=api --tag=security
+```
 
-# Step 2: Read then Edit content
-Read the created file, then use Edit tool to fill:
-- Description (2-3 sentences)
-- Acceptance Criteria (checkboxes)
-- Technical Notes (leave empty if epic-review will fill)
-- Risks
+### Step 2: Fill Content via Patch
+
+⚠️ **NEVER use Edit tool directly on artefacts.** Use `epic:patch` instead:
+
+```bash
+cat <<'PATCH' | bin/rudder epic:patch E001
+<<<<<<< SEARCH
+## Description
+=======
+## Description
+
+Epic description here (2-3 sentences explaining the scope).
+>>>>>>> REPLACE
+
+<<<<<<< SEARCH
+## Acceptance Criteria
+=======
+## Acceptance Criteria
+
+- [ ] First acceptance criterion
+- [ ] Second acceptance criterion
+>>>>>>> REPLACE
+PATCH
+```
+
+For frontmatter changes, use `epic:update`:
+```bash
+bin/rudder epic:update E001 --add-story S001 --target-version game:0.2.0
 ```
 
 ### Tag Propagation

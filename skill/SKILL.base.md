@@ -18,9 +18,10 @@ These invariants are immutable. Everything else submits to them.
 1. Rudder is the single source of truth for state.
 2. Main thread makes all decisions.
 3. Agents execute and return output. They never chain, infer, or decide.
-4. When in doubt: stop, log, escalate. Never guess.
-5. Memory that is not consolidated before execution is considered lost.
-6. Use rudder commands for metadata queries. Never grep/search task files directly.
+4. NEVER Edit/Write artefacts directly → use rudder CLI (:patch, :update).
+5. When in doubt: stop, log, escalate. Never guess.
+6. Memory that is not consolidated before execution is considered lost.
+7. Use rudder commands for metadata queries. Never grep/search task files directly.
 ```
 
 ---

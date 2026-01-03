@@ -97,11 +97,39 @@ bin/rudder story:create <PRD-NNN> "<title>" --type <user|technical|api>
 # Optional: Set parent for tree structure
 bin/rudder story:update S001 --parent-story S000
 
-# Step 2: Read then Edit content
-Read the created file, then use Edit tool to fill:
-- Story section (As/I want/So that or equivalent)
-- Acceptance Criteria (Given/When/Then)
-- Context (Where, Why, Constraints)
+```
+
+### Step 2: Fill Content via Patch
+
+⚠️ **NEVER use Edit tool directly on artefacts.** Use `story:patch` instead:
+
+```bash
+cat <<'PATCH' | bin/rudder story:patch S001
+<<<<<<< SEARCH
+## Story
+=======
+## Story
+
+**As a** user
+**I want** to see my dashboard
+**So that** I can track my progress
+>>>>>>> REPLACE
+
+<<<<<<< SEARCH
+## Acceptance Criteria
+=======
+## Acceptance Criteria
+
+**Given** I am logged in
+**When** I navigate to /dashboard
+**Then** I see my statistics
+>>>>>>> REPLACE
+PATCH
+```
+
+For frontmatter changes, use `story:update`:
+```bash
+bin/rudder story:update S001 --type user --parent-story S000
 ```
 
 **Why mandatory?**
@@ -119,7 +147,7 @@ Read the created file, then use Edit tool to fill:
 2. Propose story structure (list with types)
 3. Present to main thread for approval
 4. After approval: create stories via rudder CLI
-5. Fill content via Edit tool
+5. Fill content via story:patch (NOT Edit tool)
 6. Return output to main thread
 ```
 

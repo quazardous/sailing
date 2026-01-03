@@ -78,8 +78,16 @@ rudder task:create PRD-NNN/ENNN "Task title based on story"
 # Step 2: Link story
 rudder task:update TNNN --add-story S001
 
-# Step 3: Fill task content via Edit
-# Description, Deliverables, Technical Details
+# Step 3: Fill task content via task:patch (NOT Edit tool)
+cat <<'PATCH' | rudder task:patch TNNN
+<<<<<<< SEARCH
+## Description
+=======
+## Description
+
+Task description based on story requirements.
+>>>>>>> REPLACE
+PATCH
 ```
 
 ---
