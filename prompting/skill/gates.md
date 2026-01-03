@@ -31,11 +31,11 @@ STOP and escalate if:
 
 ## Forbidden Edits
 
-Never edit (use rudder CLI):
-- Frontmatter (status, blocked_by, etc.)
-- PRD milestone assignments
-- Dependency graph
+Never use Edit/Write on sailing artefacts. Use rudder CLI:
+- Frontmatter → `:update` commands
+- Body content → `:patch` commands
+- PRD milestone → `prd:milestone`
+- Dependencies → `task:update --add-blocker`
 
-Allowed edits (Edit tool):
-- Source code under project paths
-- Task body: Description, Deliverables, Technical Details
+Edit tool ONLY for:
+- Source code (project files, not `.sailing/`)

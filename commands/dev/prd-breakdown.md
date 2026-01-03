@@ -36,7 +36,7 @@ When spawning an agent for epic creation, ensure the prompt contains:
 | 3 | **Draft reference**: Existing bullet points from PRD to expand | Agent interprets, doesn't create from scratch |
 | 4 | **Intent**: 1–2 phrases on what this achieves and why | Reduces scope creep |
 | 5 | **Sizing**: Epic = 5–10 tasks (tasks created later) | Prevents micro/macro splitting |
-| 6 | **File creation mandate**: "Use `rudder epic:create` then Edit — NEVER Write directly" | Ensures proper state tracking |
+| 6 | **File creation mandate**: "Use `rudder epic:create` then `:patch` — NEVER Edit/Write directly" | Ensures proper state tracking |
 
 ### IF APPLICABLE
 
@@ -144,7 +144,7 @@ Spawn agents in parallel (one per epic draft in PRD.md):
          ↓
 Main thread: collect escalations → present to user → answers
          ↓
-When approved: agents call `rudder epic:create` then Edit
+When approved: agents call `rudder epic:create` then `epic:patch`
 ```
 
 > Single message = multiple Task tool calls = parallel execution.

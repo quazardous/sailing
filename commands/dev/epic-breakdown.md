@@ -32,7 +32,7 @@ If Technical Notes empty → escalate.
 rudder task:create PRD-NNN/ENNN "title"
 ```
 
-Then Edit to fill Description, Deliverables, Technical Details.
+Then fill content via `task:patch` (see Artefact Editing Rules).
 
 ### Dependencies
 

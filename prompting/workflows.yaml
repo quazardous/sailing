@@ -84,6 +84,7 @@ sets:
   coordination: [skill/orchestration, skill/reminders, skill/gates]
   milestone:    [shared/milestone]
   versioning:   [shared/versioning]
+  editing:      [shared/artefact-editing]
 
 # ─────────────────────────────────────────────────────────────────────────────
 # SECTION 3: Operations — Metadata per operation
@@ -132,9 +133,11 @@ matrix:
   task-start:         [deps, execution]
   task-done:          [execution]
   tasks-batch:        [deps, execution]
-  epic-breakdown:     [deps]
-  epic-review:        [milestone]
-  prd-breakdown:      [deps, milestone]
+  epic-breakdown:     [deps, editing]
+  epic-review:        [milestone, editing]
+  prd-breakdown:      [deps, milestone, editing]
+  prd-story:          [editing]
+  prd-story-finalize: [editing]
   prd-review:         [milestone, versioning]
   milestone-validate: [milestone]
   version-bump:       [versioning]
