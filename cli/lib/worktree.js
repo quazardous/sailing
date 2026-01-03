@@ -499,9 +499,17 @@ export function createWorktree(taskId, options = {}) {
         // If we can't check, assume safe to reuse
       }
 
-      // Branch exists but no worktree, and no commits → reuse the branch
-      // This handles: previous agent crashed, worktree cleaned but branch remained
-      execSync(`git worktree add "${worktreePath}" "${branch}"`, {
+      // Branch exists but no worktree, and no commits ahead → delete and recreate
+      // This ensures the new worktree starts from the latest baseBranch
+      // (baseBranch may have advanced since the orphaned branch was created)
+      execSync(`git branch -D "${branch}"`, {
+        cwd: projectRoot,
+        encoding: 'utf8',
+        stdio: ['pipe', 'pipe', 'pipe']
+      });
+
+      // Now create fresh worktree with new branch from current baseBranch
+      execSync(`git worktree add "${worktreePath}" -b "${branch}" "${baseBranch}"`, {
         cwd: projectRoot,
         encoding: 'utf8',
         stdio: ['pipe', 'pipe', 'pipe']
@@ -512,7 +520,7 @@ export function createWorktree(taskId, options = {}) {
         path: worktreePath,
         branch,
         baseBranch,
-        reused: true  // Indicates we reused an existing branch
+        recreated: true  // Indicates orphaned branch was deleted and recreated
       };
     } else {
       // Create worktree with new branch
