@@ -30,6 +30,8 @@ agent:conflicts  agent:reject TNNN
 
 | Command | Purpose |
 |---------|---------|
+| `agent:spawn TNNN` | Spawn new agent in fresh worktree |
+| `agent:spawn TNNN --resume` | Resume agent in existing worktree |
 | `agent:status [TNNN]` | Check agent completion state |
 | `agent:conflicts` | Show file overlap between parallel agents |
 | `agent:reap TNNN` | Wait, merge, cleanup, update status |

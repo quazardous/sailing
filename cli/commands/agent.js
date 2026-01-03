@@ -60,6 +60,7 @@ export function registerAgentCommands(program) {
     .option('--worktree', 'Create isolated worktree (overrides config)')
     .option('--no-worktree', 'Skip worktree creation (overrides config)')
     .option('--stderr-to-file [path]', 'Redirect stderr to file only (default: run.log)')
+    .option('--resume', 'Reuse existing worktree (continue blocked/partial work)')
     .option('--dry-run', 'Show what would be done without spawning')
     .option('--json', 'JSON output')
     .action(async (taskId, options) => {
@@ -179,26 +180,50 @@ export function registerAgentCommands(program) {
 
             // Completed agent with work to merge
             if ((status === 'completed' || status === 'reaped') && (isDirty || hasCommits)) {
-              escalate(`Agent ${taskId} has unmerged work`, [
-                `agent:reap ${taskId}     # Merge + cleanup + respawn`,
-                `agent:reject ${taskId}   # Discard work`
-              ]);
+              if (options.resume) {
+                if (!options.json) {
+                  console.log(`Resuming ${taskId} with existing work (${isDirty ? 'uncommitted changes' : hasCommits + ' commits'})...`);
+                }
+                // Continue - reuse worktree
+              } else {
+                escalate(`Agent ${taskId} has unmerged work`, [
+                  `agent:spawn ${taskId} --resume  # Continue with existing work`,
+                  `agent:reap ${taskId}            # Merge + cleanup + respawn`,
+                  `agent:reject ${taskId}          # Discard work`
+                ]);
+              }
             }
 
             // Agent has uncommitted work but didn't complete properly
             if (isDirty && !['completed', 'reaped'].includes(status)) {
-              escalate(`Agent ${taskId} has uncommitted changes (status: ${status})`, [
-                `agent:reap ${taskId}     # Try to harvest`,
-                `agent:reject ${taskId}   # Discard work`
-              ]);
+              if (options.resume) {
+                if (!options.json) {
+                  console.log(`Resuming ${taskId} with uncommitted changes (status: ${status})...`);
+                }
+                // Continue - reuse worktree
+              } else {
+                escalate(`Agent ${taskId} has uncommitted changes (status: ${status})`, [
+                  `agent:spawn ${taskId} --resume  # Continue with existing work`,
+                  `agent:reap ${taskId}            # Try to harvest`,
+                  `agent:reject ${taskId}          # Discard work`
+                ]);
+              }
             }
 
             // Has commits but not merged
             if (hasCommits && !['reaped'].includes(status)) {
-              escalate(`Agent ${taskId} has ${hasCommits} commit(s) not merged`, [
-                `agent:reap ${taskId}     # Merge + cleanup`,
-                `agent:reject ${taskId}   # Discard work`
-              ]);
+              if (options.resume) {
+                if (!options.json) {
+                  console.log(`Resuming ${taskId} with ${hasCommits} commit(s)...`);
+                }
+                // Continue - reuse worktree
+              } else {
+                escalate(`Agent ${taskId} has ${hasCommits} commit(s) not merged`, [
+                  `agent:spawn ${taskId} --resume  # Continue with existing work`,
+                  `agent:reap ${taskId}            # Merge + cleanup`,
+                  `agent:reject ${taskId}          # Discard work`
+                ]);
+              }
             }
 
             // Clean worktree, can reuse - auto-cleanup
@@ -439,17 +464,35 @@ Start by calling the rudder MCP tool with \`assign:claim ${taskId}\` to get your
           } catch { /* ignore */ }
 
           if (isDirty || hasCommits) {
-            // Worktree has work that might be lost
-            escalate(`Orphaned worktree exists for ${taskId}`, [
-              `Path: ${worktreePath}`,
-              `Branch: ${branch}`,
-              isDirty ? `Has uncommitted changes` : `Has ${hasCommits} commit(s) ahead of ${mainBranch}`,
-              ``,
-              `Options:`,
-              `  agent:sync                # Recover into state`,
-              `  agent:reject ${taskId}    # Discard work`,
-              `  worktree remove ${taskId} # Manual cleanup`
-            ]);
+            if (options.resume) {
+              // Resume mode: reuse existing worktree with work
+              if (!options.json) {
+                console.log(`Resuming in existing worktree for ${taskId}...`);
+                if (isDirty) console.log(`  (has uncommitted changes)`);
+                if (hasCommits) console.log(`  (has ${hasCommits} commit(s) ahead of ${mainBranch})`);
+              }
+              // Use existing worktree - set worktreeInfo and cwd
+              worktreeInfo = {
+                path: worktreePath,
+                branch: branch,
+                base_branch: mainBranch,
+                branching,
+                resumed: true
+              };
+              cwd = worktreePath;
+            } else {
+              // Worktree has work that might be lost
+              escalate(`Orphaned worktree exists for ${taskId}`, [
+                `Path: ${worktreePath}`,
+                `Branch: ${branch}`,
+                isDirty ? `Has uncommitted changes` : `Has ${hasCommits} commit(s) ahead of ${mainBranch}`,
+                ``,
+                `Options:`,
+                `  agent:spawn ${taskId} --resume  # Continue with existing work`,
+                `  agent:sync                      # Recover into state`,
+                `  agent:reject ${taskId}          # Discard work`
+              ]);
+            }
           } else {
             // Clean worktree - auto-cleanup and proceed
             if (!options.json) {
@@ -459,30 +502,33 @@ Start by calling the rudder MCP tool with \`assign:claim ${taskId}\` to get your
           }
         }
 
-        // Get parent branch based on branching strategy
-        const parentBranch = getParentBranch(taskId, branchContext);
+        // Create new worktree if not resuming an existing one
+        if (!worktreeInfo) {
+          // Get parent branch based on branching strategy
+          const parentBranch = getParentBranch(taskId, branchContext);
 
-        const result = createWorktree(taskId, { baseBranch: parentBranch });
-        if (!result.success) {
-          console.error(`Failed to create worktree: ${result.error}`);
-          process.exit(1);
-        }
+          const result = createWorktree(taskId, { baseBranch: parentBranch });
+          if (!result.success) {
+            console.error(`Failed to create worktree: ${result.error}`);
+            process.exit(1);
+          }
 
-        worktreeInfo = {
-          path: result.path,
-          branch: result.branch,
-          base_branch: result.baseBranch,
-          branching  // Store strategy for later merge
-        };
-        cwd = result.path;
+          worktreeInfo = {
+            path: result.path,
+            branch: result.branch,
+            base_branch: result.baseBranch,
+            branching  // Store strategy for later merge
+          };
+          cwd = result.path;
 
-        if (!options.json) {
-          if (result.reused) {
-            console.log(`Worktree created (reusing existing branch): ${result.path}`);
-            console.log(`  Branch: ${result.branch} (orphaned, no commits)`);
-          } else {
-            console.log(`Worktree created: ${result.path}`);
-            console.log(`  Branch: ${result.branch} (from ${parentBranch})`);
+          if (!options.json) {
+            if (result.reused) {
+              console.log(`Worktree created (reusing existing branch): ${result.path}`);
+              console.log(`  Branch: ${result.branch} (orphaned, no commits)`);
+            } else {
+              console.log(`Worktree created: ${result.path}`);
+              console.log(`  Branch: ${result.branch} (from ${parentBranch})`);
+            }
           }
         }
       }
