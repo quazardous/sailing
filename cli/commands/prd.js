@@ -3,14 +3,14 @@
  */
 import fs from 'fs';
 import path from 'path';
-import { findPrdDirs, findFiles, loadFile, saveFile, toKebab, jsonOut, getPrdsDir } from '../lib/core.js';
+import { findPrdDirs, findFiles, loadFile, saveFile, toKebab, jsonOut, getPrdsDir, stripComments } from '../lib/core.js';
 import { matchesPrdDir } from '../lib/normalize.js';
 import { STATUS, normalizeStatus, statusSymbol } from '../lib/lexicon.js';
 import { nextId } from '../lib/state.js';
 import { parseUpdateOptions } from '../lib/update.js';
 import { addDynamicHelp } from '../lib/help.js';
 import { formatId } from '../lib/config.js';
-import { parseSearchReplace, editArtifact } from '../lib/artifact.js';
+import { parseSearchReplace, editArtifact, parseMultiSectionContent, processMultiSectionOps } from '../lib/artifact.js';
 import { findPrdFile } from '../lib/entities.js';
 import { createPrdMemoryFile } from '../lib/memory.js';
 
@@ -101,6 +101,7 @@ export function registerPrdCommands(program) {
   prd.command('show <id>')
     .description('Show PRD details (epics, tasks by status)')
     .option('--raw', 'Dump raw markdown file')
+    .option('--comments', 'Include template comments (stripped by default)')
     .option('--json', 'JSON output')
     .action((id, options) => {
       const prdDir = findPrdDirs().find(d => matchesPrdDir(d, id));
@@ -114,7 +115,8 @@ export function registerPrdCommands(program) {
       // Raw mode: dump file content with path header
       if (options.raw) {
         console.log(`# File: ${prdFile}\n`);
-        console.log(fs.readFileSync(prdFile, 'utf8'));
+        const content = fs.readFileSync(prdFile, 'utf8');
+        console.log(options.comments ? content : stripComments(content));
         return;
       }
 
@@ -175,6 +177,7 @@ export function registerPrdCommands(program) {
   prd.command('create <title>')
     .description('Create PRD directory + prd.md (status: Draft)')
     .option('--tag <tag>', 'Add tag (repeatable, slugified to kebab-case)', (v, arr) => arr.concat(v), [])
+    .option('--path', 'Show file path')
     .option('--json', 'JSON output')
     .action((title, options) => {
       const num = nextId('prd');
@@ -215,14 +218,9 @@ export function registerPrdCommands(program) {
         jsonOut({ id, title, dir: prdDir, file: prdFile });
       } else {
         console.log(`Created: ${id} - ${title}`);
-        console.log(`\nEdit all sections in one command:`);
-        console.log(`  bin/rudder artifact:edit ${id} <<'EOF'`);
-        console.log(`  ## Problem Statement`);
-        console.log(`  Your problem...`);
-        console.log(`  ## Goals`);
-        console.log(`  - Goal 1`);
-        console.log(`  EOF`);
-        console.log(`\nOps: [append], [sed], [check], [patch]... See: bin/rudder artifact edit --help`);
+        if (options.path) console.log(`File: ${prdFile}`);
+        console.log(`\n${'─'.repeat(60)}\n`);
+        console.log(fs.readFileSync(prdFile, 'utf8'));
       }
     });
 
@@ -433,6 +431,91 @@ export function registerPrdCommands(program) {
       } else {
         console.error(`✗ Applied ${result.applied}/${ops.length}, errors:`);
         result.errors.forEach(e => console.error(`  - ${e}`));
+        process.exit(1);
+      }
+    });
+
+  // prd:edit - Edit PRD sections (delegates to artifact:edit logic)
+  prd.command('edit <id>')
+    .description('Edit PRD section(s)')
+    .option('-s, --section <name>', 'Section to edit (omit for multi-section stdin)')
+    .option('-c, --content <text>', 'New content (or use stdin)')
+    .option('-a, --append', 'Append to section instead of replace')
+    .option('-p, --prepend', 'Prepend to section instead of replace')
+    .option('--json', 'JSON output')
+    .addHelpText('after', `
+Multi-section format: use ## headers with optional [op]
+Operations: [replace], [append], [prepend], [delete], [sed], [check], [uncheck], [toggle], [patch]
+See: bin/rudder artifact edit --help for full documentation
+`)
+    .action(async (id, options) => {
+      const prdPath = findPrdFile(id);
+      if (!prdPath) {
+        console.error(`PRD not found: ${id}`);
+        process.exit(1);
+      }
+
+      // Get content from option or stdin
+      let content = options.content;
+      if (!content) {
+        content = await new Promise((resolve) => {
+          let data = '';
+          if (process.stdin.isTTY) { resolve(''); return; }
+          process.stdin.setEncoding('utf8');
+          process.stdin.on('readable', () => {
+            let chunk; while ((chunk = process.stdin.read()) !== null) data += chunk;
+          });
+          process.stdin.on('end', () => resolve(data));
+        });
+        content = content.trim();
+      }
+
+      if (!content) {
+        console.error('Content required via --content or stdin');
+        process.exit(1);
+      }
+
+      // Determine default operation
+      let opType = 'replace';
+      if (options.append) opType = 'append';
+      if (options.prepend) opType = 'prepend';
+
+      let ops;
+      if (options.section) {
+        ops = [{ op: opType, section: options.section, content }];
+      } else {
+        ops = parseMultiSectionContent(content, opType);
+        if (ops.length === 0) {
+          console.error('No sections found. Use --section or format stdin with ## headers');
+          process.exit(1);
+        }
+      }
+
+      // Track original ops for output
+      const originalOps = ops.map(o => ({ op: o.op, section: o.section }));
+
+      // Process special operations (sed, patch, check, etc.)
+      const { expandedOps, errors: processErrors } = processMultiSectionOps(prdPath, ops);
+      if (processErrors.length > 0) {
+        processErrors.forEach(e => console.error(e));
+        process.exit(1);
+      }
+
+      const result = editArtifact(prdPath, expandedOps);
+
+      if (options.json) {
+        jsonOut({ id, ...result });
+      } else if (result.success) {
+        if (originalOps.length === 1) {
+          console.log(`✓ ${originalOps[0].op} on ${originalOps[0].section} in ${id}`);
+        } else {
+          const byOp = {};
+          originalOps.forEach(o => { byOp[o.op] = (byOp[o.op] || 0) + 1; });
+          const summary = Object.entries(byOp).map(([op, n]) => `${op}:${n}`).join(', ');
+          console.log(`✓ ${originalOps.length} sections in ${id} (${summary})`);
+        }
+      } else {
+        console.error(`✗ Failed: ${result.errors.join(', ')}`);
         process.exit(1);
       }
     });

@@ -543,3 +543,70 @@ export function parseCheckboxItems(content) {
     .map(l => l.replace(/^-\s*\[[ xX]\]\s*/, '').trim())
     .filter(l => l.length > 0);
 }
+
+/**
+ * Process multi-section ops (expand sed, patch, check operations)
+ * @param {string} filePath - Path to the artifact file
+ * @param {Array} ops - Parsed operations from parseMultiSectionContent
+ * @returns {{ expandedOps: Array, errors: string[] }}
+ */
+export function processMultiSectionOps(filePath, ops) {
+  const expandedOps = [];
+  const errors = [];
+
+  for (const op of ops) {
+    if (op.op === 'sed' && op.sedCommands?.length > 0) {
+      const sectionContent = getSection(filePath, op.section);
+      if (sectionContent === null) {
+        errors.push(`Section not found for sed: ${op.section}`);
+        continue;
+      }
+      expandedOps.push({
+        op: 'replace',
+        section: op.section,
+        content: applySedCommands(sectionContent, op.sedCommands)
+      });
+    } else if (op.op === 'patch') {
+      const patches = parseSearchReplace(op.content);
+      if (patches.length === 0) {
+        errors.push(`No SEARCH/REPLACE blocks found for patch: ${op.section}`);
+        continue;
+      }
+      let sectionContent = getSection(filePath, op.section);
+      if (sectionContent === null) {
+        errors.push(`Section not found for patch: ${op.section}`);
+        continue;
+      }
+      let patchError = null;
+      for (const patch of patches) {
+        const result = applySearchReplace(sectionContent, patch.search, patch.replace);
+        if (!result.success) {
+          patchError = `Patch failed on ${op.section}: ${result.error}`;
+          break;
+        }
+        sectionContent = result.content;
+      }
+      if (patchError) {
+        errors.push(patchError);
+        continue;
+      }
+      expandedOps.push({
+        op: 'replace',
+        section: op.section,
+        content: sectionContent
+      });
+    } else if (['check', 'uncheck', 'toggle'].includes(op.op)) {
+      for (const item of parseCheckboxItems(op.content)) {
+        expandedOps.push({
+          op: op.op,
+          section: op.section,
+          item
+        });
+      }
+    } else {
+      expandedOps.push(op);
+    }
+  }
+
+  return { expandedOps, errors };
+}

@@ -3,7 +3,7 @@
  */
 import fs from 'fs';
 import path from 'path';
-import { findPrdDirs, findFiles, loadFile, saveFile, toKebab, loadTemplate, jsonOut, getMemoryDir } from '../lib/core.js';
+import { findPrdDirs, findFiles, loadFile, saveFile, toKebab, loadTemplate, jsonOut, getMemoryDir, stripComments } from '../lib/core.js';
 import { normalizeId, matchesId, matchesPrdDir } from '../lib/normalize.js';
 import { findEpicParent } from '../lib/entities.js';
 import { STATUS, normalizeStatus, isStatusDone, isStatusNotStarted, isStatusInProgress, isStatusCancelled, statusSymbol } from '../lib/lexicon.js';
@@ -12,7 +12,7 @@ import { nextId } from '../lib/state.js';
 import { parseUpdateOptions, addLogEntry } from '../lib/update.js';
 import { addDynamicHelp } from '../lib/help.js';
 import { formatId } from '../lib/config.js';
-import { parseSearchReplace, editArtifact } from '../lib/artifact.js';
+import { parseSearchReplace, editArtifact, parseMultiSectionContent, processMultiSectionOps } from '../lib/artifact.js';
 
 /**
  * Find a task file by ID
@@ -148,6 +148,7 @@ export function registerTaskCommands(program) {
     .description('Show task details (blockers, dependents, ready status)')
     .option('--role <role>', 'Role context: agent (minimal), skill/coordinator (full)')
     .option('--raw', 'Dump raw markdown file')
+    .option('--comments', 'Include template comments (stripped by default)')
     .option('--json', 'JSON output')
     .action((id, options) => {
       const taskFile = findTaskFile(id);
@@ -159,7 +160,8 @@ export function registerTaskCommands(program) {
       // Raw mode: dump file content with path header
       if (options.raw) {
         console.log(`# File: ${taskFile}\n`);
-        console.log(fs.readFileSync(taskFile, 'utf8'));
+        const content = fs.readFileSync(taskFile, 'utf8');
+        console.log(options.comments ? content : stripComments(content));
         return;
       }
 
@@ -232,6 +234,7 @@ export function registerTaskCommands(program) {
     .option('--story <id>', 'Link to story (repeatable)', (v, arr) => arr.concat(v), [])
     .option('--tag <tag>', 'Add tag (repeatable, slugified to kebab-case)', (v, arr) => arr.concat(v), [])
     .option('--target-version <comp:ver>', 'Target version (repeatable)', (v, arr) => arr.concat(v), [])
+    .option('--path', 'Show file path')
     .option('--json', 'JSON output')
     .action((parent, title, options) => {
       let prdDir, epicPart, prdId;
@@ -320,14 +323,9 @@ export function registerTaskCommands(program) {
         jsonOut({ id, title, parent: data.parent, file: taskPath });
       } else {
         console.log(`Created: ${id} - ${title}`);
-        console.log(`\nEdit all sections in one command:`);
-        console.log(`  bin/rudder artifact:edit ${id} <<'EOF'`);
-        console.log(`  ## Deliverables`);
-        console.log(`  - [ ] Item 1`);
-        console.log(`  ## Implementation Notes`);
-        console.log(`  Details...`);
-        console.log(`  EOF`);
-        console.log(`\nOps: [append], [sed], [check], [patch]... See: bin/rudder artifact edit --help`);
+        if (options.path) console.log(`File: ${taskPath}`);
+        console.log(`\n${'─'.repeat(60)}\n`);
+        console.log(fs.readFileSync(taskPath, 'utf8'));
       }
     });
 
@@ -745,6 +743,86 @@ export function registerTaskCommands(program) {
       } else {
         console.error(`✗ Applied ${result.applied}/${ops.length}, errors:`);
         result.errors.forEach(e => console.error(`  - ${e}`));
+        process.exit(1);
+      }
+    });
+
+  // task:edit - Edit task sections
+  task.command('edit <id>')
+    .description('Edit task section(s)')
+    .option('-s, --section <name>', 'Section to edit (omit for multi-section stdin)')
+    .option('-c, --content <text>', 'New content (or use stdin)')
+    .option('-a, --append', 'Append to section instead of replace')
+    .option('-p, --prepend', 'Prepend to section instead of replace')
+    .option('--json', 'JSON output')
+    .addHelpText('after', `
+Multi-section format: use ## headers with optional [op]
+Operations: [replace], [append], [prepend], [delete], [sed], [check], [uncheck], [toggle], [patch]
+See: bin/rudder artifact edit --help for full documentation
+`)
+    .action(async (id, options) => {
+      const normalizedId = normalizeId(id);
+      const taskPath = findTaskFile(normalizedId);
+
+      if (!taskPath) {
+        console.error(`Task not found: ${id}`);
+        process.exit(1);
+      }
+
+      let content = options.content;
+      if (!content) {
+        content = await new Promise((resolve) => {
+          let data = '';
+          if (process.stdin.isTTY) { resolve(''); return; }
+          process.stdin.setEncoding('utf8');
+          process.stdin.on('readable', () => {
+            let chunk; while ((chunk = process.stdin.read()) !== null) data += chunk;
+          });
+          process.stdin.on('end', () => resolve(data));
+        });
+        content = content.trim();
+      }
+
+      if (!content) {
+        console.error('Content required via --content or stdin');
+        process.exit(1);
+      }
+
+      let opType = 'replace';
+      if (options.append) opType = 'append';
+      if (options.prepend) opType = 'prepend';
+
+      let ops = options.section
+        ? [{ op: opType, section: options.section, content }]
+        : parseMultiSectionContent(content, opType);
+
+      if (ops.length === 0) {
+        console.error('No sections found. Use --section or format stdin with ## headers');
+        process.exit(1);
+      }
+
+      const originalOps = ops.map(o => ({ op: o.op, section: o.section }));
+      const { expandedOps, errors: processErrors } = processMultiSectionOps(taskPath, ops);
+      if (processErrors.length > 0) {
+        processErrors.forEach(e => console.error(e));
+        process.exit(1);
+      }
+
+      const result = editArtifact(taskPath, expandedOps);
+
+      if (options.json) {
+        jsonOut({ id: normalizedId, ...result });
+      } else if (result.success) {
+        if (originalOps.length === 1) {
+          console.log(`✓ ${originalOps[0].op} on ${originalOps[0].section} in ${normalizedId}`);
+        } else {
+          const byOp = {};
+          originalOps.forEach(o => { byOp[o.op] = (byOp[o.op] || 0) + 1; });
+          const summary = Object.entries(byOp).map(([op, n]) => `${op}:${n}`).join(', ');
+          console.log(`✓ ${originalOps.length} sections in ${normalizedId} (${summary})`);
+        }
+      } else {
+        console.error(`✗ Failed: ${result.errors.join(', ')}`);
         process.exit(1);
       }
     });

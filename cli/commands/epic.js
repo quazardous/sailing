@@ -3,14 +3,14 @@
  */
 import fs from 'fs';
 import path from 'path';
-import { findPrdDirs, findFiles, loadFile, saveFile, toKebab, loadTemplate, jsonOut, getMemoryDir } from '../lib/core.js';
+import { findPrdDirs, findFiles, loadFile, saveFile, toKebab, loadTemplate, jsonOut, getMemoryDir, stripComments } from '../lib/core.js';
 import { normalizeId, matchesId, matchesPrdDir } from '../lib/normalize.js';
 import { STATUS, normalizeStatus, statusSymbol } from '../lib/lexicon.js';
 import { nextId } from '../lib/state.js';
 import { parseUpdateOptions } from '../lib/update.js';
 import { addDynamicHelp } from '../lib/help.js';
 import { formatId } from '../lib/config.js';
-import { parseSearchReplace, editArtifact } from '../lib/artifact.js';
+import { parseSearchReplace, editArtifact, parseMultiSectionContent, processMultiSectionOps } from '../lib/artifact.js';
 
 /**
  * Find an epic file by ID
@@ -127,6 +127,7 @@ export function registerEpicCommands(program) {
     .description('Show epic details (tasks count by status)')
     .option('--role <role>', 'Role context: agent blocked, skill/coordinator allowed')
     .option('--raw', 'Dump raw markdown file')
+    .option('--comments', 'Include template comments (stripped by default)')
     .option('--json', 'JSON output')
     .action((id, options) => {
       // Role enforcement: agents don't access epics directly
@@ -147,7 +148,8 @@ export function registerEpicCommands(program) {
       // Raw mode: dump file content with path header
       if (options.raw) {
         console.log(`# File: ${epicFile}\n`);
-        console.log(fs.readFileSync(epicFile, 'utf8'));
+        const content = fs.readFileSync(epicFile, 'utf8');
+        console.log(options.comments ? content : stripComments(content));
         return;
       }
 
@@ -197,6 +199,7 @@ export function registerEpicCommands(program) {
     .option('--story <id>', 'Link to story (repeatable)', (v, arr) => arr.concat(v), [])
     .option('--tag <tag>', 'Add tag (repeatable, slugified to kebab-case)', (v, arr) => arr.concat(v), [])
     .option('--target-version <comp:ver>', 'Target version (repeatable)', (v, arr) => arr.concat(v), [])
+    .option('--path', 'Show file path')
     .option('--json', 'JSON output')
     .action((prd, title, options) => {
       const prdDir = findPrdDirs().find(d => matchesPrdDir(d, prd));
@@ -282,14 +285,9 @@ updated: '${new Date().toISOString()}'
         jsonOut({ id, title, parent: data.parent, file: epicPath, memory: memoryFile });
       } else {
         console.log(`Created: ${id} - ${title}`);
-        console.log(`\nEdit all sections in one command:`);
-        console.log(`  bin/rudder artifact:edit ${id} <<'EOF'`);
-        console.log(`  ## Description`);
-        console.log(`  Your description...`);
-        console.log(`  ## Acceptance Criteria`);
-        console.log(`  - [ ] Criterion 1`);
-        console.log(`  EOF`);
-        console.log(`\nOps: [append], [sed], [check], [patch]... See: bin/rudder artifact edit --help`);
+        if (options.path) console.log(`File: ${epicPath}`);
+        console.log(`\n${'─'.repeat(60)}\n`);
+        console.log(fs.readFileSync(epicPath, 'utf8'));
       }
     });
 
@@ -619,6 +617,86 @@ updated: '${new Date().toISOString()}'
       } else {
         console.error(`✗ Applied ${result.applied}/${ops.length}, errors:`);
         result.errors.forEach(e => console.error(`  - ${e}`));
+        process.exit(1);
+      }
+    });
+
+  // epic:edit - Edit epic sections
+  epic.command('edit <id>')
+    .description('Edit epic section(s)')
+    .option('-s, --section <name>', 'Section to edit (omit for multi-section stdin)')
+    .option('-c, --content <text>', 'New content (or use stdin)')
+    .option('-a, --append', 'Append to section instead of replace')
+    .option('-p, --prepend', 'Prepend to section instead of replace')
+    .option('--json', 'JSON output')
+    .addHelpText('after', `
+Multi-section format: use ## headers with optional [op]
+Operations: [replace], [append], [prepend], [delete], [sed], [check], [uncheck], [toggle], [patch]
+See: bin/rudder artifact edit --help for full documentation
+`)
+    .action(async (id, options) => {
+      const result = findEpicFile(id);
+      if (!result) {
+        console.error(`Epic not found: ${id}`);
+        process.exit(1);
+      }
+
+      const epicPath = result.file;
+
+      let content = options.content;
+      if (!content) {
+        content = await new Promise((resolve) => {
+          let data = '';
+          if (process.stdin.isTTY) { resolve(''); return; }
+          process.stdin.setEncoding('utf8');
+          process.stdin.on('readable', () => {
+            let chunk; while ((chunk = process.stdin.read()) !== null) data += chunk;
+          });
+          process.stdin.on('end', () => resolve(data));
+        });
+        content = content.trim();
+      }
+
+      if (!content) {
+        console.error('Content required via --content or stdin');
+        process.exit(1);
+      }
+
+      let opType = 'replace';
+      if (options.append) opType = 'append';
+      if (options.prepend) opType = 'prepend';
+
+      let ops = options.section
+        ? [{ op: opType, section: options.section, content }]
+        : parseMultiSectionContent(content, opType);
+
+      if (ops.length === 0) {
+        console.error('No sections found. Use --section or format stdin with ## headers');
+        process.exit(1);
+      }
+
+      const originalOps = ops.map(o => ({ op: o.op, section: o.section }));
+      const { expandedOps, errors: processErrors } = processMultiSectionOps(epicPath, ops);
+      if (processErrors.length > 0) {
+        processErrors.forEach(e => console.error(e));
+        process.exit(1);
+      }
+
+      const editResult = editArtifact(epicPath, expandedOps);
+
+      if (options.json) {
+        jsonOut({ id: normalizeId(id), ...editResult });
+      } else if (editResult.success) {
+        if (originalOps.length === 1) {
+          console.log(`✓ ${originalOps[0].op} on ${originalOps[0].section} in ${normalizeId(id)}`);
+        } else {
+          const byOp = {};
+          originalOps.forEach(o => { byOp[o.op] = (byOp[o.op] || 0) + 1; });
+          const summary = Object.entries(byOp).map(([op, n]) => `${op}:${n}`).join(', ');
+          console.log(`✓ ${originalOps.length} sections in ${normalizeId(id)} (${summary})`);
+        }
+      } else {
+        console.error(`✗ Failed: ${editResult.errors.join(', ')}`);
         process.exit(1);
       }
     });

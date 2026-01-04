@@ -10,33 +10,42 @@ blocked_by: []
 stories: []
 tags: []
 target_versions: {}
+# Edit frontmatter: bin/rudder task:update <id> --set key=value
 ---
+
+<!-- Edit ALL sections in ONE command: bin/rudder task:edit <id> <<'EOF'
+## Description
+...
+## Deliverables
+- [ ] ...
+EOF
+-->
+<!-- Ops: [append], [sed], [check], [patch]... See: bin/rudder task edit --help -->
 
 ## Description
 
-Specific, actionable implementation work. One clear objective.
+<!-- REQUIRED: One clear, actionable objective -->
 
 ## Deliverables
 
-- [ ] File or component 1
-- [ ] File or component 2
-- [ ] Tests for deliverables
+<!-- REQUIRED: Checkboxes for concrete outputs -->
+- [ ] Deliverable 1
+- [ ] Deliverable 2
+- [ ] Tests
 
 ## Technical Details
 
+<!-- OPTIONAL: Delete this section if task is self-explanatory -->
+
 ### Files to Create/Modify
-```
-src/path/to/file.js      # Create
-src/path/to/other.js     # Modify
-```
+
+<!-- List files with action (Create/Modify) - or delete subsection -->
 
 ### Implementation Notes
-- Step 1
-- Step 2
-- Patterns to follow
 
-> ⚠️ **Prefer workflow over code** - explain the steps/logic, not the implementation. Code becomes obsolete.
+<!-- Workflow steps, patterns to follow - NO code -->
+<!-- Delete subsection if not needed -->
 
 ## Log
 
-<!-- Add entries as work progresses -->
+<!-- Agent adds entries as work progresses -->

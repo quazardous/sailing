@@ -3,12 +3,12 @@
  */
 import fs from 'fs';
 import path from 'path';
-import { findPrdDirs, findFiles, loadFile, saveFile, toKebab, loadTemplate, jsonOut } from '../lib/core.js';
+import { findPrdDirs, findFiles, loadFile, saveFile, toKebab, loadTemplate, jsonOut, stripComments } from '../lib/core.js';
 import { normalizeId, matchesId, matchesPrdDir } from '../lib/normalize.js';
 import { nextId } from '../lib/state.js';
 import { addDynamicHelp } from '../lib/help.js';
 import { formatId } from '../lib/config.js';
-import { parseSearchReplace, editArtifact } from '../lib/artifact.js';
+import { parseSearchReplace, editArtifact, parseMultiSectionContent, processMultiSectionOps } from '../lib/artifact.js';
 
 const STORY_TYPES = ['user', 'technical', 'api'];
 
@@ -176,6 +176,7 @@ export function registerStoryCommands(program) {
   story.command('show <id>')
     .description('Show story details (children, references)')
     .option('--raw', 'Dump raw markdown file')
+    .option('--comments', 'Include template comments (stripped by default)')
     .option('--json', 'JSON output')
     .action((id, options) => {
       const result = findStoryFile(id);
@@ -187,7 +188,8 @@ export function registerStoryCommands(program) {
       // Raw mode: dump file content with path header
       if (options.raw) {
         console.log(`# File: ${result.file}\n`);
-        console.log(fs.readFileSync(result.file, 'utf8'));
+        const content = fs.readFileSync(result.file, 'utf8');
+        console.log(options.comments ? content : stripComments(content));
         return;
       }
 
@@ -244,6 +246,7 @@ export function registerStoryCommands(program) {
     .description('Create story in PRD')
     .option('-t, --type <type>', `Story type (${STORY_TYPES.join('|')})`, 'user')
     .option('--parent-story <id>', 'Parent story ID')
+    .option('--path', 'Show file path')
     .option('--json', 'JSON output')
     .action((prd, title, options) => {
       if (!STORY_TYPES.includes(options.type)) {
@@ -290,14 +293,9 @@ export function registerStoryCommands(program) {
         jsonOut({ id, title, parent: data.parent, type: data.type, file: storyPath });
       } else {
         console.log(`Created: ${id} - ${title} (${data.type})`);
-        console.log(`\nEdit all sections in one command:`);
-        console.log(`  bin/rudder artifact:edit ${id} <<'EOF'`);
-        console.log(`  ## User Story`);
-        console.log(`  As a user, I want...`);
-        console.log(`  ## Acceptance Criteria`);
-        console.log(`  - [ ] Criterion 1`);
-        console.log(`  EOF`);
-        console.log(`\nOps: [append], [sed], [check], [patch]... See: bin/rudder artifact edit --help`);
+        if (options.path) console.log(`File: ${storyPath}`);
+        console.log(`\n${'─'.repeat(60)}\n`);
+        console.log(fs.readFileSync(storyPath, 'utf8'));
       }
     });
 
@@ -767,6 +765,86 @@ export function registerStoryCommands(program) {
       } else {
         console.error(`✗ Applied ${editResult.applied}/${ops.length}, errors:`);
         editResult.errors.forEach(e => console.error(`  - ${e}`));
+        process.exit(1);
+      }
+    });
+
+  // story:edit - Edit story sections
+  story.command('edit <id>')
+    .description('Edit story section(s)')
+    .option('-s, --section <name>', 'Section to edit (omit for multi-section stdin)')
+    .option('-c, --content <text>', 'New content (or use stdin)')
+    .option('-a, --append', 'Append to section instead of replace')
+    .option('-p, --prepend', 'Prepend to section instead of replace')
+    .option('--json', 'JSON output')
+    .addHelpText('after', `
+Multi-section format: use ## headers with optional [op]
+Operations: [replace], [append], [prepend], [delete], [sed], [check], [uncheck], [toggle], [patch]
+See: bin/rudder artifact edit --help for full documentation
+`)
+    .action(async (id, options) => {
+      const result = findStoryFile(id);
+      if (!result) {
+        console.error(`Story not found: ${id}`);
+        process.exit(1);
+      }
+
+      const storyPath = result.file;
+
+      let content = options.content;
+      if (!content) {
+        content = await new Promise((resolve) => {
+          let data = '';
+          if (process.stdin.isTTY) { resolve(''); return; }
+          process.stdin.setEncoding('utf8');
+          process.stdin.on('readable', () => {
+            let chunk; while ((chunk = process.stdin.read()) !== null) data += chunk;
+          });
+          process.stdin.on('end', () => resolve(data));
+        });
+        content = content.trim();
+      }
+
+      if (!content) {
+        console.error('Content required via --content or stdin');
+        process.exit(1);
+      }
+
+      let opType = 'replace';
+      if (options.append) opType = 'append';
+      if (options.prepend) opType = 'prepend';
+
+      let ops = options.section
+        ? [{ op: opType, section: options.section, content }]
+        : parseMultiSectionContent(content, opType);
+
+      if (ops.length === 0) {
+        console.error('No sections found. Use --section or format stdin with ## headers');
+        process.exit(1);
+      }
+
+      const originalOps = ops.map(o => ({ op: o.op, section: o.section }));
+      const { expandedOps, errors: processErrors } = processMultiSectionOps(storyPath, ops);
+      if (processErrors.length > 0) {
+        processErrors.forEach(e => console.error(e));
+        process.exit(1);
+      }
+
+      const editResult = editArtifact(storyPath, expandedOps);
+
+      if (options.json) {
+        jsonOut({ id: normalizeId(id), ...editResult });
+      } else if (editResult.success) {
+        if (originalOps.length === 1) {
+          console.log(`✓ ${originalOps[0].op} on ${originalOps[0].section} in ${normalizeId(id)}`);
+        } else {
+          const byOp = {};
+          originalOps.forEach(o => { byOp[o.op] = (byOp[o.op] || 0) + 1; });
+          const summary = Object.entries(byOp).map(([op, n]) => `${op}:${n}`).join(', ');
+          console.log(`✓ ${originalOps.length} sections in ${normalizeId(id)} (${summary})`);
+        }
+      } else {
+        console.error(`✗ Failed: ${editResult.errors.join(', ')}`);
         process.exit(1);
       }
     });

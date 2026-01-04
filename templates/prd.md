@@ -15,7 +15,17 @@ milestones:
     epics: [E003]
     versions: { component-a: "1.1.0", component-b: "1.1.0" }
     status: pending
+# Edit frontmatter: bin/rudder prd:update <id> --set key=value
 ---
+
+<!-- Edit ALL sections in ONE command: bin/rudder prd:edit <id> <<'EOF'
+## Summary
+...
+## Goals
+- [ ] ...
+EOF
+-->
+<!-- Ops: [append], [sed], [check], [patch]... See: bin/rudder prd edit --help -->
 
 ## Summary
 

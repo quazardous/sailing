@@ -4,7 +4,7 @@
  */
 import fs from 'fs';
 import path from 'path';
-import { jsonOut } from '../lib/core.js';
+import { jsonOut, stripComments } from '../lib/core.js';
 import { addDynamicHelp } from '../lib/help.js';
 import {
   parseMarkdownSections,
@@ -95,6 +95,7 @@ export function registerArtifactCommands(program) {
     .description('Show artifact content or specific section')
     .option('-s, --section <name>', 'Show only this section')
     .option('-l, --list', 'List section names only')
+    .option('--comments', 'Include template comments (stripped by default)')
     .option('--json', 'JSON output')
     .action((id, options) => {
       const resolved = resolveArtifact(id);
@@ -129,7 +130,10 @@ export function registerArtifactCommands(program) {
       }
 
       // Show full content (without frontmatter)
-      const raw = fs.readFileSync(resolved.path, 'utf8');
+      let raw = fs.readFileSync(resolved.path, 'utf8');
+      if (!options.comments) {
+        raw = stripComments(raw);
+      }
       const parsed = parseMarkdownSections(raw);
 
       if (options.json) {

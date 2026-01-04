@@ -2,6 +2,24 @@
 
 All notable changes to the Sailing Framework will be documented in this file.
 
+## [1.6.2] - 2026-01-04
+
+### Added
+- Entity-specific `:edit` commands: `prd:edit`, `epic:edit`, `task:edit`, `story:edit`
+- Multi-section edit with operations: `[replace]`, `[append]`, `[prepend]`, `[delete]`, `[sed]`, `[check]`, `[uncheck]`, `[toggle]`, `[patch]`
+- `stripComments()` function in core.js for filtering template comments
+- `:show --raw` strips comments by default, use `--comments` to include them
+- `:create --path` flag to optionally show file path
+
+### Changed
+- Templates now directive with `<!-- REQUIRED: ... -->` and `<!-- OPTIONAL: ... -->`
+- Templates include "Edit ALL sections in ONE command" example with heredoc format
+- Templates include edit commands in frontmatter comment and body
+- `:create` commands display file content after separator (path hidden by default)
+
+### Fixed
+- `epic:edit` was passing object instead of file path
+
 ## [1.6.1] - 2026-01-03
 
 ### Added
