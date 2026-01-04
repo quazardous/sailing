@@ -152,6 +152,52 @@ export function registerArtifactCommands(program) {
     .option('-a, --append', 'Append to section instead of replace')
     .option('-p, --prepend', 'Prepend to section instead of replace')
     .option('--json', 'JSON output')
+    .addHelpText('after', `
+Multi-Section Format (omit --section):
+  Use ## headers to edit multiple sections at once.
+  Add [op] after section name to specify operation.
+
+Operations:
+  [replace]   Replace section content (default)
+  [append]    Add content at end of section
+  [prepend]   Add content at start of section
+  [delete]    Remove section entirely
+  [sed]       Search/replace with regex: s/pattern/replacement/g
+  [check]     Check checkbox items (partial match)
+  [uncheck]   Uncheck checkbox items
+  [toggle]    Toggle checkbox state
+  [patch]     Apply SEARCH/REPLACE blocks (Aider-style)
+
+Examples:
+  # Single section
+  bin/rudder artifact:edit T001 --section "Deliverables" <<'EOF'
+  - [ ] New item
+  EOF
+
+  # Multiple sections with mixed operations
+  bin/rudder artifact:edit T001 <<'EOF'
+  ## Description
+  Full replacement content...
+
+  ## Deliverables [append]
+  - [ ] New item at end
+
+  ## Deliverables [sed]
+  s/v1\\.0/v2.0/g
+  s/old text/new text/
+
+  ## Deliverables [check]
+  First item
+  Second item
+
+  ## Notes [patch]
+  <<<<<<< SEARCH
+  old content
+  =======
+  new content
+  >>>>>>> REPLACE
+  EOF
+`)
     .action(async (id, options) => {
       const resolved = resolveArtifact(id);
       if (!resolved) {
