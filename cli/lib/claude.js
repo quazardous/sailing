@@ -5,6 +5,7 @@
  * Uses srt.js for actual spawning.
  */
 import path from 'path';
+import fs from 'fs';
 import { getAgentConfig } from './config.js';
 import { getAgentsDir, getPathsInfo } from './core.js';
 import { spawnClaudeWithSrt, generateSrtConfig, generateAgentMcpConfig, checkMcpServer } from './srt.js';
@@ -20,11 +21,12 @@ const getAgentsBaseDir = getAgentsDir;
  * @param {string} options.agentDir - Agent directory path
  * @param {string} options.cwd - Working directory (worktree)
  * @param {string} options.logFile - Log file path
+ * @param {string} options.taskId - Task ID (to identify current worktree)
  * @param {boolean} [options.externalMcp=false] - If true, only allow worktree writes (MCP handles haven)
  * @returns {string} Path to generated srt config
  */
 export function generateAgentSrtConfig(options) {
-  const { agentDir, cwd, logFile, externalMcp = false } = options;
+  const { agentDir, cwd, logFile, taskId, externalMcp = false } = options;
   const paths = getPathsInfo();
 
   // Base write paths: worktree + log directory
@@ -41,10 +43,41 @@ export function generateAgentSrtConfig(options) {
     additionalWritePaths.push(havenDir);
   }
 
+  // Block reading of other worktrees and haven artefacts
+  // Agent should use MCP for context, not explore the filesystem
+  const havenDir = getHavenDir(agentDir);
+  const additionalDenyReadPaths = [];
+
+  // Block other worktrees (agent should only see its own)
+  const worktreesDir = path.join(havenDir, 'worktrees');
+  if (fs.existsSync(worktreesDir)) {
+    const entries = fs.readdirSync(worktreesDir, { withFileTypes: true });
+    for (const entry of entries) {
+      if (entry.isDirectory() && entry.name !== taskId) {
+        additionalDenyReadPaths.push(path.join(worktreesDir, entry.name));
+      }
+    }
+  }
+
+  // Block other agents' directories
+  const agentsDir = path.join(havenDir, 'agents');
+  if (fs.existsSync(agentsDir)) {
+    const entries = fs.readdirSync(agentsDir, { withFileTypes: true });
+    for (const entry of entries) {
+      if (entry.isDirectory() && entry.name !== taskId) {
+        additionalDenyReadPaths.push(path.join(agentsDir, entry.name));
+      }
+    }
+  }
+
+  // Block artefacts - agent should use MCP context:load, not read files
+  additionalDenyReadPaths.push(path.join(havenDir, 'artefacts'));
+
   return generateSrtConfig({
     baseConfigPath: paths.srtConfig?.absolute,
     outputPath: path.join(agentDir, 'srt-settings.json'),
     additionalWritePaths,
+    additionalDenyReadPaths,
     strictMode: true
   });
 }
@@ -143,6 +176,7 @@ export async function spawnClaude(options) {
         agentDir,
         cwd,
         logFile,
+        taskId,
         externalMcp: !!mcpSocket  // Strict sandbox if external MCP is active
       });
     } else if (paths.srtConfig?.absolute) {

@@ -276,11 +276,12 @@ export function loadBaseSrtConfig(configPath) {
  * @param {string} options.baseConfigPath - Base config path (optional)
  * @param {string} options.outputPath - Where to write the generated config
  * @param {string[]} options.additionalWritePaths - Additional paths to allow writing
+ * @param {string[]} [options.additionalDenyReadPaths] - Additional paths to deny reading
  * @param {boolean} [options.strictMode=false] - If true, ONLY allow /tmp + additionalWritePaths (ignore base config paths)
  * @returns {string} Path to generated config
  */
 export function generateSrtConfig(options) {
-  const { baseConfigPath, outputPath, additionalWritePaths = [], strictMode = false } = options;
+  const { baseConfigPath, outputPath, additionalWritePaths = [], additionalDenyReadPaths = [], strictMode = false } = options;
 
   const config = loadBaseSrtConfig(baseConfigPath);
 
@@ -306,6 +307,13 @@ export function generateSrtConfig(options) {
       if (p && !existingPaths.has(p)) {
         config.filesystem.allowWrite.push(p);
       }
+    }
+  }
+
+  // Add additional denyRead paths (e.g., other worktrees)
+  for (const p of additionalDenyReadPaths) {
+    if (p && !config.filesystem.denyRead.includes(p)) {
+      config.filesystem.denyRead.push(p);
     }
   }
 
