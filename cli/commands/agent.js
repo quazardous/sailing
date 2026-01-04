@@ -1913,6 +1913,12 @@ Start by calling the rudder MCP tool with \`context:load ${taskId}\` to get your
       }
     });
 
+  // Helper: normalize task ID
+  function normalizeId(taskId) {
+    taskId = taskId.toUpperCase();
+    return taskId.startsWith('T') ? taskId : 'T' + taskId;
+  }
+
   // agent:log - Show agent log
   agent.command('log <task-id>')
     .description('Show agent log (full output)')
@@ -2231,6 +2237,218 @@ Do not output anything else. Exit immediately after.`;
         // Cleanup
         fs.rmSync(agentDir, { recursive: true, force: true });
         process.exit(1);
+      }
+    });
+
+  // agent:wait-all - Efficient wait for multiple agents using fs.watch
+  agent.command('wait-all [task-ids...]')
+    .description('Wait for agents to complete (all active if no IDs specified)')
+    .option('--any', 'Return when first agent completes (default: wait for all)')
+    .option('--timeout <seconds>', 'Timeout in seconds (default: 3600)', parseInt, 3600)
+    .option('--heartbeat <seconds>', 'Heartbeat interval in seconds (default: 30)', parseInt, 30)
+    .option('--json', 'JSON output')
+    .action(async (taskIds, options) => {
+      const state = loadState();
+      const agents = state.agents || {};
+
+      // Determine which agents to wait for
+      let waitFor = taskIds.length > 0
+        ? taskIds.map(id => {
+            id = id.toUpperCase();
+            return id.startsWith('T') ? id : 'T' + id;
+          })
+        : Object.entries(agents)
+            .filter(([_, info]) => ['spawned', 'dispatched', 'running'].includes(info.status))
+            .map(([id]) => id);
+
+      if (waitFor.length === 0) {
+        if (options.json) {
+          jsonOut({ status: 'no_agents', completed: [] });
+        } else {
+          console.log('No active agents to wait for');
+        }
+        return;
+      }
+
+      if (!options.json) {
+        const mode = options.any ? 'any' : 'all';
+        console.log(`Waiting for ${mode} of ${waitFor.length} agent(s): ${waitFor.join(', ')}`);
+      }
+
+      const startTime = Date.now();
+      const timeoutMs = options.timeout * 1000;
+      const completed = [];
+      const stateFile = path.join(getAgentsBaseDir(), '..', 'state.json');
+
+      // Use fs.watch for efficiency
+      const checkCompletion = () => {
+        const currentState = loadState();
+        for (const taskId of waitFor) {
+          if (completed.includes(taskId)) continue;
+          const completion = checkAgentCompletion(taskId);
+          if (completion.complete) {
+            completed.push(taskId);
+            if (!options.json) {
+              console.log(`  ✓ ${taskId} completed`);
+            }
+            if (options.any) return true; // First one done
+          }
+        }
+        return completed.length >= waitFor.length; // All done
+      };
+
+      // Initial check
+      if (checkCompletion()) {
+        if (options.json) {
+          jsonOut({ status: 'complete', completed, elapsed_ms: Date.now() - startTime });
+        } else if (!options.any) {
+          console.log(`✓ All ${waitFor.length} agent(s) completed`);
+        }
+        return;
+      }
+
+      // Watch for changes
+      return new Promise((resolve) => {
+        let watcher;
+        let pollInterval;
+
+        const cleanup = () => {
+          if (watcher) watcher.close();
+          if (pollInterval) clearInterval(pollInterval);
+        };
+
+        const onComplete = () => {
+          cleanup();
+          if (options.json) {
+            jsonOut({ status: 'complete', completed, elapsed_ms: Date.now() - startTime });
+          } else if (!options.any) {
+            console.log(`✓ All ${waitFor.length} agent(s) completed`);
+          }
+          resolve();
+        };
+
+        const onTimeout = () => {
+          cleanup();
+          if (options.json) {
+            jsonOut({
+              status: 'timeout',
+              completed,
+              pending: waitFor.filter(id => !completed.includes(id)),
+              elapsed_ms: Date.now() - startTime
+            });
+          } else {
+            console.error(`\n✗ Timeout after ${options.timeout}s`);
+            console.error(`  Completed: ${completed.length}/${waitFor.length}`);
+          }
+          process.exit(2);
+        };
+
+        // Try fs.watch (efficient, event-based)
+        try {
+          watcher = fs.watch(stateFile, { persistent: true }, (eventType) => {
+            if (eventType === 'change' && checkCompletion()) {
+              onComplete();
+            }
+          });
+        } catch (e) {
+          // fs.watch not available, use polling
+        }
+
+        // Also poll periodically as backup (every 2s)
+        const heartbeatIntervalMs = (options.heartbeat || 30) * 1000;
+        let lastHeartbeat = startTime;
+
+        pollInterval = setInterval(() => {
+          const elapsed = Date.now() - startTime;
+
+          if (elapsed > timeoutMs) {
+            onTimeout();
+            return;
+          }
+
+          // Check completion
+          if (checkCompletion()) {
+            onComplete();
+            return;
+          }
+
+          // Heartbeat output (pong) - shows we're still alive
+          if (!options.json && (Date.now() - lastHeartbeat >= heartbeatIntervalMs)) {
+            const elapsedSec = Math.floor(elapsed / 1000);
+            const pending = waitFor.filter(id => !completed.includes(id));
+            console.log(`[${elapsedSec}s] pong — waiting for ${pending.length} agent(s): ${pending.join(', ')}`);
+            lastHeartbeat = Date.now();
+          }
+        }, 2000);
+
+        // Timeout handler
+        setTimeout(onTimeout, timeoutMs);
+      });
+    });
+
+  // agent:reap-all - Reap all completed agents
+  agent.command('reap-all [task-ids...]')
+    .description('Reap all completed agents (all if no IDs specified)')
+    .option('--json', 'JSON output')
+    .action(async (taskIds, options) => {
+      const state = loadState();
+      const agents = state.agents || {};
+      const projectRoot = findProjectRoot();
+
+      // Determine which agents to reap
+      let toReap = taskIds.length > 0
+        ? taskIds.map(id => {
+            id = id.toUpperCase();
+            return id.startsWith('T') ? id : 'T' + id;
+          })
+        : Object.keys(agents);
+
+      // Filter to only completed agents
+      const completed = toReap.filter(taskId => {
+        const completion = checkAgentCompletion(taskId);
+        return completion.complete;
+      });
+
+      if (completed.length === 0) {
+        if (options.json) {
+          jsonOut({ status: 'none', reaped: [] });
+        } else {
+          console.log('No completed agents to reap');
+        }
+        return;
+      }
+
+      if (!options.json) {
+        console.log(`Reaping ${completed.length} agent(s)...`);
+      }
+
+      const results = [];
+      for (const taskId of completed) {
+        try {
+          // Call reap for each (reuse existing logic)
+          execSync(`${process.argv[0]} ${process.argv[1]} agent:reap ${taskId} --json`, {
+            cwd: projectRoot,
+            encoding: 'utf8',
+            stdio: ['pipe', 'pipe', 'pipe']
+          });
+          results.push({ task_id: taskId, status: 'reaped' });
+          if (!options.json) {
+            console.log(`  ✓ ${taskId} reaped`);
+          }
+        } catch (e) {
+          const stderr = e.stderr?.toString() || e.message;
+          results.push({ task_id: taskId, status: 'failed', error: stderr.slice(0, 100) });
+          if (!options.json) {
+            console.error(`  ✗ ${taskId} failed: ${stderr.slice(0, 50)}`);
+          }
+        }
+      }
+
+      if (options.json) {
+        jsonOut({ status: 'complete', reaped: results });
+      } else {
+        const succeeded = results.filter(r => r.status === 'reaped').length;
+        console.log(`\n✓ Reaped ${succeeded}/${completed.length} agent(s)`);
       }
     });
 }
