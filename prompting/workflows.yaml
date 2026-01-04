@@ -106,7 +106,7 @@ operations:
   epic-review:     { entity: epic,   roles: [coordinator],  description: "Review epic for tech decisions" }
 
   # PRD operations
-  prd-create:      { entity: prd,    roles: [coordinator],  description: "Create a new PRD" }
+  prd-create:      { entity: prd,    roles: [skill, coordinator],  description: "Create a new PRD" }
   prd-breakdown:   { entity: prd,    roles: [coordinator],  description: "Decompose PRD into epics" }
   prd-review:      { entity: prd,    roles: [coordinator],  description: "Review PRD for completeness" }
 
