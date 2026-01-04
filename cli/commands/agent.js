@@ -53,6 +53,54 @@ export function registerAgentCommands(program) {
 
   addDynamicHelp(agent, { entityType: 'agent' });
 
+  /**
+   * Get process stats from /proc (Linux only)
+   * @param {number} pid - Process ID
+   * @returns {{ running: boolean, cpu?: string, mem?: string, rss?: number }}
+   */
+  function getProcessStats(pid) {
+    try {
+      // Check if process exists
+      process.kill(pid, 0);
+
+      // Read memory info from /proc/[pid]/statm (pages)
+      const statmPath = `/proc/${pid}/statm`;
+      if (fs.existsSync(statmPath)) {
+        const statm = fs.readFileSync(statmPath, 'utf8').trim().split(' ');
+        const pageSize = 4096; // 4KB pages on most Linux systems
+        const rssPages = parseInt(statm[1], 10);
+        const rssBytes = rssPages * pageSize;
+        const rssMB = (rssBytes / (1024 * 1024)).toFixed(1);
+
+        return { running: true, mem: `${rssMB}MB`, rss: rssBytes };
+      }
+
+      return { running: true };
+    } catch {
+      return { running: false };
+    }
+  }
+
+  /**
+   * Format duration as human-readable string
+   * @param {number} ms - Duration in milliseconds
+   * @returns {string} Formatted duration (e.g., "2m15s", "1h03m")
+   */
+  function formatDuration(ms) {
+    const totalSec = Math.floor(ms / 1000);
+    const hours = Math.floor(totalSec / 3600);
+    const mins = Math.floor((totalSec % 3600) / 60);
+    const secs = totalSec % 60;
+
+    if (hours > 0) {
+      return `${hours}h${mins.toString().padStart(2, '0')}m`;
+    } else if (mins > 0) {
+      return `${mins}m${secs.toString().padStart(2, '0')}s`;
+    } else {
+      return `${secs}s`;
+    }
+  }
+
   // agent:spawn - creates worktree, spawns Claude with bootstrap prompt
   agent.command('spawn <task-id>')
     .description('Spawn agent to execute task (creates worktree, spawns Claude)')
@@ -60,7 +108,10 @@ export function registerAgentCommands(program) {
     .option('--timeout <seconds>', 'Execution timeout (default: 600)', parseInt)
     .option('--worktree', 'Create isolated worktree (overrides config)')
     .option('--no-worktree', 'Skip worktree creation (overrides config)')
-    .option('--stderr-to-file [path]', 'Redirect stderr to file only (default: run.log)')
+    .option('--no-wait', 'Fire and forget (do not wait for completion)')
+    .option('--no-log', 'Do not stream Claude stdout/stderr')
+    .option('--no-heartbeat', 'Do not show periodic heartbeat')
+    .option('--heartbeat <seconds>', 'Heartbeat interval (default: 30)', parseInt, 30)
     .option('--resume', 'Reuse existing worktree (continue blocked/partial work)')
     .option('--dry-run', 'Show what would be done without spawning')
     .option('--json', 'JSON output')
@@ -559,6 +610,10 @@ Start by calling the rudder MCP tool with \`context:load ${taskId}\` to get your
 
       // Spawn Claude with bootstrap prompt
       // Includes MCP config for restricted rudder access (agent can only access its task)
+      // In wait mode (default), we stream stdout/stderr; in no-wait mode, suppress output
+      const shouldWait = options.wait !== false;
+      const shouldLog = options.log !== false && shouldWait;
+
       const spawnResult = await spawnClaude({
         prompt: bootstrapPrompt,
         cwd,
@@ -567,7 +622,7 @@ Start by calling the rudder MCP tool with \`context:load ${taskId}\` to get your
         agentDir,
         taskId,                           // For MCP server task restriction
         projectRoot,                      // For MCP server rudder commands
-        stderrToFile: options.stderrToFile
+        stderrToFile: !shouldLog          // Suppress console output if not logging
       });
 
       // Update state atomically to prevent race condition with parallel spawns
@@ -686,29 +741,158 @@ Start by calling the rudder MCP tool with \`context:load ${taskId}\` to get your
         }
       });
 
+      // === NO-WAIT MODE: fire and forget ===
+      if (!shouldWait) {
+        if (options.json) {
+          jsonOut({
+            task_id: taskId,
+            epic_id: epicId,
+            prd_id: prdId,
+            pid: spawnResult.pid,
+            cwd,
+            log_file: spawnResult.logFile,
+            mission_file: missionFile,
+            timeout,
+            ...(worktreeInfo && { worktree: worktreeInfo })
+          });
+        } else {
+          console.log(`Spawned: ${taskId}`);
+          console.log(`  PID: ${spawnResult.pid}`);
+          console.log(`  Timeout: ${timeout}s`);
+          console.log(`\nMonitor:`);
+          console.log(`  bin/rudder agent:status ${taskId}   # Check if running/complete`);
+          console.log(`  bin/rudder agent:tail ${taskId}     # Follow output (Ctrl+C to stop)`);
+          console.log(`  bin/rudder agent:log ${taskId}      # Show full log`);
+          console.log(`\nAfter completion:`);
+          console.log(`  bin/rudder agent:reap ${taskId}     # Merge work + cleanup`);
+        }
+        return;
+      }
+
+      // === WAIT MODE (default): wait with heartbeat, auto-reap ===
+      const startTime = Date.now();
+      const heartbeatInterval = (options.heartbeat || 30) * 1000;
+      const shouldHeartbeat = options.heartbeat !== false;
+      let lastHeartbeat = startTime;
+      let detached = false;
+      let exitCode = null;
+      let exitSignal = null;
+
+      if (!options.json) {
+        console.log(`Spawned: ${taskId} (PID ${spawnResult.pid})`);
+        console.log('─'.repeat(60));
+        if (shouldLog) {
+          console.log('[streaming Claude output...]\n');
+        }
+      }
+
+      // Setup SIGHUP handler: force immediate heartbeat
+      const emitHeartbeat = () => {
+        const elapsed = Date.now() - startTime;
+        const stats = getProcessStats(spawnResult.pid);
+        const memInfo = stats.mem ? ` (mem: ${stats.mem})` : '';
+        console.log(`\n[${formatDuration(elapsed)}] pong — ${taskId} ${stats.running ? 'running' : 'stopped'}${memInfo}`);
+        lastHeartbeat = Date.now();
+      };
+
+      const sighupHandler = () => {
+        emitHeartbeat();
+      };
+      process.on('SIGHUP', sighupHandler);
+
+      // Setup SIGINT handler: detach instead of kill
+      const sigintHandler = () => {
+        if (!options.json) {
+          console.log(`\n\nDetaching from ${taskId} (agent continues in background)`);
+          console.log(`Monitor: bin/rudder agent:tail ${taskId}`);
+          console.log(`Reap:    bin/rudder agent:reap ${taskId}`);
+        }
+        detached = true;
+        cleanup();
+        process.exit(0);
+      };
+      process.on('SIGINT', sigintHandler);
+
+      // Setup SIGTERM handler: kill agent and exit
+      const sigtermHandler = () => {
+        if (!options.json) {
+          console.log(`\nReceived SIGTERM, killing agent ${taskId}...`);
+        }
+        try {
+          process.kill(spawnResult.pid, 'SIGTERM');
+        } catch { /* ignore */ }
+        cleanup();
+        process.exit(1);
+      };
+      process.on('SIGTERM', sigtermHandler);
+
+      // Cleanup signal handlers
+      const cleanup = () => {
+        process.off('SIGHUP', sighupHandler);
+        process.off('SIGINT', sigintHandler);
+        process.off('SIGTERM', sigtermHandler);
+        if (heartbeatTimer) clearInterval(heartbeatTimer);
+      };
+
+      // Heartbeat timer
+      let heartbeatTimer = null;
+      if (shouldHeartbeat && !options.json) {
+        heartbeatTimer = setInterval(() => {
+          if (Date.now() - lastHeartbeat >= heartbeatInterval) {
+            emitHeartbeat();
+          }
+        }, 2000);
+      }
+
+      // Wait for process to exit
+      await new Promise((resolve) => {
+        spawnResult.process.on('exit', (code, signal) => {
+          exitCode = code;
+          exitSignal = signal;
+          resolve();
+        });
+      });
+
+      cleanup();
+
+      const elapsed = Date.now() - startTime;
+
       if (options.json) {
         jsonOut({
           task_id: taskId,
-          epic_id: epicId,
-          prd_id: prdId,
-          pid: spawnResult.pid,
-          cwd,
-          log_file: spawnResult.logFile,
-          mission_file: missionFile,
-          timeout,
+          status: exitCode === 0 ? 'completed' : 'error',
+          exit_code: exitCode,
+          exit_signal: exitSignal,
+          elapsed_ms: elapsed,
           ...(worktreeInfo && { worktree: worktreeInfo })
         });
+        return;
+      }
+
+      console.log('─'.repeat(60));
+      if (exitCode === 0) {
+        console.log(`✓ ${taskId} completed (${formatDuration(elapsed)})`);
       } else {
-        console.log(`Spawned: ${taskId}`);
-        console.log(`  PID: ${spawnResult.pid}`);
-        console.log(`  Timeout: ${timeout}s`);
-        console.log(`\nMonitor:`);
-        console.log(`  bin/rudder agent:status ${taskId}   # Check if running/complete`);
-        console.log(`  bin/rudder agent:tail ${taskId}     # Follow output (Ctrl+C to stop)`);
-        console.log(`  bin/rudder agent:log ${taskId}      # Show full log`);
-        console.log(`  bin/rudder agent:list --active      # List all active agents`);
-        console.log(`\nAfter completion:`);
-        console.log(`  bin/rudder agent:reap ${taskId}     # Merge work + cleanup`);
+        console.log(`✗ ${taskId} failed (exit: ${exitCode}, ${formatDuration(elapsed)})`);
+      }
+
+      // Auto-reap if successful
+      if (exitCode === 0) {
+        console.log(`\nAuto-reaping ${taskId}...`);
+        try {
+          execSync(`${process.argv[0]} ${process.argv[1]} agent:reap ${taskId}`, {
+            cwd: projectRoot,
+            encoding: 'utf8',
+            stdio: 'inherit'
+          });
+        } catch (e) {
+          console.error(`Reap failed: ${e.message}`);
+          console.error(`Manual: bin/rudder agent:reap ${taskId}`);
+        }
+      } else {
+        console.log(`\nNext steps:`);
+        console.log(`  bin/rudder agent:log ${taskId}     # Check full log`);
+        console.log(`  bin/rudder agent:reject ${taskId}  # Discard work`);
       }
     });
 
