@@ -185,10 +185,6 @@ orchestration:
       actor: agent
       commands:
         - { cmd: "task:log {TASK} \"message\" --level", mode: both, purpose: "Log progress", required: true, note: "Minimum 2 entries" }
-    - name: completion
-      actor: agent
-      commands:
-        - { cmd: "assign:release {TASK}", mode: subprocess, purpose: "Release task (optional: auto-release on exit 0)" }
     - name: post-flight
       actor: skill
       commands:

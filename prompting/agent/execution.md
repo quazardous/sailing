@@ -19,8 +19,6 @@ If unsure what to log → log what surprised you.
 
 ## Complete
 
-```bash
-rudder assign:release TNNN
-```
+Just exit normally when done. Auto-release happens on exit 0.
 
 **Rejection triggers**: incomplete deliverables, <2 logs, missing TIP, artifact edited with Edit tool (use rudder).

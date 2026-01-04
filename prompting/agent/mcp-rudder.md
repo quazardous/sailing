@@ -18,7 +18,7 @@ When documentation shows `rudder <command>`, strip the `rudder ` prefix:
 | Doc shows | MCP command |
 |-----------|-------------|
 | `rudder task:log T042 "msg" --info` | `task:log T042 "msg" --info` |
-| `rudder assign:release T042` | `assign:release T042` |
+| `rudder task:log T042 "insight" --tip` | `task:log T042 "insight" --tip` |
 
 ### Example
 
