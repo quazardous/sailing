@@ -394,11 +394,13 @@ Arguments: { "command": "..." }
 
 ## Instructions
 
+The task is already claimed. Your job:
+
 1. **Get your context** by calling:
    \`\`\`json
-   { "command": "assign:claim ${taskId}" }
+   { "command": "context:load ${taskId}" }
    \`\`\`
-   This will output your full instructions, memory, and task details.
+   This outputs your instructions, memory, and task deliverables.
 
 2. **Execute the task** according to the deliverables.
 
@@ -417,7 +419,7 @@ Arguments: { "command": "..." }
 
 ${commitInstructions}
 
-Start by calling the rudder MCP tool with \`assign:claim ${taskId}\` to get your instructions.
+Start by calling the rudder MCP tool with \`context:load ${taskId}\` to get your instructions.
 `;
 
       if (options.dryRun) {
@@ -530,6 +532,25 @@ Start by calling the rudder MCP tool with \`assign:claim ${taskId}\` to get your
               console.log(`  Branch: ${result.branch} (from ${parentBranch})`);
             }
           }
+        }
+      }
+
+      // Pre-claim task before spawning agent
+      // This ensures task is marked as in-progress even if agent doesn't call MCP
+      try {
+        execSync(`${process.argv[0]} ${process.argv[1]} assign:claim ${taskId} --json`, {
+          cwd: projectRoot,
+          encoding: 'utf8',
+          stdio: ['pipe', 'pipe', 'pipe']
+        });
+        if (!options.json) {
+          console.log(`Task ${taskId} claimed`);
+        }
+      } catch (e) {
+        // Claim might fail if already claimed (resume scenario) - that's ok
+        const stderr = e.stderr?.toString() || '';
+        if (!stderr.includes('already claimed')) {
+          console.error(`Warning: Could not claim task: ${stderr || e.message}`);
         }
       }
 
