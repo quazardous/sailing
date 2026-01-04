@@ -22,12 +22,38 @@ import {
 } from '../lib/entities.js';
 
 /**
+ * Parse sed-like commands from content
+ * Format: s/search/replace/ or s/search/replace/g
+ * @param {string} content - Lines of sed commands
+ * @returns {Array<{search: string, replace: string, global: boolean}>}
+ */
+function parseSedCommands(content) {
+  const commands = [];
+  const lines = content.split('\n').filter(l => l.trim());
+
+  for (const line of lines) {
+    // Match s/search/replace/ or s/search/replace/g
+    // Support different delimiters: s|search|replace| or s#search#replace#
+    const match = line.match(/^s([\/|#@])(.+?)\1(.+?)\1(g)?$/);
+    if (match) {
+      commands.push({
+        search: match[2],
+        replace: match[3],
+        global: !!match[4]
+      });
+    }
+  }
+
+  return commands;
+}
+
+/**
  * Parse multi-section content from stdin
  * Format: ## Section Name [op]\nContent...
- * Supported ops: [append], [prepend], [delete], [replace] (default)
+ * Supported ops: [append], [prepend], [delete], [replace] (default), [sed]
  * @param {string} content - Raw content with ## headers
  * @param {string} defaultOp - Default operation if not specified in header
- * @returns {Array<{op: string, section: string, content: string}>}
+ * @returns {Array<{op: string, section: string, content: string, sedCommands?: Array}>}
  */
 function parseMultiSectionContent(content, defaultOp) {
   const ops = [];
@@ -38,15 +64,20 @@ function parseMultiSectionContent(content, defaultOp) {
 
   for (const line of lines) {
     // Match: ## Section Name or ## Section Name [op]
-    const match = line.match(/^##\s+(.+?)(?:\s+\[(append|prepend|delete|replace)\])?\s*$/);
+    const match = line.match(/^##\s+(.+?)(?:\s+\[(append|prepend|delete|replace|sed|check|uncheck|toggle)\])?\s*$/);
     if (match) {
       // Save previous section
       if (currentSection) {
-        ops.push({
+        const op = {
           op: currentOp,
           section: currentSection,
           content: currentContent.join('\n').trim()
-        });
+        };
+        // Parse sed commands if sed operation
+        if (currentOp === 'sed') {
+          op.sedCommands = parseSedCommands(op.content);
+        }
+        ops.push(op);
       }
       currentSection = match[1].trim();
       currentOp = match[2] || defaultOp;
@@ -58,11 +89,15 @@ function parseMultiSectionContent(content, defaultOp) {
 
   // Save last section
   if (currentSection) {
-    ops.push({
+    const op = {
       op: currentOp,
       section: currentSection,
       content: currentContent.join('\n').trim()
-    });
+    };
+    if (currentOp === 'sed') {
+      op.sedCommands = parseSedCommands(op.content);
+    }
+    ops.push(op);
   }
 
   return ops;
@@ -237,21 +272,67 @@ export function registerArtifactCommands(program) {
         }
       }
 
+      // Track original ops for output (before transformation)
+      const originalOps = ops.map(o => ({ op: o.op, section: o.section }));
+
+      // Process special operations: sed, check, uncheck, toggle
+      const expandedOps = [];
+      for (const op of ops) {
+        if (op.op === 'sed' && op.sedCommands?.length > 0) {
+          // Get current section content
+          let sectionContent = getSection(resolved.path, op.section);
+          if (sectionContent === null) {
+            console.error(`Section not found for sed: ${op.section}`);
+            process.exit(1);
+          }
+          // Apply each sed command
+          for (const cmd of op.sedCommands) {
+            if (cmd.global) {
+              sectionContent = sectionContent.split(cmd.search).join(cmd.replace);
+            } else {
+              sectionContent = sectionContent.replace(cmd.search, cmd.replace);
+            }
+          }
+          // Transform to replace operation
+          expandedOps.push({
+            op: 'replace',
+            section: op.section,
+            content: sectionContent
+          });
+        } else if (['check', 'uncheck', 'toggle'].includes(op.op)) {
+          // Parse items from content (one per line, strip leading - [ ] or - [x])
+          const items = op.content.split('\n')
+            .map(l => l.replace(/^-\s*\[[ x]\]\s*/, '').trim())
+            .filter(l => l.length > 0);
+          // Create individual check/uncheck ops for each item
+          for (const item of items) {
+            expandedOps.push({
+              op: op.op,
+              section: op.section,
+              item
+            });
+          }
+        } else {
+          expandedOps.push(op);
+        }
+      }
+      ops = expandedOps;
+
       const result = editArtifact(resolved.path, ops);
 
       if (options.json) {
         jsonOut({ id, ...result });
       } else if (result.success) {
-        if (ops.length === 1) {
-          console.log(`✓ ${ops[0].op} on ${ops[0].section} in ${id}`);
+        if (originalOps.length === 1) {
+          console.log(`✓ ${originalOps[0].op} on ${originalOps[0].section} in ${id}`);
         } else {
           // Group by operation type for cleaner output
           const byOp = {};
-          ops.forEach(o => {
+          originalOps.forEach(o => {
             byOp[o.op] = (byOp[o.op] || 0) + 1;
           });
           const summary = Object.entries(byOp).map(([op, n]) => `${op}:${n}`).join(', ');
-          console.log(`✓ ${ops.length} sections in ${id} (${summary})`);
+          console.log(`✓ ${originalOps.length} sections in ${id} (${summary})`);
         }
       } else {
         console.error(`✗ Failed: ${result.errors.join(', ')}`);

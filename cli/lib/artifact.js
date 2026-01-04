@@ -150,6 +150,10 @@ export function applyOp(sections, order, op) {
       return toggleCheckbox(sections, op.section, op.item, false);
     }
 
+    case 'toggle': {
+      return toggleCheckbox(sections, op.section, op.item, 'toggle');
+    }
+
     case 'delete': {
       if (!sections.has(op.section)) {
         return { success: false, error: `Section not found: ${op.section}` };
@@ -184,7 +188,7 @@ export function applyOp(sections, order, op) {
  * @param {Map<string, string>} sections
  * @param {string} sectionName
  * @param {string} itemText
- * @param {boolean} checked
+ * @param {boolean|'toggle'} checked - true=check, false=uncheck, 'toggle'=flip
  * @returns {{ success: boolean, error?: string }}
  */
 function toggleCheckbox(sections, sectionName, itemText, checked) {
@@ -200,13 +204,19 @@ function toggleCheckbox(sections, sectionName, itemText, checked) {
     // Match checkbox pattern: - [ ] or - [x] or - [X]
     const checkboxMatch = line.match(/^(\s*-\s*)\[([ xX])\](\s*.*)$/);
     if (checkboxMatch) {
-      const [, prefix, , rest] = checkboxMatch;
+      const [, prefix, currentState, rest] = checkboxMatch;
       const lineText = rest.trim();
 
       // Match by item text (partial match, case-insensitive)
       if (lineText.toLowerCase().includes(itemText.toLowerCase())) {
         found = true;
-        return `${prefix}[${checked ? 'x' : ' '}]${rest}`;
+        let newState;
+        if (checked === 'toggle') {
+          newState = currentState === ' ' ? 'x' : ' ';
+        } else {
+          newState = checked ? 'x' : ' ';
+        }
+        return `${prefix}[${newState}]${rest}`;
       }
     }
     return line;
