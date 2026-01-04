@@ -282,20 +282,14 @@ updated: '${new Date().toISOString()}'
         jsonOut({ id, title, parent: data.parent, file: epicPath, memory: memoryFile });
       } else {
         console.log(`Created: ${id} - ${title}`);
-        console.log(`\nEdit commands:`);
-        console.log(`  bin/rudder artifact:show ${id} --list`);
-        console.log(`\n  # Single section:`);
-        console.log(`  bin/rudder artifact:edit ${id} --section "Description" <<'EOF'`);
-        console.log(`Your epic description here...`);
-        console.log(`EOF`);
-        console.log(`\n  # Multiple sections (omit --section):`);
-        console.log(`  bin/rudder artifact:edit ${id} <<'EOF'`);
+        console.log(`\nEdit with: bin/rudder artifact:edit ${id} <<'EOF'`);
         console.log(`## Description`);
         console.log(`Your description...`);
-        console.log(``);
         console.log(`## Acceptance Criteria`);
         console.log(`- [ ] Criterion 1`);
         console.log(`EOF`);
+        console.log(`\nMulti-section edit with ops: [append], [sed], [check], [patch]...`);
+        console.log(`See: bin/rudder artifact edit --help`);
       }
     });
 

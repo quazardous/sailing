@@ -215,20 +215,14 @@ export function registerPrdCommands(program) {
         jsonOut({ id, title, dir: prdDir, file: prdFile });
       } else {
         console.log(`Created: ${id} - ${title}`);
-        console.log(`\nEdit commands:`);
-        console.log(`  bin/rudder artifact:show ${id} --list`);
-        console.log(`\n  # Single section:`);
-        console.log(`  bin/rudder artifact:edit ${id} --section "Problem Statement" <<'EOF'`);
-        console.log(`Your problem description here...`);
-        console.log(`EOF`);
-        console.log(`\n  # Multiple sections (omit --section):`);
-        console.log(`  bin/rudder artifact:edit ${id} <<'EOF'`);
+        console.log(`\nEdit with: bin/rudder artifact:edit ${id} <<'EOF'`);
         console.log(`## Problem Statement`);
         console.log(`Your problem...`);
-        console.log(``);
         console.log(`## Goals`);
         console.log(`- Goal 1`);
         console.log(`EOF`);
+        console.log(`\nMulti-section edit with ops: [append], [sed], [check], [patch]...`);
+        console.log(`See: bin/rudder artifact edit --help`);
       }
     });
 
