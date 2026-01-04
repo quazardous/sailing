@@ -73,22 +73,62 @@ rudder agent:reject T001 --reason "Wrong approach"
 rudder agent:kill T001
 ```
 
-## Parallel Workflow
+## Spawn Behavior
+
+`agent:spawn` is **BLOCKING** - it waits, streams output, and auto-reaps on success.
+
+```
+agent:spawn T001
+    ↓
+[streams log, shows heartbeat]
+    ↓
+exit 0 → auto-reap (merge + cleanup)
+exit ≠0 → manual: agent:log, agent:reject, or agent:spawn --resume
+```
+
+## Parallel Spawning
+
+Use **Claude's parallel tool calls** (multiple Bash in one message), NOT bash `&`:
+
+```
+# In ONE message, call Bash multiple times:
+Bash: rudder agent:spawn T001
+Bash: rudder agent:spawn T002
+Bash: rudder agent:spawn T003
+```
+
+Each spawn blocks independently. All run in parallel.
+
+## After Spawn Completes
+
+| Exit | Action |
+|------|--------|
+| 0 (success) | Auto-reaped, check `agent:status` |
+| ≠0 (failed) | `agent:log T001` to investigate |
+| Blocked | `agent:spawn T001 --resume` or `agent:reject T001` |
+
+## Checking Dead/Failed Agents
 
 ```bash
-# 1. Spawn multiple agents in parallel
-rudder agent:spawn T001 &
-rudder agent:spawn T002 &
-rudder agent:spawn T003 &
+# See what happened
+rudder agent:log T001 -n 50
 
-# 2. Wait for all to complete
-rudder agent:wait-all T001 T002 T003
+# Full log
+rudder agent:log T001
 
-# 3. Check for conflicts before merging
-rudder agent:conflicts
+# Current status
+rudder agent:status T001
 
-# 4. Reap all
-rudder agent:reap-all
+# List all agents
+rudder agent:list
+```
+
+## Batch Harvest
+
+```bash
+# After all spawns complete
+rudder agent:conflicts      # Check file overlaps
+rudder agent:reap-all       # Merge all completed
 ```
 
 ## Output Formats
