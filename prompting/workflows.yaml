@@ -81,7 +81,7 @@ sets:
   core:         [core/law, agent/contract, agent/cli, agent/states]
   deps:         [agent/deps]
   execution:    [agent/execution]
-  coordination: [skill/orchestration, skill/reminders, skill/gates, skill/batch-cli]
+  coordination: [skill/orchestration, skill/reminders, skill/gates, skill/batch-cli, skill/agent-cli]
   milestone:    [shared/milestone]
   versioning:   [shared/versioning]
   editing:      [shared/artefact-editing]
