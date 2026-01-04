@@ -791,8 +791,8 @@ Start by calling the rudder MCP tool with \`context:load ${taskId}\` to get your
         console.log(`│ Timeout: ${timeout}s | Budget: ${budgetStr} | Watchdog: ${watchdogStr}`);
         console.log(`├─ Logging ────────────────────────────────────────────────`);
         console.log(`│ • stdout: filtered [INIT] [TOOL] [RESULT] [TEXT] [DONE]`);
-        console.log(`│ • file:   ${spawnResult.logFile || 'none'}`);
-        console.log(`│           (raw JSON for post-mortem analysis)`);
+        console.log(`│ • .log:     ${spawnResult.logFile || 'none'}`);
+        console.log(`│ • .jsonlog: ${spawnResult.jsonLogFile || 'none'}`);
         console.log(`│ • Output = activity (watchdog resets, agent not stale)`);
         console.log(`├─ Behavior ───────────────────────────────────────────────`);
         console.log(`│ • Streaming Claude output${shouldLog ? '' : ' (disabled)'}`);

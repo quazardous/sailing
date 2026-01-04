@@ -238,6 +238,8 @@ export function loadBaseSrtConfig(configPath) {
   return {
     network: {
       allowedDomains: [
+        'localhost',              // MCP server (TCP mode)
+        '127.0.0.1',              // MCP server (TCP mode, IP form)
         'api.anthropic.com',
         '*.anthropic.com',
         'sentry.io',
@@ -406,24 +408,38 @@ export function spawnClaudeWithSrt(options) {
     finalArgs = claudeArgs;
   }
 
-  // Setup log stream if logFile provided
-  let logStream = null;
+  // Setup dual log streams if logFile provided:
+  // - jsonLogStream: raw JSON for post-mortem (.jsonlog)
+  // - filteredLogStream: filtered output like stdout (.log)
+  let jsonLogStream = null;
+  let filteredLogStream = null;
+  let jsonLogFile = null;
+  let filteredLogFile = null;
+
   if (logFile) {
     ensureDir(path.dirname(logFile));
-    logStream = fs.createWriteStream(logFile, { flags: 'a' });
+
+    // Determine file paths based on extension
+    const basePath = logFile.replace(/\.(log|jsonlog)$/, '');
+    jsonLogFile = `${basePath}.jsonlog`;
+    filteredLogFile = `${basePath}.log`;
+
+    jsonLogStream = fs.createWriteStream(jsonLogFile, { flags: 'a' });
+    filteredLogStream = fs.createWriteStream(filteredLogFile, { flags: 'a' });
 
     const startTime = new Date().toISOString();
-    logStream.write(`\n=== Claude Started: ${startTime} ===\n`);
-    logStream.write(`CWD: ${cwd}\n`);
-    logStream.write(`Command: ${command} ${finalArgs.join(' ')} (prompt via stdin)\n`);
-    logStream.write(`Sandbox: ${sandbox ? 'enabled' : 'disabled'}\n`);
-    if (srtConfigPath) {
-      logStream.write(`SRT Config: ${srtConfigPath}\n`);
-    }
-    if (mcpConfigPath) {
-      logStream.write(`MCP Config: ${mcpConfigPath}\n`);
-    }
-    logStream.write('='.repeat(50) + '\n\n');
+    const header = [
+      `\n=== Claude Started: ${startTime} ===`,
+      `CWD: ${cwd}`,
+      `Command: ${command} ${finalArgs.join(' ')} (prompt via stdin)`,
+      `Sandbox: ${sandbox ? 'enabled' : 'disabled'}`,
+      srtConfigPath ? `SRT Config: ${srtConfigPath}` : null,
+      mcpConfigPath ? `MCP Config: ${mcpConfigPath}` : null,
+      '='.repeat(50) + '\n'
+    ].filter(Boolean).join('\n');
+
+    jsonLogStream.write(header);
+    filteredLogStream.write(header);
   }
 
   // Prepare environment
@@ -502,7 +518,8 @@ export function spawnClaudeWithSrt(options) {
       watchdogId = setTimeout(() => {
         const stallDuration = Math.round((Date.now() - lastOutputTime) / 1000);
         const msg = `\n=== WATCHDOG: No output for ${stallDuration}s, killing process ===\n`;
-        if (logStream) logStream.write(msg);
+        if (jsonLogStream) jsonLogStream.write(msg);
+        if (filteredLogStream) filteredLogStream.write(msg);
         process.stderr.write(msg);
         child.kill('SIGTERM');
         setTimeout(() => {
@@ -521,20 +538,26 @@ export function spawnClaudeWithSrt(options) {
   let lineBuffer = '';
 
   /**
-   * Process buffered data: raw to log, filtered to output
+   * Write filtered output to both stdout and filtered log
    */
-  const processData = (data, isStderr) => {
+  const writeFiltered = (text) => {
+    process.stdout.write(text + '\n');
+    if (filteredLogStream) filteredLogStream.write(text + '\n');
+  };
+
+  /**
+   * Process buffered data:
+   * - Raw JSON → jsonLogStream (post-mortem)
+   * - Filtered → stdout + filteredLogStream
+   */
+  const processData = (data) => {
     resetWatchdog();  // Activity detected
 
-    // Raw data goes to log file (post-mortem)
-    if (logStream) logStream.write(data);
+    // Raw data goes to JSON log file (post-mortem)
+    if (jsonLogStream) jsonLogStream.write(data);
 
     // If custom handler, pass raw data
-    if (isStderr && onStderr) {
-      onStderr(data);
-      return;
-    }
-    if (!isStderr && onStdout) {
+    if (onStdout) {
       onStdout(data);
       return;
     }
@@ -547,18 +570,20 @@ export function spawnClaudeWithSrt(options) {
     for (const line of lines) {
       const filtered = processStreamJsonLine(line);
       if (filtered) {
-        process.stdout.write(filtered + '\n');
+        writeFiltered(filtered);
       }
     }
   };
 
   // Handle stdout
-  child.stdout.on('data', (data) => processData(data, false));
+  child.stdout.on('data', (data) => processData(data));
 
   // Handle stderr (pass through, usually errors)
   child.stderr.on('data', (data) => {
     resetWatchdog();
-    if (logStream) logStream.write(data);
+    // Stderr goes to both log files
+    if (jsonLogStream) jsonLogStream.write(data);
+    if (filteredLogStream) filteredLogStream.write(data);
     // Stderr always goes through (errors are important)
     if (onStderr) {
       onStderr(data);
@@ -571,7 +596,9 @@ export function spawnClaudeWithSrt(options) {
   let timeoutId = null;
   if (timeout && timeout > 0) {
     timeoutId = setTimeout(() => {
-      if (logStream) logStream.write(`\n=== TIMEOUT after ${timeout}s ===\n`);
+      const msg = `\n=== TIMEOUT after ${timeout}s ===\n`;
+      if (jsonLogStream) jsonLogStream.write(msg);
+      if (filteredLogStream) filteredLogStream.write(msg);
       child.kill('SIGTERM');
       setTimeout(() => {
         if (!child.killed) {
@@ -585,18 +612,22 @@ export function spawnClaudeWithSrt(options) {
   child.on('exit', (code, signal) => {
     if (timeoutId) clearTimeout(timeoutId);
     if (watchdogId) clearTimeout(watchdogId);
-    if (logStream) {
-      const endTime = new Date().toISOString();
-      logStream.write(`\n=== Claude Exited: ${endTime} ===\n`);
-      logStream.write(`Exit code: ${code}, Signal: ${signal}\n`, () => {
-        logStream.end();
-      });
+
+    const endTime = new Date().toISOString();
+    const footer = `\n=== Claude Exited: ${endTime} ===\nExit code: ${code}, Signal: ${signal}\n`;
+
+    if (jsonLogStream) {
+      jsonLogStream.write(footer, () => jsonLogStream.end());
+    }
+    if (filteredLogStream) {
+      filteredLogStream.write(footer, () => filteredLogStream.end());
     }
   });
 
   return {
     process: child,
     pid: child.pid,
-    logFile
+    logFile: filteredLogFile,   // .log (filtered, like stdout)
+    jsonLogFile                  // .jsonlog (raw JSON for post-mortem)
   };
 }
