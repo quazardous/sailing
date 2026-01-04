@@ -23,29 +23,33 @@ import {
 
 /**
  * Parse multi-section content from stdin
- * Format: ## Section Name\nContent...\n\n## Another Section\nContent...
+ * Format: ## Section Name [op]\nContent...
+ * Supported ops: [append], [prepend], [delete], [replace] (default)
  * @param {string} content - Raw content with ## headers
- * @param {string} opType - Operation type (replace, append, prepend)
+ * @param {string} defaultOp - Default operation if not specified in header
  * @returns {Array<{op: string, section: string, content: string}>}
  */
-function parseMultiSectionContent(content, opType) {
+function parseMultiSectionContent(content, defaultOp) {
   const ops = [];
   const lines = content.split('\n');
   let currentSection = null;
+  let currentOp = defaultOp;
   let currentContent = [];
 
   for (const line of lines) {
-    const match = line.match(/^##\s+(.+)$/);
+    // Match: ## Section Name or ## Section Name [op]
+    const match = line.match(/^##\s+(.+?)(?:\s+\[(append|prepend|delete|replace)\])?\s*$/);
     if (match) {
       // Save previous section
       if (currentSection) {
         ops.push({
-          op: opType,
+          op: currentOp,
           section: currentSection,
           content: currentContent.join('\n').trim()
         });
       }
       currentSection = match[1].trim();
+      currentOp = match[2] || defaultOp;
       currentContent = [];
     } else if (currentSection) {
       currentContent.push(line);
@@ -55,7 +59,7 @@ function parseMultiSectionContent(content, opType) {
   // Save last section
   if (currentSection) {
     ops.push({
-      op: opType,
+      op: currentOp,
       section: currentSection,
       content: currentContent.join('\n').trim()
     });
@@ -239,9 +243,15 @@ export function registerArtifactCommands(program) {
         jsonOut({ id, ...result });
       } else if (result.success) {
         if (ops.length === 1) {
-          console.log(`✓ ${opType} on ${ops[0].section} in ${id}`);
+          console.log(`✓ ${ops[0].op} on ${ops[0].section} in ${id}`);
         } else {
-          console.log(`✓ ${opType} on ${ops.length} sections in ${id}`);
+          // Group by operation type for cleaner output
+          const byOp = {};
+          ops.forEach(o => {
+            byOp[o.op] = (byOp[o.op] || 0) + 1;
+          });
+          const summary = Object.entries(byOp).map(([op, n]) => `${op}:${n}`).join(', ');
+          console.log(`✓ ${ops.length} sections in ${id} (${summary})`);
         }
       } else {
         console.error(`✗ Failed: ${result.errors.join(', ')}`);
