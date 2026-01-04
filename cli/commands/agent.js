@@ -734,7 +734,8 @@ Start by running \`pwd\` and \`ls -la\`, then call the rudder MCP tool with \`co
       if (!options.json) {
         if (isQuiet) {
           // Quiet mode: minimal one-line status
-          process.stdout.write(`${taskId}: spawned`);
+          const hbSec = options.heartbeat || defaultHeartbeat;
+          process.stdout.write(`${taskId}: spawned >>> heartbeat every ${hbSec}s`);
         } else {
           const budgetStr = agentConfig.max_budget_usd > 0 ? `$${agentConfig.max_budget_usd}` : 'unlimited';
           const watchdogStr = agentConfig.watchdog_timeout > 0 ? `${agentConfig.watchdog_timeout}s` : 'disabled';
