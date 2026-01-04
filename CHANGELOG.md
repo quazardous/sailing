@@ -17,6 +17,9 @@ All notable changes to the Sailing Framework will be documented in this file.
 - MCP socket bind-mounted into sandbox for socat access
 - Skill parallel spawning: use Claude tool calls, not bash `&`
 
+### Performance
+- Skill context reduced 33% (814→549 lines): split law/agent-rules, remove roadmap/postit
+
 ## [1.6.3] - 2026-01-04
 
 ### Added

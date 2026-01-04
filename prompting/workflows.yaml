@@ -44,7 +44,7 @@
 roles:
   agent:
     description: "Pure execution, no decisions"
-    base_sets: [core]
+    base_sets: [law, agent-rules]
     inject:
       subprocess:
         files: [toolset, stack]           # Project files to inject
@@ -56,7 +56,7 @@ roles:
 
   coordinator:
     description: "Spawn agents, coordinate results"
-    base_sets: [core, coordination]
+    base_sets: [law, coordination]        # No agent-rules (skill spawns, doesn't execute)
     inject:
       worktrees:                          # When use_worktrees is enabled
         fragments: [shared/worktree-coordinator]
@@ -64,9 +64,8 @@ roles:
 
   skill:
     description: "Full orchestration, memory management"
-    base_sets: [core, coordination]
+    base_sets: [law, coordination]        # No agent-rules (skill spawns, doesn't execute)
     inject:
-      both: [roadmap, postit]
       worktrees:                          # When use_worktrees is enabled
         fragments: [skill/worktree-mode, shared/worktree]
     workflow: true
@@ -78,13 +77,15 @@ roles:
 # No more automatic filtering by prefix — sets are explicit
 
 sets:
-  core:         [core/law, agent/contract, agent/cli, agent/states]
+  law:          [core/law]                # Authority levels only (all roles)
+  agent-rules:  [agent/contract, agent/cli, agent/states]  # Agent execution rules
   deps:         [agent/deps]
   execution:    [agent/execution]
   coordination: [skill/orchestration, skill/reminders, skill/gates, skill/batch-cli, skill/agent-cli]
   milestone:    [shared/milestone]
   versioning:   [shared/versioning]
   editing:      [shared/artefact-editing]
+  vision:       []                        # Placeholder for roadmap/postit injection
 
 # ─────────────────────────────────────────────────────────────────────────────
 # SECTION 3: Operations — Metadata per operation
