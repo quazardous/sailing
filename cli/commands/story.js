@@ -290,8 +290,13 @@ export function registerStoryCommands(program) {
         jsonOut({ id, title, parent: data.parent, type: data.type, file: storyPath });
       } else {
         console.log(`Created: ${id} - ${title} (${data.type})`);
-        console.log(`  Edit:  rudder artifact:edit ${id} --section "Acceptance Criteria"`);
-        console.log(`  Patch: rudder story:patch ${id}`);
+        console.log(`\nEdit commands:`);
+        console.log(`  rudder artifact:show ${id} --list                         # List sections`);
+        console.log(`  rudder artifact:edit ${id} --section "Acceptance Criteria" # Edit section`);
+        console.log(`  cat <<'PATCH' | rudder story:patch ${id}                  # Patch content`);
+        console.log(`  ## Acceptance Criteria`);
+        console.log(`  - [ ] Criterion 1`);
+        console.log(`  PATCH`);
       }
     });
 

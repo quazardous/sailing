@@ -215,8 +215,13 @@ export function registerPrdCommands(program) {
         jsonOut({ id, title, dir: prdDir, file: prdFile });
       } else {
         console.log(`Created: ${id} - ${title}`);
-        console.log(`  Edit:  rudder artifact:edit ${id} --section "Vision"`);
-        console.log(`  Patch: rudder prd:patch ${id}`);
+        console.log(`\nEdit commands:`);
+        console.log(`  rudder artifact:show ${id} --list              # List sections`);
+        console.log(`  rudder artifact:edit ${id} --section "Summary" # Edit section`);
+        console.log(`  cat <<'PATCH' | rudder prd:patch ${id}         # Patch content`);
+        console.log(`  ## Summary`);
+        console.log(`  Your content...`);
+        console.log(`  PATCH`);
       }
     });
 

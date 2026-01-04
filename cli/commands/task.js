@@ -320,8 +320,13 @@ export function registerTaskCommands(program) {
         jsonOut({ id, title, parent: data.parent, file: taskPath });
       } else {
         console.log(`Created: ${id} - ${title}`);
-        console.log(`  Edit:  rudder artifact:edit ${id} --section "Deliverables"`);
-        console.log(`  Patch: rudder task:patch ${id}`);
+        console.log(`\nEdit commands:`);
+        console.log(`  rudder artifact:show ${id} --list                  # List sections`);
+        console.log(`  rudder artifact:edit ${id} --section "Deliverables" # Edit section`);
+        console.log(`  cat <<'PATCH' | rudder task:patch ${id}            # Patch content`);
+        console.log(`  ## Deliverables`);
+        console.log(`  - [ ] Item 1`);
+        console.log(`  PATCH`);
       }
     });
 

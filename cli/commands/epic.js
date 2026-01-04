@@ -282,8 +282,13 @@ updated: '${new Date().toISOString()}'
         jsonOut({ id, title, parent: data.parent, file: epicPath, memory: memoryFile });
       } else {
         console.log(`Created: ${id} - ${title}`);
-        console.log(`  Edit:  rudder artifact:edit ${id} --section "Scope"`);
-        console.log(`  Patch: rudder epic:patch ${id}`);
+        console.log(`\nEdit commands:`);
+        console.log(`  rudder artifact:show ${id} --list            # List sections`);
+        console.log(`  rudder artifact:edit ${id} --section "Scope" # Edit section`);
+        console.log(`  cat <<'PATCH' | rudder epic:patch ${id}      # Patch content`);
+        console.log(`  ## Scope`);
+        console.log(`  Your content...`);
+        console.log(`  PATCH`);
       }
     });
 
