@@ -487,8 +487,11 @@ export function spawnClaudeWithSrt(options) {
       }
     }
 
-    if (logStream) {
-      logStream.write(`Sandbox HOME: ${sandboxHome}\n`);
+    if (jsonLogStream) {
+      jsonLogStream.write(`Sandbox HOME: ${sandboxHome}\n`);
+    }
+    if (filteredLogStream) {
+      filteredLogStream.write(`Sandbox HOME: ${sandboxHome}\n`);
     }
   }
 
