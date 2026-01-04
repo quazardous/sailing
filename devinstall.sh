@@ -258,7 +258,7 @@ resolve_path() {
   if [[ "$p" == *'${haven}'* ]]; then
     echo "${p//\$\{haven\}/$haven}"
   # Legacy syntax: %haven%
-  elif [[ "$p" == *"%haven%"* ]]; then
+  elif [[ "$p" == *"${haven}"* ]]; then
     echo "${p/\%haven\%/$haven}"
   else
     echo "$p"
@@ -376,12 +376,12 @@ if [ ! -f "$PATHS_FILE" ] || [ "$FORCE" = true ]; then
 else
   echo -e "  ${GREEN}Exists: paths.yaml${NC}"
   # Migrate old %placeholder% to ${placeholder} syntax
-  if grep -q '%haven%\|%sibling%\|%project_hash%' "$PATHS_FILE" 2>/dev/null; then
+  if grep -q '%haven%\|%sibling%\|${project_hash}' "$PATHS_FILE" 2>/dev/null; then
     if [ "$FIX" = true ]; then
       if [ "$DRY_RUN" = true ]; then
         echo "  Would migrate: %placeholder% → \${placeholder}"
       else
-        sed -i 's/%haven%/${haven}/g; s/%sibling%/${sibling}/g; s/%project_hash%/${project_hash}/g' "$PATHS_FILE"
+        sed -i 's/%haven%/${haven}/g; s/%sibling%/${sibling}/g; s/${project_hash}/${project_hash}/g' "$PATHS_FILE"
         echo -e "  ${GREEN}Migrated: %placeholder% → \${placeholder}${NC}"
       fi
     else
@@ -478,16 +478,16 @@ if [ -n "$FOLDERS_PROFILE" ]; then
 
   case "$FOLDERS_PROFILE" in
     haven)
-      verify_path "worktrees" "%haven%/worktrees"
-      verify_path "agents" "%haven%/agents"
+      verify_path "worktrees" "${haven}/worktrees"
+      verify_path "agents" "${haven}/agents"
       ;;
     sibling)
-      verify_path "worktrees" "%sibling%/worktrees"
-      verify_path "agents" "%sibling%/agents"
+      verify_path "worktrees" "${sibling}/worktrees"
+      verify_path "agents" "${sibling}/agents"
       ;;
     project)
-      verify_path "worktrees" "%haven%/worktrees/%project_hash%"
-      verify_path "agents" "%haven%/agents"
+      verify_path "worktrees" "${haven}/worktrees/${project_hash}"
+      verify_path "agents" "${haven}/agents"
       ;;
   esac
   echo

@@ -156,7 +156,21 @@ function removeRunFile(taskId) {
 }
 
 /**
- * List orphan run files
+ * Check if a process is still running
+ */
+function isPidAlive(pid) {
+  if (!pid) return false;
+  try {
+    process.kill(pid, 0);  // Signal 0 = check if process exists
+    return true;
+  } catch (e) {
+    return false;  // ESRCH = no such process
+  }
+}
+
+/**
+ * List orphan run files (runs where the agent process is dead)
+ * Active agents (PID alive) are NOT orphans
  */
 function findOrphanRuns() {
   const dir = getRunsDir();
@@ -166,8 +180,9 @@ function findOrphanRuns() {
     .filter(f => f.endsWith('.run'))
     .map(f => {
       const content = yaml.load(fs.readFileSync(path.join(dir, f), 'utf8'));
-      return { taskId: content.taskId, ...content };
-    });
+      return { taskId: content.taskId, file: f, ...content };
+    })
+    .filter(run => !isPidAlive(run.pid));  // Only orphans = dead PIDs
 }
 
 /**
@@ -335,15 +350,15 @@ function handleTaskClaim(taskId, options) {
   const filePath = assignmentPath(taskId);
   const operation = options.operation || 'task-start';
 
-  // Pre-flight check 1: Orphan run files
+  // Pre-flight check 1: Orphan run files (crashed agents that didn't release)
   const orphans = findOrphanRuns();
   if (orphans.length > 0 && !options.force) {
-    console.error(`STOP: Orphan agent run(s) detected:`);
+    console.error(`Error: Found ${orphans.length} orphan run(s) from crashed agent(s):`);
     for (const o of orphans) {
-      console.error(`  ${o.taskId} - started ${o.started_at}`);
+      console.error(`  ${o.taskId} (pid ${o.pid || '?'}) - started ${o.started_at}`);
     }
-    console.error(`\nPrevious agent didn't release. Use --force to override.`);
-    console.error(`Or run: rudder assign:release ${orphans[0].taskId}`);
+    console.error(`\nClean up with: bin/rudder assign:release ${orphans[0].taskId}`);
+    console.error(`Or use --force to override.`);
     process.exit(1);
   }
 

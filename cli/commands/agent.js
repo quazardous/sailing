@@ -544,10 +544,19 @@ Start by running \`pwd\` and \`ls -la\`, then call the rudder MCP tool with \`co
           console.log(`Task ${taskId} claimed`);
         }
       } catch (e) {
-        // Claim might fail if already claimed (resume scenario) - that's ok
-        const stderr = e.stderr?.toString() || '';
-        if (!stderr.includes('already claimed')) {
-          console.error(`Warning: Could not claim task: ${stderr || e.message}`);
+        const stderr = e.stderr?.toString().trim() || '';
+        if (stderr.includes('already claimed')) {
+          // Resume scenario - task was already claimed, that's fine
+          if (!options.json) {
+            console.log(`Task ${taskId} resuming (already claimed)`);
+          }
+        } else if (stderr.includes('orphan run')) {
+          // Orphan runs detected - stop and let user clean up
+          console.error(stderr);
+          process.exit(1);
+        } else if (stderr) {
+          // Other claim error - warn but continue
+          console.error(`Warning: Claim issue: ${stderr}`);
         }
       }
 
