@@ -467,10 +467,7 @@ The task is already claimed. Your job:
    \`\`\`
    ⚠️ **NEVER create log files** (no .tip-log.txt, no *.log). Use the MCP tool above.
 
-4. **When complete**, call:
-   \`\`\`json
-   { "command": "assign:release ${taskId}" }
-   \`\`\`
+4. **When complete**, just finish. Auto-release happens on exit 0.
 
 ## Constraints
 
