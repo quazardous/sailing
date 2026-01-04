@@ -350,16 +350,13 @@ function handleTaskClaim(taskId, options) {
   const filePath = assignmentPath(taskId);
   const operation = options.operation || 'task-start';
 
-  // Pre-flight check 1: Orphan run files (crashed agents that didn't release)
+  // Pre-flight: Auto-cleanup orphan run files (crashed agents that didn't release)
   const orphans = findOrphanRuns();
-  if (orphans.length > 0 && !options.force) {
-    console.error(`Error: Found ${orphans.length} orphan run(s) from crashed agent(s):`);
+  if (orphans.length > 0) {
     for (const o of orphans) {
-      console.error(`  ${o.taskId} (pid ${o.pid || '?'}) - started ${o.started_at}`);
+      removeRunFile(o.taskId);
+      console.error(`⚠ Cleaned up orphan run: ${o.taskId} (pid ${o.pid || '?'} crashed)`);
     }
-    console.error(`\nClean up with: bin/rudder assign:release ${orphans[0].taskId}`);
-    console.error(`Or use --force to override.`);
-    process.exit(1);
   }
 
   let assignment;
