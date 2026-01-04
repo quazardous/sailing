@@ -118,7 +118,7 @@ export const CONFIG_SCHEMA = {
     type: 'enum',
     default: 'socket',
     values: ['socket', 'port'],
-    description: 'MCP transport: socket (Unix socket) or port (TCP, auto-allocated)'
+    description: 'MCP transport: socket (Unix socket, required for Linux sandbox) or port (TCP)'
   },
   'agent.mcp_port_range': {
     type: 'string',
