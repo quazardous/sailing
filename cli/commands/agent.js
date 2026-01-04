@@ -2479,18 +2479,27 @@ Start by running \`pwd\` and \`ls -la\`, then call the rudder MCP tool with \`co
       debug(`SRT config: ${srtConfig}`);
       debug(`SRT config content: ${fs.readFileSync(srtConfig, 'utf8')}`);
 
-      // Test prompt: call MCP and report
-      const testPrompt = `You are a diagnostic agent testing MCP connectivity.
+      // Test prompt: check environment and MCP
+      const testPrompt = `You are a diagnostic agent testing environment and MCP connectivity.
 
+## Step 1: Environment Check
+Run these commands and report results:
+1. \`pwd\` - should show project directory
+2. \`ls -la\` - should list project files
+
+## Step 2: MCP Check
 Call the rudder MCP tool exactly like this:
 
 Tool: mcp__rudder__cli
 Arguments: { "command": "status" }
 
-If the tool call succeeds and returns project info, output exactly: MCP_TEST_OK
-If the tool call fails or is not available, output exactly: MCP_TEST_FAIL
+## Output
+After both checks, output exactly one of:
+- ENV_OK MCP_OK - if both pwd/ls work AND MCP tool succeeds
+- ENV_OK MCP_FAIL - if pwd/ls work but MCP fails
+- ENV_FAIL - if pwd/ls fail
 
-Do not output anything else. Exit immediately after.`;
+Exit immediately after outputting the result.`;
 
       let testOutput = '';
       let testStderr = '';
@@ -2517,31 +2526,57 @@ Do not output anything else. Exit immediately after.`;
         });
 
         const duration = Date.now() - testStart;
-        const success = testOutput.includes('MCP_TEST_OK');
+        const envOk = testOutput.includes('ENV_OK');
+        const mcpOk = testOutput.includes('MCP_OK');
+        const success = envOk && mcpOk;
 
         result.spawn_test = {
           success,
+          env_ok: envOk,
+          mcp_ok: mcpOk,
           duration_ms: duration,
           output_preview: testOutput.slice(0, 300)
         };
-        result.status = success ? 'ok' : 'mcp_call_failed';
+
+        if (!envOk) {
+          result.status = 'env_failed';
+        } else if (!mcpOk) {
+          result.status = 'mcp_call_failed';
+        } else {
+          result.status = 'ok';
+        }
 
         if (options.json) {
           console.log(JSON.stringify(result, null, 2));
         } else if (success) {
+          console.log(`  ✓ Environment OK (pwd, ls work)`);
           console.log(`  ✓ MCP connection works (${duration}ms)`);
           console.log('\n✅ All checks passed\n');
         } else {
-          console.error(`  ✗ MCP call failed (${duration}ms)`);
+          if (!envOk) {
+            console.error(`  ✗ Environment check failed`);
+          } else {
+            console.log(`  ✓ Environment OK`);
+          }
+          if (!mcpOk) {
+            console.error(`  ✗ MCP call failed (${duration}ms)`);
+          }
           console.error(`\nOutput: ${testOutput.slice(0, 300)}`);
           if (options.debug && testStderr) {
             console.error(`\nStderr: ${testStderr.slice(0, 300)}`);
           }
-          console.error('\n❌ MCP connectivity issue from sandbox\n');
-          console.error('Possible causes:');
-          console.error('  - socat not in sandbox PATH');
-          console.error('  - Socket not readable from sandbox');
-          console.error('  - Claude MCP initialization failed');
+          if (!envOk) {
+            console.error('\n❌ Environment issue from sandbox\n');
+            console.error('Possible causes:');
+            console.error('  - CWD not accessible');
+            console.error('  - Sandbox blocking file reads');
+          } else {
+            console.error('\n❌ MCP connectivity issue from sandbox\n');
+            console.error('Possible causes:');
+            console.error('  - socat not in sandbox PATH');
+            console.error('  - Socket/port not accessible from sandbox');
+            console.error('  - Claude MCP initialization failed');
+          }
         }
 
         // Cleanup
