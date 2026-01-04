@@ -23,10 +23,11 @@ const getAgentsBaseDir = getAgentsDir;
  * @param {string} options.logFile - Log file path
  * @param {string} options.taskId - Task ID (to identify current worktree)
  * @param {boolean} [options.externalMcp=false] - If true, only allow worktree writes (MCP handles haven)
+ * @param {string} [options.mcpSocket] - MCP Unix socket path to bind-mount into sandbox
  * @returns {string} Path to generated srt config
  */
 export function generateAgentSrtConfig(options) {
-  const { agentDir, cwd, logFile, taskId, externalMcp = false } = options;
+  const { agentDir, cwd, logFile, taskId, externalMcp = false, mcpSocket } = options;
   const paths = getPathsInfo();
 
   // Base write paths: worktree + log directory
@@ -34,6 +35,11 @@ export function generateAgentSrtConfig(options) {
     cwd,                          // Worktree directory
     path.dirname(logFile)         // Log directory
   ];
+
+  // Add MCP socket to allow socat to connect from inside sandbox
+  if (mcpSocket) {
+    additionalWritePaths.push(mcpSocket);
+  }
 
   // If NOT using external MCP, agent needs haven write access for rudder commands
   // (this is the fallback mode when MCP runs inside sandbox)
@@ -177,7 +183,8 @@ export async function spawnClaude(options) {
         cwd,
         logFile,
         taskId,
-        externalMcp: !!mcpSocket  // Strict sandbox if external MCP is active
+        externalMcp: !!mcpSocket,  // Strict sandbox if external MCP is active
+        mcpSocket                   // Bind-mount socket into sandbox
       });
     } else if (paths.srtConfig?.absolute) {
       srtConfigPath = paths.srtConfig.absolute;
