@@ -52,6 +52,11 @@ Options: `--dry-run`, `--quiet`, `--verbose`
 ## Common Patterns
 
 ```bash
+# Ready tasks (sorted by impact - best to work on first)
+rudder deps:ready
+rudder deps:ready --epic E001
+rudder deps:ready --limit 5
+
 # Count tasks by status
 rudder find task --status Done --count
 rudder find task --status "In Progress" --count
