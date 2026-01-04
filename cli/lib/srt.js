@@ -14,6 +14,66 @@ import { ensureDir } from './paths.js';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 /**
+ * Process a stream-json line and return condensed output
+ * Returns null if event should be filtered out
+ * @param {string} line - Raw JSON line
+ * @returns {string|null} Condensed output or null
+ */
+export function processStreamJsonLine(line) {
+  if (!line.trim()) return null;
+
+  try {
+    const event = JSON.parse(line);
+
+    switch (event.type) {
+      case 'system':
+        if (event.subtype === 'init') {
+          return `[INIT] model=${event.model} tools=${event.tools?.length || 0}`;
+        }
+        break;
+
+      case 'assistant': {
+        const content = event.message?.content || [];
+        const toolUses = content.filter(c => c.type === 'tool_use');
+        const text = content.filter(c => c.type === 'text');
+
+        const parts = [];
+        for (const t of toolUses) {
+          // Show tool name and brief input summary
+          const inputSummary = t.input?.command || t.input?.file_path || t.input?.pattern || '';
+          parts.push(`[TOOL] ${t.name}${inputSummary ? ': ' + inputSummary.slice(0, 50) : ''}`);
+        }
+        // Only show text if no tool use (final answer)
+        if (text.length && !toolUses.length) {
+          const preview = text[0].text?.slice(0, 100)?.replace(/\n/g, ' ') || '';
+          parts.push(`[TEXT] ${preview}${text[0].text?.length > 100 ? '...' : ''}`);
+        }
+        return parts.length ? parts.join('\n') : null;
+      }
+
+      case 'user': {
+        // Tool results - just acknowledge, don't dump content
+        if (event.tool_use_result) {
+          const size = event.tool_use_result.stdout?.length || 0;
+          return `[RESULT] ${size} bytes`;
+        }
+        return null;
+      }
+
+      case 'result':
+        return `[DONE] ${event.subtype} turns=${event.num_turns} cost=$${event.total_cost_usd?.toFixed(4) || '?'}`;
+
+      default:
+        return null;
+    }
+  } catch {
+    // Not JSON - could be stderr or other output
+    return line.trim() ? `[RAW] ${line.trim().slice(0, 100)}` : null;
+  }
+  return null;
+}
+
+/**
  * Find rudder MCP server path for a project
  * Looks in project first, then falls back to current sailing installation
  * @param {string} projectRoot - Project root path
@@ -457,21 +517,49 @@ export function spawnClaudeWithSrt(options) {
   // Start watchdog
   resetWatchdog();
 
-  // Handle stdout (tee mode: log + custom handler or console)
-  child.stdout.on('data', (data) => {
-    resetWatchdog();  // Activity detected
-    if (logStream) logStream.write(data);
-    if (onStdout) {
-      onStdout(data);
-    } else {
-      process.stdout.write(data);
-    }
-  });
+  // Line buffer for stream-json processing
+  let lineBuffer = '';
 
-  // Handle stderr (tee mode: log + custom handler or console)
-  child.stderr.on('data', (data) => {
+  /**
+   * Process buffered data: raw to log, filtered to output
+   */
+  const processData = (data, isStderr) => {
     resetWatchdog();  // Activity detected
+
+    // Raw data goes to log file (post-mortem)
     if (logStream) logStream.write(data);
+
+    // If custom handler, pass raw data
+    if (isStderr && onStderr) {
+      onStderr(data);
+      return;
+    }
+    if (!isStderr && onStdout) {
+      onStdout(data);
+      return;
+    }
+
+    // Buffer and process line by line for filtered output
+    lineBuffer += data.toString();
+    const lines = lineBuffer.split('\n');
+    lineBuffer = lines.pop() || '';  // Keep incomplete line in buffer
+
+    for (const line of lines) {
+      const filtered = processStreamJsonLine(line);
+      if (filtered) {
+        process.stdout.write(filtered + '\n');
+      }
+    }
+  };
+
+  // Handle stdout
+  child.stdout.on('data', (data) => processData(data, false));
+
+  // Handle stderr (pass through, usually errors)
+  child.stderr.on('data', (data) => {
+    resetWatchdog();
+    if (logStream) logStream.write(data);
+    // Stderr always goes through (errors are important)
     if (onStderr) {
       onStderr(data);
     } else {
