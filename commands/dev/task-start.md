@@ -32,8 +32,10 @@ You are a senior engineer executing task {TNNN}.
 
 ## 1. Get your context
 
+The task is already claimed by spawn. Get your context:
+
 ```bash
-rudder assign:claim {TNNN}
+rudder context:load {TNNN}
 ```
 
 This returns your complete execution context:
@@ -41,8 +43,6 @@ This returns your complete execution context:
 - Epic memory (learnings from previous work)
 - Epic context (tech notes, constraints)
 - Task details (deliverables, workflow)
-
-`assign:claim` returns a **snapshot**. If input changes, task must be re-claimed or reset by skill.
 
 **Read and follow the contract strictly.**
 
@@ -67,10 +67,11 @@ Implement the deliverables. No scope expansion.
 
 | Mode | Workflow |
 |------|----------|
-| **Non-worktree** (default) | Agent calls `assign:claim TNNN` → gets prompt → executes |
-| **Worktree** | Skill calls `assign:create TNNN --operation task-start` first, then agent claims |
+| **Inline** (non-subprocess) | Skill loads context → Task tool with agent rules → executes in main session |
+| **Subprocess** (default) | `agent:spawn` pre-claims → launches Claude subprocess → agent calls `context:load` |
+| **Worktree** (subprocess+isolation) | Same as subprocess but agent runs in isolated git branch |
 
-In non-worktree mode, `assign:claim` works without prior `assign:create` - no file is created.
+In subprocess mode, spawn pre-claims the task before launching the agent. Auto-release triggers on exit code 0.
 
 ## Role Mapping (optional refinement)
 

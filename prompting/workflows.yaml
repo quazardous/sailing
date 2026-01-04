@@ -181,7 +181,7 @@ orchestration:
     - name: agent-init
       actor: agent
       commands:
-        - { cmd: "assign:claim {TASK}", mode: subprocess, purpose: "Get compiled prompt" }
+        - { cmd: "context:load {TASK}", mode: subprocess, purpose: "Get task context (pre-claimed by spawn)" }
     - name: execution
       actor: agent
       commands:
@@ -189,7 +189,7 @@ orchestration:
     - name: completion
       actor: agent
       commands:
-        - { cmd: "assign:release {TASK}", mode: subprocess, purpose: "Release and update status" }
+        - { cmd: "assign:release {TASK}", mode: subprocess, purpose: "Release task (optional: auto-release on exit 0)" }
     - name: post-flight
       actor: skill
       commands:
@@ -211,7 +211,7 @@ orchestration:
     - name: agent-init
       actor: agent
       commands:
-        - { cmd: "assign:claim {EPIC}", mode: subprocess, purpose: "Get compiled prompt" }
+        - { cmd: "context:load {EPIC}", mode: subprocess, purpose: "Get epic context (pre-claimed by spawn)" }
     - name: execution
       actor: agent
       commands:

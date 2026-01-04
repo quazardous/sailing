@@ -117,11 +117,11 @@ This tells you:
 
    **Mode: inline** (`use_subprocess: false`):
    * Spawn agents in a **single message** using multiple `Task` tools
-   * Each agent runs `assign:claim TNNN` to get its full context
+   * Each agent runs `context:load TNNN` to get its full context
 
    ```
    ┌─ Task(T101) ─┐
-   ├─ Task(T102) ─┼─► Parallel: each agent runs `assign:claim TNNN`
+   ├─ Task(T102) ─┼─► Parallel: each agent runs `context:load TNNN`
    ├─ Task(T103) ─┤
    └─ Task(T104) ─┘
    ```
@@ -176,19 +176,21 @@ The orchestrator observes and reports — it does not correct or override.
 
 ---
 
-## Agent Brief — Minimal Prompt with assign:claim
+## Agent Brief — Minimal Prompt (pre-claimed)
 
-Each spawned agent receives a **minimal prompt** and claims its assignment:
+Each spawned agent receives a **minimal prompt**. The task is pre-claimed by spawn:
 
 ```markdown
 # Assignment: {TNNN}
 
 You are a senior engineer executing task {TNNN}.
 
-## 1. Claim your assignment
+## 1. Get your context
+
+The task is already claimed. Get your context:
 
 ```bash
-rudder assign:claim {TNNN}
+rudder context:load {TNNN}
 ```
 
 This returns your complete execution context. Read and follow strictly.
@@ -212,9 +214,9 @@ Implement the deliverables. No scope expansion.
 rudder assign:release {TNNN}
 ```
 
-`assign:release` releases the assignment. Task status update is done separately via `task:update`.
+`assign:release` releases the assignment (optional: auto-release on exit 0).
 
-The `assign:claim` command returns the compiled context:
+The `context:load` command returns the compiled context:
 - Agent Contract (constitutional rules, CLI contract, logging protocol)
 - Epic memory (learnings from previous work)
 - Epic context (tech notes, constraints)

@@ -251,20 +251,22 @@ For internal mode (no sandbox):
 ### Bootstrap Sequence
 
 ```
-1. Agent starts → calls assign_claim T042
-2. MCP executes: rudder assign:claim T042
+1. Spawn pre-claims task: rudder assign:claim T042
+2. Agent starts → calls context:load T042 (task already claimed)
 3. Returns: Task context, dependencies, memory
 4. Agent works on task in worktree
 5. Agent calls task_log to record progress
-6. Agent calls assign_release when done
+6. Agent calls assign_release when done (or auto-release on exit 0)
 ```
+
+Note: Since v1.6.3, spawn pre-claims the task before launching the agent. If the agent exits with code 0 and has work done, auto-release triggers even if the agent didn't call assign_release.
 
 ### Example Agent Usage
 
 ```
-# Get task assignment
-Tool: mcp__rudder__assign_claim
-Arguments: { "task_id": "T042" }
+# Get task context (task is already claimed by spawn)
+Tool: mcp__rudder__cli
+Arguments: { "command": "context:load T042" }
 
 # Log progress
 Tool: mcp__rudder__task_log
@@ -274,7 +276,7 @@ Arguments: { "task_id": "T042", "message": "Implemented feature X", "level": "in
 Tool: mcp__rudder__deps_show
 Arguments: { "task_id": "T042" }
 
-# Release when done
+# Release when done (optional - auto-release handles this)
 Tool: mcp__rudder__assign_release
 Arguments: { "task_id": "T042" }
 ```
