@@ -171,16 +171,10 @@ orchestration:
         - { cmd: "memory:sync", mode: both, purpose: "Consolidate pending logs", required: true }
         - { cmd: "deps:ready --task {TASK}", mode: both, purpose: "Verify task unblocked", required: true }
         - { cmd: "task:show {TASK}", mode: both, purpose: "Review requirements", required: true }
-    - name: claim
-      actor: skill
-      commands:
-        - { cmd: "assign:claim {TASK} --json", mode: inline, purpose: "Claim task (marks In Progress)" }
     - name: context-load
       actor: skill
       commands:
-        - { cmd: "context:load task-start --role agent", mode: inline, purpose: "Agent execution rules" }
-        - { cmd: "memory:show {TASK}", mode: inline, purpose: "Epic memory for agent" }
-        - { cmd: "task:show {TASK}", mode: inline, purpose: "Task content for agent" }
+        - { cmd: "assign:claim {TASK}", mode: inline, purpose: "Claim + get full context (contract, memory, task)" }
         - { cmd: "agent:spawn {TASK}", mode: subprocess, purpose: "Launch agent subprocess (pre-claims)" }
     - name: agent-init
       actor: agent
@@ -209,9 +203,8 @@ orchestration:
     - name: context-load
       actor: coordinator
       commands:
-        - { cmd: "context:load default --role agent", mode: inline, purpose: "Agent rules" }
-        - { cmd: "epic:show {EPIC} --full", mode: inline, purpose: "Epic content" }
-        - { cmd: "agent:spawn {EPIC} --operation epic-breakdown", mode: subprocess, purpose: "Launch agent" }
+        - { cmd: "assign:claim {EPIC}", mode: inline, purpose: "Claim + get full context (contract, memory, PRD, epic)" }
+        - { cmd: "agent:spawn {EPIC} --operation epic-breakdown", mode: subprocess, purpose: "Launch agent (pre-claims)" }
     - name: agent-init
       actor: agent
       commands:
