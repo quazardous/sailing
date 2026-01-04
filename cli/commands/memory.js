@@ -134,50 +134,82 @@ export function registerMemoryCommands(program) {
         return;
       }
 
-      // Human-readable output
+      // Human-readable output with consistent format
+      // Format matches memory:edit: ## ID:Section
+      const sep = '─'.repeat(60);
+
       if (options.full) {
         // Show full content of all levels
+        console.log(`# Memory: ${normalized}\n`);
+        console.log(sep);
+
         if (hierarchy.project && !options.epicOnly) {
-          console.log('# Project Memory\n');
-          console.log(hierarchy.project.content.trim());
-          console.log('\n---\n');
+          console.log('\n## PROJECT:Architecture Decisions\n');
+          const arch = hierarchy.project.content.match(/## Architecture Decisions\s*([\s\S]*?)(?=\n## |$)/);
+          if (arch) console.log(arch[1].replace(/<!--[\s\S]*?-->/g, '').trim() || '(empty)');
+
+          console.log('\n## PROJECT:Patterns & Conventions\n');
+          const pat = hierarchy.project.content.match(/## Patterns & Conventions\s*([\s\S]*?)(?=\n## |$)/);
+          if (pat) console.log(pat[1].replace(/<!--[\s\S]*?-->/g, '').trim() || '(empty)');
+
+          console.log('\n' + sep);
         }
+
         if (hierarchy.prd && !options.epicOnly) {
-          console.log(`# PRD Memory: ${hierarchy.prd.id}\n`);
-          console.log(hierarchy.prd.content.trim());
-          console.log('\n---\n');
+          console.log(`\n## ${hierarchy.prd.id}:Cross-Epic Patterns\n`);
+          const cross = hierarchy.prd.content.match(/## Cross-Epic Patterns\s*([\s\S]*?)(?=\n## |$)/);
+          if (cross) console.log(cross[1].replace(/<!--[\s\S]*?-->/g, '').trim() || '(empty)');
+
+          console.log('\n' + sep);
         }
+
         if (hierarchy.epic) {
-          console.log(`# Epic Memory: ${hierarchy.epic.id}\n`);
-          console.log(hierarchy.epic.content.trim());
+          console.log(`\n## ${hierarchy.epic.id}:Agent Context\n`);
+          const ctx = hierarchy.epic.content.match(/## Agent Context\s*([\s\S]*?)(?=\n## |$)/);
+          if (ctx) console.log(ctx[1].replace(/<!--[\s\S]*?-->/g, '').trim() || '(empty)');
+
+          console.log(`\n## ${hierarchy.epic.id}:Escalation\n`);
+          const esc = hierarchy.epic.content.match(/## Escalation\s*([\s\S]*?)(?=\n## |$)/);
+          if (esc) console.log(esc[1].replace(/<!--[\s\S]*?-->/g, '').trim() || '(empty)');
+
+          console.log(`\n## ${hierarchy.epic.id}:Story\n`);
+          const story = hierarchy.epic.content.match(/## Story\s*([\s\S]*?)(?=\n## |$)/);
+          if (story) console.log(story[1].replace(/<!--[\s\S]*?-->/g, '').trim() || '(empty)');
         }
       } else {
-        // Show Agent Context sections only
-        const sections = [];
+        // Show Agent Context sections only (default)
+        console.log(`# Memory: ${normalized}\n`);
+        console.log(sep);
 
         if (hierarchy.project && !options.epicOnly) {
           const ctx = extractProjectContext(hierarchy.project.content);
-          if (ctx) sections.push({ level: 'Project', content: ctx });
+          if (ctx) {
+            console.log('\n## PROJECT:Architecture Decisions\n');
+            console.log(ctx);
+            console.log('\n' + sep);
+          }
         }
+
         if (hierarchy.prd && !options.epicOnly) {
           const ctx = extractPrdContext(hierarchy.prd.content);
-          if (ctx) sections.push({ level: `PRD ${hierarchy.prd.id}`, content: ctx });
+          if (ctx) {
+            console.log(`\n## ${hierarchy.prd.id}:Cross-Epic Patterns\n`);
+            console.log(ctx);
+            console.log('\n' + sep);
+          }
         }
+
         if (hierarchy.epic) {
           const ctx = extractAgentContext(hierarchy.epic.content);
-          if (ctx) sections.push({ level: `Epic ${hierarchy.epic.id}`, content: ctx });
+          if (ctx) {
+            console.log(`\n## ${hierarchy.epic.id}:Agent Context\n`);
+            console.log(ctx);
+          }
         }
 
-        if (sections.length === 0) {
+        // Show hint if no content found
+        if (!hierarchy.project && !hierarchy.prd && !hierarchy.epic) {
           console.log(`No agent context for ${normalized}`);
-          return;
-        }
-
-        console.log(`# Memory Context: ${normalized}\n`);
-        for (const { level, content } of sections) {
-          console.log(`## ${level}\n`);
-          console.log(content);
-          console.log('');
         }
       }
     });
@@ -434,38 +466,40 @@ export function registerMemoryCommands(program) {
         }
       }
 
-      // Escalation brief (only when there are pending logs)
+      // Commands guide
+      console.log('\n' + '='.repeat(60));
+      console.log('\n# Commands\n');
+      console.log('## View memory (hierarchical)');
+      console.log('');
+      console.log('  rudder memory:show E001          # Agent context only');
+      console.log('  rudder memory:show E001 --full   # All sections');
+      console.log('');
+      console.log('Output format: ## ID:Section (matches memory:edit)');
+
+      // Consolidation guide (only when there are pending logs)
       if (hasPendingLogs) {
-        console.log('\n' + '='.repeat(60));
-        console.log('\n# Consolidation Guide\n');
-        console.log('## Workflow');
-        console.log('1. Read pending logs above');
-        console.log('2. Consolidate into memory:');
+        console.log('\n## Consolidate logs (multi-section edit)');
         console.log('');
-        console.log('   # TIP → Agent Context');
-        console.log('   rudder memory:edit ENNN --section "Agent Context" --append <<\'EOF\'');
-        console.log('   - Reformulated tip here');
-        console.log('   EOF');
+        console.log('  rudder memory:edit <<\'EOF\'');
+        console.log('  ## E001:Agent Context [append]');
+        console.log('  - Reformulated tip here');
         console.log('');
-        console.log('   # ERROR/CRITICAL → Escalation');
-        console.log('   rudder memory:edit ENNN --section "Escalation" --append <<\'EOF\'');
-        console.log('   - Blocker or issue description');
-        console.log('   EOF');
+        console.log('  ## E001:Escalation [append]');
+        console.log('  - Blocker or issue description');
         console.log('');
-        console.log('3. Clean up logs: rudder epic:clean-logs <epic>');
+        console.log('  ## PRD-001:Cross-Epic Patterns');
+        console.log('  - Pattern observed in multiple epics');
         console.log('');
-        console.log('## Escalation (cross-epic patterns)');
+        console.log('  ## PROJECT:Architecture Decisions');
+        console.log('  - Decision and rationale');
+        console.log('  EOF');
         console.log('');
-        console.log('   # Same tip in 2+ epics → PRD memory');
-        console.log('   rudder memory:edit PRD-NNN --section "Cross-Epic Patterns" <<\'EOF\'');
-        console.log('   - Pattern description');
-        console.log('   EOF');
+        console.log('After consolidation:');
+        for (const epic of epicLogs) {
+          console.log(`  rudder epic:clean-logs ${epic.id}`);
+        }
         console.log('');
-        console.log('   # Architecture decision → Project memory');
-        console.log('   rudder memory:edit PROJECT --section "Architecture Decisions" <<\'EOF\'');
-        console.log('   - Decision and rationale');
-        console.log('   EOF');
-        console.log('');
+        console.log('Mapping: [TIP]→Agent Context, [ERROR/CRITICAL]→Escalation');
         console.log('Escalation = Reformulation. Never copy-paste.');
       }
     });
@@ -544,10 +578,58 @@ export function registerMemoryCommands(program) {
       }
     });
 
-  // memory:edit <ID> - edit memory file section
-  memory.command('edit <id>')
-    .description('Edit memory section (skill/coordinator only)')
-    .option('-s, --section <name>', 'Section to edit (Agent Context, Escalation, Story, etc.)')
+  // Helper: get memory file path for ID
+  function getMemoryPath(id) {
+    if (id.startsWith('E')) {
+      return memoryFilePath(id);
+    } else if (id.startsWith('PRD-')) {
+      return prdMemoryFilePath(id);
+    } else if (id === 'PROJECT') {
+      return projectMemoryFilePath();
+    }
+    return null;
+  }
+
+  // Helper: edit a single section in a memory file
+  function editMemorySection(memoryId, section, content, operation) {
+    const filePath = getMemoryPath(memoryId);
+    if (!filePath) {
+      return { error: `Invalid memory ID: ${memoryId}` };
+    }
+    if (!fs.existsSync(filePath)) {
+      return { error: `Memory file not found for ${memoryId}` };
+    }
+
+    const fileContent = fs.readFileSync(filePath, 'utf8');
+    const sectionHeader = `## ${section}`;
+    const sectionRegex = new RegExp(`(${sectionHeader}\\s*\\n)([\\s\\S]*?)(?=\\n## [A-Z]|$)`, 'i');
+    const match = fileContent.match(sectionRegex);
+
+    if (!match) {
+      return { error: `Section "${section}" not found in ${memoryId}` };
+    }
+
+    const existingContent = match[2].replace(/<!--[\s\S]*?-->/g, '').trim();
+    let newSectionContent;
+
+    if (operation === 'append') {
+      newSectionContent = existingContent ? `${existingContent}\n${content}` : content;
+    } else if (operation === 'prepend') {
+      newSectionContent = existingContent ? `${content}\n${existingContent}` : content;
+    } else {
+      newSectionContent = content;
+    }
+
+    const updatedContent = fileContent.replace(match[0], `${match[1]}${newSectionContent}\n\n`);
+    fs.writeFileSync(filePath, updatedContent);
+
+    return { success: true, id: memoryId, section, operation };
+  }
+
+  // memory:edit [ID] - edit memory section(s)
+  memory.command('edit [id]')
+    .description('Edit memory section(s) (skill/coordinator only)')
+    .option('-s, --section <name>', 'Section to edit (single-ID mode)')
     .option('-c, --content <text>', 'New content (or use stdin)')
     .option('-a, --append', 'Append to section instead of replace')
     .option('-p, --prepend', 'Prepend to section instead of replace')
@@ -556,83 +638,117 @@ export function registerMemoryCommands(program) {
     .action((id, options) => {
       // Block agents from editing memory
       checkWriteAccess(options.role, 'memory:edit');
-
       ensureMemoryDir();
-      const normalized = normalizeId(id);
-
-      // Determine file path based on ID type
-      let filePath;
-      if (normalized.startsWith('E')) {
-        filePath = memoryFilePath(normalized);
-      } else if (normalized.startsWith('PRD-')) {
-        filePath = prdMemoryFilePath(normalized);
-      } else if (normalized === 'PROJECT') {
-        filePath = projectMemoryFilePath();
-      } else {
-        console.error(`Invalid memory ID: ${id}`);
-        console.error('Expected: ENNN (epic), PRD-NNN (PRD), or PROJECT');
-        process.exit(1);
-      }
-
-      if (!fs.existsSync(filePath)) {
-        console.error(`Memory file not found: ${filePath}`);
-        console.error(`Create with: rudder memory:sync`);
-        process.exit(1);
-      }
 
       // Get content from stdin or option
-      let newContent = options.content;
-      if (!newContent && !process.stdin.isTTY) {
-        newContent = fs.readFileSync(0, 'utf8').trim();
+      let inputContent = options.content;
+      if (!inputContent && !process.stdin.isTTY) {
+        inputContent = fs.readFileSync(0, 'utf8').trim();
       }
 
-      if (!newContent) {
+      if (!inputContent) {
         console.error('No content provided. Use --content or pipe via stdin.');
         process.exit(1);
       }
 
+      // === MULTI-SECTION MODE (no ID provided) ===
+      // Format: ## ID:Section [operation]
+      if (!id) {
+        const headerRegex = /^## ([A-Z0-9-]+):(.+?)(?:\s*\[(append|prepend|replace)\])?\s*$/gm;
+        const sections = [];
+        let lastIndex = 0;
+        let match;
+
+        // Find all section headers
+        const matches = [];
+        while ((match = headerRegex.exec(inputContent)) !== null) {
+          matches.push({
+            fullMatch: match[0],
+            id: match[1].toUpperCase(),
+            section: match[2].trim(),
+            operation: match[3] || 'replace',
+            index: match.index
+          });
+        }
+
+        if (matches.length === 0) {
+          console.error('No sections found. Use format: ## ID:Section [operation]');
+          console.error('Examples:');
+          console.error('  ## E001:Agent Context');
+          console.error('  ## E001:Escalation [append]');
+          console.error('  ## PRD-001:Cross-Epic Patterns');
+          console.error('  ## PROJECT:Architecture Decisions');
+          process.exit(1);
+        }
+
+        // Extract content for each section
+        for (let i = 0; i < matches.length; i++) {
+          const current = matches[i];
+          const nextIndex = matches[i + 1]?.index ?? inputContent.length;
+          const headerEnd = current.index + current.fullMatch.length;
+          const content = inputContent.slice(headerEnd, nextIndex).trim();
+
+          sections.push({
+            id: current.id === 'PROJECT' ? 'PROJECT' : normalizeId(current.id),
+            section: current.section,
+            operation: current.operation,
+            content
+          });
+        }
+
+        // Apply all edits
+        const results = [];
+        for (const sec of sections) {
+          const result = editMemorySection(sec.id, sec.section, sec.content, sec.operation);
+          results.push({ ...sec, ...result });
+        }
+
+        // Output
+        const errors = results.filter(r => r.error);
+        const successes = results.filter(r => r.success);
+
+        if (options.json) {
+          jsonOut({ edited: successes.length, errors: errors.length, results });
+          return;
+        }
+
+        if (successes.length > 0) {
+          console.log(`✓ ${successes.length} section(s) edited:`);
+          for (const r of successes) {
+            console.log(`  ${r.id}:${r.section} (${r.operation})`);
+          }
+        }
+        if (errors.length > 0) {
+          console.error(`\n✗ ${errors.length} error(s):`);
+          for (const r of errors) {
+            console.error(`  ${r.id}:${r.section} - ${r.error}`);
+          }
+          process.exit(1);
+        }
+        return;
+      }
+
+      // === SINGLE-ID MODE ===
+      const normalized = id.toUpperCase() === 'PROJECT' ? 'PROJECT' : normalizeId(id);
+
       if (!options.section) {
         console.error('Section required. Use --section "Agent Context" or similar.');
-        console.error('Sections: Agent Context, Escalation, Story, Cross-Epic Patterns, Architecture Decisions');
+        console.error('Or use multi-section mode: rudder memory:edit <<EOF');
         process.exit(1);
       }
 
-      // Read current file
-      const content = fs.readFileSync(filePath, 'utf8');
+      const operation = options.append ? 'append' : options.prepend ? 'prepend' : 'replace';
+      const result = editMemorySection(normalized, options.section, inputContent, operation);
 
-      // Find and replace section
-      const sectionHeader = `## ${options.section}`;
-      const sectionRegex = new RegExp(`(${sectionHeader}\\s*\\n)([\\s\\S]*?)(?=\\n## [A-Z]|$)`, 'i');
-      const match = content.match(sectionRegex);
-
-      if (!match) {
-        console.error(`Section not found: ${options.section}`);
-        console.error(`Available sections in ${normalized}:`);
-        const headers = content.match(/^## .+$/gm);
-        if (headers) headers.forEach(h => console.error(`  ${h}`));
+      if (result.error) {
+        console.error(result.error);
         process.exit(1);
       }
-
-      let updatedContent;
-      const existingContent = match[2].replace(/<!--[\s\S]*?-->/g, '').trim();
-
-      if (options.append) {
-        const combined = existingContent ? `${existingContent}\n${newContent}` : newContent;
-        updatedContent = content.replace(match[0], `${match[1]}${combined}\n\n`);
-      } else if (options.prepend) {
-        const combined = existingContent ? `${newContent}\n${existingContent}` : newContent;
-        updatedContent = content.replace(match[0], `${match[1]}${combined}\n\n`);
-      } else {
-        updatedContent = content.replace(match[0], `${match[1]}${newContent}\n\n`);
-      }
-
-      fs.writeFileSync(filePath, updatedContent);
 
       if (options.json) {
-        jsonOut({ id: normalized, section: options.section, operation: options.append ? 'append' : options.prepend ? 'prepend' : 'replace' });
+        jsonOut(result);
       } else {
-        const op = options.append ? 'appended to' : options.prepend ? 'prepended to' : 'replaced';
-        console.log(`✓ ${options.section} ${op} in ${normalized}`);
+        console.log(`✓ ${options.section} ${operation === 'replace' ? 'replaced' : operation + 'ed'} in ${normalized}`);
       }
     });
 
