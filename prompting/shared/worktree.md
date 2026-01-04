@@ -1,6 +1,19 @@
-## Worktree Isolation
+## Worktree Mode
 
-Agents run in isolated git worktrees (separate branches).
+You are running in an **isolated git worktree** (separate branch).
+
+### Commit Override
+
+**IGNORE the "Don't commit" rule.** You MUST commit before exiting:
+
+```bash
+git add -A
+git commit -m "feat(TNNN): <clear description of what you implemented>"
+```
+
+Conventional commit types: `feat` | `fix` | `refactor` | `chore`
+
+Your commit message = permanent git history. Make it descriptive.
 
 ### Default Workflow
 

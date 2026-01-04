@@ -103,25 +103,28 @@ git status --porcelain
 
 If there are uncommitted changes:
 
-1. **Stage all changes**:
+1. **Get task title**:
    ```bash
-   git add -A
+   rudder task:show TNNN --json | jq -r '.title'
    ```
 
-2. **Auto-commit with warning**:
+2. **Stage and commit with task title**:
    ```bash
-   git commit -m "chore(TNNN): auto-commit uncommitted agent changes"
+   git add -A
+   git commit -m "feat(TNNN): <task-title> [auto]"
    ```
+
+   The `[auto]` flag indicates this was a fallback commit (agent forgot to commit).
 
 3. **Log the auto-commit**:
    ```bash
-   rudder task:log TNNN "Auto-committed uncommitted changes before merge" --warn
+   rudder task:log TNNN "Agent forgot to commit - auto-committed with task title" --warn
    ```
 
 4. **Warn the user**:
-   > ⚠️ Agent left uncommitted changes. Auto-committed before merge.
+   > ⚠️ Agent forgot to commit. Used task title as fallback.
 
-**Why**: Agents in worktree mode are told not to commit (skill handles it). This ensures their work is preserved even if they forgot to save.
+**Why**: Agents SHOULD commit with descriptive messages. This fallback preserves meaningful history when they forget.
 
 ## Merge Mode Resolution
 
