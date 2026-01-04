@@ -717,17 +717,24 @@ Start by calling the rudder MCP tool with \`context:load ${taskId}\` to get your
 
   /**
    * Check agent completion state
-   * @returns {{ complete: boolean, hasResult: boolean, hasSentinel: boolean }}
+   * Checks: sentinel file, result.yaml, OR state.json exit_code=0
+   * @returns {{ complete: boolean, hasResult: boolean, hasSentinel: boolean, hasStateComplete: boolean }}
    */
   function checkAgentCompletion(taskId) {
     const agentDir = getAgentDir(taskId);
     const resultFile = path.join(agentDir, 'result.yaml');
     const sentinelFile = path.join(agentDir, 'done');
 
+    // Also check state.json for completed status with exit_code=0
+    const state = loadState();
+    const agentInfo = state.agents?.[taskId];
+    const stateComplete = agentInfo?.status === 'completed' && agentInfo?.exit_code === 0;
+
     return {
-      complete: fs.existsSync(sentinelFile) || fs.existsSync(resultFile),
+      complete: fs.existsSync(sentinelFile) || fs.existsSync(resultFile) || stateComplete,
       hasResult: fs.existsSync(resultFile),
       hasSentinel: fs.existsSync(sentinelFile),
+      hasStateComplete: stateComplete,
       agentDir
     };
   }
