@@ -2,13 +2,13 @@
 
 You are running in an **isolated git worktree** (separate branch).
 
-### Commit obligatoire
+### Commit Required
 
-Avant de terminer, commit avec un message descriptif:
+Before exiting, commit with a descriptive message:
 
 ```bash
 git add -A
-git commit -m "feat(TNNN): <description claire de l'implémentation>"
+git commit -m "feat(TNNN): <clear description of what you implemented>"
 ```
 
 Types: `feat` | `fix` | `refactor` | `chore`
