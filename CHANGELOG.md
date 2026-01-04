@@ -2,6 +2,21 @@
 
 All notable changes to the Sailing Framework will be documented in this file.
 
+## [1.6.4] - 2026-01-04
+
+### Added
+- `agent-cli.md` skill documentation: spawn, monitor, wait, reap commands
+- Spawn behavior documentation: BLOCKING nature, parallel tool calls pattern
+
+### Changed
+- `mcp_mode: socket` required for Linux sandbox (TCP blocked by bubblewrap)
+- Bootstrap prompt simplified: auto-release on exit 0, no manual `assign:release`
+- Agent monitoring: use `agent:log`, `agent:status`, not `sleep && tail`
+
+### Fixed
+- MCP socket bind-mounted into sandbox for socat access
+- Skill parallel spawning: use Claude tool calls, not bash `&`
+
 ## [1.6.3] - 2026-01-04
 
 ### Added
