@@ -171,13 +171,17 @@ orchestration:
         - { cmd: "memory:sync", mode: both, purpose: "Consolidate pending logs", required: true }
         - { cmd: "deps:ready --task {TASK}", mode: both, purpose: "Verify task unblocked", required: true }
         - { cmd: "task:show {TASK}", mode: both, purpose: "Review requirements", required: true }
+    - name: claim
+      actor: skill
+      commands:
+        - { cmd: "assign:claim {TASK} --json", mode: inline, purpose: "Claim task (marks In Progress)" }
     - name: context-load
       actor: skill
       commands:
         - { cmd: "context:load task-start --role agent", mode: inline, purpose: "Agent execution rules" }
         - { cmd: "memory:show {TASK}", mode: inline, purpose: "Epic memory for agent" }
         - { cmd: "task:show {TASK}", mode: inline, purpose: "Task content for agent" }
-        - { cmd: "agent:spawn {TASK}", mode: subprocess, purpose: "Launch agent subprocess" }
+        - { cmd: "agent:spawn {TASK}", mode: subprocess, purpose: "Launch agent subprocess (pre-claims)" }
     - name: agent-init
       actor: agent
       commands:
@@ -193,7 +197,7 @@ orchestration:
     - name: post-flight
       actor: skill
       commands:
-        - { cmd: "task:update {TASK} --status Done", mode: inline, purpose: "Update task status" }
+        - { cmd: "assign:release {TASK}", mode: inline, purpose: "Release task + merge logs" }
         - { cmd: "agent:reap {TASK}", mode: subprocess, purpose: "Harvest: wait, merge, cleanup, update status" }
 
   epic-breakdown:

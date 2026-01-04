@@ -67,11 +67,13 @@ Implement the deliverables. No scope expansion.
 
 | Mode | Workflow |
 |------|----------|
-| **Inline** (non-subprocess) | Skill loads context → Task tool with agent rules → executes in main session |
-| **Subprocess** (default) | `agent:spawn` pre-claims → launches Claude subprocess → agent calls `context:load` |
+| **Inline** (non-subprocess) | Skill claims → loads context → Task tool executes → skill releases |
+| **Subprocess** (default) | `agent:spawn` pre-claims → launches Claude → agent calls `context:load` → auto-release on exit 0 |
 | **Worktree** (subprocess+isolation) | Same as subprocess but agent runs in isolated git branch |
 
-In subprocess mode, spawn pre-claims the task before launching the agent. Auto-release triggers on exit code 0.
+Both modes use claim/release lifecycle:
+- **Inline**: Skill calls `assign:claim` before Task tool, `assign:release` after
+- **Subprocess**: Spawn pre-claims, auto-release on exit code 0 with work done
 
 ## Role Mapping (optional refinement)
 
