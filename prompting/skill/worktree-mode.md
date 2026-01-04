@@ -13,8 +13,8 @@
 
 1. Run pre-flight commands (memory:sync, deps:ready)
 2. Workflow shows `agent:spawn` → you MUST spawn
-3. Wait for agent completion
-4. Reap via `agent:reap` or reject via `agent:reject`
+3. Spawn waits, streams output, auto-reaps on success
+4. If failed: investigate via `agent:log` or reject via `agent:reject`
 
 ## Violations = Immediate Stop
 

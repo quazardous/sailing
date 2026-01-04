@@ -107,12 +107,16 @@ This tells you:
 
    **Mode: subprocess** (`use_subprocess: true`):
    ```bash
-   # Spawn each task as a separate Claude process
-   rudder agent:spawn T101 &
-   rudder agent:spawn T102 &
-   rudder agent:spawn T103 &
-   wait  # Wait for all agents
+   rudder agent:spawn T101
+   rudder agent:spawn T102
+   rudder agent:spawn T103
    ```
+
+   Each spawn:
+   - Streams agent output to console
+   - Shows heartbeat every 30s
+   - Auto-reaps on completion (merge + cleanup + status update)
+
    If worktree isolation is enabled, each agent gets its own git worktree.
 
    **Mode: inline** (`use_subprocess: false`):
@@ -126,22 +130,14 @@ This tells you:
    └─ Task(T104) ─┘
    ```
 
-7. **Reap results**
+7. **Results**
 
    **Mode: subprocess**:
-   ```bash
-   # Reap each agent (wait, merge, cleanup, update status)
-   rudder agent:reap T101
-   rudder agent:reap T102
-   rudder agent:reap T103
-   ```
 
-   `agent:reap` handles everything automatically:
-   - Waits if agent still running
-   - Auto-commits uncommitted changes
-   - Merges if no conflicts
-   - Cleans up worktree
-   - Updates task status (Done/Blocked)
+   Results are handled automatically by spawn:
+   - Agent output streamed to console
+   - Heartbeat shows progress every 30s
+   - On completion: auto-merge, cleanup, status update
 
    **If reap fails (conflicts, errors):**
    - Command outputs next steps

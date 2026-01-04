@@ -2,39 +2,34 @@
 
 Agents run in isolated git worktrees (separate branches).
 
-### Post-Agent Workflow
+### Default Workflow
+
+`agent:spawn` handles everything automatically:
 
 ```
-agent:status TNNN
+agent:spawn TNNN
+       ↓
+  [streams output + heartbeat]
        ↓
   ┌────┴────┐
   ↓         ↓
-completed  failed/blocked
+exit 0    exit ≠ 0
   ↓              ↓
-agent:conflicts  agent:reject TNNN
+auto-reap    manual: agent:reject or investigate
   ↓
-  ├─ no conflicts → agent:reap TNNN
-  └─ conflicts → /dev:merge TNNN (manual resolution)
+  ├─ no conflicts → ✓ merged + cleaned
+  └─ conflicts → escalate to /dev:merge TNNN
 ```
-
-### Decision Points
-
-| After | Output | → Action |
-|-------|--------|----------|
-| `agent:status` | completed | `agent:conflicts` |
-| `agent:status` | failed | `agent:reject` or investigate |
-| `agent:conflicts` | none | `agent:reap TNNN` |
-| `agent:conflicts` | file overlap | `/dev:merge TNNN` |
 
 ### Commands
 
 | Command | Purpose |
 |---------|---------|
-| `agent:spawn TNNN` | Spawn new agent in fresh worktree |
-| `agent:spawn TNNN --resume` | Resume agent in existing worktree |
-| `agent:status [TNNN]` | Check agent completion state |
+| `agent:spawn TNNN` | Spawn, wait, stream output, auto-reap |
+| `agent:spawn TNNN --resume` | Resume in existing worktree |
+| `agent:wait TNNN` | Reattach to background agent |
+| `agent:status [TNNN]` | Check agent state |
 | `agent:conflicts` | Show file overlap between parallel agents |
-| `agent:reap TNNN` | Wait, merge, cleanup, update status |
 | `agent:reject TNNN` | Discard agent work, set task blocked |
 | `/dev:merge TNNN` | Merge with conflict resolution context |
 

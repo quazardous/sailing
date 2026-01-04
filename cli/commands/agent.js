@@ -779,11 +779,21 @@ Start by calling the rudder MCP tool with \`context:load ${taskId}\` to get your
       let exitSignal = null;
 
       if (!options.json) {
-        console.log(`Spawned: ${taskId} (PID ${spawnResult.pid})`);
-        console.log('─'.repeat(60));
-        if (shouldLog) {
-          console.log('[streaming Claude output...]\n');
+        console.log(`\n┌─ Spawned: ${taskId} ─────────────────────────────────────`);
+        console.log(`│ PID: ${spawnResult.pid}`);
+        console.log(`│ Mode: ${useWorktree ? 'worktree (isolated branch)' : 'direct'}`);
+        if (worktreeInfo) {
+          console.log(`│ Branch: ${worktreeInfo.branch}`);
         }
+        console.log(`│ Timeout: ${timeout}s`);
+        console.log(`├─ Behavior ───────────────────────────────────────────────`);
+        console.log(`│ • Streaming Claude output${shouldLog ? '' : ' (disabled)'}`);
+        console.log(`│ • Heartbeat every ${options.heartbeat || 30}s${shouldHeartbeat ? '' : ' (disabled)'}`);
+        console.log(`│ • Auto-reap on success (merge + cleanup + status update)`);
+        console.log(`├─ Signals ────────────────────────────────────────────────`);
+        console.log(`│ • Ctrl+C: detach (agent continues in background)`);
+        console.log(`│ • kill -HUP ${process.pid}: force status check`);
+        console.log(`└──────────────────────────────────────────────────────────\n`);
       }
 
       // Setup SIGHUP handler: force immediate heartbeat
