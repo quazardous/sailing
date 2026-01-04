@@ -114,6 +114,17 @@ export const CONFIG_SCHEMA = {
     values: ['auto', 'github', 'gitlab'],
     description: 'PR provider (auto detects from git remote)'
   },
+  'agent.mcp_mode': {
+    type: 'enum',
+    default: 'socket',
+    values: ['socket', 'port'],
+    description: 'MCP transport: socket (Unix socket) or port (TCP, auto-allocated)'
+  },
+  'agent.mcp_port_range': {
+    type: 'string',
+    default: '9100-9199',
+    description: 'Port range for MCP TCP mode (e.g., 9100-9199)'
+  },
   'output.color': {
     type: 'boolean',
     default: true,

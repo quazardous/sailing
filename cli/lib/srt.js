@@ -53,14 +53,16 @@ export function getAvailablePort() {
 
 /**
  * Check if MCP server is already running for a haven
+ * Supports both socket and port modes
  * @param {string} havenDir - Haven directory
- * @returns {{ running: boolean, socket?: string, pid?: number }}
+ * @returns {{ running: boolean, mode?: string, socket?: string, port?: number, pid?: number }}
  */
 export function checkMcpServer(havenDir) {
   const socketPath = path.join(havenDir, 'mcp.sock');
+  const portFile = path.join(havenDir, 'mcp.port');
   const pidFile = path.join(havenDir, 'mcp.pid');
 
-  if (!fs.existsSync(socketPath) || !fs.existsSync(pidFile)) {
+  if (!fs.existsSync(pidFile)) {
     return { running: false };
   }
 
@@ -68,11 +70,22 @@ export function checkMcpServer(havenDir) {
   try {
     const pid = parseInt(fs.readFileSync(pidFile, 'utf8').trim(), 10);
     process.kill(pid, 0); // Signal 0 = check if process exists
-    return { running: true, socket: socketPath, pid };
+
+    // Determine mode
+    if (fs.existsSync(portFile)) {
+      const port = parseInt(fs.readFileSync(portFile, 'utf8').trim(), 10);
+      return { running: true, mode: 'port', port, pid };
+    } else if (fs.existsSync(socketPath)) {
+      return { running: true, mode: 'socket', socket: socketPath, pid };
+    } else {
+      // PID exists but no socket or port file - stale
+      throw new Error('Stale PID file');
+    }
   } catch (e) {
     // Process not running, clean up stale files
     try { fs.unlinkSync(socketPath); } catch {}
     try { fs.unlinkSync(pidFile); } catch {}
+    try { fs.unlinkSync(portFile); } catch {}
     return { running: false };
   }
 }

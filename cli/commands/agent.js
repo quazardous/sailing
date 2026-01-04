@@ -575,9 +575,11 @@ Start by calling the rudder MCP tool with \`assign:claim ${taskId}\` to get your
 
       // Handle process exit
       spawnResult.process.on('exit', (code, signal) => {
-        // Check for uncommitted changes before updating state
+        // Check for uncommitted changes and commits ahead of base
         let dirtyWorktree = false;
         let uncommittedFiles = 0;
+        let hasCommits = false;
+
         try {
           const gitStatus = execSync('git status --porcelain', {
             cwd,
@@ -595,6 +597,16 @@ Start by calling the rudder MCP tool with \`assign:claim ${taskId}\` to get your
               console.error(`   ${uncommittedFiles} file(s) modified but not committed.`);
               console.error(`   Agent should have committed before releasing task.\n`);
             }
+          }
+
+          // Check for commits ahead of base branch
+          if (useWorktree && worktreeInfo?.base_branch) {
+            const ahead = execSync(`git rev-list --count ${worktreeInfo.base_branch}..HEAD`, {
+              cwd,
+              encoding: 'utf8',
+              stdio: ['pipe', 'pipe', 'pipe']
+            }).trim();
+            hasCommits = parseInt(ahead, 10) > 0;
           }
         } catch (e) {
           // Git check failed, ignore
@@ -615,6 +627,23 @@ Start by calling the rudder MCP tool with \`assign:claim ${taskId}\` to get your
           }
           return s;
         });
+
+        // Auto-release if agent exited successfully with work done
+        // This handles cases where agent forgot to call assign:release
+        if (code === 0 && (dirtyWorktree || hasCommits)) {
+          try {
+            // Run assign:release to update task status
+            execSync(`${process.argv[0]} ${process.argv[1]} assign:release ${taskId} --json`, {
+              cwd: projectRoot,
+              encoding: 'utf8',
+              stdio: ['pipe', 'pipe', 'pipe']
+            });
+            console.log(`✓ Auto-released ${taskId} (agent didn't call assign:release)`);
+          } catch (e) {
+            // Release might fail if already released or no claim
+            // This is fine - agent may have called release already
+          }
+        }
 
         // Auto-create PR if enabled and agent completed successfully
         if (code === 0 && agentConfig.auto_pr && updatedState.agents?.[taskId]?.worktree) {
@@ -647,10 +676,14 @@ Start by calling the rudder MCP tool with \`assign:claim ${taskId}\` to get your
       } else {
         console.log(`Spawned: ${taskId}`);
         console.log(`  PID: ${spawnResult.pid}`);
-        console.log(`  CWD: ${cwd}`);
-        console.log(`  Log: ${spawnResult.logFile}`);
-        console.log(`  Mission: ${missionFile}`);
         console.log(`  Timeout: ${timeout}s`);
+        console.log(`\nMonitor:`);
+        console.log(`  bin/rudder agent:status ${taskId}   # Check if running/complete`);
+        console.log(`  bin/rudder agent:tail ${taskId}     # Follow output (Ctrl+C to stop)`);
+        console.log(`  bin/rudder agent:log ${taskId}      # Show full log`);
+        console.log(`  bin/rudder agent:list --active      # List all active agents`);
+        console.log(`\nAfter completion:`);
+        console.log(`  bin/rudder agent:reap ${taskId}     # Merge work + cleanup`);
       }
     });
 
@@ -1842,6 +1875,327 @@ Start by calling the rudder MCP tool with \`assign:claim ${taskId}\` to get your
         const order = suggestMergeOrder(conflictData);
         console.log('\nSuggested merge order (merge one at a time):');
         order.forEach((id, i) => console.log(`  ${i + 1}. rudder agent:merge ${id}`));
+      }
+    });
+
+  // agent:log - Show agent log
+  agent.command('log <task-id>')
+    .description('Show agent log (full output)')
+    .option('-n, --lines <n>', 'Last N lines (default: all)', parseInt)
+    .option('--json', 'JSON output')
+    .action((taskId, options) => {
+      const normalizedId = normalizeId(taskId);
+      const logFile = getLogFilePath(normalizedId);
+
+      if (!fs.existsSync(logFile)) {
+        console.error(`No log file for ${taskId}`);
+        process.exit(1);
+      }
+
+      const content = fs.readFileSync(logFile, 'utf8');
+      const lines = content.split('\n');
+
+      if (options.json) {
+        jsonOut({
+          task_id: normalizedId,
+          log_file: logFile,
+          lines: options.lines ? lines.slice(-options.lines) : lines
+        });
+      } else {
+        if (options.lines) {
+          console.log(lines.slice(-options.lines).join('\n'));
+        } else {
+          console.log(content);
+        }
+      }
+    });
+
+  // agent:tail - Follow agent log
+  agent.command('tail <task-id>')
+    .description('Follow agent log in real-time (Ctrl+C to stop)')
+    .option('-n, --lines <n>', 'Start with last N lines (default: 20)', parseInt, 20)
+    .action((taskId, options) => {
+      const normalizedId = normalizeId(taskId);
+      const logFile = getLogFilePath(normalizedId);
+
+      if (!fs.existsSync(logFile)) {
+        console.error(`No log file for ${taskId}`);
+        process.exit(1);
+      }
+
+      console.log(`Following ${normalizedId} log... (Ctrl+C to stop)\n`);
+      console.log('─'.repeat(60) + '\n');
+
+      // Show last N lines first
+      const content = fs.readFileSync(logFile, 'utf8');
+      const lines = content.split('\n');
+      console.log(lines.slice(-options.lines).join('\n'));
+
+      // Watch for changes
+      let lastSize = fs.statSync(logFile).size;
+
+      const watcher = fs.watch(logFile, (eventType) => {
+        if (eventType === 'change') {
+          const newSize = fs.statSync(logFile).size;
+          if (newSize > lastSize) {
+            const fd = fs.openSync(logFile, 'r');
+            const buffer = Buffer.alloc(newSize - lastSize);
+            fs.readSync(fd, buffer, 0, buffer.length, lastSize);
+            fs.closeSync(fd);
+            process.stdout.write(buffer.toString());
+            lastSize = newSize;
+          }
+        }
+      });
+
+      // Handle Ctrl+C
+      process.on('SIGINT', () => {
+        watcher.close();
+        console.log('\n\nStopped.');
+        process.exit(0);
+      });
+    });
+
+  // agent:check - Diagnose MCP connectivity
+  agent.command('check')
+    .description('Diagnose MCP server connectivity (spawn quick test agent)')
+    .option('--timeout <seconds>', 'Test timeout (default: 30)', parseInt, 30)
+    .option('--debug', 'Show debug info')
+    .option('--skip-spawn', 'Only check MCP server, skip agent spawn test')
+    .option('--json', 'JSON output')
+    .action(async (options) => {
+      const { checkMcpServer } = await import('../lib/srt.js');
+      const havenDir = resolvePlaceholders('${haven}');
+      const projectRoot = findProjectRoot();
+
+      const result = {
+        haven: havenDir,
+        project: projectRoot,
+        mcp: { running: false },
+        socat_test: null,
+        spawn_test: null,
+        status: 'unknown'
+      };
+
+      const debug = (msg) => {
+        if (options.debug && !options.json) console.log(`  [debug] ${msg}`);
+      };
+
+      // Step 1: Check MCP server process
+      if (!options.json) console.log('Checking MCP server...');
+
+      const mcpStatus = checkMcpServer(havenDir);
+      result.mcp = {
+        running: mcpStatus.running,
+        socket: mcpStatus.socket,
+        pid: mcpStatus.pid
+      };
+
+      if (!mcpStatus.running) {
+        result.status = 'mcp_not_running';
+        if (options.json) {
+          console.log(JSON.stringify(result, null, 2));
+        } else {
+          console.error('\n❌ MCP server not running\n');
+          console.error('Fix: bin/rudder-mcp start');
+        }
+        process.exit(1);
+      }
+
+      if (!options.json) {
+        console.log(`  ✓ MCP running (pid: ${mcpStatus.pid})`);
+        if (mcpStatus.mode === 'port') {
+          console.log(`  Port: ${mcpStatus.port}`);
+        } else {
+          console.log(`  Socket: ${mcpStatus.socket}`);
+        }
+        console.log(`  Mode: ${mcpStatus.mode}`);
+      }
+
+      // Step 2: Test connection directly (no sandbox)
+      if (!options.json) console.log('\nTesting connection...');
+
+      try {
+        // Send a minimal JSON-RPC request to list tools
+        const testRequest = JSON.stringify({ jsonrpc: '2.0', method: 'tools/list', id: 1 }) + '\n';
+        let connectResult;
+
+        if (mcpStatus.mode === 'port') {
+          debug(`Testing: echo | nc 127.0.0.1 ${mcpStatus.port}`);
+          connectResult = execSync(
+            `echo '${testRequest}' | timeout 5 nc 127.0.0.1 ${mcpStatus.port}`,
+            { encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'] }
+          );
+        } else {
+          debug(`Testing: echo | socat - UNIX-CONNECT:${mcpStatus.socket}`);
+          connectResult = execSync(
+            `echo '${testRequest}' | timeout 5 socat - UNIX-CONNECT:${mcpStatus.socket}`,
+            { encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'] }
+          );
+        }
+
+        result.connection_test = { success: true, response_length: connectResult.length };
+
+        if (!options.json) {
+          console.log(`  ✓ Server responds (${connectResult.length} chars)`);
+        }
+        debug(`Response: ${connectResult.slice(0, 100)}...`);
+      } catch (err) {
+        result.connection_test = { success: false, error: err.message };
+        result.status = 'connection_failed';
+
+        if (options.json) {
+          console.log(JSON.stringify(result, null, 2));
+        } else {
+          console.error(`  ✗ Connection failed`);
+          if (mcpStatus.mode === 'port') {
+            console.error(`\n❌ Cannot connect to MCP port ${mcpStatus.port}\n`);
+            console.error('Debug:');
+            console.error(`  nc -zv 127.0.0.1 ${mcpStatus.port}`);
+          } else {
+            console.error(`\n❌ socat cannot connect to MCP socket\n`);
+            console.error('Debug:');
+            console.error(`  ls -la ${mcpStatus.socket}`);
+            console.error(`  echo | socat - UNIX-CONNECT:${mcpStatus.socket}`);
+          }
+        }
+        process.exit(1);
+      }
+
+      // Step 3: Skip spawn test if requested
+      if (options.skipSpawn) {
+        result.status = 'ok';
+        if (options.json) {
+          console.log(JSON.stringify(result, null, 2));
+        } else {
+          console.log('\n✅ MCP server OK (spawn test skipped)\n');
+        }
+        process.exit(0);
+      }
+
+      // Step 4: Spawn test agent
+      if (!options.json) console.log('\nTesting from sandbox (spawn agent)...');
+
+      const agentDir = path.join(getAgentsBaseDir(), '_check');
+      ensureDir(agentDir);
+
+      // Generate minimal MCP config based on mode
+      const { generateAgentMcpConfig, spawnClaudeWithSrt, generateSrtConfig } = await import('../lib/srt.js');
+      const mcpConfigOptions = {
+        outputPath: path.join(agentDir, 'mcp-config.json'),
+        projectRoot
+      };
+
+      if (mcpStatus.mode === 'port') {
+        mcpConfigOptions.externalPort = mcpStatus.port;
+      } else {
+        mcpConfigOptions.externalSocket = mcpStatus.socket;
+      }
+
+      const mcpConfig = generateAgentMcpConfig(mcpConfigOptions);
+
+      debug(`MCP config: ${mcpConfig.configPath}`);
+      debug(`MCP config content: ${fs.readFileSync(mcpConfig.configPath, 'utf8')}`);
+
+      // Minimal srt config for test
+      const additionalPaths = [agentDir];
+      if (mcpStatus.socket) {
+        additionalPaths.push(path.dirname(mcpStatus.socket));
+      }
+
+      const srtConfig = generateSrtConfig({
+        outputPath: path.join(agentDir, 'srt-settings.json'),
+        additionalWritePaths: additionalPaths,
+        strictMode: true
+      });
+
+      debug(`SRT config: ${srtConfig}`);
+      debug(`SRT config content: ${fs.readFileSync(srtConfig, 'utf8')}`);
+
+      // Test prompt: call MCP and report
+      const testPrompt = `You are a diagnostic agent testing MCP connectivity.
+
+Call the rudder MCP tool exactly like this:
+
+Tool: mcp__rudder__cli
+Arguments: { "command": "status" }
+
+If the tool call succeeds and returns project info, output exactly: MCP_TEST_OK
+If the tool call fails or is not available, output exactly: MCP_TEST_FAIL
+
+Do not output anything else. Exit immediately after.`;
+
+      let testOutput = '';
+      let testStderr = '';
+      const testStart = Date.now();
+
+      try {
+        const child = spawnClaudeWithSrt({
+          prompt: testPrompt,
+          cwd: projectRoot,
+          sandbox: true,
+          srtConfigPath: srtConfig,
+          riskyMode: true,
+          mcpConfigPath: mcpConfig.configPath,
+          timeout: options.timeout,
+          onStdout: (data) => { testOutput += data.toString(); },
+          onStderr: (data) => { testStderr += data.toString(); }
+        });
+
+        debug(`Spawned with PID: ${child.pid}`);
+
+        // Wait for completion
+        await new Promise((resolve) => {
+          child.process.on('exit', resolve);
+        });
+
+        const duration = Date.now() - testStart;
+        const success = testOutput.includes('MCP_TEST_OK');
+
+        result.spawn_test = {
+          success,
+          duration_ms: duration,
+          output_preview: testOutput.slice(0, 300)
+        };
+        result.status = success ? 'ok' : 'mcp_call_failed';
+
+        if (options.json) {
+          console.log(JSON.stringify(result, null, 2));
+        } else if (success) {
+          console.log(`  ✓ MCP connection works (${duration}ms)`);
+          console.log('\n✅ All checks passed\n');
+        } else {
+          console.error(`  ✗ MCP call failed (${duration}ms)`);
+          console.error(`\nOutput: ${testOutput.slice(0, 300)}`);
+          if (options.debug && testStderr) {
+            console.error(`\nStderr: ${testStderr.slice(0, 300)}`);
+          }
+          console.error('\n❌ MCP connectivity issue from sandbox\n');
+          console.error('Possible causes:');
+          console.error('  - socat not in sandbox PATH');
+          console.error('  - Socket not readable from sandbox');
+          console.error('  - Claude MCP initialization failed');
+        }
+
+        // Cleanup
+        fs.rmSync(agentDir, { recursive: true, force: true });
+
+        process.exit(success ? 0 : 1);
+
+      } catch (err) {
+        result.spawn_test = { success: false, error: err.message };
+        result.status = 'spawn_failed';
+
+        if (options.json) {
+          console.log(JSON.stringify(result, null, 2));
+        } else {
+          console.error(`  ✗ Spawn failed: ${err.message}`);
+          console.error('\n❌ Cannot spawn test agent\n');
+        }
+
+        // Cleanup
+        fs.rmSync(agentDir, { recursive: true, force: true });
+        process.exit(1);
       }
     });
 }

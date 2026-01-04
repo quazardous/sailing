@@ -7,7 +7,7 @@
 import path from 'path';
 import { getAgentConfig } from './config.js';
 import { getAgentsDir, getPathsInfo } from './core.js';
-import { spawnClaudeWithSrt, generateSrtConfig, generateAgentMcpConfig, startExternalMcpServer } from './srt.js';
+import { spawnClaudeWithSrt, generateSrtConfig, generateAgentMcpConfig, checkMcpServer } from './srt.js';
 
 // Alias for internal use
 const getAgentsBaseDir = getAgentsDir;
@@ -91,32 +91,37 @@ export async function spawnClaude(options) {
   let mcpInfo = null;
   let mcpSocket = null;
   let mcpPid = null;
-  let mcpReused = false;
 
   if (useExternalMcp) {
-    try {
-      const havenDir = getHavenDir(agentDir);
-      const externalMcp = await startExternalMcpServer({
-        havenDir,
-        projectRoot
-      });
-      mcpSocket = externalMcp.socket;
-      mcpPid = externalMcp.pid;
-      mcpReused = externalMcp.reused;
+    const havenDir = getHavenDir(agentDir);
+    const mcpStatus = checkMcpServer(havenDir);
 
-      // Generate MCP config with socat bridge to Unix socket
+    if (!mcpStatus.running) {
+      throw new Error(
+        'MCP server not running. Start it first:\n\n' +
+        '  bin/rudder-mcp start\n\n' +
+        'Then retry spawn. Use "bin/rudder-mcp status" to check status.'
+      );
+    }
+
+    mcpPid = mcpStatus.pid;
+
+    // Generate MCP config based on mode (socket or port)
+    if (mcpStatus.mode === 'port') {
+      mcpInfo = generateAgentMcpConfig({
+        outputPath: path.join(agentDir, 'mcp-config.json'),
+        projectRoot,
+        externalPort: mcpStatus.port
+      });
+      console.error(`Using MCP server (pid: ${mcpPid}, port: ${mcpStatus.port})`);
+    } else {
+      mcpSocket = mcpStatus.socket;
       mcpInfo = generateAgentMcpConfig({
         outputPath: path.join(agentDir, 'mcp-config.json'),
         projectRoot,
         externalSocket: mcpSocket
       });
-
-      if (mcpReused) {
-        console.error(`MCP server already running (pid: ${mcpPid})`);
-      }
-    } catch (err) {
-      console.error(`Failed to start external MCP server: ${err.message}`);
-      // Fall back to internal MCP (with haven write access)
+      console.error(`Using MCP server (pid: ${mcpPid}, socket)`);
     }
   }
 
@@ -174,7 +179,6 @@ export async function spawnClaude(options) {
     mcpConfig: mcpInfo?.configPath,
     mcpSocket,
     mcpPid,
-    mcpReused,
     sandboxHome
   };
 }
