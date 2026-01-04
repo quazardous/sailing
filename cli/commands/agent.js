@@ -1000,75 +1000,210 @@ Start by calling the rudder MCP tool with \`context:load ${taskId}\` to get your
       }
     });
 
-  // agent:wait (DEPRECATED - use agent:reap)
+  // agent:wait - Reattach to running agent (tail + heartbeat + auto-reap)
   agent.command('wait <task-id>')
-    .description('[DEPRECATED] Wait for agent to complete → use agent:reap instead')
+    .description('Reattach to running agent (tail log, heartbeat, auto-reap)')
     .option('--timeout <seconds>', 'Timeout in seconds (default: 3600)', parseInt, 3600)
-    .option('--interval <seconds>', 'Poll interval in seconds (default: 5)', parseInt, 5)
+    .option('--no-log', 'Do not tail the log file')
+    .option('--no-heartbeat', 'Do not show periodic heartbeat')
+    .option('--heartbeat <seconds>', 'Heartbeat interval (default: 30)', parseInt, 30)
+    .option('--no-reap', 'Do not auto-reap on completion')
     .option('--json', 'JSON output')
     .action(async (taskId, options) => {
-      console.error('⚠️  DEPRECATED: agent:wait is deprecated. Use agent:reap instead.');
-      console.error('   agent:reap waits, merges, cleans up, and updates status.\n');
-
       taskId = normalizeId(taskId);
 
       const state = loadState();
-      const agent = state.agents?.[taskId];
+      const agentInfo = state.agents?.[taskId];
+      const projectRoot = findProjectRoot();
 
-      if (!agent) {
+      if (!agentInfo) {
         console.error(`No agent found for task: ${taskId}`);
-        process.exit(3); // not found
+        process.exit(1);
+      }
+
+      // Check if already complete
+      const initialCompletion = checkAgentCompletion(taskId);
+      if (initialCompletion.complete) {
+        if (options.json) {
+          jsonOut({ task_id: taskId, status: 'already_complete' });
+        } else {
+          console.log(`${taskId} already completed`);
+          if (options.reap !== false) {
+            console.log(`\nReaping ${taskId}...`);
+            try {
+              execSync(`${process.argv[0]} ${process.argv[1]} agent:reap ${taskId}`, {
+                cwd: projectRoot,
+                encoding: 'utf8',
+                stdio: 'inherit'
+              });
+            } catch (e) {
+              console.error(`Reap failed: ${e.message}`);
+            }
+          }
+        }
+        return;
       }
 
       const startTime = Date.now();
       const timeoutMs = options.timeout * 1000;
-      const intervalMs = options.interval * 1000;
+      const heartbeatInterval = (options.heartbeat || 30) * 1000;
+      const shouldHeartbeat = options.heartbeat !== false;
+      const shouldLog = options.log !== false;
+      let lastHeartbeat = startTime;
+
+      // Get agent PID for stats
+      const pid = agentInfo.pid;
+      const logFile = agentInfo.log_file;
 
       if (!options.json) {
-        console.log(`Waiting for ${taskId} (timeout: ${options.timeout}s, interval: ${options.interval}s)`);
+        console.log(`Attaching to ${taskId}${pid ? ` (PID ${pid})` : ''}`);
+        console.log('─'.repeat(60));
       }
 
-      while (true) {
-        const completion = checkAgentCompletion(taskId);
+      // Setup log tailing if enabled
+      let logWatcher = null;
+      let lastLogSize = 0;
 
-        if (completion.complete) {
-          if (options.json) {
-            jsonOut({
-              task_id: taskId,
-              status: 'complete',
-              has_result: completion.hasResult,
-              has_sentinel: completion.hasSentinel,
-              elapsed_ms: Date.now() - startTime
-            });
-          } else {
-            console.log(`✓ ${taskId} complete`);
-            if (completion.hasResult) {
-              console.log(`  Result: ${path.join(completion.agentDir, 'result.yaml')}`);
-            }
-          }
-          process.exit(0); // complete
+      if (shouldLog && logFile && fs.existsSync(logFile)) {
+        lastLogSize = fs.statSync(logFile).size;
+
+        // Show last 20 lines first
+        const content = fs.readFileSync(logFile, 'utf8');
+        const lines = content.split('\n');
+        const recentLines = lines.slice(-20).join('\n');
+        if (recentLines.trim()) {
+          console.log('[...recent output...]\n');
+          console.log(recentLines);
         }
 
-        // Check timeout
-        if (Date.now() - startTime > timeoutMs) {
-          if (options.json) {
-            jsonOut({
-              task_id: taskId,
-              status: 'timeout',
-              elapsed_ms: Date.now() - startTime
-            });
-          } else {
-            console.error(`✗ Timeout waiting for ${taskId}`);
+        // Watch for new content
+        logWatcher = fs.watch(logFile, (eventType) => {
+          if (eventType === 'change') {
+            try {
+              const newSize = fs.statSync(logFile).size;
+              if (newSize > lastLogSize) {
+                const fd = fs.openSync(logFile, 'r');
+                const buffer = Buffer.alloc(newSize - lastLogSize);
+                fs.readSync(fd, buffer, 0, buffer.length, lastLogSize);
+                fs.closeSync(fd);
+                process.stdout.write(buffer.toString());
+                lastLogSize = newSize;
+              }
+            } catch { /* ignore */ }
           }
-          process.exit(2); // timeout
-        }
+        });
+      }
 
-        // Wait before next poll
-        await new Promise(resolve => setTimeout(resolve, intervalMs));
+      // Heartbeat function
+      const emitHeartbeat = () => {
+        const elapsed = Date.now() - startTime;
+        const stats = pid ? getProcessStats(pid) : { running: false };
+        const memInfo = stats.mem ? ` (mem: ${stats.mem})` : '';
+        const statusText = stats.running ? 'running' : 'stopped';
+        console.log(`\n[${formatDuration(elapsed)}] pong — ${taskId} ${statusText}${memInfo}`);
+        lastHeartbeat = Date.now();
+      };
 
+      // Signal handlers
+      const sighupHandler = () => emitHeartbeat();
+      process.on('SIGHUP', sighupHandler);
+
+      const sigintHandler = () => {
         if (!options.json) {
-          process.stdout.write('.');
+          console.log(`\n\nDetaching from ${taskId}`);
+          console.log(`Reattach: bin/rudder agent:wait ${taskId}`);
         }
+        cleanup();
+        process.exit(0);
+      };
+      process.on('SIGINT', sigintHandler);
+
+      const cleanup = () => {
+        process.off('SIGHUP', sighupHandler);
+        process.off('SIGINT', sigintHandler);
+        if (logWatcher) logWatcher.close();
+        if (heartbeatTimer) clearInterval(heartbeatTimer);
+        if (pollTimer) clearInterval(pollTimer);
+      };
+
+      // Heartbeat timer
+      let heartbeatTimer = null;
+      if (shouldHeartbeat && !options.json) {
+        heartbeatTimer = setInterval(() => {
+          if (Date.now() - lastHeartbeat >= heartbeatInterval) {
+            emitHeartbeat();
+          }
+        }, 2000);
+      }
+
+      // Poll for completion
+      let pollTimer = null;
+      let completed = false;
+      let exitCode = null;
+
+      await new Promise((resolve) => {
+        pollTimer = setInterval(() => {
+          // Check timeout
+          if (Date.now() - startTime > timeoutMs) {
+            cleanup();
+            if (options.json) {
+              jsonOut({ task_id: taskId, status: 'timeout', elapsed_ms: Date.now() - startTime });
+            } else {
+              console.error(`\n✗ Timeout waiting for ${taskId}`);
+            }
+            process.exit(2);
+          }
+
+          // Check completion
+          const completion = checkAgentCompletion(taskId);
+          if (completion.complete) {
+            completed = true;
+            // Get exit code from state
+            const currentState = loadState();
+            exitCode = currentState.agents?.[taskId]?.exit_code ?? 0;
+            resolve();
+          }
+        }, 1000);
+      });
+
+      cleanup();
+
+      const elapsed = Date.now() - startTime;
+
+      if (options.json) {
+        jsonOut({
+          task_id: taskId,
+          status: exitCode === 0 ? 'completed' : 'error',
+          exit_code: exitCode,
+          elapsed_ms: elapsed
+        });
+        return;
+      }
+
+      console.log('\n' + '─'.repeat(60));
+      if (exitCode === 0) {
+        console.log(`✓ ${taskId} completed (${formatDuration(elapsed)})`);
+      } else {
+        console.log(`✗ ${taskId} failed (exit: ${exitCode}, ${formatDuration(elapsed)})`);
+      }
+
+      // Auto-reap if successful
+      if (exitCode === 0 && options.reap !== false) {
+        console.log(`\nAuto-reaping ${taskId}...`);
+        try {
+          execSync(`${process.argv[0]} ${process.argv[1]} agent:reap ${taskId}`, {
+            cwd: projectRoot,
+            encoding: 'utf8',
+            stdio: 'inherit'
+          });
+        } catch (e) {
+          console.error(`Reap failed: ${e.message}`);
+          console.error(`Manual: bin/rudder agent:reap ${taskId}`);
+        }
+      } else if (exitCode !== 0) {
+        console.log(`\nNext steps:`);
+        console.log(`  bin/rudder agent:log ${taskId}     # Check full log`);
+        console.log(`  bin/rudder agent:reject ${taskId}  # Discard work`);
       }
     });
 
