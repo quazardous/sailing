@@ -108,6 +108,23 @@ if [ "$USE_WORKTREE" = true ]; then
   fi
 fi
 
+# Compute project hash (same as paths.js)
+compute_haven_path() {
+  local source
+  source=$(git remote get-url origin 2>/dev/null || realpath "$(pwd)")
+  local hash=$(echo -n "$source" | sha256sum | cut -c1-12)
+  echo "$HOME/.sailing/havens/$hash"
+}
+
+# Apply profile-based defaults BEFORE reading paths.yaml
+# This ensures correct paths even for fresh install
+if [ "$FOLDERS_PROFILE" = "haven" ] || [ "$FOLDERS_PROFILE" = "sibling" ]; then
+  HAVEN_PATH=$(compute_haven_path)
+  DEFAULT_ARTEFACTS="$HAVEN_PATH/artefacts"
+  DEFAULT_MEMORY="$HAVEN_PATH/memory"
+  # state and components stay in .sailing for install.sh (simpler)
+fi
+
 echo -e "${BLUE}Sailing Installer${NC}"
 echo "=================="
 

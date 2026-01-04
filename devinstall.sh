@@ -221,12 +221,8 @@ echo -e "Source repo: ${GREEN}$SCRIPT_DIR${NC}"
 echo -e "Target project: ${GREEN}$(pwd)${NC}"
 echo
 
-# 4. Default paths
+# 4. Default paths (may be overridden by profile below)
 DEFAULT_SAILING_DIR=".sailing"
-ARTEFACTS=".sailing/artefacts"
-MEMORY=".sailing/memory"
-STATE_FILE=".sailing/state.json"
-COMPONENTS_FILE=".sailing/components.yaml"
 SKILL=".claude/skills/sailing"
 COMMANDS=".claude/commands/dev"
 # Note: templates and prompting use ^/ prefix in paths.yaml (no local copy)
@@ -239,11 +235,30 @@ compute_haven_path() {
   echo "$HOME/.sailing/havens/$hash"
 }
 
-# Resolve %haven% placeholder in path
+# Apply profile-based paths BEFORE reading paths.yaml
+# This ensures correct paths even for fresh install
+if [ "$FOLDERS_PROFILE" = "haven" ] || [ "$FOLDERS_PROFILE" = "sibling" ]; then
+  HAVEN_PATH=$(compute_haven_path)
+  ARTEFACTS="$HAVEN_PATH/artefacts"
+  MEMORY="$HAVEN_PATH/memory"
+  STATE_FILE="$HAVEN_PATH/state.json"
+  COMPONENTS_FILE="$HAVEN_PATH/components.yaml"
+else
+  ARTEFACTS=".sailing/artefacts"
+  MEMORY=".sailing/memory"
+  STATE_FILE=".sailing/state.json"
+  COMPONENTS_FILE=".sailing/components.yaml"
+fi
+
+# Resolve ${haven} placeholder in path (also supports legacy %haven%)
 resolve_path() {
   local p="$1"
-  if [[ "$p" == *"%haven%"* ]]; then
-    local haven=$(compute_haven_path)
+  local haven=$(compute_haven_path)
+  # New syntax: ${haven}
+  if [[ "$p" == *'${haven}'* ]]; then
+    echo "${p//\$\{haven\}/$haven}"
+  # Legacy syntax: %haven%
+  elif [[ "$p" == *"%haven%"* ]]; then
     echo "${p/\%haven\%/$haven}"
   else
     echo "$p"
