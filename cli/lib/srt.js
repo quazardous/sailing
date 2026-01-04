@@ -314,9 +314,8 @@ export function spawnClaudeWithSrt(options) {
     claudeArgs.push('--no-session-persistence');
   }
 
-  // Stream JSON output for real-time progress (instead of single block at end)
-  // This enables watchdog to detect stalls and provides better monitoring
-  // Note: --verbose is required for --output-format stream-json
+  // Stream JSON for real-time events (required for watchdog stall detection)
+  // --verbose is required for --output-format stream-json
   claudeArgs.push('--verbose', '--output-format', 'stream-json');
 
   // Budget limit (only with -p mode)
