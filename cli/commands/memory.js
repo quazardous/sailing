@@ -1,5 +1,9 @@
 /**
  * Memory commands for rudder CLI
+ *
+ * Access control:
+ * - skill/coordinator: full access (show, sync, edit, escalations)
+ * - agent: blocked (memory is read-only, provided via context:load)
  */
 import fs from 'fs';
 import { jsonOut, findPrdDirs, findFiles } from '../lib/core.js';
@@ -25,6 +29,19 @@ import {
   getHierarchicalMemory,
   findEpicPrd
 } from '../lib/memory.js';
+
+/**
+ * Check if role is allowed for memory write operations
+ * Agents are blocked - they receive memory via context:load only
+ */
+function checkWriteAccess(role, commandName) {
+  if (role === 'agent') {
+    console.error(`ERROR: ${commandName} is not available to agents.`);
+    console.error('Agents receive memory via context:load at task start.');
+    console.error('Memory consolidation is performed by skill/coordinator only.');
+    process.exit(1);
+  }
+}
 
 /**
  * Register memory commands
@@ -167,11 +184,14 @@ export function registerMemoryCommands(program) {
 
   // memory:sync [ID] - merge task→epic logs, show content, create missing .md
   memory.command('sync')
-    .description('Merge task→epic logs, show pending content')
+    .description('Merge task→epic logs, show pending content (skill/coordinator only)')
     .argument('[id]', 'Epic (ENNN) or Task (TNNN) ID - filters to that epic')
     .option('--no-create', 'Do not create missing memory (.md) files')
+    .option('--role <role>', 'Role context (skill, coordinator, agent)')
     .option('--json', 'JSON output')
     .action((id, options) => {
+      // Block agents - they don't manage memory
+      checkWriteAccess(options.role, 'memory:sync');
       ensureMemoryDir();
 
       // Resolve target epic if ID provided
@@ -372,14 +392,17 @@ export function registerMemoryCommands(program) {
         console.log('✓ No pending logs');
       }
 
-      // Show memory files hierarchy
+      // Show memory files and edit commands
       console.log('\n' + '='.repeat(60));
       console.log('\n# Memory Files\n');
 
       // Project level
       console.log('## Project');
       if (projectMemoryFile) {
-        console.log(`  ✓ ${projectMemoryFile.path}`);
+        console.log('  ✓ PROJECT');
+        console.log('    rudder memory:edit PROJECT --section "Architecture Decisions" <<\'EOF\'');
+        console.log('    <content>');
+        console.log('    EOF');
       } else {
         console.log('  ○ No project memory (run install.sh or devinstall.sh)');
       }
@@ -391,6 +414,9 @@ export function registerMemoryCommands(program) {
       } else {
         for (const prd of prdMemoryFiles) {
           console.log(`  ✓ ${prd.id}`);
+          console.log(`    rudder memory:edit ${prd.id} --section "Cross-Epic Patterns" <<'EOF'`);
+          console.log('    <content>');
+          console.log('    EOF');
         }
       }
 
@@ -402,27 +428,45 @@ export function registerMemoryCommands(program) {
         for (const epic of epicMemoryFiles) {
           const prdRef = epic.prdId ? ` (${epic.prdId})` : '';
           console.log(`  ✓ ${epic.id}${prdRef}`);
+          console.log(`    rudder memory:edit ${epic.id} --section "Agent Context" <<'EOF'`);
+          console.log('    <content>');
+          console.log('    EOF');
         }
       }
 
       // Escalation brief (only when there are pending logs)
       if (hasPendingLogs) {
         console.log('\n' + '='.repeat(60));
-        console.log('\n# Escalation Guide\n');
-        console.log('## Consolidation');
+        console.log('\n# Consolidation Guide\n');
+        console.log('## Workflow');
         console.log('1. Read pending logs above');
-        console.log('2. Edit epic memory files:');
-        console.log('   - [TIP] → ## Agent Context');
-        console.log('   - [ERROR/CRITICAL] → ## Escalation');
-        console.log('   - [INFO/WARN] → ## Story (optional)');
-        console.log('3. After editing: rudder epic:clean-logs <epic>');
-        console.log('\n## When to Escalate');
-        console.log('- Same tip in 2+ epics → reformulate in PRD memory');
-        console.log('- Same pattern in 2+ PRDs → reformulate in Project memory');
-        console.log('- Architecture decision → document in Project immediately');
-        console.log('\n## Escalation = Reformulation');
-        console.log('Never copy-paste. Reformulate into higher-level insight.');
-        console.log('Remove duplicates from lower levels after escalation.');
+        console.log('2. Consolidate into memory:');
+        console.log('');
+        console.log('   # TIP → Agent Context');
+        console.log('   rudder memory:edit ENNN --section "Agent Context" --append <<\'EOF\'');
+        console.log('   - Reformulated tip here');
+        console.log('   EOF');
+        console.log('');
+        console.log('   # ERROR/CRITICAL → Escalation');
+        console.log('   rudder memory:edit ENNN --section "Escalation" --append <<\'EOF\'');
+        console.log('   - Blocker or issue description');
+        console.log('   EOF');
+        console.log('');
+        console.log('3. Clean up logs: rudder epic:clean-logs <epic>');
+        console.log('');
+        console.log('## Escalation (cross-epic patterns)');
+        console.log('');
+        console.log('   # Same tip in 2+ epics → PRD memory');
+        console.log('   rudder memory:edit PRD-NNN --section "Cross-Epic Patterns" <<\'EOF\'');
+        console.log('   - Pattern description');
+        console.log('   EOF');
+        console.log('');
+        console.log('   # Architecture decision → Project memory');
+        console.log('   rudder memory:edit PROJECT --section "Architecture Decisions" <<\'EOF\'');
+        console.log('   - Decision and rationale');
+        console.log('   EOF');
+        console.log('');
+        console.log('Escalation = Reformulation. Never copy-paste.');
       }
     });
 
@@ -497,6 +541,98 @@ export function registerMemoryCommands(program) {
         console.log(`## ${id}`);
         console.log(escalations);
         console.log('');
+      }
+    });
+
+  // memory:edit <ID> - edit memory file section
+  memory.command('edit <id>')
+    .description('Edit memory section (skill/coordinator only)')
+    .option('-s, --section <name>', 'Section to edit (Agent Context, Escalation, Story, etc.)')
+    .option('-c, --content <text>', 'New content (or use stdin)')
+    .option('-a, --append', 'Append to section instead of replace')
+    .option('-p, --prepend', 'Prepend to section instead of replace')
+    .option('--role <role>', 'Role context (skill, coordinator, agent)')
+    .option('--json', 'JSON output')
+    .action((id, options) => {
+      // Block agents from editing memory
+      checkWriteAccess(options.role, 'memory:edit');
+
+      ensureMemoryDir();
+      const normalized = normalizeId(id);
+
+      // Determine file path based on ID type
+      let filePath;
+      if (normalized.startsWith('E')) {
+        filePath = memoryFilePath(normalized);
+      } else if (normalized.startsWith('PRD-')) {
+        filePath = prdMemoryFilePath(normalized);
+      } else if (normalized === 'PROJECT') {
+        filePath = projectMemoryFilePath();
+      } else {
+        console.error(`Invalid memory ID: ${id}`);
+        console.error('Expected: ENNN (epic), PRD-NNN (PRD), or PROJECT');
+        process.exit(1);
+      }
+
+      if (!fs.existsSync(filePath)) {
+        console.error(`Memory file not found: ${filePath}`);
+        console.error(`Create with: rudder memory:sync`);
+        process.exit(1);
+      }
+
+      // Get content from stdin or option
+      let newContent = options.content;
+      if (!newContent && !process.stdin.isTTY) {
+        newContent = fs.readFileSync(0, 'utf8').trim();
+      }
+
+      if (!newContent) {
+        console.error('No content provided. Use --content or pipe via stdin.');
+        process.exit(1);
+      }
+
+      if (!options.section) {
+        console.error('Section required. Use --section "Agent Context" or similar.');
+        console.error('Sections: Agent Context, Escalation, Story, Cross-Epic Patterns, Architecture Decisions');
+        process.exit(1);
+      }
+
+      // Read current file
+      const content = fs.readFileSync(filePath, 'utf8');
+
+      // Find and replace section
+      const sectionHeader = `## ${options.section}`;
+      const sectionRegex = new RegExp(`(${sectionHeader}\\s*\\n)([\\s\\S]*?)(?=\\n## [A-Z]|$)`, 'i');
+      const match = content.match(sectionRegex);
+
+      if (!match) {
+        console.error(`Section not found: ${options.section}`);
+        console.error(`Available sections in ${normalized}:`);
+        const headers = content.match(/^## .+$/gm);
+        if (headers) headers.forEach(h => console.error(`  ${h}`));
+        process.exit(1);
+      }
+
+      let updatedContent;
+      const existingContent = match[2].replace(/<!--[\s\S]*?-->/g, '').trim();
+
+      if (options.append) {
+        const combined = existingContent ? `${existingContent}\n${newContent}` : newContent;
+        updatedContent = content.replace(match[0], `${match[1]}${combined}\n\n`);
+      } else if (options.prepend) {
+        const combined = existingContent ? `${newContent}\n${existingContent}` : newContent;
+        updatedContent = content.replace(match[0], `${match[1]}${combined}\n\n`);
+      } else {
+        updatedContent = content.replace(match[0], `${match[1]}${newContent}\n\n`);
+      }
+
+      fs.writeFileSync(filePath, updatedContent);
+
+      if (options.json) {
+        jsonOut({ id: normalized, section: options.section, operation: options.append ? 'append' : options.prepend ? 'prepend' : 'replace' });
+      } else {
+        const op = options.append ? 'appended to' : options.prepend ? 'prepended to' : 'replaced';
+        console.log(`✓ ${options.section} ${op} in ${normalized}`);
       }
     });
 
