@@ -765,14 +765,12 @@ Start by running \`pwd\` and \`ls -la\`, then call the rudder MCP tool with \`co
       }
 
       // Setup SIGHUP handler: force immediate heartbeat
-      let hbCount = 0;
       const emitHeartbeat = () => {
-        hbCount++;
         const elapsed = Date.now() - startTime;
         const stats = getProcessStats(spawnResult.pid);
         if (isQuiet) {
-          // Quiet mode: update same line (with counter to trace frequency)
-          process.stdout.write(`\r${taskId}: running... ${formatDuration(elapsed)} [#${hbCount}]   `);
+          // Quiet mode: update same line
+          process.stdout.write(`\r${taskId}: running... ${formatDuration(elapsed)}   `);
         } else {
           const memInfo = stats.mem ? ` (mem: ${stats.mem})` : '';
           console.log(`\n[${formatDuration(elapsed)}] pong — ${taskId} ${stats.running ? 'running' : 'stopped'}${memInfo}`);
