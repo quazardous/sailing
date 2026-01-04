@@ -291,12 +291,11 @@ export function registerStoryCommands(program) {
       } else {
         console.log(`Created: ${id} - ${title} (${data.type})`);
         console.log(`\nEdit commands:`);
-        console.log(`  bin/rudder artifact:show ${id} --list                           # List sections`);
-        console.log(`  bin/rudder artifact:edit ${id} --section "Acceptance Criteria"  # Edit inline`);
-        console.log(`  bin/rudder story:patch ${id} <<'PATCH'                          # Patch content`);
-        console.log(`  ## Acceptance Criteria`);
-        console.log(`  - [ ] Criterion 1`);
-        console.log(`  PATCH`);
+        console.log(`  bin/rudder artifact:show ${id} --list`);
+        console.log(`  bin/rudder artifact:edit ${id} --section "Acceptance Criteria" <<'EOF'`);
+        console.log(`- [ ] Criterion 1`);
+        console.log(`- [ ] Criterion 2`);
+        console.log(`EOF`);
       }
     });
 

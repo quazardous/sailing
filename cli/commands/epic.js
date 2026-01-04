@@ -283,12 +283,10 @@ updated: '${new Date().toISOString()}'
       } else {
         console.log(`Created: ${id} - ${title}`);
         console.log(`\nEdit commands:`);
-        console.log(`  bin/rudder artifact:show ${id} --list             # List sections`);
-        console.log(`  bin/rudder artifact:edit ${id} --section "Scope"  # Edit inline`);
-        console.log(`  bin/rudder epic:patch ${id} <<'PATCH'             # Patch content`);
-        console.log(`  ## Scope`);
-        console.log(`  Your content...`);
-        console.log(`  PATCH`);
+        console.log(`  bin/rudder artifact:show ${id} --list`);
+        console.log(`  bin/rudder artifact:edit ${id} --section "Description" <<'EOF'`);
+        console.log(`Your epic description here...`);
+        console.log(`EOF`);
       }
     });
 

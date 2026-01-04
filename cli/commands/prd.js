@@ -216,12 +216,10 @@ export function registerPrdCommands(program) {
       } else {
         console.log(`Created: ${id} - ${title}`);
         console.log(`\nEdit commands:`);
-        console.log(`  bin/rudder artifact:show ${id} --list               # List sections`);
-        console.log(`  bin/rudder artifact:edit ${id} --section "Summary"  # Edit inline`);
-        console.log(`  bin/rudder prd:patch ${id} <<'PATCH'                # Patch content`);
-        console.log(`  ## Summary`);
-        console.log(`  Your content...`);
-        console.log(`  PATCH`);
+        console.log(`  bin/rudder artifact:show ${id} --list`);
+        console.log(`  bin/rudder artifact:edit ${id} --section "Problem Statement" <<'EOF'`);
+        console.log(`Your problem description here...`);
+        console.log(`EOF`);
       }
     });
 

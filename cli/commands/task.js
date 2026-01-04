@@ -321,12 +321,11 @@ export function registerTaskCommands(program) {
       } else {
         console.log(`Created: ${id} - ${title}`);
         console.log(`\nEdit commands:`);
-        console.log(`  bin/rudder artifact:show ${id} --list                    # List sections`);
-        console.log(`  bin/rudder artifact:edit ${id} --section "Deliverables"  # Edit inline`);
-        console.log(`  bin/rudder task:patch ${id} <<'PATCH'                    # Patch content`);
-        console.log(`  ## Deliverables`);
-        console.log(`  - [ ] Item 1`);
-        console.log(`  PATCH`);
+        console.log(`  bin/rudder artifact:show ${id} --list`);
+        console.log(`  bin/rudder artifact:edit ${id} --section "Deliverables" <<'EOF'`);
+        console.log(`- [ ] Item 1`);
+        console.log(`- [ ] Item 2`);
+        console.log(`EOF`);
       }
     });
 
