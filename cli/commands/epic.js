@@ -283,9 +283,9 @@ updated: '${new Date().toISOString()}'
       } else {
         console.log(`Created: ${id} - ${title}`);
         console.log(`\nEdit commands:`);
-        console.log(`  rudder artifact:show ${id} --list            # List sections`);
-        console.log(`  rudder artifact:edit ${id} --section "Scope" # Edit section`);
-        console.log(`  cat <<'PATCH' | rudder epic:patch ${id}      # Patch content`);
+        console.log(`  bin/rudder artifact:show ${id} --list             # List sections`);
+        console.log(`  bin/rudder artifact:edit ${id} --section "Scope"  # Edit inline`);
+        console.log(`  bin/rudder epic:patch ${id} <<'PATCH'             # Patch content`);
         console.log(`  ## Scope`);
         console.log(`  Your content...`);
         console.log(`  PATCH`);

@@ -291,9 +291,9 @@ export function registerStoryCommands(program) {
       } else {
         console.log(`Created: ${id} - ${title} (${data.type})`);
         console.log(`\nEdit commands:`);
-        console.log(`  rudder artifact:show ${id} --list                         # List sections`);
-        console.log(`  rudder artifact:edit ${id} --section "Acceptance Criteria" # Edit section`);
-        console.log(`  cat <<'PATCH' | rudder story:patch ${id}                  # Patch content`);
+        console.log(`  bin/rudder artifact:show ${id} --list                           # List sections`);
+        console.log(`  bin/rudder artifact:edit ${id} --section "Acceptance Criteria"  # Edit inline`);
+        console.log(`  bin/rudder story:patch ${id} <<'PATCH'                          # Patch content`);
         console.log(`  ## Acceptance Criteria`);
         console.log(`  - [ ] Criterion 1`);
         console.log(`  PATCH`);
