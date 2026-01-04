@@ -314,6 +314,10 @@ export function spawnClaudeWithSrt(options) {
     claudeArgs.push('--no-session-persistence');
   }
 
+  // Stream JSON output for real-time progress (instead of single block at end)
+  // This enables watchdog to detect stalls and provides better monitoring
+  claudeArgs.push('--output-format', 'stream-json');
+
   // Budget limit (only with -p mode)
   if (maxBudgetUsd && maxBudgetUsd > 0) {
     claudeArgs.push('--max-budget-usd', String(maxBudgetUsd));
