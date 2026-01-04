@@ -112,7 +112,7 @@ export function registerAgentCommands(program) {
     .option('--no-log', 'Do not stream Claude stdout/stderr')
     .option('--no-heartbeat', 'Do not show periodic heartbeat')
     .option('--heartbeat <seconds>', 'Heartbeat interval (default: 30)', parseInt, 30)
-    .option('-q, --quiet', 'Minimal output (status only, Claude output to .log only)')
+    .option('-v, --verbose', 'Detailed output (spawn box, Claude streaming)')
     .option('--resume', 'Reuse existing worktree (continue blocked/partial work)')
     .option('--dry-run', 'Show what would be done without spawning')
     .option('--json', 'JSON output')
@@ -617,10 +617,10 @@ Start by running \`pwd\` and \`ls -la\`, then call the rudder MCP tool with \`co
 
       // Spawn Claude with bootstrap prompt
       // Includes MCP config for restricted rudder access (agent can only access its task)
-      // In wait mode (default), we stream stdout/stderr; in no-wait mode, suppress output
-      // In quiet mode, suppress Claude output (goes to .log only) but show status
+      // Default: quiet mode (minimal output, Claude output to .log only)
+      // --verbose: detailed output (spawn box, Claude streaming)
       const shouldWait = options.wait !== false;
-      const isQuiet = options.quiet === true;
+      const isQuiet = options.verbose !== true;  // Default quiet, --verbose for detailed
       const shouldLog = options.log !== false && shouldWait && !isQuiet;
 
       const spawnResult = await spawnClaude({
@@ -926,7 +926,7 @@ Start by running \`pwd\` and \`ls -la\`, then call the rudder MCP tool with \`co
       if (exitCode === 0) {
         if (!isQuiet) console.log(`\nAuto-reaping ${taskId}...`);
         try {
-          execSync(`${process.argv[0]} ${process.argv[1]} agent:reap ${taskId}${isQuiet ? ' --quiet' : ''}`, {
+          execSync(`${process.argv[0]} ${process.argv[1]} agent:reap ${taskId}${!isQuiet ? ' --verbose' : ''}`, {
             cwd: projectRoot,
             encoding: 'utf8',
             stdio: isQuiet ? 'pipe' : 'inherit'
@@ -1603,7 +1603,7 @@ Start by running \`pwd\` and \`ls -la\`, then call the rudder MCP tool with \`co
     .option('--role <role>', 'Role context (skill, coordinator) - agent role blocked')
     .option('--no-wait', 'Skip waiting if agent not complete')
     .option('--timeout <seconds>', 'Wait timeout (default: 300)', parseInt, 300)
-    .option('-q, --quiet', 'Minimal output')
+    .option('-v, --verbose', 'Detailed output')
     .option('--json', 'JSON output')
     .action(async (taskId, options) => {
       // Role enforcement: agents cannot reap
