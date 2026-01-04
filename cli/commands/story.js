@@ -290,14 +290,14 @@ export function registerStoryCommands(program) {
         jsonOut({ id, title, parent: data.parent, type: data.type, file: storyPath });
       } else {
         console.log(`Created: ${id} - ${title} (${data.type})`);
-        console.log(`\nEdit with: bin/rudder artifact:edit ${id} <<'EOF'`);
-        console.log(`## User Story`);
-        console.log(`As a user, I want...`);
-        console.log(`## Acceptance Criteria`);
-        console.log(`- [ ] Criterion 1`);
-        console.log(`EOF`);
-        console.log(`\nMulti-section edit with ops: [append], [sed], [check], [patch]...`);
-        console.log(`See: bin/rudder artifact edit --help`);
+        console.log(`\nEdit all sections in one command:`);
+        console.log(`  bin/rudder artifact:edit ${id} <<'EOF'`);
+        console.log(`  ## User Story`);
+        console.log(`  As a user, I want...`);
+        console.log(`  ## Acceptance Criteria`);
+        console.log(`  - [ ] Criterion 1`);
+        console.log(`  EOF`);
+        console.log(`\nOps: [append], [sed], [check], [patch]... See: bin/rudder artifact edit --help`);
       }
     });
 

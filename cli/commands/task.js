@@ -320,14 +320,14 @@ export function registerTaskCommands(program) {
         jsonOut({ id, title, parent: data.parent, file: taskPath });
       } else {
         console.log(`Created: ${id} - ${title}`);
-        console.log(`\nEdit with: bin/rudder artifact:edit ${id} <<'EOF'`);
-        console.log(`## Deliverables`);
-        console.log(`- [ ] Item 1`);
-        console.log(`## Implementation Notes`);
-        console.log(`Details...`);
-        console.log(`EOF`);
-        console.log(`\nMulti-section edit with ops: [append], [sed], [check], [patch]...`);
-        console.log(`See: bin/rudder artifact edit --help`);
+        console.log(`\nEdit all sections in one command:`);
+        console.log(`  bin/rudder artifact:edit ${id} <<'EOF'`);
+        console.log(`  ## Deliverables`);
+        console.log(`  - [ ] Item 1`);
+        console.log(`  ## Implementation Notes`);
+        console.log(`  Details...`);
+        console.log(`  EOF`);
+        console.log(`\nOps: [append], [sed], [check], [patch]... See: bin/rudder artifact edit --help`);
       }
     });
 
