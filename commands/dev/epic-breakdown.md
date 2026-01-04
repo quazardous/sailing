@@ -13,7 +13,7 @@ Decompose epic into tasks. Coordination only, no implementation.
 ```bash
 rudder context:load epic-breakdown --role coordinator
 rudder epic:show ENNN                 # Verify epic exists
-rudder epic:show-memory ENNN --full   # Previous learnings + escalations
+rudder memory:show ENNN --full        # Previous learnings + escalations
 rudder story:list PRD-NNN             # Check if stories exist
 ```
 

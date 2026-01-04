@@ -1,10 +1,17 @@
 # Reminders
 
-## Memory Sync
+## Memory Commands
 
-Every 3-5 tasks: `rudder memory:sync`
+| Purpose | Command |
+|---------|---------|
+| Consolidate logs | `memory:sync` |
+| Read memory | `memory:show ENNN [--full]` |
+| Edit memory | `memory:edit ENNN --section "Tips"` |
+| Agent context | `task:show-memory TNNN` |
 
-If pending → consolidate before continuing.
+**Before each task/batch start**: `rudder memory:sync`
+
+If pending → consolidate before spawning agents.
 
 ## Common Mistakes
 

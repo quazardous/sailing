@@ -20,7 +20,7 @@ You are acting as a **software architect** reviewing an epic prior to task break
 ```bash
 rudder context:load epic-review --role coordinator
 rudder epic:show ENNN                # Verify epic exists, see task counts
-rudder epic:show-memory ENNN --full  # Previous learnings + escalations
+rudder memory:show ENNN --full       # Previous learnings + escalations
 ```
 
 ## Inputs

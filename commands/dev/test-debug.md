@@ -18,7 +18,7 @@ rudder context:load test-debug --role coordinator
 
 If `--task TNNN` provided:
 ```bash
-rudder task:show-memory TNNN  # Previous learnings
+rudder task:show-memory TNNN  # Agent context (memory + tech notes)
 ```
 
 ---

@@ -16,3 +16,4 @@ allowed-tools: Read, Edit, Glob, Task, Bash
 4. Report: task status, tasks unblocked, epic status, PRD status
 
 > ℹ️ Version bump is triggered by SKILL (if task has `target_versions`), not by this command.
+

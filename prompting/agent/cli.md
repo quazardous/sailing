@@ -8,6 +8,8 @@ Rudder is the ONLY interface for sailing artifacts. **NEVER use Edit tool on `.s
 | Dependencies | `rudder deps:show TNNN` |
 | Memory | `rudder task:show-memory TNNN` |
 
+> **Memory context** is included in `context:load`. Use `task:show-memory` only to refresh mid-task.
+
 ## Write Metadata (frontmatter)
 
 | Action | Command |

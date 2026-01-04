@@ -271,6 +271,9 @@ export function generateSrtConfig(options) {
  * @param {function} [options.onStderr] - Custom stderr handler (data => void)
  * @param {string} [options.mcpConfigPath] - Path to MCP config for agent (adds --mcp-config + --strict-mcp-config)
  * @param {string} [options.sandboxHome] - Custom HOME directory for sandbox isolation
+ * @param {number} [options.maxBudgetUsd] - Max budget in USD (-1 or undefined = no limit)
+ * @param {number} [options.watchdogTimeout] - Kill if no output for N seconds (0 = disabled)
+ * @param {boolean} [options.noSessionPersistence=true] - Disable session persistence (lighter weight)
  * @returns {{ process: ChildProcess, pid: number, logFile?: string }}
  */
 export function spawnClaudeWithSrt(options) {
@@ -287,7 +290,10 @@ export function spawnClaudeWithSrt(options) {
     onStdout,
     onStderr,
     mcpConfigPath,
-    sandboxHome
+    sandboxHome,
+    maxBudgetUsd,
+    watchdogTimeout,
+    noSessionPersistence = true
   } = options;
 
   // Build claude args
@@ -301,6 +307,16 @@ export function spawnClaudeWithSrt(options) {
   if (mcpConfigPath) {
     claudeArgs.push('--mcp-config', mcpConfigPath);
     claudeArgs.push('--strict-mcp-config');  // Only use specified MCP servers
+  }
+
+  // Disable session persistence (lighter weight, no disk writes)
+  if (noSessionPersistence) {
+    claudeArgs.push('--no-session-persistence');
+  }
+
+  // Budget limit (only with -p mode)
+  if (maxBudgetUsd && maxBudgetUsd > 0) {
+    claudeArgs.push('--max-budget-usd', String(maxBudgetUsd));
   }
 
   // Add any extra args
@@ -408,8 +424,38 @@ export function spawnClaudeWithSrt(options) {
   child.stdin.write(prompt);
   child.stdin.end();
 
+  // Watchdog: kill if no output for N seconds (detects stalls)
+  let watchdogId = null;
+  let lastOutputTime = Date.now();
+
+  const resetWatchdog = () => {
+    lastOutputTime = Date.now();
+    if (watchdogId) {
+      clearTimeout(watchdogId);
+      watchdogId = null;
+    }
+    if (watchdogTimeout && watchdogTimeout > 0) {
+      watchdogId = setTimeout(() => {
+        const stallDuration = Math.round((Date.now() - lastOutputTime) / 1000);
+        const msg = `\n=== WATCHDOG: No output for ${stallDuration}s, killing process ===\n`;
+        if (logStream) logStream.write(msg);
+        process.stderr.write(msg);
+        child.kill('SIGTERM');
+        setTimeout(() => {
+          if (!child.killed) {
+            child.kill('SIGKILL');
+          }
+        }, 5000);
+      }, watchdogTimeout * 1000);
+    }
+  };
+
+  // Start watchdog
+  resetWatchdog();
+
   // Handle stdout (tee mode: log + custom handler or console)
   child.stdout.on('data', (data) => {
+    resetWatchdog();  // Activity detected
     if (logStream) logStream.write(data);
     if (onStdout) {
       onStdout(data);
@@ -420,6 +466,7 @@ export function spawnClaudeWithSrt(options) {
 
   // Handle stderr (tee mode: log + custom handler or console)
   child.stderr.on('data', (data) => {
+    resetWatchdog();  // Activity detected
     if (logStream) logStream.write(data);
     if (onStderr) {
       onStderr(data);
@@ -428,7 +475,7 @@ export function spawnClaudeWithSrt(options) {
     }
   });
 
-  // Handle timeout
+  // Handle timeout (absolute timeout, independent of watchdog)
   let timeoutId = null;
   if (timeout && timeout > 0) {
     timeoutId = setTimeout(() => {
@@ -445,6 +492,7 @@ export function spawnClaudeWithSrt(options) {
   // Handle exit
   child.on('exit', (code, signal) => {
     if (timeoutId) clearTimeout(timeoutId);
+    if (watchdogId) clearTimeout(watchdogId);
     if (logStream) {
       const endTime = new Date().toISOString();
       logStream.write(`\n=== Claude Exited: ${endTime} ===\n`);

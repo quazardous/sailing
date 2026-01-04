@@ -125,6 +125,16 @@ export const CONFIG_SCHEMA = {
     default: '9100-9199',
     description: 'Port range for MCP TCP mode (e.g., 9100-9199)'
   },
+  'agent.max_budget_usd': {
+    type: 'relative-integer',
+    default: -1,
+    description: 'Max budget per agent in USD (-1 = no limit)'
+  },
+  'agent.watchdog_timeout': {
+    type: 'number',
+    default: 300,
+    description: 'Kill agent if no output for N seconds (0 = disabled)'
+  },
   'output.color': {
     type: 'boolean',
     default: true,
@@ -255,6 +265,12 @@ function validateConfig(config) {
       case 'number':
         if (typeof value !== 'number' || value < 0) {
           console.error(`Warning: ${key} should be positive number, got ${value}`);
+          setNestedValue(config, key, schema.default);
+        }
+        break;
+      case 'relative-integer':
+        if (typeof value !== 'number' || !Number.isInteger(value)) {
+          console.error(`Warning: ${key} should be integer, got ${value}`);
           setNestedValue(config, key, schema.default);
         }
         break;

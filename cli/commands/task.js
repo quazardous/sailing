@@ -5,7 +5,8 @@ import fs from 'fs';
 import path from 'path';
 import { findPrdDirs, findFiles, loadFile, saveFile, toKebab, loadTemplate, jsonOut, getMemoryDir, stripComments } from '../lib/core.js';
 import { normalizeId, matchesId, matchesPrdDir } from '../lib/normalize.js';
-import { findEpicParent } from '../lib/entities.js';
+import { findEpicParent, findEpicFile } from '../lib/entities.js';
+import { getHierarchicalMemory, ensureMemoryDir } from '../lib/memory.js';
 import { STATUS, normalizeStatus, isStatusDone, isStatusNotStarted, isStatusInProgress, isStatusCancelled, statusSymbol } from '../lib/lexicon.js';
 import { buildDependencyGraph, blockersResolved } from '../lib/graph.js';
 import { nextId } from '../lib/state.js';
@@ -615,8 +616,145 @@ export function registerTaskCommands(program) {
       console.log(output);
     });
 
-  // task:show-memory - DEPRECATED: use memory:show instead
-  // Removed - use: rudder memory:show TNNN [--full] (auto-resolves to parent epic)
+  /**
+   * task:show-memory - Agent-focused memory view
+   *
+   * WHY THIS EXISTS (vs memory:show):
+   * - memory:show is the general-purpose command for skill/coordinator
+   * - task:show-memory is specialized for agents executing tasks
+   *
+   * WHAT IT INCLUDES:
+   * 1. Hierarchical memory (epic → PRD → project)
+   *    - Tips, learnings, patterns from previous work
+   * 2. Epic Technical Notes (from epic file itself)
+   *    - Stack recommendations, integration approach, constraints
+   * 3. Task dependency context
+   *    - Resolved blockers, related tasks info
+   *
+   * This gives agents everything they need without reading epic/PRD files directly
+   * (which would violate the "agents don't read planning docs" principle).
+   */
+  task.command('show-memory <id>')
+    .description('Show agent-focused memory context for a task')
+    .option('--json', 'JSON output')
+    .action((id, options) => {
+      const taskFile = findTaskFile(id);
+      if (!taskFile) {
+        console.error(`Task not found: ${id}`);
+        process.exit(1);
+      }
+
+      const file = loadFile(taskFile);
+      const taskId = file.data.id;
+      const epicParent = findEpicParent(taskFile);
+
+      ensureMemoryDir();
+
+      // Collect context
+      const context = {
+        taskId,
+        epicId: epicParent?.data?.id || null,
+        memory: null,
+        technicalNotes: null,
+        dependencies: null
+      };
+
+      // 1. Hierarchical memory (epic → PRD → project)
+      if (epicParent) {
+        const hierarchy = getHierarchicalMemory(epicParent.data.id);
+        const memoryParts = [];
+
+        // Extract agent-relevant sections
+        const extractSections = (content, level) => {
+          if (!content) return [];
+          const sections = [];
+          const regex = /^## ([^\n]+)\n([\s\S]*?)(?=\n## [A-Z]|$)/gm;
+          let match;
+          while ((match = regex.exec(content)) !== null) {
+            const name = match[1].trim();
+            const body = match[2].replace(/<!--[\s\S]*?-->/g, '').trim();
+            if (body) sections.push({ level, name, content: body });
+          }
+          return sections;
+        };
+
+        if (hierarchy.project) {
+          memoryParts.push(...extractSections(hierarchy.project.content, 'PROJECT'));
+        }
+        if (hierarchy.prd) {
+          memoryParts.push(...extractSections(hierarchy.prd.content, 'PRD'));
+        }
+        if (hierarchy.epic) {
+          memoryParts.push(...extractSections(hierarchy.epic.content, 'EPIC'));
+        }
+
+        context.memory = memoryParts;
+
+        // 2. Epic Technical Notes (from epic file, not memory)
+        const epicContent = epicParent.content || '';
+        const techNotesMatch = epicContent.match(/## Technical Notes\n([\s\S]*?)(?=\n## |$)/);
+        if (techNotesMatch) {
+          context.technicalNotes = techNotesMatch[1].replace(/<!--[\s\S]*?-->/g, '').trim();
+        }
+      }
+
+      // 3. Task dependencies (resolved blockers)
+      const { tasks } = buildDependencyGraph();
+      const taskData = tasks.get(normalizeId(id));
+      if (taskData?.blockedBy?.length) {
+        context.dependencies = {
+          blockedBy: taskData.blockedBy,
+          allResolved: taskData.blockedBy.every(dep => {
+            const depTask = tasks.get(dep);
+            return depTask && isStatusDone(depTask.status);
+          })
+        };
+      }
+
+      // Output
+      if (options.json) {
+        jsonOut(context);
+        return;
+      }
+
+      // Human-readable
+      const sep = '─'.repeat(60);
+      console.log(`# Agent Context: ${taskId}\n`);
+
+      if (context.epicId) {
+        console.log(`Epic: ${context.epicId}`);
+      }
+
+      // Technical Notes (most actionable for implementation)
+      if (context.technicalNotes) {
+        console.log(`\n${sep}`);
+        console.log(`## Technical Notes (from ${context.epicId})\n`);
+        console.log(context.technicalNotes);
+      }
+
+      // Memory sections
+      if (context.memory?.length) {
+        console.log(`\n${sep}`);
+        console.log('## Memory (tips & learnings)\n');
+        for (const sec of context.memory) {
+          console.log(`### [${sec.level}] ${sec.name}\n`);
+          console.log(sec.content);
+          console.log('');
+        }
+      }
+
+      // Dependencies
+      if (context.dependencies) {
+        console.log(`\n${sep}`);
+        console.log('## Dependencies\n');
+        console.log(`Blocked by: ${context.dependencies.blockedBy.join(', ')}`);
+        console.log(`All resolved: ${context.dependencies.allResolved ? '✓' : '✗'}`);
+      }
+
+      if (!context.memory?.length && !context.technicalNotes && !context.dependencies) {
+        console.log('(No memory or context available for this task)');
+      }
+    });
 
   // task:targets - find tasks with target_versions for a component
   task.command('targets <component>')

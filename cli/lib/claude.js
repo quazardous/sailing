@@ -161,6 +161,10 @@ export async function spawnClaude(options) {
   // Required to prevent race conditions when spawning multiple agents in parallel
   const sandboxHome = sandbox && agentDir ? path.join(agentDir, 'home') : null;
 
+  // Get budget and watchdog from config
+  const maxBudgetUsd = config.max_budget_usd;
+  const watchdogTimeout = config.watchdog_timeout;
+
   const result = spawnClaudeWithSrt({
     prompt,
     cwd,
@@ -171,7 +175,9 @@ export async function spawnClaude(options) {
     timeout,
     onStderr,
     mcpConfigPath: mcpInfo?.configPath,
-    sandboxHome
+    sandboxHome,
+    maxBudgetUsd,
+    watchdogTimeout
   });
 
   return {

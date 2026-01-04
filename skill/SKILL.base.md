@@ -122,7 +122,12 @@ MEMORY.md (project)      ← Universal patterns, architecture decisions
             └── TNNN.log ← Raw task logs (temporary)
 ```
 
-Run `rudder memory:sync` — it provides contextual escalation guidance.
+| Action | Command |
+|--------|---------|
+| Read | `memory:show ENNN` or `memory:show PROJECT` |
+| Edit | `memory:edit ENNN --section "Tips"` |
+| Consolidate | `memory:sync` (shows pending + edit hints) |
+| Agent view | `task:show-memory TNNN` (memory + tech notes) |
 
 ---
 

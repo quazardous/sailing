@@ -2,6 +2,26 @@
 
 All notable changes to the Sailing Framework will be documented in this file.
 
+## [1.6.3] - 2026-01-04
+
+### Added
+- `task:show-memory` command: agent-focused view with memory + tech notes + dependencies
+- Claude process management options:
+  - `agent.max_budget_usd`: budget cap per agent (-1 = unlimited)
+  - `agent.watchdog_timeout`: kill stalled agents (no output for N seconds)
+  - `--no-session-persistence` by default (lighter weight agents)
+- Watchdog detects stalled Claude processes and kills them
+- `relative-integer` config type for values that can be negative
+
+### Changed
+- Memory commands documentation unified across all prompts/skills
+- Spawn box now shows Budget and Watchdog status
+- `memory:sync` runs before each task/batch start (not "every 3-5 tasks")
+
+### Fixed
+- Updated obsolete `epic:show-memory` references to `memory:show`
+- Skill files now include memory command reference table
+
 ## [1.6.2] - 2026-01-04
 
 ### Added

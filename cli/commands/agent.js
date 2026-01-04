@@ -779,13 +779,16 @@ Start by calling the rudder MCP tool with \`context:load ${taskId}\` to get your
       let exitSignal = null;
 
       if (!options.json) {
+        const budgetStr = agentConfig.max_budget_usd > 0 ? `$${agentConfig.max_budget_usd}` : 'unlimited';
+        const watchdogStr = agentConfig.watchdog_timeout > 0 ? `${agentConfig.watchdog_timeout}s` : 'disabled';
+
         console.log(`\n┌─ Spawned: ${taskId} ─────────────────────────────────────`);
         console.log(`│ PID: ${spawnResult.pid}`);
         console.log(`│ Mode: ${useWorktree ? 'worktree (isolated branch)' : 'direct'}`);
         if (worktreeInfo) {
           console.log(`│ Branch: ${worktreeInfo.branch}`);
         }
-        console.log(`│ Timeout: ${timeout}s`);
+        console.log(`│ Timeout: ${timeout}s | Budget: ${budgetStr} | Watchdog: ${watchdogStr}`);
         console.log(`├─ Behavior ───────────────────────────────────────────────`);
         console.log(`│ • Streaming Claude output${shouldLog ? '' : ' (disabled)'}`);
         console.log(`│ • Heartbeat every ${options.heartbeat || 30}s${shouldHeartbeat ? '' : ' (disabled)'}`);
