@@ -112,6 +112,7 @@ export function registerAgentCommands(program) {
     .option('--no-log', 'Do not stream Claude stdout/stderr')
     .option('--no-heartbeat', 'Do not show periodic heartbeat')
     .option('--heartbeat <seconds>', 'Heartbeat interval (default: 30)', parseInt, 30)
+    .option('-q, --quiet', 'Minimal output (status only, Claude output to .log only)')
     .option('--resume', 'Reuse existing worktree (continue blocked/partial work)')
     .option('--dry-run', 'Show what would be done without spawning')
     .option('--json', 'JSON output')
@@ -617,8 +618,10 @@ Start by running \`pwd\` and \`ls -la\`, then call the rudder MCP tool with \`co
       // Spawn Claude with bootstrap prompt
       // Includes MCP config for restricted rudder access (agent can only access its task)
       // In wait mode (default), we stream stdout/stderr; in no-wait mode, suppress output
+      // In quiet mode, suppress Claude output (goes to .log only) but show status
       const shouldWait = options.wait !== false;
-      const shouldLog = options.log !== false && shouldWait;
+      const isQuiet = options.quiet === true;
+      const shouldLog = options.log !== false && shouldWait && !isQuiet;
 
       const spawnResult = await spawnClaude({
         prompt: bootstrapPrompt,
@@ -785,37 +788,47 @@ Start by running \`pwd\` and \`ls -la\`, then call the rudder MCP tool with \`co
       let exitSignal = null;
 
       if (!options.json) {
-        const budgetStr = agentConfig.max_budget_usd > 0 ? `$${agentConfig.max_budget_usd}` : 'unlimited';
-        const watchdogStr = agentConfig.watchdog_timeout > 0 ? `${agentConfig.watchdog_timeout}s` : 'disabled';
+        if (isQuiet) {
+          // Quiet mode: minimal one-line status
+          process.stdout.write(`${taskId}: spawned`);
+        } else {
+          const budgetStr = agentConfig.max_budget_usd > 0 ? `$${agentConfig.max_budget_usd}` : 'unlimited';
+          const watchdogStr = agentConfig.watchdog_timeout > 0 ? `${agentConfig.watchdog_timeout}s` : 'disabled';
 
-        console.log(`\n┌─ Spawned: ${taskId} ─────────────────────────────────────`);
-        console.log(`│ PID: ${spawnResult.pid}`);
-        console.log(`│ Mode: ${useWorktree ? 'worktree (isolated branch)' : 'direct'}`);
-        if (worktreeInfo) {
-          console.log(`│ Branch: ${worktreeInfo.branch}`);
+          console.log(`\n┌─ Spawned: ${taskId} ─────────────────────────────────────`);
+          console.log(`│ PID: ${spawnResult.pid}`);
+          console.log(`│ Mode: ${useWorktree ? 'worktree (isolated branch)' : 'direct'}`);
+          if (worktreeInfo) {
+            console.log(`│ Branch: ${worktreeInfo.branch}`);
+          }
+          console.log(`│ Timeout: ${timeout}s | Budget: ${budgetStr} | Watchdog: ${watchdogStr}`);
+          console.log(`├─ Logging ────────────────────────────────────────────────`);
+          console.log(`│ • stdout: filtered [INIT] [TOOL] [RESULT] [TEXT] [DONE]`);
+          console.log(`│ • .log:     ${spawnResult.logFile || 'none'}`);
+          console.log(`│ • .jsonlog: ${spawnResult.jsonLogFile || 'none'}`);
+          console.log(`│ • Output = activity (watchdog resets, agent not stale)`);
+          console.log(`├─ Behavior ───────────────────────────────────────────────`);
+          console.log(`│ • Streaming Claude output${shouldLog ? '' : ' (disabled)'}`);
+          console.log(`│ • Heartbeat every ${options.heartbeat || 30}s${shouldHeartbeat ? '' : ' (disabled)'}`);
+          console.log(`│ • Auto-reap on success (merge + cleanup + status update)`);
+          console.log(`├─ Signals ────────────────────────────────────────────────`);
+          console.log(`│ • Ctrl+C: detach (agent continues in background)`);
+          console.log(`│ • kill -HUP ${process.pid}: force status check`);
+          console.log(`└──────────────────────────────────────────────────────────\n`);
         }
-        console.log(`│ Timeout: ${timeout}s | Budget: ${budgetStr} | Watchdog: ${watchdogStr}`);
-        console.log(`├─ Logging ────────────────────────────────────────────────`);
-        console.log(`│ • stdout: filtered [INIT] [TOOL] [RESULT] [TEXT] [DONE]`);
-        console.log(`│ • .log:     ${spawnResult.logFile || 'none'}`);
-        console.log(`│ • .jsonlog: ${spawnResult.jsonLogFile || 'none'}`);
-        console.log(`│ • Output = activity (watchdog resets, agent not stale)`);
-        console.log(`├─ Behavior ───────────────────────────────────────────────`);
-        console.log(`│ • Streaming Claude output${shouldLog ? '' : ' (disabled)'}`);
-        console.log(`│ • Heartbeat every ${options.heartbeat || 30}s${shouldHeartbeat ? '' : ' (disabled)'}`);
-        console.log(`│ • Auto-reap on success (merge + cleanup + status update)`);
-        console.log(`├─ Signals ────────────────────────────────────────────────`);
-        console.log(`│ • Ctrl+C: detach (agent continues in background)`);
-        console.log(`│ • kill -HUP ${process.pid}: force status check`);
-        console.log(`└──────────────────────────────────────────────────────────\n`);
       }
 
       // Setup SIGHUP handler: force immediate heartbeat
       const emitHeartbeat = () => {
         const elapsed = Date.now() - startTime;
         const stats = getProcessStats(spawnResult.pid);
-        const memInfo = stats.mem ? ` (mem: ${stats.mem})` : '';
-        console.log(`\n[${formatDuration(elapsed)}] pong — ${taskId} ${stats.running ? 'running' : 'stopped'}${memInfo}`);
+        if (isQuiet) {
+          // Quiet mode: update same line
+          process.stdout.write(`\r${taskId}: running... ${formatDuration(elapsed)}   `);
+        } else {
+          const memInfo = stats.mem ? ` (mem: ${stats.mem})` : '';
+          console.log(`\n[${formatDuration(elapsed)}] pong — ${taskId} ${stats.running ? 'running' : 'stopped'}${memInfo}`);
+        }
         lastHeartbeat = Date.now();
       };
 
@@ -893,30 +906,42 @@ Start by running \`pwd\` and \`ls -la\`, then call the rudder MCP tool with \`co
         return;
       }
 
-      console.log('─'.repeat(60));
-      if (exitCode === 0) {
-        console.log(`✓ ${taskId} completed (${formatDuration(elapsed)})`);
+      if (isQuiet) {
+        // Quiet mode: final status on same line
+        if (exitCode === 0) {
+          console.log(`\r${taskId}: ✓ completed (${formatDuration(elapsed)})   `);
+        } else {
+          console.log(`\r${taskId}: ✗ failed (exit: ${exitCode}, ${formatDuration(elapsed)})   `);
+        }
       } else {
-        console.log(`✗ ${taskId} failed (exit: ${exitCode}, ${formatDuration(elapsed)})`);
+        console.log('─'.repeat(60));
+        if (exitCode === 0) {
+          console.log(`✓ ${taskId} completed (${formatDuration(elapsed)})`);
+        } else {
+          console.log(`✗ ${taskId} failed (exit: ${exitCode}, ${formatDuration(elapsed)})`);
+        }
       }
 
       // Auto-reap if successful
       if (exitCode === 0) {
-        console.log(`\nAuto-reaping ${taskId}...`);
+        if (!isQuiet) console.log(`\nAuto-reaping ${taskId}...`);
         try {
-          execSync(`${process.argv[0]} ${process.argv[1]} agent:reap ${taskId}`, {
+          execSync(`${process.argv[0]} ${process.argv[1]} agent:reap ${taskId}${isQuiet ? ' --quiet' : ''}`, {
             cwd: projectRoot,
             encoding: 'utf8',
-            stdio: 'inherit'
+            stdio: isQuiet ? 'pipe' : 'inherit'
           });
+          if (isQuiet) console.log(`${taskId}: ✓ reaped`);
         } catch (e) {
           console.error(`Reap failed: ${e.message}`);
           console.error(`Manual: bin/rudder agent:reap ${taskId}`);
         }
       } else {
-        console.log(`\nNext steps:`);
-        console.log(`  bin/rudder agent:log ${taskId}     # Check full log`);
-        console.log(`  bin/rudder agent:reject ${taskId}  # Discard work`);
+        if (!isQuiet) {
+          console.log(`\nNext steps:`);
+          console.log(`  bin/rudder agent:log ${taskId}     # Check full log`);
+          console.log(`  bin/rudder agent:reject ${taskId}  # Discard work`);
+        }
       }
     });
 
@@ -1578,6 +1603,7 @@ Start by running \`pwd\` and \`ls -la\`, then call the rudder MCP tool with \`co
     .option('--role <role>', 'Role context (skill, coordinator) - agent role blocked')
     .option('--no-wait', 'Skip waiting if agent not complete')
     .option('--timeout <seconds>', 'Wait timeout (default: 300)', parseInt, 300)
+    .option('-q, --quiet', 'Minimal output')
     .option('--json', 'JSON output')
     .action(async (taskId, options) => {
       // Role enforcement: agents cannot reap
