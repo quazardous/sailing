@@ -53,7 +53,7 @@ export function registerAgentCommands(program) {
     .option('--no-wait', 'Fire and forget (do not wait for completion)')
     .option('--no-log', 'Do not stream Claude stdout/stderr')
     .option('--no-heartbeat', 'Do not show periodic heartbeat')
-    .option('--heartbeat <seconds>', 'Heartbeat interval (default: 30)', parseInt, 30)
+    .option('--heartbeat <seconds>', 'Heartbeat interval (default: 60 quiet, 30 verbose)', parseInt)
     .option('-v, --verbose', 'Detailed output (spawn box, Claude streaming)')
     .option('--resume', 'Reuse existing worktree (continue blocked/partial work)')
     .option('--dry-run', 'Show what would be done without spawning')
@@ -722,7 +722,9 @@ Start by running \`pwd\` and \`ls -la\`, then call the rudder MCP tool with \`co
 
       // === WAIT MODE (default): wait with heartbeat, auto-reap ===
       const startTime = Date.now();
-      const heartbeatInterval = (options.heartbeat || 30) * 1000;
+      // Quiet mode: 60s default heartbeat, verbose: 30s
+      const defaultHeartbeat = isQuiet ? 60 : 30;
+      const heartbeatInterval = (options.heartbeat || defaultHeartbeat) * 1000;
       const shouldHeartbeat = options.heartbeat !== false;
       let lastHeartbeat = startTime;
       let detached = false;
@@ -751,7 +753,7 @@ Start by running \`pwd\` and \`ls -la\`, then call the rudder MCP tool with \`co
           console.log(`│ • Output = activity (watchdog resets, agent not stale)`);
           console.log(`├─ Behavior ───────────────────────────────────────────────`);
           console.log(`│ • Streaming Claude output${shouldLog ? '' : ' (disabled)'}`);
-          console.log(`│ • Heartbeat every ${options.heartbeat || 30}s${shouldHeartbeat ? '' : ' (disabled)'}`);
+          console.log(`│ • Heartbeat every ${options.heartbeat || defaultHeartbeat}s${shouldHeartbeat ? '' : ' (disabled)'}`);
           console.log(`│ • Auto-reap on success (merge + cleanup + status update)`);
           console.log(`├─ Signals ────────────────────────────────────────────────`);
           console.log(`│ • Ctrl+C: detach (agent continues in background)`);
