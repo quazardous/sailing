@@ -415,3 +415,131 @@ export function getSection(filePath, sectionName) {
   const parsed = parseMarkdownSections(content);
   return parsed.sections.get(sectionName) ?? null;
 }
+
+// =============================================================================
+// Multi-Section Edit Mini-Language
+// =============================================================================
+
+/**
+ * Supported operations for multi-section editing
+ */
+export const SECTION_OPS = ['replace', 'append', 'prepend', 'delete', 'sed', 'check', 'uncheck', 'toggle', 'patch'];
+
+/**
+ * Parse sed-like commands from content
+ * Format: s/search/replace/ or s/search/replace/g
+ * Supports regex patterns in search
+ * @param {string} content - Lines of sed commands
+ * @returns {Array<{search: string, replace: string, global: boolean}>}
+ */
+export function parseSedCommands(content) {
+  const commands = [];
+  const lines = content.split('\n').filter(l => l.trim());
+
+  for (const line of lines) {
+    // Match s/search/replace/ or s/search/replace/g
+    // Support different delimiters: s|search|replace| or s#search#replace#
+    const match = line.match(/^s([\/|#@])(.+?)\1(.*?)\1(g)?$/);
+    if (match) {
+      commands.push({
+        search: match[2],
+        replace: match[3],
+        global: !!match[4]
+      });
+    }
+  }
+
+  return commands;
+}
+
+/**
+ * Apply sed commands to content (supports regex)
+ * @param {string} content - Content to modify
+ * @param {Array<{search: string, replace: string, global: boolean}>} commands
+ * @returns {string} Modified content
+ */
+export function applySedCommands(content, commands) {
+  let result = content;
+  for (const cmd of commands) {
+    try {
+      const regex = new RegExp(cmd.search, cmd.global ? 'g' : '');
+      result = result.replace(regex, cmd.replace);
+    } catch (e) {
+      // If regex is invalid, fall back to literal string replacement
+      if (cmd.global) {
+        result = result.split(cmd.search).join(cmd.replace);
+      } else {
+        result = result.replace(cmd.search, cmd.replace);
+      }
+    }
+  }
+  return result;
+}
+
+/**
+ * Parse multi-section content from stdin/string
+ * Format: ## Section Name [op]\nContent...
+ * @param {string} content - Raw content with ## headers
+ * @param {string} defaultOp - Default operation if not specified (default: 'replace')
+ * @returns {Array<{op: string, section: string, content: string, sedCommands?: Array}>}
+ */
+export function parseMultiSectionContent(content, defaultOp = 'replace') {
+  const ops = [];
+  const lines = content.split('\n');
+  let currentSection = null;
+  let currentOp = defaultOp;
+  let currentContent = [];
+
+  const opPattern = SECTION_OPS.join('|');
+  const headerRegex = new RegExp(`^##\\s+(.+?)(?:\\s+\\[(${opPattern})\\])?\\s*$`);
+
+  for (const line of lines) {
+    const match = line.match(headerRegex);
+    if (match) {
+      // Save previous section
+      if (currentSection) {
+        const op = {
+          op: currentOp,
+          section: currentSection,
+          content: currentContent.join('\n').trim()
+        };
+        if (currentOp === 'sed') {
+          op.sedCommands = parseSedCommands(op.content);
+        }
+        ops.push(op);
+      }
+      currentSection = match[1].trim();
+      currentOp = match[2] || defaultOp;
+      currentContent = [];
+    } else if (currentSection) {
+      currentContent.push(line);
+    }
+  }
+
+  // Save last section
+  if (currentSection) {
+    const op = {
+      op: currentOp,
+      section: currentSection,
+      content: currentContent.join('\n').trim()
+    };
+    if (currentOp === 'sed') {
+      op.sedCommands = parseSedCommands(op.content);
+    }
+    ops.push(op);
+  }
+
+  return ops;
+}
+
+/**
+ * Parse checkbox items from content
+ * Strips leading - [ ] or - [x] markers
+ * @param {string} content - Lines of checkbox items
+ * @returns {string[]} Item texts
+ */
+export function parseCheckboxItems(content) {
+  return content.split('\n')
+    .map(l => l.replace(/^-\s*\[[ xX]\]\s*/, '').trim())
+    .filter(l => l.length > 0);
+}

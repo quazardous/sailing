@@ -11,97 +11,19 @@ import {
   serializeSections,
   applyOps,
   parseSearchReplace,
+  applySearchReplace,
   editArtifact,
   listSections,
-  getSection
+  getSection,
+  parseMultiSectionContent,
+  applySedCommands,
+  parseCheckboxItems
 } from '../lib/artifact.js';
 import {
   findTaskFile,
   findEpicFile,
   findPrdFile
 } from '../lib/entities.js';
-
-/**
- * Parse sed-like commands from content
- * Format: s/search/replace/ or s/search/replace/g
- * @param {string} content - Lines of sed commands
- * @returns {Array<{search: string, replace: string, global: boolean}>}
- */
-function parseSedCommands(content) {
-  const commands = [];
-  const lines = content.split('\n').filter(l => l.trim());
-
-  for (const line of lines) {
-    // Match s/search/replace/ or s/search/replace/g
-    // Support different delimiters: s|search|replace| or s#search#replace#
-    const match = line.match(/^s([\/|#@])(.+?)\1(.+?)\1(g)?$/);
-    if (match) {
-      commands.push({
-        search: match[2],
-        replace: match[3],
-        global: !!match[4]
-      });
-    }
-  }
-
-  return commands;
-}
-
-/**
- * Parse multi-section content from stdin
- * Format: ## Section Name [op]\nContent...
- * Supported ops: [append], [prepend], [delete], [replace] (default), [sed]
- * @param {string} content - Raw content with ## headers
- * @param {string} defaultOp - Default operation if not specified in header
- * @returns {Array<{op: string, section: string, content: string, sedCommands?: Array}>}
- */
-function parseMultiSectionContent(content, defaultOp) {
-  const ops = [];
-  const lines = content.split('\n');
-  let currentSection = null;
-  let currentOp = defaultOp;
-  let currentContent = [];
-
-  for (const line of lines) {
-    // Match: ## Section Name or ## Section Name [op]
-    const match = line.match(/^##\s+(.+?)(?:\s+\[(append|prepend|delete|replace|sed|check|uncheck|toggle)\])?\s*$/);
-    if (match) {
-      // Save previous section
-      if (currentSection) {
-        const op = {
-          op: currentOp,
-          section: currentSection,
-          content: currentContent.join('\n').trim()
-        };
-        // Parse sed commands if sed operation
-        if (currentOp === 'sed') {
-          op.sedCommands = parseSedCommands(op.content);
-        }
-        ops.push(op);
-      }
-      currentSection = match[1].trim();
-      currentOp = match[2] || defaultOp;
-      currentContent = [];
-    } else if (currentSection) {
-      currentContent.push(line);
-    }
-  }
-
-  // Save last section
-  if (currentSection) {
-    const op = {
-      op: currentOp,
-      section: currentSection,
-      content: currentContent.join('\n').trim()
-    };
-    if (currentOp === 'sed') {
-      op.sedCommands = parseSedCommands(op.content);
-    }
-    ops.push(op);
-  }
-
-  return ops;
-}
 
 /**
  * Resolve artifact ID to file path
@@ -275,37 +197,49 @@ export function registerArtifactCommands(program) {
       // Track original ops for output (before transformation)
       const originalOps = ops.map(o => ({ op: o.op, section: o.section }));
 
-      // Process special operations: sed, check, uncheck, toggle
+      // Process special operations: sed, check, uncheck, toggle, patch
       const expandedOps = [];
       for (const op of ops) {
         if (op.op === 'sed' && op.sedCommands?.length > 0) {
-          // Get current section content
-          let sectionContent = getSection(resolved.path, op.section);
+          // Get current section content and apply sed commands
+          const sectionContent = getSection(resolved.path, op.section);
           if (sectionContent === null) {
             console.error(`Section not found for sed: ${op.section}`);
             process.exit(1);
           }
-          // Apply each sed command
-          for (const cmd of op.sedCommands) {
-            if (cmd.global) {
-              sectionContent = sectionContent.split(cmd.search).join(cmd.replace);
-            } else {
-              sectionContent = sectionContent.replace(cmd.search, cmd.replace);
-            }
+          expandedOps.push({
+            op: 'replace',
+            section: op.section,
+            content: applySedCommands(sectionContent, op.sedCommands)
+          });
+        } else if (op.op === 'patch') {
+          // Parse SEARCH/REPLACE blocks and apply to section
+          const patches = parseSearchReplace(op.content);
+          if (patches.length === 0) {
+            console.error(`No SEARCH/REPLACE blocks found for patch: ${op.section}`);
+            process.exit(1);
           }
-          // Transform to replace operation
+          let sectionContent = getSection(resolved.path, op.section);
+          if (sectionContent === null) {
+            console.error(`Section not found for patch: ${op.section}`);
+            process.exit(1);
+          }
+          for (const patch of patches) {
+            const result = applySearchReplace(sectionContent, patch.search, patch.replace);
+            if (!result.success) {
+              console.error(`Patch failed on ${op.section}: ${result.error}`);
+              process.exit(1);
+            }
+            sectionContent = result.content;
+          }
           expandedOps.push({
             op: 'replace',
             section: op.section,
             content: sectionContent
           });
         } else if (['check', 'uncheck', 'toggle'].includes(op.op)) {
-          // Parse items from content (one per line, strip leading - [ ] or - [x])
-          const items = op.content.split('\n')
-            .map(l => l.replace(/^-\s*\[[ x]\]\s*/, '').trim())
-            .filter(l => l.length > 0);
-          // Create individual check/uncheck ops for each item
-          for (const item of items) {
+          // Create individual checkbox ops for each item
+          for (const item of parseCheckboxItems(op.content)) {
             expandedOps.push({
               op: op.op,
               section: op.section,
