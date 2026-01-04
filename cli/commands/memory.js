@@ -51,10 +51,27 @@ export function registerMemoryCommands(program) {
 
   addDynamicHelp(memory, { entityType: 'memory' });
 
+  // Helper: extract all sections from a markdown file
+  function extractAllSections(content) {
+    const sections = [];
+    const regex = /^## ([^\n]+)\n([\s\S]*?)(?=\n## [A-Z]|$)/gm;
+    let match;
+    while ((match = regex.exec(content)) !== null) {
+      const sectionName = match[1].trim();
+      const sectionContent = match[2].replace(/<!--[\s\S]*?-->/g, '').trim();
+      if (sectionContent) {
+        sections.push({ name: sectionName, content: sectionContent });
+      }
+    }
+    return sections;
+  }
+
   // memory:show <ID> - unified memory display (hierarchical: project → PRD → epic)
   memory.command('show <id>')
     .description('Show memory for any entity (hierarchical: project → PRD → epic)')
-    .option('--full', 'Show full memory (all sections)')
+    .option('--full', 'Show all sections (default: agent-relevant only)')
+    .option('--level <level>', 'Filter by level: project, prd, epic')
+    .option('--section <name>', 'Filter by section name (partial match)')
     .option('--epic-only', 'Show only epic memory (skip PRD/project)')
     .option('--json', 'JSON output')
     .action((id, options) => {
@@ -74,143 +91,79 @@ export function registerMemoryCommands(program) {
         return;
       }
 
-      // Helper to extract Agent Context section
-      const extractAgentContext = (content) => {
-        const match = content.match(/## Agent Context\s*([\s\S]*?)(?=\n## |$)/);
-        if (!match) return '';
-        return match[1].replace(/<!--[\s\S]*?-->/g, '').trim();
-      };
+      // Collect all sections from hierarchy
+      const allSections = [];
 
-      // Helper to extract relevant sections from PRD memory
-      const extractPrdContext = (content) => {
-        const match = content.match(/## Cross-Epic Patterns\s*([\s\S]*?)(?=\n## |$)/);
-        if (!match) return '';
-        return match[1].replace(/<!--[\s\S]*?-->/g, '').trim();
-      };
+      // Level filter
+      const levelFilter = options.level?.toLowerCase();
+      const sectionFilter = options.section?.toLowerCase();
 
-      // Helper to extract relevant sections from Project memory
-      const extractProjectContext = (content) => {
-        const sections = [];
-        const archMatch = content.match(/## Architecture Decisions\s*([\s\S]*?)(?=\n## |$)/);
-        const patternMatch = content.match(/## Patterns & Conventions\s*([\s\S]*?)(?=\n## |$)/);
-        if (archMatch) {
-          const cleaned = archMatch[1].replace(/<!--[\s\S]*?-->/g, '').trim();
-          if (cleaned) sections.push(cleaned);
+      // Agent-relevant sections (default view)
+      const agentRelevantSections = [
+        'Agent Context', 'Escalation', 'Cross-Epic Patterns',
+        'Architecture Decisions', 'Patterns & Conventions'
+      ];
+
+      // Project level
+      if (hierarchy.project && !options.epicOnly && (!levelFilter || levelFilter === 'project')) {
+        const sections = extractAllSections(hierarchy.project.content);
+        for (const sec of sections) {
+          if (sectionFilter && !sec.name.toLowerCase().includes(sectionFilter)) continue;
+          if (!options.full && !agentRelevantSections.includes(sec.name)) continue;
+          allSections.push({ level: 'PROJECT', id: 'PROJECT', section: sec.name, content: sec.content });
         }
-        if (patternMatch) {
-          const cleaned = patternMatch[1].replace(/<!--[\s\S]*?-->/g, '').trim();
-          if (cleaned) sections.push(cleaned);
+      }
+
+      // PRD level
+      if (hierarchy.prd && !options.epicOnly && (!levelFilter || levelFilter === 'prd')) {
+        const sections = extractAllSections(hierarchy.prd.content);
+        for (const sec of sections) {
+          if (sectionFilter && !sec.name.toLowerCase().includes(sectionFilter)) continue;
+          if (!options.full && !agentRelevantSections.includes(sec.name)) continue;
+          allSections.push({ level: 'PRD', id: hierarchy.prd.id, section: sec.name, content: sec.content });
         }
-        return sections.join('\n\n');
-      };
+      }
+
+      // Epic level
+      if (hierarchy.epic && (!levelFilter || levelFilter === 'epic')) {
+        const sections = extractAllSections(hierarchy.epic.content);
+        for (const sec of sections) {
+          if (sectionFilter && !sec.name.toLowerCase().includes(sectionFilter)) continue;
+          if (!options.full && !agentRelevantSections.includes(sec.name)) continue;
+          allSections.push({ level: 'EPIC', id: hierarchy.epic.id, section: sec.name, content: sec.content });
+        }
+      }
 
       if (options.json) {
-        const result = {
+        jsonOut({
           id: normalized,
-          exists: true,
-          full: options.full || false
-        };
-        if (hierarchy.project) {
-          result.project = {
-            path: hierarchy.project.path,
-            content: options.full ? hierarchy.project.content : extractProjectContext(hierarchy.project.content)
-          };
-        }
-        if (hierarchy.prd) {
-          result.prd = {
-            id: hierarchy.prd.id,
-            path: hierarchy.prd.path,
-            content: options.full ? hierarchy.prd.content : extractPrdContext(hierarchy.prd.content)
-          };
-        }
-        if (hierarchy.epic) {
-          result.epic = {
-            id: hierarchy.epic.id,
-            path: hierarchy.epic.path,
-            content: options.full ? hierarchy.epic.content : extractAgentContext(hierarchy.epic.content)
-          };
-        }
-        jsonOut(result);
+          filters: { level: levelFilter, section: sectionFilter, full: options.full || false },
+          sections: allSections
+        });
         return;
       }
 
-      // Human-readable output with consistent format
-      // Format matches memory:edit: ## ID:Section
+      // Human-readable output
       const sep = '─'.repeat(60);
+      console.log(`# Memory: ${normalized}\n`);
 
-      if (options.full) {
-        // Show full content of all levels
-        console.log(`# Memory: ${normalized}\n`);
-        console.log(sep);
+      if (allSections.length === 0) {
+        console.log('(no matching sections)');
+        console.log('\nFilters:');
+        if (levelFilter) console.log(`  --level ${levelFilter}`);
+        if (sectionFilter) console.log(`  --section "${options.section}"`);
+        if (!options.full) console.log('  (use --full to show all sections)');
+        return;
+      }
 
-        if (hierarchy.project && !options.epicOnly) {
-          console.log('\n## PROJECT:Architecture Decisions\n');
-          const arch = hierarchy.project.content.match(/## Architecture Decisions\s*([\s\S]*?)(?=\n## |$)/);
-          if (arch) console.log(arch[1].replace(/<!--[\s\S]*?-->/g, '').trim() || '(empty)');
-
-          console.log('\n## PROJECT:Patterns & Conventions\n');
-          const pat = hierarchy.project.content.match(/## Patterns & Conventions\s*([\s\S]*?)(?=\n## |$)/);
-          if (pat) console.log(pat[1].replace(/<!--[\s\S]*?-->/g, '').trim() || '(empty)');
-
-          console.log('\n' + sep);
+      let currentLevel = null;
+      for (const sec of allSections) {
+        if (sec.level !== currentLevel) {
+          if (currentLevel !== null) console.log('\n' + sep);
+          currentLevel = sec.level;
         }
-
-        if (hierarchy.prd && !options.epicOnly) {
-          console.log(`\n## ${hierarchy.prd.id}:Cross-Epic Patterns\n`);
-          const cross = hierarchy.prd.content.match(/## Cross-Epic Patterns\s*([\s\S]*?)(?=\n## |$)/);
-          if (cross) console.log(cross[1].replace(/<!--[\s\S]*?-->/g, '').trim() || '(empty)');
-
-          console.log('\n' + sep);
-        }
-
-        if (hierarchy.epic) {
-          console.log(`\n## ${hierarchy.epic.id}:Agent Context\n`);
-          const ctx = hierarchy.epic.content.match(/## Agent Context\s*([\s\S]*?)(?=\n## |$)/);
-          if (ctx) console.log(ctx[1].replace(/<!--[\s\S]*?-->/g, '').trim() || '(empty)');
-
-          console.log(`\n## ${hierarchy.epic.id}:Escalation\n`);
-          const esc = hierarchy.epic.content.match(/## Escalation\s*([\s\S]*?)(?=\n## |$)/);
-          if (esc) console.log(esc[1].replace(/<!--[\s\S]*?-->/g, '').trim() || '(empty)');
-
-          console.log(`\n## ${hierarchy.epic.id}:Story\n`);
-          const story = hierarchy.epic.content.match(/## Story\s*([\s\S]*?)(?=\n## |$)/);
-          if (story) console.log(story[1].replace(/<!--[\s\S]*?-->/g, '').trim() || '(empty)');
-        }
-      } else {
-        // Show Agent Context sections only (default)
-        console.log(`# Memory: ${normalized}\n`);
-        console.log(sep);
-
-        if (hierarchy.project && !options.epicOnly) {
-          const ctx = extractProjectContext(hierarchy.project.content);
-          if (ctx) {
-            console.log('\n## PROJECT:Architecture Decisions\n');
-            console.log(ctx);
-            console.log('\n' + sep);
-          }
-        }
-
-        if (hierarchy.prd && !options.epicOnly) {
-          const ctx = extractPrdContext(hierarchy.prd.content);
-          if (ctx) {
-            console.log(`\n## ${hierarchy.prd.id}:Cross-Epic Patterns\n`);
-            console.log(ctx);
-            console.log('\n' + sep);
-          }
-        }
-
-        if (hierarchy.epic) {
-          const ctx = extractAgentContext(hierarchy.epic.content);
-          if (ctx) {
-            console.log(`\n## ${hierarchy.epic.id}:Agent Context\n`);
-            console.log(ctx);
-          }
-        }
-
-        // Show hint if no content found
-        if (!hierarchy.project && !hierarchy.prd && !hierarchy.epic) {
-          console.log(`No agent context for ${normalized}`);
-        }
+        console.log(`\n## ${sec.id}:${sec.section}\n`);
+        console.log(sec.content);
       }
     });
 
