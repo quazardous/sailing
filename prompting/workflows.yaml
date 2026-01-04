@@ -52,6 +52,8 @@ roles:
         exclude: [agent/cli]              # Fragments to exclude (bash commands)
       worktrees:                          # When use_worktrees is enabled
         fragments: [shared/worktree]
+      no_worktrees:                       # When use_worktrees is disabled
+        fragments: [shared/inline-mode]
     workflow: false
 
   coordinator:

@@ -271,6 +271,8 @@ function composeContext(operation, options = {}) {
   processInjectDimension(inject[execMode]);
   if (agentConfig.use_worktrees) {
     processInjectDimension(inject.worktrees);
+  } else {
+    processInjectDimension(inject.no_worktrees);
   }
 
   // Load additional fragments (from inject dimensions)

@@ -17,7 +17,6 @@ Agents rely ONLY on rudder CLI output, never on file structure assumptions.
 - Implement dependency code (should exist)
 - Expand scope to unblock
 - Make architectural decisions not in spec
-- Commit to git
 - Chain to other tasks
 
 ## Escalation
