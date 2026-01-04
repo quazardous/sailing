@@ -724,7 +724,9 @@ Start by running \`pwd\` and \`ls -la\`, then call the rudder MCP tool with \`co
       const startTime = Date.now();
       // Quiet mode: 60s default heartbeat, verbose: 30s
       const defaultHeartbeat = isQuiet ? 60 : 30;
-      const heartbeatInterval = (options.heartbeat || defaultHeartbeat) * 1000;
+      // Note: --no-heartbeat sets options.heartbeat=true (boolean default), must check type
+      const heartbeatSec = typeof options.heartbeat === 'number' ? options.heartbeat : defaultHeartbeat;
+      const heartbeatInterval = heartbeatSec * 1000;
       const shouldHeartbeat = options.heartbeat !== false;
       let lastHeartbeat = startTime;
       let detached = false;
@@ -734,8 +736,7 @@ Start by running \`pwd\` and \`ls -la\`, then call the rudder MCP tool with \`co
       if (!options.json) {
         if (isQuiet) {
           // Quiet mode: minimal one-line status
-          const hbSec = options.heartbeat || defaultHeartbeat;
-          process.stdout.write(`${taskId}: spawned >>> heartbeat every ${hbSec}s`);
+          process.stdout.write(`${taskId}: spawned >>> heartbeat every ${heartbeatSec}s`);
         } else {
           const budgetStr = agentConfig.max_budget_usd > 0 ? `$${agentConfig.max_budget_usd}` : 'unlimited';
           const watchdogStr = agentConfig.watchdog_timeout > 0 ? `${agentConfig.watchdog_timeout}s` : 'disabled';
@@ -754,7 +755,7 @@ Start by running \`pwd\` and \`ls -la\`, then call the rudder MCP tool with \`co
           console.log(`│ • Output = activity (watchdog resets, agent not stale)`);
           console.log(`├─ Behavior ───────────────────────────────────────────────`);
           console.log(`│ • Streaming Claude output${shouldLog ? '' : ' (disabled)'}`);
-          console.log(`│ • Heartbeat every ${options.heartbeat || defaultHeartbeat}s${shouldHeartbeat ? '' : ' (disabled)'}`);
+          console.log(`│ • Heartbeat every ${heartbeatSec}s${shouldHeartbeat ? '' : ' (disabled)'}`);
           console.log(`│ • Auto-reap on success (merge + cleanup + status update)`);
           console.log(`├─ Signals ────────────────────────────────────────────────`);
           console.log(`│ • Ctrl+C: detach (agent continues in background)`);
@@ -764,12 +765,14 @@ Start by running \`pwd\` and \`ls -la\`, then call the rudder MCP tool with \`co
       }
 
       // Setup SIGHUP handler: force immediate heartbeat
+      let hbCount = 0;
       const emitHeartbeat = () => {
+        hbCount++;
         const elapsed = Date.now() - startTime;
         const stats = getProcessStats(spawnResult.pid);
         if (isQuiet) {
-          // Quiet mode: update same line
-          process.stdout.write(`\r${taskId}: running... ${formatDuration(elapsed)}   `);
+          // Quiet mode: update same line (with counter to trace frequency)
+          process.stdout.write(`\r${taskId}: running... ${formatDuration(elapsed)} [#${hbCount}]   `);
         } else {
           const memInfo = stats.mem ? ` (mem: ${stats.mem})` : '';
           console.log(`\n[${formatDuration(elapsed)}] pong — ${taskId} ${stats.running ? 'running' : 'stopped'}${memInfo}`);
@@ -1014,7 +1017,9 @@ Start by running \`pwd\` and \`ls -la\`, then call the rudder MCP tool with \`co
 
       const startTime = Date.now();
       const timeoutMs = options.timeout * 1000;
-      const heartbeatInterval = (options.heartbeat || 30) * 1000;
+      // Note: --no-heartbeat sets options.heartbeat=true (boolean), must check type
+      const heartbeatSec = typeof options.heartbeat === 'number' ? options.heartbeat : 30;
+      const heartbeatInterval = heartbeatSec * 1000;
       const shouldHeartbeat = options.heartbeat !== false;
       const shouldLog = options.log !== false;
       let lastHeartbeat = startTime;
@@ -2653,7 +2658,8 @@ Exit immediately after outputting the result.`;
         }
 
         // Also poll periodically as backup (every 2s)
-        const heartbeatIntervalMs = (options.heartbeat || 30) * 1000;
+        // Note: --no-heartbeat sets options.heartbeat=true (boolean), must check type
+        const heartbeatIntervalMs = (typeof options.heartbeat === 'number' ? options.heartbeat : 30) * 1000;
         let lastHeartbeat = startTime;
 
         pollInterval = setInterval(() => {
