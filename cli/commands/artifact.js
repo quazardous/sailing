@@ -22,6 +22,49 @@ import {
 } from '../lib/entities.js';
 
 /**
+ * Parse multi-section content from stdin
+ * Format: ## Section Name\nContent...\n\n## Another Section\nContent...
+ * @param {string} content - Raw content with ## headers
+ * @param {string} opType - Operation type (replace, append, prepend)
+ * @returns {Array<{op: string, section: string, content: string}>}
+ */
+function parseMultiSectionContent(content, opType) {
+  const ops = [];
+  const lines = content.split('\n');
+  let currentSection = null;
+  let currentContent = [];
+
+  for (const line of lines) {
+    const match = line.match(/^##\s+(.+)$/);
+    if (match) {
+      // Save previous section
+      if (currentSection) {
+        ops.push({
+          op: opType,
+          section: currentSection,
+          content: currentContent.join('\n').trim()
+        });
+      }
+      currentSection = match[1].trim();
+      currentContent = [];
+    } else if (currentSection) {
+      currentContent.push(line);
+    }
+  }
+
+  // Save last section
+  if (currentSection) {
+    ops.push({
+      op: opType,
+      section: currentSection,
+      content: currentContent.join('\n').trim()
+    });
+  }
+
+  return ops;
+}
+
+/**
  * Resolve artifact ID to file path
  * @param {string} id - Artifact ID (T042, E001, PRD-001)
  * @returns {{ path: string, type: string } | null}
@@ -140,10 +183,10 @@ export function registerArtifactCommands(program) {
       }
     });
 
-  // artifact:edit - Edit a section
+  // artifact:edit - Edit a section (or multiple sections via stdin)
   artifact.command('edit <id>')
-    .description('Edit a section in an artifact')
-    .option('-s, --section <name>', 'Section to edit (required)')
+    .description('Edit section(s) in an artifact')
+    .option('-s, --section <name>', 'Section to edit (omit for multi-section stdin)')
     .option('-c, --content <text>', 'New content (or use stdin)')
     .option('-a, --append', 'Append to section instead of replace')
     .option('-p, --prepend', 'Prepend to section instead of replace')
@@ -152,11 +195,6 @@ export function registerArtifactCommands(program) {
       const resolved = resolveArtifact(id);
       if (!resolved) {
         console.error(`Artifact not found: ${id}`);
-        process.exit(1);
-      }
-
-      if (!options.section) {
-        console.error('--section is required');
         process.exit(1);
       }
 
@@ -173,22 +211,38 @@ export function registerArtifactCommands(program) {
       }
 
       // Determine operation
-      let op = 'replace';
-      if (options.append) op = 'append';
-      if (options.prepend) op = 'prepend';
+      let opType = 'replace';
+      if (options.append) opType = 'append';
+      if (options.prepend) opType = 'prepend';
 
-      const ops = [{
-        op,
-        section: options.section,
-        content
-      }];
+      let ops;
+
+      if (options.section) {
+        // Single section mode
+        ops = [{
+          op: opType,
+          section: options.section,
+          content
+        }];
+      } else {
+        // Multi-section mode: parse ## headers from stdin
+        ops = parseMultiSectionContent(content, opType);
+        if (ops.length === 0) {
+          console.error('No sections found. Use --section or format stdin with ## headers');
+          process.exit(1);
+        }
+      }
 
       const result = editArtifact(resolved.path, ops);
 
       if (options.json) {
         jsonOut({ id, ...result });
       } else if (result.success) {
-        console.log(`✓ ${op} on ${options.section} in ${id}`);
+        if (ops.length === 1) {
+          console.log(`✓ ${opType} on ${ops[0].section} in ${id}`);
+        } else {
+          console.log(`✓ ${opType} on ${ops.length} sections in ${id}`);
+        }
       } else {
         console.error(`✗ Failed: ${result.errors.join(', ')}`);
         process.exit(1);
