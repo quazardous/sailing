@@ -429,6 +429,13 @@ export function registerAgentCommands(program) {
 
 You are an autonomous agent assigned to task ${taskId}.
 
+## Environment Check
+
+First, verify your working environment:
+1. Run \`pwd\` to confirm you're in your worktree
+2. Run \`ls -la\` to see the project structure
+3. Your CWD should be the project root where you'll implement the task
+
 ## MCP Rudder Tool
 
 You have access to a **rudder** MCP tool for all sailing operations. Use it like this:
@@ -449,8 +456,10 @@ The task is already claimed. Your job:
    { "command": "context:load ${taskId}" }
    \`\`\`
    This outputs your instructions, memory, and task deliverables.
+   **Use this context for the task. Do NOT search for sailing artefacts files.**
 
 2. **Execute the task** according to the deliverables.
+   Work in your current directory (the project worktree).
 
 3. **Log tips** during your work (at least 1):
    \`\`\`json
@@ -467,7 +476,7 @@ The task is already claimed. Your job:
 
 ${commitInstructions}
 
-Start by calling the rudder MCP tool with \`context:load ${taskId}\` to get your instructions.
+Start by running \`pwd\` and \`ls -la\`, then call the rudder MCP tool with \`context:load ${taskId}\` to get your instructions.
 `;
 
       if (options.dryRun) {
