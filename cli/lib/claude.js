@@ -100,7 +100,8 @@ export async function spawnClaude(options) {
       throw new Error(
         'MCP server not running. Start it first:\n\n' +
         '  bin/rudder-mcp start\n\n' +
-        'Then retry spawn. Use "bin/rudder-mcp status" to check status.'
+        'Then retry spawn. Check status with "bin/rudder-mcp status".\n' +
+        'Transport mode (socket/port) is set in .sailing/config.yaml (agent.mcp_mode).'
       );
     }
 

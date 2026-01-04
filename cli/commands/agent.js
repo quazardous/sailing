@@ -633,7 +633,7 @@ Start by calling the rudder MCP tool with \`assign:claim ${taskId}\` to get your
         if (code === 0 && (dirtyWorktree || hasCommits)) {
           try {
             // Run assign:release to update task status
-            execSync(`${process.argv[0]} ${process.argv[1]} assign:release ${taskId} --json`, {
+            const releaseResult = execSync(`${process.argv[0]} ${process.argv[1]} assign:release ${taskId} --json`, {
               cwd: projectRoot,
               encoding: 'utf8',
               stdio: ['pipe', 'pipe', 'pipe']
@@ -641,7 +641,14 @@ Start by calling the rudder MCP tool with \`assign:claim ${taskId}\` to get your
             console.log(`✓ Auto-released ${taskId} (agent didn't call assign:release)`);
           } catch (e) {
             // Release might fail if already released or no claim
-            // This is fine - agent may have called release already
+            // Check if it's a real error vs expected "already released"
+            const stderr = e.stderr?.toString() || '';
+            const stdout = e.stdout?.toString() || '';
+            if (stderr.includes('not claimed') || stdout.includes('not claimed')) {
+              // Expected - agent already released, ignore
+            } else if (e.status !== 0) {
+              console.error(`⚠ Auto-release failed for ${taskId}: ${stderr || e.message}`);
+            }
           }
         }
 
