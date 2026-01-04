@@ -27,6 +27,7 @@ import {
   extractPrdId, extractEpicId, getPrdBranching,
   findDevMd, findToolset
 } from '../lib/entities.js';
+import { normalizeId } from '../lib/normalize.js';
 
 /**
  * Get agents base directory (overridable via paths.yaml: agents)
@@ -79,11 +80,7 @@ export function registerAgentCommands(program) {
         process.exit(1);
       }
 
-      // Normalize task ID
-      taskId = taskId.toUpperCase();
-      if (!taskId.startsWith('T')) {
-        taskId = 'T' + taskId;
-      }
+      taskId = normalizeId(taskId);
 
       // Find task file
       const taskFile = findTaskFile(taskId);
@@ -748,8 +745,7 @@ Start by calling the rudder MCP tool with \`context:load ${taskId}\` to get your
       const agents = state.agents || {};
 
       if (taskId) {
-        taskId = taskId.toUpperCase();
-        if (!taskId.startsWith('T')) taskId = 'T' + taskId;
+        taskId = normalizeId(taskId);
 
         const agent = agents[taskId];
         if (!agent) {
@@ -830,8 +826,7 @@ Start by calling the rudder MCP tool with \`context:load ${taskId}\` to get your
       console.error('⚠️  DEPRECATED: agent:wait is deprecated. Use agent:reap instead.');
       console.error('   agent:reap waits, merges, cleans up, and updates status.\n');
 
-      taskId = taskId.toUpperCase();
-      if (!taskId.startsWith('T')) taskId = 'T' + taskId;
+      taskId = normalizeId(taskId);
 
       const state = loadState();
       const agent = state.agents?.[taskId];
@@ -901,11 +896,7 @@ Start by calling the rudder MCP tool with \`context:load ${taskId}\` to get your
       console.error('⚠️  DEPRECATED: agent:collect is deprecated. Use agent:reap instead.');
       console.error('   agent:reap collects, merges, cleans up, and updates status.\n');
 
-      // Normalize task ID
-      taskId = taskId.toUpperCase();
-      if (!taskId.startsWith('T')) {
-        taskId = 'T' + taskId;
-      }
+      taskId = normalizeId(taskId);
 
       const state = loadState();
       const agentInfo = state.agents?.[taskId];
@@ -1220,8 +1211,7 @@ Start by calling the rudder MCP tool with \`context:load ${taskId}\` to get your
       }
 
       if (taskId) {
-        taskId = taskId.toUpperCase();
-        if (!taskId.startsWith('T')) taskId = 'T' + taskId;
+        taskId = normalizeId(taskId);
 
         if (!state.agents[taskId]) {
           console.error(`No agent found for task: ${taskId}`);
@@ -1254,8 +1244,7 @@ Start by calling the rudder MCP tool with \`context:load ${taskId}\` to get your
         process.exit(1);
       }
 
-      taskId = taskId.toUpperCase();
-      if (!taskId.startsWith('T')) taskId = 'T' + taskId;
+      taskId = normalizeId(taskId);
 
       const state = loadState();
       const agentInfo = state.agents?.[taskId];
@@ -1502,8 +1491,7 @@ Start by calling the rudder MCP tool with \`context:load ${taskId}\` to get your
       console.error('⚠️  DEPRECATED: agent:merge is deprecated. Use agent:reap instead.');
       console.error('   agent:reap handles merge, cleanup, and status update.\n');
 
-      taskId = taskId.toUpperCase();
-      if (!taskId.startsWith('T')) taskId = 'T' + taskId;
+      taskId = normalizeId(taskId);
 
       const state = loadState();
       const agentInfo = state.agents?.[taskId];
@@ -1648,8 +1636,7 @@ Start by calling the rudder MCP tool with \`context:load ${taskId}\` to get your
     .option('--status <status>', 'New task status: blocked|not-started (default: blocked)', 'blocked')
     .option('--json', 'JSON output')
     .action((taskId, options) => {
-      taskId = taskId.toUpperCase();
-      if (!taskId.startsWith('T')) taskId = 'T' + taskId;
+      taskId = normalizeId(taskId);
 
       const state = loadState();
       const agentInfo = state.agents?.[taskId];
@@ -1781,8 +1768,7 @@ Start by calling the rudder MCP tool with \`context:load ${taskId}\` to get your
     .description('Force-terminate a running agent')
     .option('--json', 'JSON output')
     .action((taskId, options) => {
-      taskId = taskId.toUpperCase();
-      if (!taskId.startsWith('T')) taskId = 'T' + taskId;
+      taskId = normalizeId(taskId);
 
       const state = loadState();
       const agentInfo = state.agents?.[taskId];
@@ -1912,12 +1898,6 @@ Start by calling the rudder MCP tool with \`context:load ${taskId}\` to get your
         order.forEach((id, i) => console.log(`  ${i + 1}. rudder agent:merge ${id}`));
       }
     });
-
-  // Helper: normalize task ID
-  function normalizeId(taskId) {
-    taskId = taskId.toUpperCase();
-    return taskId.startsWith('T') ? taskId : 'T' + taskId;
-  }
 
   // agent:log - Show agent log
   agent.command('log <task-id>')
@@ -2253,10 +2233,7 @@ Do not output anything else. Exit immediately after.`;
 
       // Determine which agents to wait for
       let waitFor = taskIds.length > 0
-        ? taskIds.map(id => {
-            id = id.toUpperCase();
-            return id.startsWith('T') ? id : 'T' + id;
-          })
+        ? taskIds.map(id => normalizeId(id))
         : Object.entries(agents)
             .filter(([_, info]) => ['spawned', 'dispatched', 'running'].includes(info.status))
             .map(([id]) => id);
@@ -2397,10 +2374,7 @@ Do not output anything else. Exit immediately after.`;
 
       // Determine which agents to reap
       let toReap = taskIds.length > 0
-        ? taskIds.map(id => {
-            id = id.toUpperCase();
-            return id.startsWith('T') ? id : 'T' + id;
-          })
+        ? taskIds.map(id => normalizeId(id))
         : Object.keys(agents);
 
       // Filter to only completed agents
