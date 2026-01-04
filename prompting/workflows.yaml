@@ -67,7 +67,7 @@ roles:
     base_sets: [law, coordination]        # No agent-rules (skill spawns, doesn't execute)
     inject:
       worktrees:                          # When use_worktrees is enabled
-        fragments: [skill/worktree-mode, shared/worktree]
+        fragments: [skill/worktree-mode]  # shared/worktree redundant with agent-cli
     workflow: true
 
 # ─────────────────────────────────────────────────────────────────────────────

@@ -18,7 +18,7 @@ All notable changes to the Sailing Framework will be documented in this file.
 - Skill parallel spawning: use Claude tool calls, not bash `&`
 
 ### Performance
-- Skill context reduced 33% (814→549 lines): split law/agent-rules, remove roadmap/postit
+- Skill context reduced 40% (814→489 lines): split law/agent-rules, remove roadmap/postit, dedupe worktree docs
 
 ## [1.6.3] - 2026-01-04
 
