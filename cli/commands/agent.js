@@ -816,14 +816,12 @@ Start by running \`pwd\` and \`ls -la\`, then call the rudder MCP tool with \`co
         if (heartbeatTimer) clearInterval(heartbeatTimer);
       };
 
-      // Heartbeat timer
+      // Heartbeat timer - fires at heartbeatInterval
       let heartbeatTimer = null;
       if (shouldHeartbeat && !options.json) {
         heartbeatTimer = setInterval(() => {
-          if (Date.now() - lastHeartbeat >= heartbeatInterval) {
-            emitHeartbeat();
-          }
-        }, 2000);
+          emitHeartbeat();
+        }, heartbeatInterval);
       }
 
       // Wait for process to exit
@@ -1096,14 +1094,12 @@ Start by running \`pwd\` and \`ls -la\`, then call the rudder MCP tool with \`co
         if (pollTimer) clearInterval(pollTimer);
       };
 
-      // Heartbeat timer
+      // Heartbeat timer - fires at heartbeatInterval
       let heartbeatTimer = null;
       if (shouldHeartbeat && !options.json) {
         heartbeatTimer = setInterval(() => {
-          if (Date.now() - lastHeartbeat >= heartbeatInterval) {
-            emitHeartbeat();
-          }
-        }, 2000);
+          emitHeartbeat();
+        }, heartbeatInterval);
       }
 
       // Poll for completion
