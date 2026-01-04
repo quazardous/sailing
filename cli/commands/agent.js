@@ -573,7 +573,7 @@ Start by running \`pwd\` and \`ls -la\`, then call the rudder MCP tool with \`co
         agentDir,
         taskId,                           // For MCP server task restriction
         projectRoot,                      // For MCP server rudder commands
-        stderrToFile: !shouldLog          // Suppress console output if not logging
+        quietMode: !shouldLog             // Suppress console output if not logging
       });
 
       // Update state atomically to prevent race condition with parallel spawns

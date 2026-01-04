@@ -112,10 +112,11 @@ function getHavenDir(agentDir) {
  * @param {boolean} [options.riskyMode] - Override risky_mode config
  * @param {boolean} [options.sandbox] - Override sandbox config
  * @param {boolean|string} [options.stderrToFile] - Redirect stderr to file only (true=logFile, string=custom path)
+ * @param {boolean} [options.quietMode] - Suppress all console output (stdout+stderr to file only)
  * @returns {Promise<{ process: ChildProcess, pid: number, logFile: string, srtConfig?: string, mcpConfig?: string, mcpSocket?: string, mcpPid?: number }>}
  */
 export async function spawnClaude(options) {
-  const { prompt, cwd, logFile, timeout, agentDir, taskId, projectRoot, stderrToFile } = options;
+  const { prompt, cwd, logFile, timeout, agentDir, taskId, projectRoot, stderrToFile, quietMode } = options;
   const config = getAgentConfig();
   const paths = getPathsInfo();
 
@@ -191,11 +192,16 @@ export async function spawnClaude(options) {
     }
   }
 
-  // Setup stderr handler for stderrToFile option
+  // Setup output handlers for quiet mode
+  let onStdout = null;
   let onStderr = null;
-  if (stderrToFile) {
-    // Stderr to file only (quiet mode) - don't output to console
-    onStderr = () => {}; // swallow console output, log file still gets it
+  if (quietMode) {
+    // Quiet mode: suppress all console output (log file still gets it)
+    onStdout = () => {};
+    onStderr = () => {};
+  } else if (stderrToFile) {
+    // Just stderr to file only
+    onStderr = () => {};
   }
 
   // Sandbox HOME isolation: use agentDir/home to isolate Claude's config
@@ -214,6 +220,7 @@ export async function spawnClaude(options) {
     srtConfigPath,
     riskyMode,
     timeout,
+    onStdout,
     onStderr,
     mcpConfigPath: mcpInfo?.configPath,
     sandboxHome,
