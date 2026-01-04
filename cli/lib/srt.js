@@ -316,7 +316,8 @@ export function spawnClaudeWithSrt(options) {
 
   // Stream JSON output for real-time progress (instead of single block at end)
   // This enables watchdog to detect stalls and provides better monitoring
-  claudeArgs.push('--output-format', 'stream-json');
+  // Note: --verbose is required for --output-format stream-json
+  claudeArgs.push('--verbose', '--output-format', 'stream-json');
 
   // Budget limit (only with -p mode)
   if (maxBudgetUsd && maxBudgetUsd > 0) {
