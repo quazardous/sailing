@@ -162,6 +162,7 @@ your-project/
 |-------|------|
 | CLI Reference | [docs/rudder.md](docs/rudder.md) |
 | Folder Structure | [docs/folders.md](docs/folders.md) |
+| Worktree Mode | [docs/worktree_folders.md](docs/worktree_folders.md) |
 | Version Tracking | [docs/version_tracking.md](docs/version_tracking.md) |
 | Advanced Config | [docs/advanced.md](docs/advanced.md) |
 | Sandbox (srt) | [docs/sandbox.md](docs/sandbox.md) |
