@@ -96,13 +96,18 @@ rudder sandbox:show
 {
   "network": {
     "allowedDomains": [
+      "localhost",
+      "127.0.0.1",
       "api.anthropic.com",
       "*.anthropic.com",
       "sentry.io",
       "statsig.anthropic.com",
       "github.com",
       "*.github.com",
-      "registry.npmjs.org"
+      "api.github.com",
+      "raw.githubusercontent.com",
+      "registry.npmjs.org",
+      "*.npmjs.org"
     ],
     "deniedDomains": []
   },

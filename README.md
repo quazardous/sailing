@@ -12,6 +12,22 @@
 curl -sSL https://raw.githubusercontent.com/quazardous/sailing/main/install.sh | bash
 ```
 
+**Options:**
+
+| Option | Description |
+|--------|-------------|
+| `--use-worktree` | Enable worktree mode for agent isolation (recommended for parallel agents) |
+| `--folders-profile=X` | Folder profile: `project` (default), `haven`, `sibling` |
+| `--global` | Install rudder CLI globally via npm |
+| `--force` | Force overwrite protected files |
+| `--dry-run` | Show what would be done |
+
+**Worktree mode** (advanced):
+```bash
+curl -sSL https://raw.githubusercontent.com/quazardous/sailing/main/install.sh | bash -s -- --use-worktree --folders-profile=haven
+```
+This enables git worktree isolation for parallel agent execution. Each agent works in its own branch, preventing conflicts. Requires `haven` or `sibling` profile (not `project`).
+
 ### 2. Create a PRD (1 minute)
 
 Talk to Claude naturally — just mention "sailing" to activate the skill:
@@ -148,6 +164,8 @@ your-project/
 | Folder Structure | [docs/folders.md](docs/folders.md) |
 | Version Tracking | [docs/version_tracking.md](docs/version_tracking.md) |
 | Advanced Config | [docs/advanced.md](docs/advanced.md) |
+| Sandbox (srt) | [docs/sandbox.md](docs/sandbox.md) |
+| MCP Server | [docs/mcp.md](docs/mcp.md) |
 
 ## Requirements
 
