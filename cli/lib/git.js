@@ -4,6 +4,8 @@
  * Centralized git operations for the CLI.
  * Wraps execSync with consistent error handling.
  */
+import fs from 'fs';
+import path from 'path';
 import { execSync } from 'child_process';
 import { findProjectRoot } from './core.js';
 import { getGitConfig } from './config.js';
@@ -318,5 +320,34 @@ export function getRemoteUrl(remote = 'origin', cwd) {
     return git(`remote get-url ${remote}`, { cwd });
   } catch {
     return null;
+  }
+}
+
+/**
+ * Move file/directory using git mv
+ * Falls back to regular move if git mv fails (untracked files)
+ * @param {string} src - Source path
+ * @param {string} dest - Destination path
+ * @param {string} cwd - Working directory
+ * @returns {{ method: 'git'|'fs', error?: string }}
+ */
+export function gitMv(src, dest, cwd) {
+  // Ensure destination parent directory exists
+  const destDir = path.dirname(dest);
+  if (!fs.existsSync(destDir)) {
+    fs.mkdirSync(destDir, { recursive: true });
+  }
+
+  try {
+    git(`mv "${src}" "${dest}"`, { cwd });
+    return { method: 'git' };
+  } catch {
+    // Fallback to fs.rename if git mv fails (untracked file)
+    try {
+      fs.renameSync(src, dest);
+      return { method: 'fs' };
+    } catch (e) {
+      return { method: 'fs', error: e.message };
+    }
   }
 }

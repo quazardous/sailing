@@ -8,10 +8,30 @@
  */
 import fs from 'fs';
 import path from 'path';
-import { getArchiveDir, getMemoryDir, loadFile, saveFile } from '../lib/core.js';
+import { getArchiveDir, getMemoryDir, loadFile, saveFile, findProjectRoot } from '../lib/core.js';
 import { getPrd, buildPrdIndex, clearIndexCache } from '../lib/index.js';
 import { findEpicPrd, findTaskEpic } from '../lib/memory.js';
 import { normalizeId } from '../lib/normalize.js';
+import { isGitRepo, gitMv } from '../lib/git.js';
+
+/**
+ * Move file/directory using git mv if in git repo, otherwise fs.rename
+ */
+function moveFile(src, dest) {
+  const cwd = findProjectRoot();
+  if (isGitRepo(cwd)) {
+    const result = gitMv(src, dest, cwd);
+    return result.method;
+  } else {
+    // Ensure parent directory exists
+    const destDir = path.dirname(dest);
+    if (!fs.existsSync(destDir)) {
+      fs.mkdirSync(destDir, { recursive: true });
+    }
+    fs.renameSync(src, dest);
+    return 'fs';
+  }
+}
 
 /**
  * Check if PRD has status "Done"
@@ -193,20 +213,16 @@ function archivePrd(prdId, options = {}) {
 
   // Move memory files first
   if (memoryFiles.length > 0) {
-    if (!fs.existsSync(archiveMemoryDir)) {
-      fs.mkdirSync(archiveMemoryDir, { recursive: true });
-    }
-
     for (const m of memoryFiles) {
       const destFile = path.join(archiveMemoryDir, path.basename(m.file));
-      fs.renameSync(m.file, destFile);
-      console.log(`✓ Moved ${m.id} memory`);
+      const method = moveFile(m.file, destFile);
+      console.log(`✓ Moved ${m.id} memory${method === 'git' ? ' (git)' : ''}`);
     }
   }
 
   // Move PRD folder
-  fs.renameSync(prd.dir, archivePrdDest);
-  console.log(`✓ Moved PRD folder`);
+  const method = moveFile(prd.dir, archivePrdDest);
+  console.log(`✓ Moved PRD folder${method === 'git' ? ' (git)' : ''}`);
 
   // Clear index cache
   clearIndexCache();
