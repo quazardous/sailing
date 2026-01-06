@@ -216,17 +216,24 @@ function archivePrd(prdId, options = {}) {
 }
 
 /**
- * List PRDs that are Done (ready to archive)
+ * Get all PRDs with status Done
  */
-function listDonePrds() {
+function getDonePrds() {
   const prdIndex = buildPrdIndex();
-
   const donePrds = [];
   for (const [num, prd] of prdIndex) {
     if (prd.data?.status === 'Done') {
       donePrds.push(prd);
     }
   }
+  return donePrds;
+}
+
+/**
+ * List PRDs that are Done (ready to archive)
+ */
+function listDonePrds() {
+  const donePrds = getDonePrds();
 
   if (donePrds.length === 0) {
     console.log('No PRDs with status Done');
@@ -243,6 +250,26 @@ function listDonePrds() {
 }
 
 /**
+ * Archive all Done PRDs
+ */
+function archiveAllDone(dryRun = false) {
+  const donePrds = getDonePrds();
+
+  if (donePrds.length === 0) {
+    console.log('No PRDs with status Done');
+    return;
+  }
+
+  console.log(`${dryRun ? '=== Dry Run ===' : '=== Archiving all Done PRDs ==='}\n`);
+
+  for (const prd of donePrds) {
+    console.log(`--- ${prd.id} ---`);
+    archivePrd(prd.id, { force: false, dryRun });
+    console.log();
+  }
+}
+
+/**
  * Register archive commands
  */
 export function registerArchiveCommands(program) {
@@ -250,9 +277,18 @@ export function registerArchiveCommands(program) {
     .command('archive [prd-id]')
     .description('Archive a completed PRD (or list Done PRDs if no ID)')
     .option('--list', 'List PRDs with status Done (default if no ID)')
+    .option('--all', 'Archive all Done PRDs')
     .option('--force', 'Archive even if PRD is not done')
     .option('--dry-run', 'Show what would be archived without doing it')
     .action((prdId, options) => {
+      if (options.all) {
+        if (options.force) {
+          console.error('✗ --all and --force are incompatible');
+          process.exit(1);
+        }
+        archiveAllDone(options.dryRun || false);
+        return;
+      }
       if (!prdId || options.list) {
         listDonePrds();
         return;
