@@ -293,7 +293,7 @@ export function getPrd(prdId) {
   if (typeof prdId === 'number') {
     num = prdId;
   } else {
-    const match = String(prdId).match(/^(?:PRD-)?0*(\d+)$/i);
+    const match = String(prdId).match(/^(?:PRD-?)?0*(\d+)$/i);
     num = match ? parseInt(match[1], 10) : null;
   }
 
