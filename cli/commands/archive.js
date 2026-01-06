@@ -125,8 +125,9 @@ function archivePrd(prdId, options = {}) {
   const prdDirName = path.basename(prd.dir);
   const prdFile = path.join(prd.dir, 'PRD.md');
 
-  // Check if done
-  if (!force && !isPrdDone(prd.dir)) {
+  // Check if done (skip check for dry-run - always show preview)
+  const isDone = isPrdDone(prd.dir);
+  if (!dryRun && !force && !isDone) {
     const status = getPrdStatus(prd.dir);
     console.error(`✗ PRD ${prd.id} is not done (status: ${status})`);
     process.exit(1);
@@ -164,6 +165,11 @@ function archivePrd(prdId, options = {}) {
   }
 
   if (dryRun) {
+    if (!isDone) {
+      const status = getPrdStatus(prd.dir);
+      console.log(`⚠ PRD is not done (status: ${status})`);
+      console.log();
+    }
     console.log(`(dry-run mode, no changes made)`);
     return;
   }
