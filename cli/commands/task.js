@@ -3,6 +3,7 @@
  */
 import fs from 'fs';
 import path from 'path';
+import { execSync } from 'child_process';
 import { findPrdDirs, findFiles, loadFile, saveFile, toKebab, loadTemplate, jsonOut, getMemoryDir, stripComments } from '../lib/core.js';
 import { normalizeId, matchesId, matchesPrdDir } from '../lib/normalize.js';
 import { findEpicParent, findEpicFile } from '../lib/entities.js';
@@ -450,19 +451,37 @@ export function registerTaskCommands(program) {
       });
 
       const next = ready[0];
+
+      // Check for pending memory (preflight)
+      let pendingWarning = null;
+      try {
+        const syncResult = execSync(`${process.argv[0]} ${process.argv[1]} memory:sync --json`, {
+          encoding: 'utf8',
+          stdio: ['pipe', 'pipe', 'pipe']
+        });
+        const syncData = JSON.parse(syncResult);
+        if (syncData.pending) {
+          pendingWarning = `⚠ PENDING LOGS: ${syncData.logs?.length || '?'} epic(s) need consolidation`;
+        }
+      } catch (e) {
+        // Ignore errors, just skip the check
+      }
+
       if (options.json) {
-        jsonOut(next);
+        jsonOut({ ...next, pendingMemory: !!pendingWarning });
       } else {
+        // Show warning first if pending
+        if (pendingWarning) {
+          console.log(pendingWarning);
+          console.log(`Run: rudder memory:sync\n`);
+        }
+
         console.log(`${next.id}: ${next.title}`);
         console.log(`PRD: ${next.prd}`);
         console.log(`File: ${next.file}`);
         if (ready.length > 1) {
           console.log(`\n${ready.length - 1} more ready task(s)`);
         }
-        // Preflight reminder
-        console.log(`\n📋 Preflight before start:`);
-        console.log(`   rudder memory:sync`);
-        console.log(`   rudder deps:ready --task ${next.id}`);
       }
     });
 
