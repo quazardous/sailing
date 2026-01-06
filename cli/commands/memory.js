@@ -29,6 +29,7 @@ import {
   getHierarchicalMemory,
   findEpicPrd
 } from '../lib/memory.js';
+import { getMemoryFile } from '../lib/index.js';
 
 /**
  * Check if role is allowed for memory write operations
@@ -536,15 +537,25 @@ export function registerMemoryCommands(program) {
       }
     });
 
-  // Helper: get memory file path for ID
+  // Helper: get memory file path for ID (uses index for format-agnostic lookup)
   function getMemoryPath(id) {
-    if (id.startsWith('E')) {
-      return memoryFilePath(id);
-    } else if (id.startsWith('PRD-')) {
-      return prdMemoryFilePath(id);
-    } else if (id === 'PROJECT') {
+    if (id === 'PROJECT') {
       return projectMemoryFilePath();
     }
+
+    // Use index to find actual file (handles E037 vs E0037 etc.)
+    const memFile = getMemoryFile(id);
+    if (memFile) {
+      return memFile.file;
+    }
+
+    // Fallback to constructed path (for new files)
+    if (id.match(/^E\d+/i)) {
+      return memoryFilePath(id);
+    } else if (id.match(/^PRD-?\d+/i)) {
+      return prdMemoryFilePath(id);
+    }
+
     return null;
   }
 

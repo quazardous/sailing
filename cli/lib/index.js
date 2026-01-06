@@ -10,12 +10,13 @@
  */
 import fs from 'fs';
 import path from 'path';
-import { findPrdDirs, loadFile } from './core.js';
+import { findPrdDirs, loadFile, getMemoryDir } from './core.js';
 
 // Cache for indexes (cleared when needed)
 let _taskIndex = null;
 let _epicIndex = null;
 let _prdIndex = null;
+let _memoryIndex = null;
 
 /**
  * Extract ID key from filename (number + optional suffix)
@@ -324,10 +325,72 @@ export function getEpicPrd(epicId) {
 }
 
 /**
+ * Build memory file index
+ * Indexes E*.md and PRD-*.md files in memory directory
+ * @returns {Map<string, {key: string, type: 'epic'|'prd', file: string}>}
+ */
+export function buildMemoryIndex() {
+  if (_memoryIndex) return _memoryIndex;
+
+  _memoryIndex = new Map();
+  const memDir = getMemoryDir();
+
+  if (!fs.existsSync(memDir)) return _memoryIndex;
+
+  const files = fs.readdirSync(memDir).filter(f => f.endsWith('.md'));
+
+  for (const file of files) {
+    const filePath = path.join(memDir, file);
+
+    // Epic memory: E001.md, E0001.md, E001a.md
+    const epicMatch = file.match(/^E0*(\d+)([a-z])?\.md$/i);
+    if (epicMatch) {
+      const key = 'E' + epicMatch[1] + (epicMatch[2] ? epicMatch[2].toLowerCase() : '');
+      _memoryIndex.set(key, { key, type: 'epic', file: filePath });
+      continue;
+    }
+
+    // PRD memory: PRD-001.md, PRD-1.md
+    const prdMatch = file.match(/^PRD-0*(\d+)\.md$/i);
+    if (prdMatch) {
+      const key = 'PRD-' + prdMatch[1];
+      _memoryIndex.set(key, { key, type: 'prd', file: filePath });
+    }
+  }
+
+  return _memoryIndex;
+}
+
+/**
+ * Get memory file by ID (any format: E14, E014, E0014, PRD-1, PRD-001)
+ * @returns {{key, type, file}|null}
+ */
+export function getMemoryFile(id) {
+  const index = buildMemoryIndex();
+
+  // Epic format
+  const epicMatch = String(id).match(/^E0*(\d+)([a-z])?$/i);
+  if (epicMatch) {
+    const key = 'E' + epicMatch[1] + (epicMatch[2] ? epicMatch[2].toLowerCase() : '');
+    return index.get(key) || null;
+  }
+
+  // PRD format
+  const prdMatch = String(id).match(/^PRD-?0*(\d+)$/i);
+  if (prdMatch) {
+    const key = 'PRD-' + prdMatch[1];
+    return index.get(key) || null;
+  }
+
+  return null;
+}
+
+/**
  * Clear all caches (call after artefact changes)
  */
 export function clearIndexCache() {
   _taskIndex = null;
   _epicIndex = null;
   _prdIndex = null;
+  _memoryIndex = null;
 }
