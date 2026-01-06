@@ -9,7 +9,7 @@
 import fs from 'fs';
 import path from 'path';
 import { getArchiveDir, getMemoryDir, loadFile, saveFile } from '../lib/core.js';
-import { getPrd, clearIndexCache } from '../lib/index.js';
+import { getPrd, buildPrdIndex, clearIndexCache } from '../lib/index.js';
 import { findEpicPrd, findTaskEpic } from '../lib/memory.js';
 import { normalizeId } from '../lib/normalize.js';
 
@@ -216,15 +216,47 @@ function archivePrd(prdId, options = {}) {
 }
 
 /**
+ * List PRDs that are Done (ready to archive)
+ */
+function listDonePrds() {
+  const prdIndex = buildPrdIndex();
+
+  const donePrds = [];
+  for (const [num, prd] of prdIndex) {
+    if (prd.data?.status === 'Done') {
+      donePrds.push(prd);
+    }
+  }
+
+  if (donePrds.length === 0) {
+    console.log('No PRDs with status Done');
+    return;
+  }
+
+  console.log(`PRDs ready to archive (${donePrds.length}):\n`);
+  for (const prd of donePrds) {
+    const title = prd.data?.title || path.basename(prd.dir);
+    console.log(`  ${prd.id}: ${title}`);
+  }
+  console.log();
+  console.log('Use: rudder archive <prd-id> [--dry-run]');
+}
+
+/**
  * Register archive commands
  */
 export function registerArchiveCommands(program) {
   program
-    .command('archive <prd-id>')
-    .description('Archive a completed PRD with its memory files')
+    .command('archive [prd-id]')
+    .description('Archive a completed PRD (or list Done PRDs if no ID)')
+    .option('--list', 'List PRDs with status Done (default if no ID)')
     .option('--force', 'Archive even if PRD is not done')
     .option('--dry-run', 'Show what would be archived without doing it')
     .action((prdId, options) => {
+      if (!prdId || options.list) {
+        listDonePrds();
+        return;
+      }
       archivePrd(prdId, {
         force: options.force || false,
         dryRun: options.dryRun || false
