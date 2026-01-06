@@ -1,30 +1,47 @@
-# Reminders
+# Task Execution Checklist
 
-## Memory Commands
+## BEFORE Spawning Agent
 
-| Purpose | Command |
-|---------|---------|
-| Consolidate logs | `memory:sync` |
-| Read memory | `memory:show ENNN [--full]` |
-| Edit memory | `memory:edit ENNN --section "Tips"` |
-| Agent context | `task:show-memory TNNN` |
+```bash
+# 1. Consolidate pending logs (MANDATORY)
+rudder memory:sync
+# If pending logs shown → follow aggregation instructions FIRST
 
-**Before each task/batch start**: `rudder memory:sync`
+# 2. Verify task is unblocked
+rudder deps:ready --task TNNN
 
-If pending → consolidate before spawning agents.
+# 3. Review task requirements
+rudder task:show TNNN
+```
 
-## Common Mistakes
+⚠️ **Do NOT spawn agent if memory:sync shows pending logs.**
 
-- Forgetting memory:sync between batches
-- Not checking deps:ready before spawn
-- Accepting task with <2 logs
-- Letting agent commit (user responsibility)
+## DURING Agent Execution
+
+Agent must call:
+```bash
+rudder context:load TNNN  # Gets contract + epic memory + task details
+```
+
+This gives agent the accumulated knowledge from previous tasks.
+
+## AFTER Agent Returns
+
+```bash
+# 1. Verify logs (must have ≥2 entries, at least 1 TIP)
+rudder task:log TNNN --list
+
+# 2. If missing logs → reject or add manually
+rudder task:log TNNN "Notable insight from this task" --tip
+
+# 3. Release task (consolidates logs)
+rudder assign:release TNNN
+```
 
 ## Authority
 
 | Who | Does |
 |-----|------|
-| Skill | Decisions |
-| Agents | Execution |
-| Rudder | State |
-| User | Git commits |
+| Skill | Decisions, memory consolidation |
+| Agents | Execution only |
+| Rudder | State management |
