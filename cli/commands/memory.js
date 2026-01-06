@@ -6,7 +6,8 @@
  * - agent: blocked (memory is read-only, provided via context:load)
  */
 import fs from 'fs';
-import { jsonOut, findPrdDirs, findFiles } from '../lib/core.js';
+import path from 'path';
+import { jsonOut, findPrdDirs, findFiles, getArchiveDir, findProjectRoot } from '../lib/core.js';
 import { normalizeId } from '../lib/normalize.js';
 import { addDynamicHelp } from '../lib/help.js';
 import {
@@ -29,7 +30,8 @@ import {
   getHierarchicalMemory,
   findEpicPrd
 } from '../lib/memory.js';
-import { getMemoryFile } from '../lib/index.js';
+import { getMemoryFile, getTask, getEpic } from '../lib/index.js';
+import { isGitRepo, gitMv } from '../lib/git.js';
 import {
   extractAllSections as extractAllSectionsLib,
   findSection,
@@ -196,6 +198,52 @@ export function registerMemoryCommands(program) {
       let deletedEmpty = 0;
       let mergedTasks = 0;
       let createdMd = 0;
+      let archivedOrphans = 0;
+
+      // Step 0: Archive orphan memory files (logs and .md for entities that no longer exist)
+      const archiveMemDir = path.join(getArchiveDir(), 'memory');
+      const projectRoot = findProjectRoot();
+      const useGit = isGitRepo(projectRoot);
+      const memoryDir = getMemoryDirPath();
+
+      // Helper to archive a file
+      const archiveFile = (filePath) => {
+        if (!fs.existsSync(archiveMemDir)) {
+          fs.mkdirSync(archiveMemDir, { recursive: true });
+        }
+        const destPath = path.join(archiveMemDir, path.basename(filePath));
+        if (useGit) {
+          gitMv(filePath, destPath, projectRoot);
+        } else {
+          fs.renameSync(filePath, destPath);
+        }
+        archivedOrphans++;
+      };
+
+      // Check log files (.log)
+      const allLogs = findLogFiles();
+      for (const { id: logId, type, path: logPath } of allLogs) {
+        let isOrphan = false;
+        if (type === 'task') {
+          isOrphan = !getTask(logId);
+        } else if (type === 'epic') {
+          isOrphan = !getEpic(logId);
+        }
+        if (isOrphan) {
+          archiveFile(logPath);
+        }
+      }
+
+      // Check memory .md files (E*.md only - PRD and PROJECT are not orphanable)
+      if (fs.existsSync(memoryDir)) {
+        const mdFiles = fs.readdirSync(memoryDir).filter(f => /^E\d+[a-z]?\.md$/i.test(f));
+        for (const file of mdFiles) {
+          const epicId = file.replace('.md', '');
+          if (!getEpic(epicId)) {
+            archiveFile(path.join(memoryDir, file));
+          }
+        }
+      }
 
       // Step 1: Merge all task logs into epic logs
       // Use actual file paths to handle ID format changes (T001 vs T0001)
@@ -323,6 +371,7 @@ export function registerMemoryCommands(program) {
           mergedTasks,
           deletedEmpty,
           createdMd,
+          archivedOrphans,
           logs: epicLogs.map(e => ({
             id: e.id,
             lines: e.lines,
@@ -341,6 +390,7 @@ export function registerMemoryCommands(program) {
       }
 
       // Human-readable output
+      if (archivedOrphans > 0) console.log(`Archived: ${archivedOrphans} orphan log(s) → archive/memory/`);
       if (mergedTasks > 0) console.log(`Merged: ${mergedTasks} task logs → epic logs`);
       if (deletedEmpty > 0) console.log(`Deleted: ${deletedEmpty} empty logs`);
       if (createdMd > 0) console.log(`Created: ${createdMd} memory files`);
