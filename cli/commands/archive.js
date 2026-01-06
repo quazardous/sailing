@@ -1,0 +1,227 @@
+/**
+ * Archive command - Archive completed PRDs with their memory files
+ *
+ * Usage:
+ *   rudder archive PRD-001          # Archive PRD (must be done)
+ *   rudder archive PRD-001 --force  # Archive even if not done
+ *   rudder archive PRD-001 --dry-run # Show what would be archived
+ */
+import fs from 'fs';
+import path from 'path';
+import { getArchiveDir, getMemoryDir, loadFile, saveFile } from '../lib/core.js';
+import { getPrd, clearIndexCache } from '../lib/index.js';
+import { findEpicPrd, findTaskEpic } from '../lib/memory.js';
+import { normalizeId } from '../lib/normalize.js';
+
+/**
+ * Check if PRD has status "Done"
+ */
+function isPrdDone(prdDir) {
+  const prdFile = path.join(prdDir, 'PRD.md');
+  if (!fs.existsSync(prdFile)) return false;
+
+  const loaded = loadFile(prdFile);
+  return loaded?.data?.status === 'Done';
+}
+
+/**
+ * Get PRD status for error message
+ */
+function getPrdStatus(prdDir) {
+  const prdFile = path.join(prdDir, 'PRD.md');
+  if (!fs.existsSync(prdFile)) return 'unknown';
+
+  const loaded = loadFile(prdFile);
+  return loaded?.data?.status || 'unknown';
+}
+
+/**
+ * Get all memory files associated with a PRD using reverse indexing
+ * Scans memory dir and uses findEpicPrd/findTaskEpic to determine ownership
+ * Returns array of {id, type, file} for PRD, epic, and task memory files (.md and .log)
+ */
+function getPrdMemoryFiles(targetPrdId) {
+  const memoryFiles = [];
+  const memDir = getMemoryDir();
+
+  if (!fs.existsSync(memDir)) return memoryFiles;
+
+  // Normalize target PRD ID for comparison
+  const normalizedPrdId = normalizeId(targetPrdId);
+
+  // Scan all files in memory directory
+  const allFiles = fs.readdirSync(memDir);
+
+  for (const file of allFiles) {
+    const filePath = path.join(memDir, file);
+    const ext = path.extname(file);
+
+    // Only process .md and .log files
+    if (ext !== '.md' && ext !== '.log') continue;
+
+    const baseName = path.basename(file, ext);
+
+    // PRD memory files (PRD-001.md, PRD-001.log)
+    if (baseName.match(/^PRD-?\d+$/i)) {
+      const prdId = normalizeId(baseName);
+      if (prdId === normalizedPrdId) {
+        memoryFiles.push({ id: prdId, type: 'prd', file: filePath });
+      }
+      continue;
+    }
+
+    // Epic memory files (E001.md, E001.log)
+    if (baseName.match(/^E\d+[a-z]?$/i)) {
+      const epicId = normalizeId(baseName);
+      const epicPrd = findEpicPrd(epicId);
+      if (epicPrd && normalizeId(epicPrd) === normalizedPrdId) {
+        memoryFiles.push({ id: epicId, type: 'epic', file: filePath });
+      }
+      continue;
+    }
+
+    // Task log files (T001.log)
+    if (baseName.match(/^T\d+[a-z]?$/i) && ext === '.log') {
+      const taskId = normalizeId(baseName);
+      const taskInfo = findTaskEpic(taskId);
+      if (taskInfo) {
+        const epicPrd = findEpicPrd(taskInfo.epicId);
+        if (epicPrd && normalizeId(epicPrd) === normalizedPrdId) {
+          memoryFiles.push({ id: taskId, type: 'task', file: filePath });
+        }
+      }
+      continue;
+    }
+  }
+
+  return memoryFiles;
+}
+
+/**
+ * Add archived_at to PRD frontmatter
+ */
+function addArchivedAt(prdFile) {
+  const loaded = loadFile(prdFile);
+  if (!loaded) return false;
+
+  loaded.data.archived_at = new Date().toISOString();
+  saveFile(prdFile, loaded.data, loaded.content);
+  return true;
+}
+
+/**
+ * Archive a PRD
+ */
+function archivePrd(prdId, options = {}) {
+  const { force = false, dryRun = false } = options;
+
+  // Find PRD
+  const prd = getPrd(prdId);
+  if (!prd) {
+    console.error(`✗ PRD not found: ${prdId}`);
+    process.exit(1);
+  }
+
+  const prdDirName = path.basename(prd.dir);
+  const prdFile = path.join(prd.dir, 'PRD.md');
+
+  // Check if done
+  if (!force && !isPrdDone(prd.dir)) {
+    const status = getPrdStatus(prd.dir);
+    console.error(`✗ PRD ${prd.id} is not done (status: ${status})`);
+    process.exit(1);
+  }
+
+  // Get memory files (must be done BEFORE moving PRD folder - uses index for reverse lookup)
+  const memoryFiles = getPrdMemoryFiles(prd.id);
+
+  // Prepare archive paths
+  const archiveDir = getArchiveDir();
+  const archivePrdsDir = path.join(archiveDir, 'prds');
+  const archiveMemoryDir = path.join(archiveDir, 'memory', prdDirName);
+  const archivePrdDest = path.join(archivePrdsDir, prdDirName);
+
+  // Show what will be done
+  console.log(dryRun ? '=== Dry Run ===' : `=== Archiving ${prd.id} ===`);
+  console.log();
+
+  console.log(`PRD folder:`);
+  console.log(`  ${prd.dir}`);
+  console.log(`  → ${archivePrdDest}`);
+  console.log();
+
+  if (memoryFiles.length > 0) {
+    console.log(`Memory files (${memoryFiles.length}):`);
+    for (const m of memoryFiles) {
+      const destFile = path.join(archiveMemoryDir, path.basename(m.file));
+      console.log(`  ${m.id}: ${path.basename(m.file)}`);
+      console.log(`    → ${destFile}`);
+    }
+    console.log();
+  } else {
+    console.log(`Memory files: none`);
+    console.log();
+  }
+
+  if (dryRun) {
+    console.log(`(dry-run mode, no changes made)`);
+    return;
+  }
+
+  // Create archive directories
+  if (!fs.existsSync(archivePrdsDir)) {
+    fs.mkdirSync(archivePrdsDir, { recursive: true });
+  }
+
+  // Check if destination already exists
+  if (fs.existsSync(archivePrdDest)) {
+    console.error(`✗ Archive destination already exists: ${archivePrdDest}`);
+    process.exit(1);
+  }
+
+  // Add archived_at to PRD.md
+  if (fs.existsSync(prdFile)) {
+    addArchivedAt(prdFile);
+    console.log(`✓ Added archived_at to PRD.md`);
+  }
+
+  // Move memory files first
+  if (memoryFiles.length > 0) {
+    if (!fs.existsSync(archiveMemoryDir)) {
+      fs.mkdirSync(archiveMemoryDir, { recursive: true });
+    }
+
+    for (const m of memoryFiles) {
+      const destFile = path.join(archiveMemoryDir, path.basename(m.file));
+      fs.renameSync(m.file, destFile);
+      console.log(`✓ Moved ${m.id} memory`);
+    }
+  }
+
+  // Move PRD folder
+  fs.renameSync(prd.dir, archivePrdDest);
+  console.log(`✓ Moved PRD folder`);
+
+  // Clear index cache
+  clearIndexCache();
+
+  console.log();
+  console.log(`✓ ${prd.id} archived successfully`);
+}
+
+/**
+ * Register archive commands
+ */
+export function registerArchiveCommands(program) {
+  program
+    .command('archive <prd-id>')
+    .description('Archive a completed PRD with its memory files')
+    .option('--force', 'Archive even if PRD is not done')
+    .option('--dry-run', 'Show what would be archived without doing it')
+    .action((prdId, options) => {
+      archivePrd(prdId, {
+        force: options.force || false,
+        dryRun: options.dryRun || false
+      });
+    });
+}

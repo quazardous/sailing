@@ -71,6 +71,7 @@ import { registerArtifactCommands } from './commands/artifact.js';
 import { registerDbCommands } from './commands/db.js';
 import { registerFindCommands } from './commands/find.js';
 import { registerRenumberCommands } from './commands/renumber.js';
+import { registerArchiveCommands } from './commands/archive.js';
 
 // Expand colon syntax: task:list → task list (first arg only, if it looks like group:command)
 let commandExpanded = false;
@@ -114,6 +115,7 @@ registerArtifactCommands(program);
 registerDbCommands(program);
 registerFindCommands(program);
 registerRenumberCommands(program);
+registerArchiveCommands(program);
 registerUtilCommands(program);
 registerPermissionsCommands(program);
 
