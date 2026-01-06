@@ -252,8 +252,8 @@ export function buildPrdIndex() {
     const idMatch = dirname.match(/^(PRD-\d+)/i);
     const id = idMatch ? idMatch[1] : `PRD-${num}`;
 
-    // Find PRD.md file
-    const prdFile = path.join(prdDir, 'PRD.md');
+    // Find prd.md file
+    const prdFile = path.join(prdDir, 'prd.md');
     const loaded = fs.existsSync(prdFile) ? loadFile(prdFile) : null;
 
     // Check for duplicate

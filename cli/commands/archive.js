@@ -17,7 +17,7 @@ import { normalizeId } from '../lib/normalize.js';
  * Check if PRD has status "Done"
  */
 function isPrdDone(prdDir) {
-  const prdFile = path.join(prdDir, 'PRD.md');
+  const prdFile = path.join(prdDir, 'prd.md');
   if (!fs.existsSync(prdFile)) return false;
 
   const loaded = loadFile(prdFile);
@@ -28,7 +28,7 @@ function isPrdDone(prdDir) {
  * Get PRD status for error message
  */
 function getPrdStatus(prdDir) {
-  const prdFile = path.join(prdDir, 'PRD.md');
+  const prdFile = path.join(prdDir, 'prd.md');
   if (!fs.existsSync(prdFile)) return 'unknown';
 
   const loaded = loadFile(prdFile);
@@ -123,7 +123,7 @@ function archivePrd(prdId, options = {}) {
   }
 
   const prdDirName = path.basename(prd.dir);
-  const prdFile = path.join(prd.dir, 'PRD.md');
+  const prdFile = path.join(prd.dir, 'prd.md');
 
   // Check if done (skip check for dry-run - always show preview)
   const isDone = isPrdDone(prd.dir);
@@ -185,10 +185,10 @@ function archivePrd(prdId, options = {}) {
     process.exit(1);
   }
 
-  // Add archived_at to PRD.md
+  // Add archived_at to prd.md
   if (fs.existsSync(prdFile)) {
     addArchivedAt(prdFile);
-    console.log(`✓ Added archived_at to PRD.md`);
+    console.log(`✓ Added archived_at to prd.md`);
   }
 
   // Move memory files first
