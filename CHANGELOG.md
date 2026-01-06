@@ -2,6 +2,39 @@
 
 All notable changes to the Sailing Framework will be documented in this file.
 
+## [1.7.0] - 2026-01-06
+
+### Added
+- `rudder archive` command for archiving completed PRDs:
+  - Moves PRD folder to `archive/prds/`
+  - Moves related memory files (E*.md, E*.log, T*.log, PRD-*.md) to `archive/memory/PRD-NNN/`
+  - Uses reverse indexing (findEpicPrd, findTaskEpic) to find related memory
+  - Adds `archived_at` timestamp to prd.md frontmatter
+  - `--list` to show Done PRDs (default without args)
+  - `--all` to archive all Done PRDs
+  - `--dry-run` to preview without changes
+  - `--force` to archive non-Done PRDs
+- `rudder renumber` command for fixing duplicate epic/task IDs across PRDs
+- `archive` path in paths.yaml for archived PRDs and memory
+- Artefact index library (`cli/lib/index.js`) for format-agnostic ID lookup (E1, E001, E0001 all match)
+- `task:next` shows preflight reminder (memory:sync, deps:ready) and checks pending memory
+
+### Changed
+- Agent spawn: quiet mode is now default (use `--verbose` for old behavior)
+- Worktree mode: agents must commit before release, inline mode unchanged
+- Memory consolidation: clearer BEFORE/DURING/AFTER checklist for skill task execution
+
+### Fixed
+- `prd.md` filename now lowercase consistently in index and archive
+- `memory:sync` no longer crashes on missing memory files
+- `memory:edit` warns instead of failing for missing sections
+- Heartbeat timer uses interval instead of polling every 2s
+- Orphan `.run` files auto-cleaned instead of blocking
+
+### Documentation
+- `worktree_folders.md`: explains worktree mode and folder profiles
+- Updated README with install options and sandbox docs
+
 ## [1.6.4] - 2026-01-04
 
 ### Added
