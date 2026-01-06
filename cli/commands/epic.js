@@ -602,7 +602,7 @@ updated: '${new Date().toISOString()}'
         return;
       }
 
-      const result = editArtifact(epicPath, ops);
+      const result = editArtifact(epicPath.file, ops);
 
       if (options.json) {
         jsonOut({ id: normalizedId, ...result });
