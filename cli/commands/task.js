@@ -5,8 +5,8 @@ import fs from 'fs';
 import path from 'path';
 import { execSync } from 'child_process';
 import { findPrdDirs, findFiles, loadFile, saveFile, toKebab, loadTemplate, jsonOut, getMemoryDir, stripComments } from '../lib/core.js';
-import { normalizeId, matchesId, matchesPrdDir } from '../lib/normalize.js';
-import { findEpicParent, findEpicFile } from '../lib/entities.js';
+import { normalizeId, matchesId, matchesPrdDir, parentContainsEpic } from '../lib/normalize.js';
+import { findEpicParent, findEpicFile, findTaskFile as findTaskFileFromEntities } from '../lib/entities.js';
 import { getHierarchicalMemory, ensureMemoryDir } from '../lib/memory.js';
 import { STATUS, normalizeStatus, isStatusDone, isStatusNotStarted, isStatusInProgress, isStatusCancelled, statusSymbol } from '../lib/lexicon.js';
 import { buildDependencyGraph, blockersResolved } from '../lib/graph.js';
@@ -17,18 +17,10 @@ import { formatId } from '../lib/config.js';
 import { parseSearchReplace, editArtifact, parseMultiSectionContent, processMultiSectionOps } from '../lib/artifact.js';
 
 /**
- * Find a task file by ID
+ * Find a task file by ID (format-agnostic via entities.js)
  */
 function findTaskFile(taskId) {
-  const normalizedId = normalizeId(taskId);
-  for (const prdDir of findPrdDirs()) {
-    const tasksDir = path.join(prdDir, 'tasks');
-    const files = findFiles(tasksDir, /^T\d+.*\.md$/);
-    for (const f of files) {
-      if (matchesId(f, taskId)) return f;
-    }
-  }
-  return null;
+  return findTaskFileFromEntities(taskId);
 }
 
 // findEpicParent imported from lib/entities.js
@@ -74,11 +66,9 @@ export function registerTaskCommands(program) {
             if (targetStatus !== taskStatus) return;
           }
 
-          // Epic filter
+          // Epic filter (format-agnostic: E1 matches E001 in parent)
           if (options.epic) {
-            const epicId = normalizeId(options.epic);
-            const parent = (file.data.parent || '').toUpperCase();
-            if (!parent.includes(epicId.toUpperCase())) return;
+            if (!parentContainsEpic(file.data.parent, options.epic)) return;
           }
 
           // Assignee filter
@@ -416,11 +406,9 @@ export function registerTaskCommands(program) {
           if (!task.prd?.toUpperCase().includes(prdId.replace('PRD-', ''))) continue;
         }
 
-        // Epic filter
+        // Epic filter (format-agnostic: E1 matches E001 in parent)
         if (options.epic) {
-          const epicId = normalizeId(options.epic);
-          const parent = (task.parent || '').toUpperCase();
-          if (!parent.includes(epicId.toUpperCase())) continue;
+          if (!parentContainsEpic(task.parent, options.epic)) continue;
         }
 
         if (isStatusNotStarted(task.status) &&

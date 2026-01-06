@@ -9,7 +9,7 @@
 import { Command } from 'commander';
 import { execSync } from 'child_process';
 import { findProjectRoot, jsonOut } from '../lib/core.js';
-import { normalizeId } from '../lib/normalize.js';
+import { normalizeId, parentContainsEpic } from '../lib/normalize.js';
 
 // Import list functions from other commands
 import {
@@ -102,11 +102,9 @@ function findTasks(filters) {
       if (!file?.data) continue;
       const data = file.data;
 
-      // Filter by epic
+      // Filter by epic (format-agnostic: E1 matches E001 in parent)
       if (filters.epic) {
-        const epicId = normalizeId(filters.epic);
-        const parent = (data.parent || '').toUpperCase();
-        if (!parent.includes(epicId.toUpperCase())) continue;
+        if (!parentContainsEpic(data.parent, filters.epic)) continue;
       }
 
       if (!matchesFilters(data, filters, 'task')) continue;

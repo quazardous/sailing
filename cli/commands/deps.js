@@ -4,7 +4,7 @@
 import fs from 'fs';
 import path from 'path';
 import { findPrdDirs, findFiles, loadFile, saveFile, jsonOut } from '../lib/core.js';
-import { normalizeId, matchesId, extractTaskId, matchesPrdDir } from '../lib/normalize.js';
+import { normalizeId, matchesId, extractTaskId, matchesPrdDir, parentContainsEpic } from '../lib/normalize.js';
 import { STATUS, normalizeStatus, isStatusDone, isStatusNotStarted, isStatusInProgress, isStatusCancelled, statusSymbol } from '../lib/lexicon.js';
 import { buildDependencyGraph, detectCycles, findRoots, blockersResolved, longestPath, countTotalUnblocked, getAncestors, getDescendants } from '../lib/graph.js';
 import { addDynamicHelp } from '../lib/help.js';
@@ -994,9 +994,9 @@ export function registerDepsCommands(program) {
           process.exit(1);
         }
 
-        // Find tasks in this epic
+        // Find tasks in this epic (format-agnostic parent matching)
         const epicTasks = [...tasks.values()].filter(t => {
-          return t.epic === epicId || (t.parent && t.parent.includes(epicId));
+          return t.epic === epicId || parentContainsEpic(t.parent, epicId);
         });
 
         // Find epics that block this one and epics blocked by this one

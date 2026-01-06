@@ -143,6 +143,15 @@ export function nextId(type) {
 }
 
 /**
+ * Peek at next ID without incrementing (for dry-run / preview)
+ */
+export function peekNextId(type) {
+  const state = loadState();
+  const current = state.counters[type] ?? 0;
+  return current + 1;
+}
+
+/**
  * Get next number in a directory for a given prefix (fallback method)
  */
 export function getNextNumber(dir, prefix) {

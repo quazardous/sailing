@@ -96,3 +96,49 @@ export function getEntityType(id) {
   if (id.match(/^S\d+$/i)) return 'story';
   return null;
 }
+
+/**
+ * Extract numeric key from ID (format-agnostic)
+ * E001 → 1, E0001 → 1, E14 → 14, E005a → "5a"
+ */
+export function extractNumericKey(id) {
+  if (!id) return null;
+  const match = id.match(/^[A-Z]+-?0*(\d+)([a-z])?/i);
+  if (!match) return null;
+  return match[1] + (match[2] ? match[2].toLowerCase() : '');
+}
+
+/**
+ * Check if parent field contains an epic ID (format-agnostic)
+ * Compares by numeric key: "PRD-001 / E001" matches E1, E001, E0001
+ */
+export function parentContainsEpic(parent, epicId) {
+  if (!parent || !epicId) return false;
+
+  // Extract epic ID from parent string (e.g., "PRD-001 / E001" → "E001")
+  const parentEpicMatch = parent.match(/E\d+[a-z]?/i);
+  if (!parentEpicMatch) return false;
+
+  // Compare by numeric key
+  const parentKey = extractNumericKey(parentEpicMatch[0]);
+  const epicKey = extractNumericKey(epicId);
+
+  return parentKey === epicKey;
+}
+
+/**
+ * Check if parent field contains a PRD ID (format-agnostic)
+ */
+export function parentContainsPrd(parent, prdId) {
+  if (!parent || !prdId) return false;
+
+  // Extract PRD ID from parent string
+  const parentPrdMatch = parent.match(/PRD-?\d+/i);
+  if (!parentPrdMatch) return false;
+
+  // Compare by numeric key
+  const parentKey = extractNumericKey(parentPrdMatch[0]);
+  const prdKey = extractNumericKey(prdId);
+
+  return parentKey === prdKey;
+}

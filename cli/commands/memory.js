@@ -30,6 +30,12 @@ import {
   findEpicPrd
 } from '../lib/memory.js';
 import { getMemoryFile } from '../lib/index.js';
+import {
+  extractAllSections as extractAllSectionsLib,
+  findSection,
+  editSection,
+  parseMultiSectionInput
+} from '../lib/memory-section.js';
 
 /**
  * Check if role is allowed for memory write operations
@@ -52,20 +58,8 @@ export function registerMemoryCommands(program) {
 
   addDynamicHelp(memory, { entityType: 'memory' });
 
-  // Helper: extract all sections from a markdown file
-  function extractAllSections(content) {
-    const sections = [];
-    const regex = /^## ([^\n]+)\n([\s\S]*?)(?=\n## [A-Z]|$)/gm;
-    let match;
-    while ((match = regex.exec(content)) !== null) {
-      const sectionName = match[1].trim();
-      const sectionContent = match[2].replace(/<!--[\s\S]*?-->/g, '').trim();
-      if (sectionContent) {
-        sections.push({ name: sectionName, content: sectionContent });
-      }
-    }
-    return sections;
-  }
+  // Helper: extract all sections from a markdown file (using library)
+  const extractAllSections = extractAllSectionsLib;
 
   // memory:show <ID> - unified memory display (hierarchical: project → PRD → epic)
   memory.command('show <id>')
@@ -559,7 +553,7 @@ export function registerMemoryCommands(program) {
     return null;
   }
 
-  // Helper: edit a single section in a memory file
+  // Helper: edit a single section in a memory file (uses library)
   function editMemorySection(memoryId, section, content, operation) {
     const filePath = getMemoryPath(memoryId);
     if (!filePath) {
@@ -570,29 +564,18 @@ export function registerMemoryCommands(program) {
     }
 
     const fileContent = fs.readFileSync(filePath, 'utf8');
-    const sectionHeader = `## ${section}`;
-    const sectionRegex = new RegExp(`(${sectionHeader}\\s*\\n)([\\s\\S]*?)(?=\\n## [A-Z]|$)`, 'i');
-    const match = fileContent.match(sectionRegex);
+    const result = editSection(fileContent, section, content, operation);
 
-    if (!match) {
-      return { warning: `Section "${section}" not found in ${memoryId}`, id: memoryId, section };
+    if (result.warning) {
+      return { warning: result.warning, id: memoryId, section };
     }
 
-    const existingContent = match[2].replace(/<!--[\s\S]*?-->/g, '').trim();
-    let newSectionContent;
-
-    if (operation === 'append') {
-      newSectionContent = existingContent ? `${existingContent}\n${content}` : content;
-    } else if (operation === 'prepend') {
-      newSectionContent = existingContent ? `${content}\n${existingContent}` : content;
-    } else {
-      newSectionContent = content;
+    if (result.success) {
+      fs.writeFileSync(filePath, result.content);
+      return { success: true, id: memoryId, section, operation };
     }
 
-    const updatedContent = fileContent.replace(match[0], `${match[1]}${newSectionContent}\n\n`);
-    fs.writeFileSync(filePath, updatedContent);
-
-    return { success: true, id: memoryId, section, operation };
+    return { error: result.error || 'Unknown error', id: memoryId, section };
   }
 
   // memory:edit [ID] - edit memory section(s)

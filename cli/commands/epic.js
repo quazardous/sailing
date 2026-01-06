@@ -4,27 +4,23 @@
 import fs from 'fs';
 import path from 'path';
 import { findPrdDirs, findFiles, loadFile, saveFile, toKebab, loadTemplate, jsonOut, getMemoryDir, stripComments } from '../lib/core.js';
-import { normalizeId, matchesId, matchesPrdDir } from '../lib/normalize.js';
+import { normalizeId, matchesId, matchesPrdDir, parentContainsEpic } from '../lib/normalize.js';
 import { STATUS, normalizeStatus, statusSymbol } from '../lib/lexicon.js';
 import { nextId } from '../lib/state.js';
 import { parseUpdateOptions } from '../lib/update.js';
 import { addDynamicHelp } from '../lib/help.js';
 import { formatId } from '../lib/config.js';
 import { parseSearchReplace, editArtifact, parseMultiSectionContent, processMultiSectionOps } from '../lib/artifact.js';
+import { getEpic } from '../lib/index.js';
 
 /**
- * Find an epic file by ID
+ * Find an epic file by ID (format-agnostic via index library)
+ * Returns { file, prdDir } for compatibility with existing code
  */
 function findEpicFile(epicId) {
-  const normalizedId = normalizeId(epicId);
-  for (const prdDir of findPrdDirs()) {
-    const epicsDir = path.join(prdDir, 'epics');
-    const files = findFiles(epicsDir, /^E\d+.*\.md$/);
-    for (const f of files) {
-      if (matchesId(f, epicId)) return { file: f, prdDir };
-    }
-  }
-  return null;
+  const epic = getEpic(epicId);
+  if (!epic) return null;
+  return { file: epic.file, prdDir: epic.prdDir };
 }
 
 /**
@@ -74,13 +70,12 @@ export function registerEpicCommands(program) {
             if (!allTagsMatch) return;
           }
 
-          // Count tasks
+          // Count tasks (format-agnostic parent matching)
           const tasksDir = path.join(prdDir, 'tasks');
-          const epicIdNorm = normalizeId(file.data.id);
           const taskCount = findFiles(tasksDir, /^T\d+.*\.md$/)
             .filter(t => {
               const tf = loadFile(t);
-              return tf?.data?.parent?.includes(epicIdNorm);
+              return parentContainsEpic(tf?.data?.parent, file.data.id);
             }).length;
 
           epics.push({
@@ -156,14 +151,14 @@ export function registerEpicCommands(program) {
       const file = loadFile(epicFile);
       const epicIdNorm = normalizeId(file.data.id);
 
-      // Get task summary
+      // Get task summary (format-agnostic parent matching)
       const tasksDir = path.join(prdDir, 'tasks');
       const tasks = findFiles(tasksDir, /^T\d+.*\.md$/)
         .map(t => {
           const tf = loadFile(t);
           return { id: tf?.data?.id, status: tf?.data?.status, parent: tf?.data?.parent };
         })
-        .filter(t => t.parent?.includes(epicIdNorm));
+        .filter(t => parentContainsEpic(t.parent, epicIdNorm));
 
       const tasksByStatus = {};
       tasks.forEach(t => {
@@ -387,15 +382,14 @@ updated: '${new Date().toISOString()}'
     .action((id, options) => {
       const epicId = normalizeId(id);
 
-      // Find all tasks for this epic
+      // Find all tasks for this epic (format-agnostic parent matching)
       const tasksForEpic = [];
       for (const prdDir of findPrdDirs()) {
         const tasksDir = path.join(prdDir, 'tasks');
         findFiles(tasksDir, /^T\d+.*\.md$/).forEach(f => {
           const file = loadFile(f);
           if (!file?.data) return;
-          const parent = (file.data.parent || '').toUpperCase();
-          if (parent.includes(epicId.toUpperCase())) {
+          if (parentContainsEpic(file.data.parent, epicId)) {
             tasksForEpic.push({
               id: normalizeId(file.data.id),
               title: file.data.title

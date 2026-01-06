@@ -3,74 +3,42 @@
  *
  * Centralized functions for finding PRD/Epic/Task/Story files.
  * Single source of truth for entity path resolution.
+ *
+ * Uses index.js for format-agnostic lookups (T39 finds T0039-foo.md)
  */
 import fs from 'fs';
 import path from 'path';
 import { getPrdsDir, getMemoryDir, loadFile } from './core.js';
+import { getTask, getEpic, getPrd, getMemoryFile as getMemoryFileFromIndex } from './index.js';
 
 /**
- * Find task file by ID
- * @param {string} taskId - Task ID (e.g., T042)
+ * Find task file by ID (format-agnostic: T39, T039, T0039 all work)
+ * @param {string} taskId - Task ID (e.g., T042, T42, 42)
  * @returns {string|null} Absolute path to task file or null
  */
 export function findTaskFile(taskId) {
-  taskId = normalizeId(taskId, 'T');
-  const prdsDir = getPrdsDir();
-  if (!fs.existsSync(prdsDir)) return null;
-
-  for (const prdDir of fs.readdirSync(prdsDir)) {
-    const tasksDir = path.join(prdsDir, prdDir, 'tasks');
-    if (!fs.existsSync(tasksDir)) continue;
-
-    for (const file of fs.readdirSync(tasksDir)) {
-      if (file.startsWith(taskId + '-') && file.endsWith('.md')) {
-        return path.join(tasksDir, file);
-      }
-    }
-  }
-  return null;
+  const task = getTask(taskId);
+  return task ? task.file : null;
 }
 
 /**
- * Find epic file by ID
- * @param {string} epicId - Epic ID (e.g., E001)
+ * Find epic file by ID (format-agnostic: E14, E014, E0014 all work)
+ * @param {string} epicId - Epic ID (e.g., E001, E1, 1)
  * @returns {string|null} Absolute path to epic file or null
  */
 export function findEpicFile(epicId) {
-  epicId = normalizeId(epicId, 'E');
-  const prdsDir = getPrdsDir();
-  if (!fs.existsSync(prdsDir)) return null;
-
-  for (const prdDir of fs.readdirSync(prdsDir)) {
-    const epicsDir = path.join(prdsDir, prdDir, 'epics');
-    if (!fs.existsSync(epicsDir)) continue;
-
-    for (const file of fs.readdirSync(epicsDir)) {
-      if (file.startsWith(epicId + '-') && file.endsWith('.md')) {
-        return path.join(epicsDir, file);
-      }
-    }
-  }
-  return null;
+  const epic = getEpic(epicId);
+  return epic ? epic.file : null;
 }
 
 /**
- * Find PRD file by ID
- * @param {string} prdId - PRD ID (e.g., PRD-001)
+ * Find PRD file by ID (format-agnostic: PRD-1, PRD-001 all work)
+ * @param {string} prdId - PRD ID (e.g., PRD-001, PRD-1, 1)
  * @returns {string|null} Absolute path to prd.md or null
  */
 export function findPrdFile(prdId) {
-  prdId = normalizeId(prdId, 'PRD-');
-  const prdsDir = getPrdsDir();
-  if (!fs.existsSync(prdsDir)) return null;
-
-  for (const prdDir of fs.readdirSync(prdsDir)) {
-    if (prdDir.startsWith(prdId + '-') || prdDir === prdId) {
-      const prdFile = path.join(prdsDir, prdDir, 'prd.md');
-      if (fs.existsSync(prdFile)) return prdFile;
-    }
-  }
-  return null;
+  const prd = getPrd(prdId);
+  return prd ? prd.file : null;
 }
 
 /**
@@ -97,14 +65,13 @@ export function findStoryFile(storyId) {
 }
 
 /**
- * Find memory file for epic
+ * Find memory file for epic (format-agnostic)
  * @param {string} epicId - Epic ID
  * @returns {string|null} Absolute path to memory file or null
  */
 export function findMemoryFile(epicId) {
-  epicId = normalizeId(epicId, 'E');
-  const memoryPath = path.join(getMemoryDir(), `${epicId}.md`);
-  return fs.existsSync(memoryPath) ? memoryPath : null;
+  const mem = getMemoryFileFromIndex(epicId);
+  return mem ? mem.file : null;
 }
 
 /**
@@ -230,30 +197,21 @@ export function findToolset(projectRoot) {
 }
 
 /**
- * Find PRD directory containing an epic
- * @param {string} epicId - Epic ID (e.g., E0076)
+ * Find PRD directory containing an epic (format-agnostic)
+ * @param {string} epicId - Epic ID (e.g., E0076, E76, 76)
  * @returns {{ prdDir: string, epicFile: string, prdId: string } | null}
  */
 export function findEpicParent(epicId) {
-  epicId = normalizeId(epicId, 'E');
-  const prdsDir = getPrdsDir();
-  if (!fs.existsSync(prdsDir)) return null;
+  const epic = getEpic(epicId);
+  if (!epic) return null;
 
-  for (const prdDir of fs.readdirSync(prdsDir)) {
-    const prdPath = path.join(prdsDir, prdDir);
-    const epicsDir = path.join(prdPath, 'epics');
-    if (!fs.existsSync(epicsDir)) continue;
+  const prdDir = epic.prdDir;
+  const prdDirName = path.basename(prdDir);
+  const prdId = prdDirName.match(/^PRD-\d+/)?.[0] || prdDirName.split('-').slice(0, 2).join('-');
 
-    for (const file of fs.readdirSync(epicsDir)) {
-      if (file.startsWith(epicId + '-') && file.endsWith('.md')) {
-        const prdId = prdDir.match(/^PRD-\d+/)?.[0] || prdDir.split('-').slice(0, 2).join('-');
-        return {
-          prdDir: prdPath,
-          epicFile: path.join(epicsDir, file),
-          prdId
-        };
-      }
-    }
-  }
-  return null;
+  return {
+    prdDir,
+    epicFile: epic.file,
+    prdId
+  };
 }
