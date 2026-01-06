@@ -105,7 +105,7 @@ function addArchivedAt(prdFile) {
   if (!loaded) return false;
 
   loaded.data.archived_at = new Date().toISOString();
-  saveFile(prdFile, loaded.data, loaded.content);
+  saveFile(prdFile, loaded.data, loaded.content || '');
   return true;
 }
 
