@@ -459,6 +459,10 @@ export function registerTaskCommands(program) {
         if (ready.length > 1) {
           console.log(`\n${ready.length - 1} more ready task(s)`);
         }
+        // Preflight reminder
+        console.log(`\n📋 Preflight before start:`);
+        console.log(`   rudder memory:sync`);
+        console.log(`   rudder deps:ready --task ${next.id}`);
       }
     });
 
