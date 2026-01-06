@@ -277,10 +277,12 @@ export function registerMemoryCommands(program) {
         .map(f => {
           const epicId = f.replace('.md', '');
           const filePath = memoryFilePath(epicId);
-          const content = fs.readFileSync(filePath, 'utf8');
+          // Handle missing files gracefully (may have been deleted or referenced but not created)
+          const content = fs.existsSync(filePath) ? fs.readFileSync(filePath, 'utf8') : '';
           const prdId = findEpicPrd(epicId);
           return { id: epicId, path: filePath, prdId, content };
-        });
+        })
+        .filter(f => f.content); // Skip empty/missing files
 
       // Ensure PRD memory exists for each epic's PRD (unless --no-create)
       if (options.create !== false) {
@@ -496,7 +498,9 @@ export function registerMemoryCommands(program) {
 
       for (const file of files) {
         const epicId = file.replace('.md', '');
-        const content = fs.readFileSync(memoryFilePath(epicId), 'utf8');
+        const filePath = memoryFilePath(epicId);
+        if (!fs.existsSync(filePath)) continue;
+        const content = fs.readFileSync(filePath, 'utf8');
 
         // Extract Escalation section (between ## Escalation and next ## heading)
         const match = content.match(/## Escalation\s*\n([\s\S]*?)(?=\n## [A-Z])/);
