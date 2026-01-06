@@ -5,16 +5,28 @@
 ```bash
 # 1. Consolidate pending logs (MANDATORY)
 rudder memory:sync
-# If pending logs shown → follow aggregation instructions FIRST
+```
 
+### If memory:sync shows "⚠ PENDING LOGS":
+
+**You MUST consolidate before continuing:**
+
+1. **Read** the pending log content shown
+2. **Synthesize** insights (tips, gotchas, patterns)
+3. **Execute** the `memory:edit` commands shown to update memory files
+4. **Re-run** `rudder memory:sync` to confirm "✓ No pending logs"
+
+⚠️ **Do NOT spawn agent until memory:sync shows "✓ No pending logs".**
+
+### Then continue preflight:
+
+```bash
 # 2. Verify task is unblocked
 rudder deps:ready --task TNNN
 
 # 3. Review task requirements
 rudder task:show TNNN
 ```
-
-⚠️ **Do NOT spawn agent if memory:sync shows pending logs.**
 
 ## DURING Agent Execution
 
