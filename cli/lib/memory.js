@@ -13,6 +13,7 @@ import path from 'path';
 import { findPrdDirs, findFiles, loadFile, getMemoryDir } from './core.js';
 import { resolvePlaceholders, resolvePath } from './paths.js';
 import { normalizeId } from './normalize.js';
+import { getTaskEpic as indexGetTaskEpic, getEpicPrd as indexGetEpicPrd } from './index.js';
 
 /**
  * Get templates directory
@@ -129,26 +130,17 @@ export function findLogFiles() {
 
 /**
  * Find parent epic for a task
+ * Uses index library for format-agnostic lookup (T039, T0039, T00039 all work)
  * @returns {{epicId: string, title: string}|null}
  */
 export function findTaskEpic(taskId) {
-  for (const prdDir of findPrdDirs()) {
-    const tasksDir = path.join(prdDir, 'tasks');
-    const taskFiles = findFiles(tasksDir, new RegExp(`^${taskId}.*\\.md$`));
-    if (taskFiles.length > 0) {
-      const file = loadFile(taskFiles[0]);
-      if (file?.data?.parent) {
-        const match = file.data.parent.match(/E\d+/);
-        if (match) {
-          return {
-            epicId: normalizeId(match[0]),
-            title: file.data.title || taskId
-          };
-        }
-      }
-    }
-  }
-  return null;
+  const result = indexGetTaskEpic(taskId);
+  if (!result) return null;
+
+  return {
+    epicId: normalizeId(result.epicId),
+    title: result.title
+  };
 }
 
 /**
@@ -322,23 +314,13 @@ updated: '${now}'
 
 /**
  * Find parent PRD for an epic
- * Returns normalized PRD ID (e.g., "PRD-001")
+ * Uses index library for format-agnostic lookup
+ * @returns {string|null} Normalized PRD ID (e.g., "PRD-001")
  */
 export function findEpicPrd(epicId) {
-  for (const prdDir of findPrdDirs()) {
-    const epicsDir = path.join(prdDir, 'epics');
-    const epicFiles = findFiles(epicsDir, new RegExp(`^${epicId}.*\\.md$`));
-    if (epicFiles.length > 0) {
-      const dirName = path.basename(prdDir);
-      // Extract PRD-NNN from directory name like "PRD-001-title-slug"
-      const match = dirName.match(/^(PRD-\d+)/i);
-      if (match) {
-        return normalizeId(match[1]);
-      }
-      return normalizeId(dirName);
-    }
-  }
-  return null;
+  const result = indexGetEpicPrd(epicId);
+  if (!result) return null;
+  return normalizeId(result.prdId);
 }
 
 /**
@@ -391,10 +373,13 @@ export function getHierarchicalMemory(id) {
 
 /**
  * Merge a task log into its parent epic log
+ * @param {string} taskId - Task ID (any format: T1, T001, T00001)
+ * @param {string} [actualPath] - Actual file path (avoids normalization issues)
  * @returns {{merged: boolean, epicId: string|null, deleted: boolean}}
  */
-export function mergeTaskLog(taskId) {
-  const taskLogPath = logFilePath(taskId);
+export function mergeTaskLog(taskId, actualPath = null) {
+  // Use actual path if provided, otherwise calculate (may fail if format differs)
+  const taskLogPath = actualPath || logFilePath(taskId);
   if (!fs.existsSync(taskLogPath)) {
     return { merged: false, epicId: null, deleted: false };
   }
@@ -407,19 +392,30 @@ export function mergeTaskLog(taskId) {
     return { merged: false, epicId: null, deleted: true };
   }
 
-  const taskInfo = findTaskEpic(taskId);
+  // Extract numeric part from taskId (T00039 → 39, T1 → 1)
+  const taskNumMatch = taskId.match(/^T0*(\d+)$/i);
+  const taskNum = taskNumMatch ? parseInt(taskNumMatch[1], 10) : null;
+
+  // Find epic using findTaskEpic (tries multiple ID formats)
+  let taskInfo = findTaskEpic(taskId);
+
+  // If not found, try with just the number (handles format changes)
+  if (!taskInfo && taskNum !== null) {
+    taskInfo = findTaskEpic(`T${taskNum}`);
+  }
+
   if (!taskInfo) {
     return { merged: false, epicId: null, deleted: false };
   }
 
-  // Prefix each line with [TNNN] after timestamp
+  // Prefix each line with [TNNN] after timestamp (use original taskId from filename)
   const prefixedLines = content.split('\n').map(line => {
     // Format: "2025-12-27T15:08:03.293Z [INFO] message"
-    // → "2025-12-27T15:08:03.293Z [T139] [INFO] message"
+    // → "2025-12-27T15:08:03.293Z [T00039] [INFO] message"
     return line.replace(/^(\d{4}-\d{2}-\d{2}T[\d:.]+Z) /, `$1 [${taskId}] `);
   }).join('\n');
 
-  // Append to epic log
+  // Append to epic log (use normalized epic ID for consistency)
   const epicLogPath = logFilePath(taskInfo.epicId);
   fs.appendFileSync(epicLogPath, prefixedLines + '\n');
 

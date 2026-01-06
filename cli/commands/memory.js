@@ -203,16 +203,17 @@ export function registerMemoryCommands(program) {
       let createdMd = 0;
 
       // Step 1: Merge all task logs into epic logs
+      // Use actual file paths to handle ID format changes (T001 vs T0001)
       const taskLogs = findLogFiles().filter(f => f.type === 'task');
 
-      for (const { id: taskId } of taskLogs) {
+      for (const { id: taskId, path: taskPath } of taskLogs) {
         // Skip if filtering by epic and this task belongs to different epic
         if (targetEpicId) {
           const taskInfo = findTaskEpic(taskId);
           if (!taskInfo || taskInfo.epicId !== targetEpicId) continue;
         }
 
-        const result = mergeTaskLog(taskId);
+        const result = mergeTaskLog(taskId, taskPath);
         if (result.merged) mergedTasks++;
         if (result.deleted) deletedEmpty++;
       }
