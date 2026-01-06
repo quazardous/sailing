@@ -73,6 +73,7 @@ const DEFAULT_PATHS = {
   // Project directories
   artefacts:  { path: '.sailing/artefacts', type: 'dir' },
   memory:     { path: '.sailing/memory', type: 'dir' },
+  archive:    { path: '.sailing/archive', type: 'dir' },
   templates:  { path: '.sailing/templates', type: 'dir' },
   prompting:  { path: '.sailing/prompting', type: 'dir' },
 
@@ -286,6 +287,10 @@ export function getMemoryDir() {
   return getPath('memory');
 }
 
+export function getArchiveDir() {
+  return getPath('archive');
+}
+
 export function getTemplatesDir() {
   return getPath('templates');
 }
@@ -433,6 +438,7 @@ export function getPathsInfo() {
     postit: getProjectPath('postit'),
     artefacts: getProjectPath('artefacts'),
     memory: getProjectPath('memory'),
+    archive: getProjectPath('archive'),
     templates: {
       template: '^/templates',
       relative: config.paths.templates,

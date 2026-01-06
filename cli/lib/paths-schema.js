@@ -26,6 +26,14 @@ export const PATHS_SCHEMA = {
       haven: '${haven}/memory'
     }
   },
+  archive: {
+    default: '.sailing/archive',
+    description: 'Archived PRDs and memory (prds/, memory/)',
+    category: 'data',
+    profiles: {
+      haven: '${haven}/archive'
+    }
+  },
   templates: {
     default: '.sailing/templates',
     description: 'Artefact templates',
