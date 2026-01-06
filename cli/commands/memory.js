@@ -369,8 +369,8 @@ export function registerMemoryCommands(program) {
         console.log('  [TIP]      → Agent Context');
         console.log('  [ERROR]    → Escalation');
         console.log('  [CRITICAL] → Escalation');
-        console.log('  [INFO]     → Story');
-        console.log('  [WARN]     → Story');
+        console.log('  [INFO]     → Changelog');
+        console.log('  [WARN]     → Changelog');
 
         console.log('\nAfter consolidation:');
         for (const epic of epicLogs) {
@@ -455,7 +455,7 @@ export function registerMemoryCommands(program) {
           console.log(`  rudder epic:clean-logs ${epic.id}`);
         }
         console.log('');
-        console.log('Mapping: [TIP]→Agent Context, [ERROR/CRITICAL]→Escalation');
+        console.log('Mapping: [TIP]→Agent Context, [INFO/WARN]→Changelog, [ERROR/CRITICAL]→Escalation');
         console.log('Escalation = Reformulation. Never copy-paste.');
       }
     });
@@ -564,7 +564,7 @@ export function registerMemoryCommands(program) {
     const match = fileContent.match(sectionRegex);
 
     if (!match) {
-      return { error: `Section "${section}" not found in ${memoryId}` };
+      return { warning: `Section "${section}" not found in ${memoryId}`, id: memoryId, section };
     }
 
     const existingContent = match[2].replace(/<!--[\s\S]*?-->/g, '').trim();
@@ -663,10 +663,11 @@ export function registerMemoryCommands(program) {
 
         // Output
         const errors = results.filter(r => r.error);
+        const warnings = results.filter(r => r.warning);
         const successes = results.filter(r => r.success);
 
         if (options.json) {
-          jsonOut({ edited: successes.length, errors: errors.length, results });
+          jsonOut({ edited: successes.length, warnings: warnings.length, errors: errors.length, results });
           return;
         }
 
@@ -674,6 +675,12 @@ export function registerMemoryCommands(program) {
           console.log(`✓ ${successes.length} section(s) edited:`);
           for (const r of successes) {
             console.log(`  ${r.id}:${r.section} (${r.operation})`);
+          }
+        }
+        if (warnings.length > 0) {
+          console.log(`\n⚠ ${warnings.length} skipped (section not found):`);
+          for (const r of warnings) {
+            console.log(`  ${r.id}:${r.section}`);
           }
         }
         if (errors.length > 0) {
