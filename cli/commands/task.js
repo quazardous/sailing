@@ -98,11 +98,13 @@ export function registerTaskCommands(program) {
         });
       }
 
-      // Ready filter (unblocked tasks only)
+      // Ready filter (unblocked AND not done/cancelled)
       let filtered = tasks;
       if (options.ready) {
         const { tasks: graphTasks } = buildDependencyGraph();
         filtered = tasks.filter(t => {
+          // Exclude Done/Cancelled tasks
+          if (isStatusDone(t.status) || isStatusCancelled(t.status)) return false;
           const graphTask = graphTasks.get(normalizeId(t.id));
           return graphTask && blockersResolved(graphTask, graphTasks);
         });

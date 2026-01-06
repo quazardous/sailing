@@ -340,9 +340,9 @@ export function registerContextCommands(program) {
   // context:load - main entry point (role required)
   context.command('load')
     .description('Load context for an operation (--role required)')
-    .argument('<operation>', 'Operation name (task-start, prd-breakdown, etc.)')
+    .argument('[operation]', 'Operation name (task-start, prd-breakdown, etc.)')
     .option('--sources', 'Show fragment sources used')
-    .requiredOption('--role <role>', 'Role: agent, coordinator, or skill')
+    .option('--role <role>', 'Role: agent, coordinator, or skill')
     .option('--list', 'List available operations')
     .option('--json', 'JSON output')
     .action((operation, options) => {
@@ -364,6 +364,14 @@ export function registerContextCommands(program) {
           }
         }
         return;
+      }
+
+      // Validate required args when not --list
+      if (!operation) {
+        console.error('Error: missing required argument \'operation\'');
+        console.error('Usage: rudder context:load <operation> --role <role>');
+        console.error('       rudder context:load --list');
+        process.exit(1);
       }
 
       const result = composeContext(operation, {
