@@ -473,7 +473,8 @@ export function registerTaskCommands(program) {
         // Show warning first if pending
         if (pendingWarning) {
           console.log(pendingWarning);
-          console.log(`Run: rudder memory:sync\n`);
+          console.log(`→ Run: rudder memory:sync`);
+          console.log(`→ Follow the aggregation instructions shown\n`);
         }
 
         console.log(`${next.id}: ${next.title}`);
