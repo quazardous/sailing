@@ -10,7 +10,7 @@ import { getPlaceholders, resolvePlaceholders, computeProjectHash, clearCache } 
 import { PATHS_SCHEMA, CATEGORIES, getPathDefault, getPathKeys, generatePathsYaml } from '../lib/paths-schema.js';
 import { addDynamicHelp } from '../lib/help.js';
 import { loadState, saveState } from '../lib/state.js';
-import { getAllVersions, getMainVersion, getMainComponentName } from '../lib/version.js';
+import { getAllVersions, getMainVersion, getMainComponentName, bumpComponentVersion, findComponent, loadComponents } from '../lib/version.js';
 import { buildDependencyGraph } from '../lib/graph.js';
 import { isStatusDone, isStatusInProgress, isStatusNotStarted, statusSymbol } from '../lib/lexicon.js';
 import { loadConfig as loadAgentConfig, getConfigDisplay, getSchema, getConfigPath, getAgentConfig } from '../lib/config.js';
@@ -914,6 +914,60 @@ export function registerUtilCommands(program) {
           const changelog = v.changelog || '-';
           console.log(`${name.padEnd(nameWidth)}  ${v.version.padEnd(versionWidth)}  ${v.source.padEnd(sourceWidth)}  ${changelog}`);
         });
+      }
+    });
+
+  // version group
+  const version = program.command('version')
+    .description('Version management (bump)');
+
+  addDynamicHelp(version, { entityType: 'version' });
+
+  // version:bump
+  version.command('bump <component> <type>')
+    .description('Bump component version (type: major, minor, patch)')
+    .option('--dry-run', 'Check if bump is possible without making changes')
+    .option('--json', 'JSON output')
+    .action((componentKey, bumpType, options) => {
+      // Validate bump type
+      if (!['major', 'minor', 'patch'].includes(bumpType)) {
+        console.error(`Invalid bump type: ${bumpType}`);
+        console.error('Use: major, minor, or patch');
+        process.exit(1);
+      }
+
+      // Check component exists first
+      const component = findComponent(componentKey);
+      if (!component) {
+        const config = loadComponents();
+        const available = config.components?.map(c => c.key).join(', ') || '(none)';
+        console.error(`Component not found: ${componentKey}`);
+        console.error(`Available: ${available}`);
+        process.exit(1);
+      }
+
+      // Perform bump (or dry-run)
+      const result = bumpComponentVersion(componentKey, bumpType, { dryRun: options.dryRun });
+
+      if (options.json) {
+        jsonOut(result);
+        return;
+      }
+
+      if (!result.success) {
+        console.error(`Error: ${result.error}`);
+        process.exit(1);
+      }
+
+      if (options.dryRun) {
+        console.log('Dry run - no changes made\n');
+        console.log(`Component:   ${result.component}`);
+        console.log(`Source:      ${result.source}`);
+        console.log(`Current:     ${result.oldVersion}`);
+        console.log(`Would bump:  ${result.oldVersion} → ${result.newVersion} (${bumpType})`);
+      } else {
+        console.log(`Bumped ${result.component}: ${result.oldVersion} → ${result.newVersion}`);
+        console.log(`Source: ${result.source}`);
       }
     });
 

@@ -2,6 +2,22 @@
 
 All notable changes to the Rudder CLI will be documented in this file.
 
+## [1.6.0] - 2025-01-10
+
+### Added
+- `version:bump <component> <type>` command with `--dry-run` support
+- Bumpers registry in version.js (json, text, regex extractors)
+- `findComponent()` and `bumpComponentVersion()` functions
+
+### Changed
+- `assign:claim` now requires `--role agent` (enforces skill/coordinator to spawn inline agent)
+- `resolveInject()` now handles `worktrees`/`no_worktrees` conditionals from workflows.yaml
+- `composeAgentContext()` uses `getExecMode()` instead of hardcoded subprocess mode
+
+### Fixed
+- Inline mode no longer receives sandbox agent prompts (mcp-rudder)
+- Worktree fragments now properly injected based on config
+
 ## [1.3.0] - 2025-12-31
 
 ### Added

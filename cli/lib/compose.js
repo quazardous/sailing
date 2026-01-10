@@ -68,33 +68,30 @@ export function resolveInject(roleDef, mode) {
   // Default empty result
   const result = { files: [], fragments: [], exclude: [] };
 
-  if (!modeConfig) {
-    return result;
-  }
-
-  // Legacy format: array of files
-  if (Array.isArray(modeConfig)) {
-    result.files = modeConfig;
-    return result;
-  }
-
-  // New format: object with files/fragments/exclude
-  if (typeof modeConfig === 'object') {
-    result.files = modeConfig.files || [];
-    result.fragments = modeConfig.fragments || [];
-    result.exclude = modeConfig.exclude || [];
-  }
-
-  // Also handle 'both' mode
-  const bothConfig = inject.both;
-  if (bothConfig) {
-    if (Array.isArray(bothConfig)) {
-      result.files.push(...bothConfig);
-    } else if (typeof bothConfig === 'object') {
-      result.files.push(...(bothConfig.files || []));
-      result.fragments.push(...(bothConfig.fragments || []));
-      // Don't merge exclude from 'both' - that would be confusing
+  // Helper to merge config into result
+  const mergeConfig = (config) => {
+    if (!config) return;
+    if (Array.isArray(config)) {
+      result.files.push(...config);
+    } else if (typeof config === 'object') {
+      result.files.push(...(config.files || []));
+      result.fragments.push(...(config.fragments || []));
+      result.exclude.push(...(config.exclude || []));
     }
+  };
+
+  // 1. Apply mode-specific config (inline or subprocess)
+  mergeConfig(modeConfig);
+
+  // 2. Apply 'both' mode config
+  mergeConfig(inject.both);
+
+  // 3. Apply worktrees/no_worktrees conditional based on config
+  const agentConfig = getAgentConfig();
+  if (agentConfig.use_worktrees) {
+    mergeConfig(inject.worktrees);
+  } else {
+    mergeConfig(inject.no_worktrees);
   }
 
   return result;
@@ -231,7 +228,7 @@ export function composeAgentContext(operation, debug = false) {
   const result = composeContext({
     operation,
     role: 'agent',
-    mode: 'subprocess',  // assign:claim is always subprocess
+    // mode auto-detected via getExecMode() (inline or subprocess)
     debug,
     filterPrefixes: ['agent/', 'shared/', 'core/']
   });
