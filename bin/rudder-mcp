@@ -13,4 +13,19 @@
 #
 
 SCRIPT_DIR="$(dirname "$(realpath "$0")")"
-exec node "$SCRIPT_DIR/../cli/mcp-server.js" "$@"
+PROJECT_ROOT="$(realpath "$SCRIPT_DIR/..")"
+TS_SRC="$PROJECT_ROOT/cli/mcp-server.ts"
+DIST_ENTRY="$PROJECT_ROOT/dist/cli/mcp-server.js"
+
+# Prefer dist mode if it exists
+if [ -f "$DIST_ENTRY" ]; then
+  exec node "$DIST_ENTRY" "$@"
+fi
+
+# Dev fallback: run TS directly if tsx is available
+if command -v tsx >/dev/null 2>&1; then
+  exec tsx "$TS_SRC" "$@"
+fi
+
+echo "rudder build not found. Run: npm run build (in $PROJECT_ROOT)"
+exit 1

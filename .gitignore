@@ -21,7 +21,12 @@ Thumbs.db
 *.log
 .env
 .env.local
+SAILING_DIST
+tmp/
 
 # Generated skill files (from skill/build.sh)
 skill/SKILL_INLINE.md
 skill/SKILL_WORKTREE.md
+
+# Distribution files
+dist/cli/

@@ -1,25 +1,25 @@
 {
   "name": "@quazardous/sailing",
   "version": "1.6.1",
+  "private": true,
   "type": "module",
+  "workspaces": [
+    "cli"
+  ],
   "description": "Project governance CLI for sailing workflow - PRD/Epic/Task management",
   "bin": {
     "rudder": "./bin/rudder",
     "rudder-mcp": "./mcp/rudder-server.js"
   },
   "scripts": {
-    "rudder": "node cli/rudder.js",
+    "rudder": "node dist/cli/rudder.js",
     "mcp": "node mcp/rudder-server.js",
+    "build": "npm run --workspace cli build",
+    "dev": "npm run --workspace cli dev",
+    "lint": "npm run --workspace cli lint",
     "build:skill": "./skill/build.sh",
-    "test": "node --test test/*.test.js",
-    "test:watch": "node --test --watch test/*.test.js"
-  },
-  "dependencies": {
-    "@modelcontextprotocol/sdk": "^1.25.1",
-    "commander": "^12.1.0",
-    "gray-matter": "^4.0.3",
-    "js-yaml": "^4.1.0",
-    "yaml": "^2.8.2"
+    "test": "npm run build && node --test test/*.test.js",
+    "test:watch": "npm run build && node --test --watch test/*.test.js"
   },
   "repository": {
     "type": "git",
