@@ -13,6 +13,7 @@ import { formatId } from '../lib/config.js';
 import { parseSearchReplace, editArtifact, parseMultiSectionContent, processMultiSectionOps } from '../lib/artifact.js';
 import { findPrdFile } from '../lib/entities.js';
 import { createPrdMemoryFile } from '../lib/memory.js';
+import { Prd } from '../lib/types/entities.js';
 
 /**
  * Register PRD commands
@@ -33,7 +34,7 @@ export function registerPrdCommands(program) {
     .option('-l, --limit <n>', 'Limit results', parseInt)
     .option('--json', 'JSON output')
     .action((options) => {
-      const prds = [];
+      const prds: (Prd & { dir: string; epics: number; tasks: number })[] = [];
 
       for (const prdDir of findPrdDirs()) {
         const prdFile = path.join(prdDir, 'prd.md');
@@ -64,10 +65,11 @@ export function registerPrdCommands(program) {
           id: file.data.id || path.basename(prdDir).match(/PRD-\d+/)?.[0],
           title: file.data.title || '',
           status: file.data.status || 'Unknown',
+          parent: file.data.parent || '',
           epics: epicCount,
           tasks: taskCount,
           dir: prdDir
-        });
+        } as Prd & { dir: string; epics: number; tasks: number });
       }
 
       // Sort by ID
@@ -194,10 +196,11 @@ export function registerPrdCommands(program) {
       fs.mkdirSync(path.join(prdDir, 'epics'));
       fs.mkdirSync(path.join(prdDir, 'tasks'));
 
-      const data = {
+      const data: Prd = {
         id,
         title,
         status: 'Draft',
+        parent: '',
         tags: []
       };
 

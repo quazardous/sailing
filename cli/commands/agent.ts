@@ -33,20 +33,7 @@ import {
   checkAgentCompletion, getAgentOrEscalate
 } from '../lib/agent-utils.js';
 import { requireTask, requireAgent } from '../lib/errors.js';
-
-interface AgentInfo {
-  status: string;
-  pid?: number;
-  worktree?: {
-    path: string;
-    branch: string;
-    base_branch?: string;
-  };
-  started_at?: string;
-  completed_at?: string;
-  log_file?: string;
-  exit_code?: number;
-}
+import { AgentInfo } from '../lib/types/agent.js';
 
 interface McpConfigOptions {
   outputPath: string;
@@ -604,7 +591,7 @@ Start by running \`pwd\` and \`ls -la\`, then call the rudder MCP tool with \`co
       });
 
       // Update state atomically to prevent race condition with parallel spawns
-      const agentEntry = {
+      const agentEntry: AgentInfo = {
         status: 'spawned',
         spawned_at: new Date().toISOString(),
         pid: spawnResult.pid,
@@ -612,8 +599,8 @@ Start by running \`pwd\` and \`ls -la\`, then call the rudder MCP tool with \`co
         log_file: spawnResult.logFile,
         srt_config: spawnResult.srtConfig,
         mcp_config: spawnResult.mcpConfig,
-        mcp_server: (spawnResult as any).mcpServerPath,
-        mcp_port: (spawnResult as any).mcpPort,       // External MCP port (if used)
+        mcp_server: spawnResult.mcpServerPath || undefined,
+        mcp_port: spawnResult.mcpPort ?? undefined,       // External MCP port (if used)
         mcp_pid: spawnResult.mcpPid,         // External MCP server PID (if used)
         timeout,
         ...(worktreeInfo && { worktree: worktreeInfo })
@@ -922,7 +909,7 @@ Start by running \`pwd\` and \`ls -la\`, then call the rudder MCP tool with \`co
     .option('--json', 'JSON output')
     .action((taskId, options) => {
       const state = loadState();
-      const agents = state.agents || {};
+      const agents: Record<string, AgentInfo> = state.agents || {};
 
       if (taskId) {
         taskId = normalizeId(taskId);
@@ -960,11 +947,11 @@ Start by running \`pwd\` and \`ls -la\`, then call the rudder MCP tool with \`co
       }
 
       // Show all agents with live completion status
-      const agentList = Object.entries(agents).map(([id, data]) => {
+      const agentList: (AgentInfo & { task_id: string; live_complete: boolean })[] = Object.entries(agents).map(([id, data]) => {
         const completion = checkAgentCompletion(id);
         return {
           task_id: id,
-          ...(data as object),
+          ...data,
           live_complete: completion.complete
         };
       });
@@ -980,8 +967,7 @@ Start by running \`pwd\` and \`ls -la\`, then call the rudder MCP tool with \`co
       }
 
       console.log('Active agents:\n');
-      for (const agentItem of agentList) {
-        const agent = agentItem as any;
+      for (const agent of agentList) {
         let status;
         if (agent.live_complete) {
           status = '✓';
@@ -2024,7 +2010,7 @@ Start by running \`pwd\` and \`ls -la\`, then call the rudder MCP tool with \`co
           task_id: id,
           status: agent.status,
           live_complete: liveComplete,
-          started_at: agent.started_at,
+          started_at: agent.spawned_at,
           pid: agent.pid,
           worktree: agent.worktree?.path,
           branch: agent.worktree?.branch,

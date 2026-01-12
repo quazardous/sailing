@@ -37,6 +37,9 @@ import { getAllVersions, getMainVersion, getMainComponentName, bumpComponentVers
 import { buildDependencyGraph } from '../lib/graph.js';
 import { isStatusDone, isStatusInProgress, isStatusNotStarted, statusSymbol } from '../lib/lexicon.js';
 import { loadConfig as loadAgentConfig, getConfigDisplay, getSchema, getConfigPath, getAgentConfig } from '../lib/config.js';
+import { ConfigDisplayItem, PathInfo, ConfigSchema, PathsInfo, CheckResults, CheckEntry, ConfigSchemaEntry } from '../lib/types/config.js';
+
+type PathSchemaEntry = (typeof PATHS_SCHEMA)[keyof typeof PATHS_SCHEMA];
 
 /**
  * Register utility commands
@@ -71,7 +74,7 @@ export function registerUtilCommands(program) {
       console.log(`# config_file: ${getConfigFile()} ${fs.existsSync(getConfigFile()) ? '✓' : '(using defaults)'}`);
 
       // Group settings by section
-      const sections = {};
+      const sections: Record<string, ConfigDisplayItem[]> = {};
       for (const item of configDisplay) {
         const [section] = item.key.split('.');
         if (!sections[section]) sections[section] = [];
@@ -80,7 +83,7 @@ export function registerUtilCommands(program) {
 
       for (const [section, items] of Object.entries(sections)) {
         console.log(`\n${section}:`);
-        for (const item of (items as any[])) {
+        for (const item of items) {
           const keyName = item.key.split('.').slice(1).join('.');
           const marker = item.isDefault ? '' : '  # (custom)';
           const valuesHint = item.values ? ` [${item.values.join('|')}]` : '';
@@ -92,7 +95,7 @@ export function registerUtilCommands(program) {
       console.log('\n# Configured paths');
       console.log('paths:');
       for (const [key, val] of Object.entries(info.paths)) {
-        const pathInfo = val as any;
+        const pathInfo = val as PathInfo;
         const markers = [];
         if (pathInfo.isCustom) markers.push('custom');
         if (pathInfo.isAbsolute) markers.push('external');  // outside project root
@@ -116,20 +119,20 @@ export function registerUtilCommands(program) {
         process.exit(1);
       }
 
-      const schema: any = getSchema();
+      const schema: ConfigSchema = getSchema();
       const lines = ['# Sailing configuration', '# Generated from schema - edit as needed', ''];
 
       // Group by section
-      const sections: any = {};
+      const sections: Record<string, Array<ConfigSchemaEntry & { key: string }>> = {};
       for (const [key, def] of Object.entries(schema)) {
         const [section, ...rest] = key.split('.');
         if (!sections[section]) sections[section] = [];
-        sections[section].push({ key: rest.join('.'), ...(def as object) });
+        sections[section].push({ key: rest.join('.'), ...def });
       }
 
       for (const [section, items] of Object.entries(sections)) {
         lines.push(`${section}:`);
-        for (const item of (items as any[])) {
+        for (const item of items) {
           // Add description as comment
           lines.push(`  # ${item.description}`);
           if (item.values) {
@@ -152,7 +155,7 @@ export function registerUtilCommands(program) {
     .option('--json', 'JSON output')
     .option('--fix', 'Create missing directories and files')
     .action((options) => {
-      const results: any = {
+      const results: CheckResults = {
         git: [],
         directories: [],
         files: [],
@@ -162,9 +165,14 @@ export function registerUtilCommands(program) {
         summary: { ok: 0, warn: 0, error: 0 }
       };
 
-      const check = (category: string, name: string, status: string, message = '') => {
-        const entry = { name, status, message };
-        (results as any)[category].push(entry);
+      const check = (
+        category: keyof Omit<CheckResults, 'state' | 'summary'>,
+        name: string,
+        status: CheckEntry['status'],
+        message = ''
+      ) => {
+        const entry: CheckEntry = { name, status, message };
+        results[category].push(entry);
         if (status === 'ok') results.summary.ok++;
         else if (status === 'warn') results.summary.warn++;
         else results.summary.error++;
@@ -360,9 +368,9 @@ export function registerUtilCommands(program) {
 
       // Generator function for config.yaml from schema
       const generateConfigYaml = () => {
-        const schema = getSchema();
+        const schema: ConfigSchema = getSchema();
         const lines = ['# Sailing configuration', '# Generated from schema - edit as needed', ''];
-        const sections = {};
+        const sections: Record<string, Array<ConfigSchemaEntry & { key: string }>> = {};
         for (const [key, def] of Object.entries(schema)) {
           const [section, ...rest] = key.split('.');
           if (!sections[section]) sections[section] = [];
@@ -370,7 +378,7 @@ export function registerUtilCommands(program) {
         }
         for (const [section, items] of Object.entries(sections)) {
           lines.push(`${section}:`);
-          for (const item of (items as any[])) {
+          for (const item of items) {
             lines.push(`  # ${item.description}`);
             if (item.values) lines.push(`  # Valid: ${item.values.join(', ')}`);
             const value = typeof item.default === 'string' ? item.default : JSON.stringify(item.default);
@@ -581,7 +589,7 @@ export function registerUtilCommands(program) {
       if (results.state) {
         console.log('\nState:');
         if (results.state.status === 'ok') {
-          const c = results.state.counters;
+          const c = results.state.counters || {};
           console.log(`  ${symbol('ok')} counters        PRD=${c.prd} Epic=${c.epic} Task=${c.task} Story=${c.story || 0}`);
         } else {
           console.log(`  ${symbol(results.state.status)} state.json      ${results.state.message}`);
@@ -888,11 +896,11 @@ export function registerUtilCommands(program) {
       }
 
       // Group by category
-      const byCategory: any = {};
-      for (const [key, schema] of Object.entries(PATHS_SCHEMA)) {
-        const cat = (schema as any).category;
+      const byCategory: Record<string, Array<PathSchemaEntry & { key: string }>> = {};
+      for (const [key, schema] of Object.entries(PATHS_SCHEMA) as [string, PathSchemaEntry][]) {
+        const cat = schema.category;
         if (!byCategory[cat]) byCategory[cat] = [];
-        byCategory[cat].push({ key, ...(schema as object) });
+        byCategory[cat].push({ key, ...schema });
       }
 
       for (const [category, items] of Object.entries(byCategory)) {
@@ -900,7 +908,7 @@ export function registerUtilCommands(program) {
         console.log(`\n${catName}:`);
         console.log('-'.repeat(catName.length + 1));
 
-        for (const item of (items as any[])) {
+        for (const item of items) {
           console.log(`  ${item.key}`);
           console.log(`    default: ${item.default}`);
           if (item.profiles) {
@@ -1220,17 +1228,17 @@ export function registerUtilCommands(program) {
       copyDist('components.yaml-dist', path.join(sailingDir, 'components.yaml'), 'components.yaml');
 
       // Generate config.yaml from schema
-      const schema = getSchema();
+      const schema: ConfigSchema = getSchema();
       const configLines = ['# Sailing configuration', '# Generated from schema', ''];
-      const sections: any = {};
+      const sections: Record<string, Array<ConfigSchemaEntry & { key: string }>> = {};
       for (const [key, def] of Object.entries(schema)) {
         const [section, ...rest] = key.split('.');
         if (!sections[section]) sections[section] = [];
-        sections[section].push({ key: rest.join('.'), ...(def as object) });
+        sections[section].push({ key: rest.join('.'), ...def });
       }
       for (const [section, items] of Object.entries(sections)) {
         configLines.push(`${section}:`);
-        for (const item of (items as any[])) {
+        for (const item of items) {
           configLines.push(`  # ${item.description}`);
           const value = typeof item.default === 'string' ? item.default : JSON.stringify(item.default);
           configLines.push(`  ${item.key}: ${value}`);

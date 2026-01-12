@@ -11,6 +11,7 @@ import {
 } from '../lib/db.js';
 import { resolvePlaceholders } from '../lib/paths.js';
 import { addDynamicHelp } from '../lib/help.js';
+import { AgentInfo } from '../lib/types/agent.js';
 
 /**
  * Register database commands
@@ -190,12 +191,13 @@ export function registerDbCommands(program) {
         return;
       }
 
-      const count = Object.keys(state.agents).length;
+      const stateAgents: Record<string, AgentInfo> = state.agents;
+      const count = Object.keys(stateAgents).length;
 
       if (options.dryRun) {
         console.log(`Would migrate ${count} agent(s) from ${stateFile}:`);
-        Object.entries(state.agents).forEach(([taskId, data]) => {
-          console.log(`  ${taskId}: ${(data as any).status}`);
+        Object.entries(stateAgents).forEach(([taskId, data]) => {
+          console.log(`  ${taskId}: ${data.status}`);
         });
         return;
       }

@@ -11,7 +11,7 @@ import {
   findSection,
   editSection,
   parseMultiSectionInput
-} from '../cli/lib/memory-section.js';
+} from '../dist/cli/lib/memory-section.js';
 
 // =============================================================================
 // Test Fixtures

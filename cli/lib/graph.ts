@@ -5,6 +5,7 @@
 import path from 'path';
 import { findPrdDirs, findFiles, loadFile } from './core.js';
 import { normalizeId, extractTaskId } from './normalize.js';
+import { extractEpicId } from './entities.js';
 import { isStatusDone, isStatusCancelled } from './lexicon.js';
 
 type TaskNode = {
@@ -20,6 +21,7 @@ type TaskNode = {
   file: string;
   prd: string;
   parent: string;
+  epic?: string;
   started_at?: unknown;
   done_at?: unknown;
   blocked_at?: unknown;
@@ -61,6 +63,7 @@ export function buildDependencyGraph(): { tasks: TasksMap; blocks: BlocksMap } {
         file: f,
         prd: prdName,
         parent: (file?.data?.parent as string | undefined) || '',
+        epic: extractEpicId((file?.data?.parent as string | undefined) || '') || undefined,
         started_at: file?.data?.started_at,
         done_at: file?.data?.done_at,
         blocked_at: file?.data?.blocked_at

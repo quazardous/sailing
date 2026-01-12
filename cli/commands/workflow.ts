@@ -5,9 +5,19 @@
 import fs from 'fs';
 import path from 'path';
 import yaml from 'js-yaml';
+import { Command } from 'commander';
 import { jsonOut, getPrompting } from '../lib/core.js';
 import { getAgentConfig } from '../lib/config.js';
 import { addDynamicHelp } from '../lib/help.js';
+import { WorkflowsConfig, WorkflowPhase, WorkflowCommand } from '../lib/types/workflows.js';
+
+type ComposedWorkflow = {
+  entity?: string;
+  description?: string;
+  phases?: WorkflowPhase[];
+};
+
+type ComposedWorkflows = Record<string, ComposedWorkflow>;
 
 interface WorkflowOptions {
   verbose?: boolean;
@@ -16,7 +26,7 @@ interface WorkflowOptions {
 /**
  * Load workflows.yaml (raw)
  */
-function loadWorkflowsConfig() {
+function loadWorkflowsConfig(): WorkflowsConfig | null {
   const promptingDir = getPrompting();
   const workflowPath = path.join(promptingDir, 'workflows.yaml');
 
@@ -25,24 +35,22 @@ function loadWorkflowsConfig() {
   }
 
   const content = fs.readFileSync(workflowPath, 'utf8');
-  return yaml.load(content);
+  return yaml.load(content) as WorkflowsConfig;
 }
 
 /**
  * Compose workflow objects from 4-section structure
  * Merges operations[name] metadata with orchestration[name] steps
  */
-function composeWorkflows(config: any) {
-  if (!config) return null;
-
-  const workflows: any = {};
+function composeWorkflows(config: WorkflowsConfig): ComposedWorkflows {
+  const workflows: ComposedWorkflows = {};
 
   // Only include operations that have orchestration defined
   for (const [name, steps] of Object.entries(config.orchestration || {})) {
-    const opMeta = config.operations?.[name] || {};
+    const opMeta = config.operations?.[name];
     workflows[name] = {
-      entity: opMeta.entity,
-      description: opMeta.description,
+      entity: opMeta?.entity,
+      description: opMeta?.description,
       phases: steps  // Keep 'phases' internally for render functions
     };
   }
@@ -61,14 +69,14 @@ function getCurrentMode() {
 /**
  * Filter commands by mode
  */
-function filterByMode(commands: any[], mode: string) {
+function filterByMode(commands: WorkflowCommand[], mode: string): WorkflowCommand[] {
   return commands.filter(cmd => cmd.mode === 'both' || cmd.mode === mode);
 }
 
 /**
  * Render workflow as text
  */
-function renderWorkflow(name: string, workflow: any, mode: string, options: WorkflowOptions = {}) {
+function renderWorkflow(name: string, workflow: ComposedWorkflow, mode: string, options: WorkflowOptions = {}) {
   const lines = [];
   const entity = workflow.entity?.toUpperCase() || 'ENTITY';
 
@@ -76,7 +84,7 @@ function renderWorkflow(name: string, workflow: any, mode: string, options: Work
   lines.push(`# Mode: ${mode}`);
   lines.push(`# Entity: ${entity}`);
   lines.push('');
-  lines.push(workflow.description);
+  lines.push(workflow.description || '');
   lines.push('');
 
   for (const phase of workflow.phases || []) {
@@ -109,7 +117,7 @@ function renderWorkflow(name: string, workflow: any, mode: string, options: Work
 /**
  * Render workflow comparison matrix
  */
-function renderMatrix(workflows: any) {
+function renderMatrix(workflows: ComposedWorkflows) {
   const lines = [];
 
   lines.push('# Workflow Matrix: Inline vs Subprocess');
@@ -123,7 +131,7 @@ function renderMatrix(workflows: any) {
     lines.push('| Phase | Actor | Command | Mode |');
     lines.push('|-------|-------|---------|------|');
 
-    for (const phase of (workflow as any).phases || []) {
+    for (const phase of workflow.phases || []) {
       for (const cmd of phase.commands || []) {
         const cmdStr = cmd.cmd.replace(/\{(\w+)\}/g, (_, key) => `<${key}>`);
         const modeIcon = cmd.mode === 'both' ? '●' : cmd.mode === 'inline' ? '◐' : '◑';
@@ -139,23 +147,23 @@ function renderMatrix(workflows: any) {
 /**
  * Render quick reference for current mode
  */
-function renderQuickRef(workflows: any, mode: string) {
+function renderQuickRef(workflows: ComposedWorkflows, mode: string) {
   const lines = [];
 
   lines.push(`# Quick Reference: ${mode} mode`);
   lines.push('');
 
   for (const [name, workflow] of Object.entries(workflows)) {
-    const entity = (workflow as any).entity?.toUpperCase() || 'ENTITY';
+    const entity = workflow.entity?.toUpperCase() || 'ENTITY';
 
     lines.push(`## ${name} (${entity})`);
     lines.push('');
 
     // Group by actor
-    const skillCmds = [];
-    const agentCmds = [];
+    const skillCmds: string[] = [];
+    const agentCmds: string[] = [];
 
-    for (const phase of (workflow as any).phases || []) {
+    for (const phase of workflow.phases || []) {
       const commands = filterByMode(phase.commands || [], mode);
       for (const cmd of commands) {
         const cmdStr = cmd.cmd.replace(/\{(\w+)\}/g, (_, key) => `<${key}>`);
@@ -184,7 +192,7 @@ function renderQuickRef(workflows: any, mode: string) {
 /**
  * Register workflow commands
  */
-export function registerWorkflowCommands(program: any) {
+export function registerWorkflowCommands(program: Command) {
   const workflow = program.command('workflow')
     .description('Workflow operations (matrix, documentation)');
 
@@ -195,7 +203,7 @@ export function registerWorkflowCommands(program: any) {
     .option('--mode <mode>', 'Execution mode (inline, subprocess, auto)', 'auto')
     .option('--verbose', 'Show output descriptions')
     .option('--json', 'JSON output')
-    .action((name: string, options: any) => {
+    .action((name: string, options: { mode: string; verbose?: boolean; json?: boolean }) => {
       const config = loadWorkflowsConfig();
       if (!config) {
         console.error('Error: workflows.yaml not found');
@@ -203,10 +211,10 @@ export function registerWorkflowCommands(program: any) {
       }
 
       const workflows = composeWorkflows(config);
-      const wf = workflows?.[name];
+      const wf = workflows[name];
       if (!wf) {
         console.error(`Error: Unknown workflow: ${name}`);
-        console.error(`Available: ${Object.keys(workflows || {}).join(', ')}`);
+        console.error(`Available: ${Object.keys(workflows).join(', ')}`);
         process.exit(1);
       }
 
@@ -217,10 +225,10 @@ export function registerWorkflowCommands(program: any) {
           name,
           mode,
           ...wf,
-          phases: (wf as any).phases.map((p: any) => ({
+          phases: (wf.phases || []).map((p) => ({
             ...p,
             commands: filterByMode(p.commands || [], mode)
-          })).filter((p: any) => p.commands.length > 0)
+          })).filter((p) => p.commands.length > 0)
         };
         jsonOut(filtered);
         return;
@@ -233,7 +241,7 @@ export function registerWorkflowCommands(program: any) {
   workflow.command('matrix')
     .description('Show comparison matrix (inline vs subprocess)')
     .option('--json', 'JSON output')
-    .action((options: any) => {
+    .action((options: { json?: boolean }) => {
       const config = loadWorkflowsConfig();
       if (!config) {
         console.error('Error: workflows.yaml not found');
@@ -254,7 +262,7 @@ export function registerWorkflowCommands(program: any) {
     .description('Quick reference for current mode')
     .option('--mode <mode>', 'Execution mode (inline, subprocess, auto)', 'auto')
     .option('--json', 'JSON output')
-    .action((options: any) => {
+    .action((options: { mode: string; json?: boolean }) => {
       const config = loadWorkflowsConfig();
       if (!config) {
         console.error('Error: workflows.yaml not found');
@@ -276,7 +284,7 @@ export function registerWorkflowCommands(program: any) {
   workflow.command('list')
     .description('List available workflows')
     .option('--json', 'JSON output')
-    .action((options: any) => {
+    .action((options: { json?: boolean }) => {
       const config = loadWorkflowsConfig();
       if (!config) {
         console.error('Error: workflows.yaml not found');
@@ -285,13 +293,13 @@ export function registerWorkflowCommands(program: any) {
 
       const workflows = composeWorkflows(config);
       if (options.json) {
-        jsonOut(Object.keys(workflows || {}));
+        jsonOut(Object.keys(workflows));
         return;
       }
 
       console.log('Available workflows:\n');
-      for (const [name, wf] of Object.entries(workflows || {})) {
-        console.log(`  ${name.padEnd(20)} ${(wf as any).description || ''}`);
+      for (const [name, wf] of Object.entries(workflows)) {
+        console.log(`  ${name.padEnd(20)} ${wf.description || ''}`);
       }
     });
 

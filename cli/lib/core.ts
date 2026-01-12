@@ -7,6 +7,7 @@ import os from 'os';
 import matter from 'gray-matter';
 import yaml from 'js-yaml';
 import { resolvePlaceholders, resolvePath } from './paths.js';
+import type { PathsInfo, ConfigInfo } from './types/config.js';
 
 /**
  * Expand special path prefixes:
@@ -387,7 +388,7 @@ export function getTemplates() {
  * Get paths info for agents (authoritative source)
  * Only exposes paths that agents need to know
  */
-export function getPathsInfo() {
+export function getPathsInfo(): PathsInfo {
   const config = loadPathsConfig();
   const artefactsPath = getArtefactsDir();
   const templatesPath = getTemplates();
@@ -465,7 +466,7 @@ export function getPathsInfo() {
 /**
  * Get configuration info for display
  */
-export function getConfigInfo() {
+export function getConfigInfo(): ConfigInfo {
   const projectRoot = findProjectRoot();
   const pathsConfigPath = path.join(projectRoot, '.sailing', 'paths.yaml');
   const config = loadPathsConfig();

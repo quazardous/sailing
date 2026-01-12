@@ -1,5 +1,4 @@
 #!/usr/bin/env node
-// @ts-nocheck
 /**
  * Rudder CLI - Project governance for sailing workflow
  *
@@ -25,7 +24,7 @@
  *   SAILING_PROJECT=/path/to/project rudder task:list
  *   rudder --root /path/to/project task:list
  */
-import { program } from 'commander';
+import { program, Command } from 'commander';
 import path from 'path';
 import { setProjectRoot, setScriptDir } from './lib/core.js';
 

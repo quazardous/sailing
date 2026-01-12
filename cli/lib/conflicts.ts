@@ -8,11 +8,7 @@ import fs from 'fs';
 import { findProjectRoot } from './core.js';
 import { getWorktreePath, getBranchName, listAgentWorktrees } from './worktree.js';
 import { loadState } from './state.js';
-
-interface AgentInfo {
-  worktree?: any;
-  status?: string;
-}
+import { AgentInfo } from './types/agent.js';
 
 /**
  * Get modified files for an agent worktree

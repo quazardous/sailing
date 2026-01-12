@@ -5,14 +5,33 @@
 import { STATUS } from './lexicon.js';
 import type { Command as CommanderCommand, Option as CommanderOption } from 'commander';
 
+type CommandArg = { name(): string; required: boolean; variadic?: boolean; description?: string };
+
+type OptionWithMeta = CommanderOption & {
+  short?: string;
+  long?: string;
+  description?: string;
+  negate?: boolean;
+  required?: boolean;
+  optional?: boolean;
+  variadic?: boolean;
+  argChoices?: string[];
+};
+
+type CommandWithInternals = CommanderCommand & {
+  _args: CommandArg[];
+  options: OptionWithMeta[];
+  commands: CommanderCommand[];
+};
+
 /**
  * Format option flags (short + long)
  * @param {Object} opt - Commander option object
  * @returns {string} Formatted flags
  */
-function formatOptionFlags(opt: CommanderOption) {
-  const short = (opt as any).short || '';
-  const long = (opt as any).long || '';
+function formatOptionFlags(opt: OptionWithMeta) {
+  const short = opt.short || '';
+  const long = opt.long || '';
 
   let flags = '';
   if (short && long) {
@@ -41,16 +60,17 @@ function formatOptionFlags(opt: CommanderOption) {
  */
 function generateCommandHelp(cmd: CommanderCommand) {
   const lines: { flags: string; desc: string }[] = [];
+  const command = cmd as CommandWithInternals;
 
   // Arguments
-  (cmd as any)._args.forEach((arg: any) => {
+  command._args.forEach((arg) => {
     const name = arg.required ? `<${arg.name()}>` : `[${arg.name()}]`;
     const desc = arg.description || '';
     lines.push({ flags: name, desc });
   });
 
   // Options (skip -h/--help)
-  cmd.options.forEach((opt: CommanderOption & { description?: string; negate?: boolean }) => {
+  command.options.forEach((opt: OptionWithMeta) => {
     if (opt.short === '-h' || opt.long === '--help') return;
     if (opt.negate) return;
 
@@ -70,13 +90,15 @@ function generateCommandHelp(cmd: CommanderCommand) {
  */
 export function generateGroupHelp(group: CommanderCommand, entityType?: string) {
   const output: string[] = [''];
-  const statusValues = entityType && (STATUS as any)[entityType] ? (STATUS as any)[entityType].join(', ') : null;
+  const statusValues = entityType && (STATUS as Record<string, string[]>)[entityType]
+    ? (STATUS as Record<string, string[]>)[entityType].join(', ')
+    : null;
 
-  (group as any).commands.forEach((cmd: CommanderCommand & { _args: any[]; options: any[] }) => {
+  (group as CommandWithInternals).commands.forEach((cmd: CommandWithInternals) => {
     if (cmd.name() === 'help') return;
 
     // Build command line with arguments
-    const args = cmd._args.map((arg: any) =>
+    const args = cmd._args.map((arg: CommandArg) =>
       arg.required ? `<${arg.name()}>` : `[${arg.name()}]`
     ).join(' ');
 
@@ -85,7 +107,7 @@ export function generateGroupHelp(group: CommanderCommand, entityType?: string) 
 
     // Get options only (skip arguments)
     const options: { flags: string; desc: string }[] = [];
-    cmd.options.forEach((opt: CommanderOption & { description?: string; negate?: boolean }) => {
+    cmd.options.forEach((opt: OptionWithMeta) => {
       if (opt.short === '-h' || opt.long === '--help') return;
       if (opt.negate) return;
 

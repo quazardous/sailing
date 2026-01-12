@@ -360,9 +360,9 @@ copy_dir() {
   fi
 }
 
-# Rudder CLI (always updated)
+# Rudder CLI (always updated - copy compiled JS from dist/cli)
 echo "Installing Rudder CLI..."
-copy_dir "$SRC/cli" "$RUDDER"
+copy_dir "$SRC/dist/cli" "$RUDDER"
 
 # Create bin/rudder wrapper at project root
 if [ "$DRY_RUN" = true ]; then
@@ -458,10 +458,10 @@ echo -e "${BLUE}Installing npm dependencies...${NC}"
 if [ "$DRY_RUN" = true ]; then
   echo "  Would run: npm install in $RUDDER"
 else
-  # Copy package.json to rudder dir
-  cp "$SRC/package.json" "$RUDDER/"
+  # Copy package.json from cli workspace (has runtime dependencies)
+  cp "$SRC/cli/package.json" "$RUDDER/"
 
-  (cd "$RUDDER" && npm install --silent 2>/dev/null) || {
+  (cd "$RUDDER" && npm install --production --silent 2>/dev/null) || {
     echo -e "${YELLOW}npm install had warnings (this is usually OK)${NC}"
   }
   echo -e "  ${GREEN}Dependencies installed${NC}"

@@ -9,6 +9,21 @@ import fs from 'fs';
 import { getAgentConfig } from './config.js';
 import { getAgentsDir, getPathsInfo } from './core.js';
 import { spawnClaudeWithSrt, generateSrtConfig, generateAgentMcpConfig, checkMcpServer } from './srt.js';
+import type { ChildProcess } from 'child_process';
+
+export interface SpawnClaudeResult {
+  process: ChildProcess;
+  pid: number;
+  logFile?: string;
+  jsonLogFile?: string;
+  srtConfig?: string | null;
+  mcpConfig?: string | null;
+  mcpSocket?: string | null;
+  mcpPid?: number | null;
+  mcpPort?: number | null;
+  mcpServerPath?: string | null;
+  sandboxHome?: string | null;
+}
 
 // Alias for internal use
 const getAgentsBaseDir = getAgentsDir;
@@ -113,9 +128,9 @@ function getHavenDir(agentDir) {
  * @param {boolean} [options.sandbox] - Override sandbox config
  * @param {boolean|string} [options.stderrToFile] - Redirect stderr to file only (true=logFile, string=custom path)
  * @param {boolean} [options.quietMode] - Suppress all console output (stdout+stderr to file only)
- * @returns {Promise<{ process: ChildProcess, pid: number, logFile: string, srtConfig?: string, mcpConfig?: string, mcpSocket?: string, mcpPid?: number }>}
+ * @returns {Promise<SpawnClaudeResult>}
  */
-export async function spawnClaude(options) {
+export async function spawnClaude(options): Promise<SpawnClaudeResult> {
   const { prompt, cwd, logFile, timeout, agentDir, taskId, projectRoot, stderrToFile, quietMode } = options;
   const config = getAgentConfig();
   const paths = getPathsInfo();
@@ -131,6 +146,8 @@ export async function spawnClaude(options) {
   let mcpInfo = null;
   let mcpSocket = null;
   let mcpPid = null;
+  let mcpPort: number | null = null;
+  let mcpServerPath: string | null = null;
 
   if (useExternalMcp) {
     const havenDir = getHavenDir(agentDir);
@@ -154,9 +171,11 @@ export async function spawnClaude(options) {
         projectRoot,
         externalPort: mcpStatus.port
       });
+      mcpPort = mcpStatus.port ?? null;
       console.error(`Using MCP server (pid: ${mcpPid}, port: ${mcpStatus.port})`);
     } else {
       mcpSocket = mcpStatus.socket;
+      mcpServerPath = mcpSocket || null;
       mcpInfo = generateAgentMcpConfig({
         outputPath: path.join(agentDir, 'mcp-config.json'),
         projectRoot,
@@ -234,6 +253,8 @@ export async function spawnClaude(options) {
     mcpConfig: mcpInfo?.configPath,
     mcpSocket,
     mcpPid,
+    mcpPort,
+    mcpServerPath,
     sandboxHome
   };
 }

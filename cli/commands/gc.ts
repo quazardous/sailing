@@ -10,6 +10,7 @@ import { findProjectRoot, jsonOut } from '../lib/core.js';
 import { resolvePlaceholders, computeProjectHash } from '../lib/paths.js';
 import { loadState, saveState } from '../lib/state.js';
 import { removeWorktree, listAgentWorktrees, pruneWorktrees } from '../lib/worktree.js';
+import { AgentInfo } from '../lib/types/agent.js';
 
 /**
  * Get base havens directory (~/.sailing/havens)
@@ -75,12 +76,12 @@ function validateProjectHash(hash) {
  */
 function getStaleAgents(days = 7) {
   const state = loadState();
-  const agents = state.agents || {};
+  const agents: Record<string, AgentInfo> = state.agents || {};
   const cutoff = Date.now() - (days * 24 * 60 * 60 * 1000);
 
   return Object.entries(agents)
     .filter(([_, info]) => {
-      const agentInfo = info as any;
+      const agentInfo = info;
       // Check if terminal status
       const terminalStatus = ['collected', 'merged', 'rejected', 'killed', 'error'];
       if (!terminalStatus.includes(agentInfo.status)) return false;

@@ -23,7 +23,7 @@ import {
   getTaskEpic,
   getEpicPrd,
   clearIndexCache
-} from '../cli/lib/index.js';
+} from '../dist/cli/lib/index.js';
 
 // =============================================================================
 // ID Extraction Tests (pure functions, no filesystem)

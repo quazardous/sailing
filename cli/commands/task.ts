@@ -15,6 +15,7 @@ import { parseUpdateOptions, addLogEntry } from '../lib/update.js';
 import { addDynamicHelp } from '../lib/help.js';
 import { formatId } from '../lib/config.js';
 import { parseSearchReplace, editArtifact, parseMultiSectionContent, processMultiSectionOps } from '../lib/artifact.js';
+import { Task } from '../lib/types/entities.js';
 
 /**
  * Find a task file by ID (format-agnostic via entities.js)
@@ -49,7 +50,7 @@ export function registerTaskCommands(program) {
     .option('--json', 'JSON output')
     .action((prdArg, options) => {
       const prd = prdArg || options.prd;
-      const tasks = [];
+      const tasks: (Task & { file: string; prd: string })[] = [];
 
       for (const prdDir of findPrdDirs()) {
         if (prd && !matchesPrdDir(prdDir, prd)) continue;
@@ -88,13 +89,14 @@ export function registerTaskCommands(program) {
             id: file.data.id || path.basename(f, '.md').match(/^T\d+/)?.[0],
             title: file.data.title || '',
             status: file.data.status || 'Unknown',
+            parent: file.data.parent || '',
             assignee: file.data.assignee || 'unassigned',
             effort: file.data.effort || null,
             priority: file.data.priority || 'normal',
             blocked_by: file.data.blocked_by || [],
             prd: prdName,
             file: f
-          });
+          } as Task & { file: string; prd: string });
         });
       }
 
@@ -270,7 +272,7 @@ export function registerTaskCommands(program) {
       const filename = `${id}-${toKebab(title)}.md`;
       const taskPath = path.join(tasksDir, filename);
 
-      const data: any = {
+      const data: Task = {
         id,
         title,
         status: 'Not Started',

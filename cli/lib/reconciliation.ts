@@ -19,6 +19,14 @@ import {
   listAgentWorktrees
 } from './worktree.js';
 import { getGitConfig } from './config.js';
+import { AgentInfo } from './types/agent.js';
+
+export interface BranchHierarchyNode extends BranchStateInfo {
+  branch: string;
+  parent: string;
+}
+
+export type BranchHierarchyEntry = string | BranchHierarchyNode;
 
 interface BranchStateInfo {
   state: string;
@@ -30,7 +38,7 @@ interface BranchStateInfo {
 interface Diagnosis {
   main: { branch: string; state: string; behind?: number };
   branches: Record<string, BranchStateInfo>;
-  hierarchy: any[];
+  hierarchy: BranchHierarchyEntry[];
   issues: string[];
   recommendations: string[];
   orphaned?: string[];
@@ -40,14 +48,6 @@ interface Context {
   prdId?: string;
   epicId?: string;
   branching?: string;
-}
-
-interface AgentInfo {
-  worktree?: any;
-  epic_id?: string;
-  prd_id?: string;
-  status?: string;
-  pid?: number;
 }
 
 /**
@@ -162,7 +162,7 @@ export function findOrphanedBranches() {
  * @param {Context} context - { prdId, epicId, branching }
  * @returns {Diagnosis} Full diagnosis
  */
-export function diagnose(context: Context = {}) {
+export function diagnose(context: Context = {}): Diagnosis {
   const projectRoot = findProjectRoot();
   const mainBranch = getMainBranch();
   const { prdId, epicId, branching = 'flat' } = context;
@@ -481,7 +481,9 @@ export function report(context: Context = {}) {
   lines.push('');
 
   // Hierarchy (only show if there are actual branch objects, not just main)
-  const branchHierarchy = diag.hierarchy.filter(h => typeof h === 'object' && h.branch);
+  const branchHierarchy = diag.hierarchy.filter(
+    (h): h is BranchHierarchyNode => typeof h === 'object' && !!(h as BranchHierarchyNode).branch
+  );
   if (branchHierarchy.length > 0) {
     lines.push('## Branch Hierarchy');
     for (const h of branchHierarchy) {

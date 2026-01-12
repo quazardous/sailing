@@ -10,20 +10,14 @@
 import fs from 'fs';
 import yaml from 'js-yaml';
 import { getConfigFile } from './core.js';
-
-interface ConfigSchemaItem {
-  type: string;
-  default: any;
-  description: string;
-  values?: any[];
-}
+import { ConfigSchemaEntry, ConfigDisplayItem, ConfigSchema } from './types/config.js';
 
 /**
  * Configuration Schema
  * Each component declares its config variables here.
  * Format: 'section.key': { type, default, description, values? }
  */
-export const CONFIG_SCHEMA: Record<string, ConfigSchemaItem> = {
+export const CONFIG_SCHEMA: Record<string, ConfigSchemaEntry> = {
   'git.main_branch': {
     type: 'string',
     default: 'main',
@@ -377,7 +371,7 @@ export function getDefaults() {
  */
 export function getConfigDisplay() {
   const config = loadConfig();
-  const result = [];
+  const result: ConfigDisplayItem[] = [];
 
   for (const [key, schema] of Object.entries(CONFIG_SCHEMA)) {
     const value = getNestedValue(config, key);
@@ -398,7 +392,7 @@ export function getConfigDisplay() {
 /**
  * Get config schema (for documentation/tooling)
  */
-export function getSchema() {
+export function getSchema(): ConfigSchema {
   return CONFIG_SCHEMA;
 }
 

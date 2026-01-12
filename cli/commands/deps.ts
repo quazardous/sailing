@@ -753,7 +753,7 @@ export function registerDepsCommands(program) {
       for (const [id, task] of tasks) {
         // Apply filters
         if (prdFilter && !task.prd?.includes(prdFilter)) continue;
-        if (epicFilter && (task as any).epic !== epicFilter) continue;
+        if (epicFilter && task.epic !== epicFilter) continue;
 
         // Tag filter (AND logic)
         if (options.tag?.length > 0) {
@@ -764,7 +764,7 @@ export function registerDepsCommands(program) {
 
         // Check both task blockers AND epic blockers
         const taskReady = isStatusNotStarted(task.status) && blockersResolved(task, tasks);
-        const epicReady = epicBlockersResolved((task as any).epic);
+        const epicReady = epicBlockersResolved(task.epic);
 
         if (taskReady && epicReady) {
           const totalUnblocked = countTotalUnblocked(id, tasks, blocks);
@@ -996,7 +996,7 @@ export function registerDepsCommands(program) {
 
         // Find tasks in this epic (format-agnostic parent matching)
         const epicTasks = [...tasks.values()].filter(t => {
-          return (t as any).epic === epicId || parentContainsEpic(t.parent, epicId);
+          return t.epic === epicId || parentContainsEpic(t.parent, epicId);
         });
 
         // Find epics that block this one and epics blocked by this one

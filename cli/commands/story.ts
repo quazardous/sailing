@@ -9,6 +9,7 @@ import { nextId } from '../lib/state.js';
 import { addDynamicHelp } from '../lib/help.js';
 import { formatId } from '../lib/config.js';
 import { parseSearchReplace, editArtifact, parseMultiSectionContent, processMultiSectionOps } from '../lib/artifact.js';
+import { Story } from '../lib/types/entities.js';
 
 const STORY_TYPES = ['user', 'technical', 'api'];
 
@@ -30,8 +31,8 @@ function findStoryFile(storyId) {
 /**
  * Get all stories across all PRDs
  */
-function getAllStories(prdFilter = null) {
-  const stories = [];
+function getAllStories(prdFilter = null): (Story & { prd: string; file: string })[] {
+  const stories: (Story & { prd: string; file: string })[] = [];
   for (const prdDir of findPrdDirs()) {
     if (prdFilter && !matchesPrdDir(prdDir, prdFilter)) continue;
 
@@ -50,7 +51,7 @@ function getAllStories(prdFilter = null) {
         parent_story: file.data.parent_story || null,
         prd: prdName,
         file: f
-      });
+      } as Story & { prd: string; file: string });
     });
   }
   return stories;
@@ -270,9 +271,10 @@ export function registerStoryCommands(program) {
       const filename = `${id}-${toKebab(title)}.md`;
       const storyPath = path.join(storiesDir, filename);
 
-      const data = {
+      const data: Story = {
         id,
         title,
+        status: 'Draft',
         parent: path.basename(prdDir).split('-').slice(0, 2).join('-'),
         parent_story: options.parentStory ? normalizeId(options.parentStory) : null,
         type: options.type

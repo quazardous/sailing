@@ -12,6 +12,7 @@ import { addDynamicHelp } from '../lib/help.js';
 import { formatId } from '../lib/config.js';
 import { parseSearchReplace, editArtifact, parseMultiSectionContent, processMultiSectionOps } from '../lib/artifact.js';
 import { getEpic } from '../lib/index.js';
+import { Epic, Task } from '../lib/types/entities.js';
 
 /**
  * Find an epic file by ID (format-agnostic via index library)
@@ -44,7 +45,7 @@ export function registerEpicCommands(program) {
     .option('--json', 'JSON output')
     .action((prdArg, options) => {
       const prd = prdArg || options.prd;
-      const epics = [];
+      const epics: (Epic & { file: string; prd: string; tasks: number })[] = [];
 
       for (const prdDir of findPrdDirs()) {
         if (prd && !matchesPrdDir(prdDir, prd)) continue;
@@ -82,10 +83,11 @@ export function registerEpicCommands(program) {
             id: file.data.id,
             title: file.data.title || '',
             status: file.data.status || 'Unknown',
+            parent: file.data.parent || '',
             prd: prdName,
             tasks: taskCount,
             file: f
-          });
+          } as Epic & { file: string; prd: string; tasks: number });
         });
       }
 
@@ -213,7 +215,7 @@ export function registerEpicCommands(program) {
       const filename = `${id}-${toKebab(title)}.md`;
       const epicPath = path.join(epicsDir, filename);
 
-      const data = {
+      const data: Epic = {
         id,
         title,
         status: 'Not Started',

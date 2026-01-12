@@ -23,6 +23,10 @@ import yaml from 'js-yaml';
 import { getPrompting, jsonOut, getPathsInfo } from '../lib/core.js';
 import { addDynamicHelp } from '../lib/help.js';
 import { getAgentConfig } from '../lib/config.js';
+import { WorkflowsConfig, WorkflowPhase, WorkflowCommand, RoleDefinition, OperationMeta } from '../lib/types/workflows.js';
+
+type OperationListItem = OperationMeta & { name: string; allowedRoles: string[] };
+type OperationsByRole = Record<string, OperationListItem[]>;
 
 interface ContextOptions {
   debug?: boolean;
@@ -52,7 +56,7 @@ function loadProjectFile(key) {
 /**
  * Load unified workflows.yaml configuration
  */
-function loadWorkflowsConfig() {
+function loadWorkflowsConfig(): WorkflowsConfig {
   const promptingDir = getPrompting();
   const configPath = path.join(promptingDir, 'workflows.yaml');
 
@@ -62,7 +66,7 @@ function loadWorkflowsConfig() {
   }
 
   const content = fs.readFileSync(configPath, 'utf8');
-  return yaml.load(content);
+  return yaml.load(content) as WorkflowsConfig;
 }
 
 /**
@@ -86,7 +90,7 @@ function loadFragment(fragmentPath) {
  * @param {string} roleOverride - Optional role to use instead of operation's default
  * @returns {{ fragments: string[], role: string, roleDef: object } | null}
  */
-function resolveFragments(config, operation, roleOverride = null) {
+function resolveFragments(config: WorkflowsConfig, operation: string, roleOverride: string | null = null) {
   // 1. Get operation metadata (fallback to default)
   const opMeta = config.operations[operation] || config.operations['default'];
   if (!opMeta) {
@@ -321,17 +325,16 @@ function composeContext(operation, options: ContextOptions = {}) {
 /**
  * List available operations grouped by role
  */
-function listOperations(config) {
-  const byRole: any = {};
+function listOperations(config: WorkflowsConfig): OperationsByRole {
+  const byRole: OperationsByRole = {};
   for (const [op, meta] of Object.entries(config.operations || {})) {
     if (op === 'default') continue;
     // Support both 'roles' array and legacy 'role' string
-    const metaObj = meta as any;
-    const roles = metaObj.roles || (metaObj.role ? [metaObj.role] : ['agent']);
+    const roles = meta.roles || (meta.role ? [meta.role] : ['agent']);
     const defaultRole = roles[0];
     // List under default role, show all allowed roles
     if (!byRole[defaultRole]) byRole[defaultRole] = [];
-    byRole[defaultRole].push({ name: op, allowedRoles: roles, ...(meta as object) });
+    byRole[defaultRole].push({ name: op, allowedRoles: roles, ...meta });
   }
   return byRole;
 }
@@ -360,7 +363,7 @@ export function registerContextCommands(program) {
         } else {
           for (const [role, ops] of Object.entries(byRole)) {
             console.log(`\n${role.toUpperCase()}:`);
-            for (const op of (ops as any)) {
+            for (const op of ops) {
               // Show additional allowed roles if multi-role
               const extraRoles = op.allowedRoles?.length > 1
                 ? ` [+${op.allowedRoles.slice(1).join(',')}]`
@@ -542,7 +545,7 @@ export function registerContextCommands(program) {
 
       console.log('Roles:\n');
       for (const [name, def] of Object.entries(config.roles || {})) {
-        const roleDef = def as any;
+        const roleDef = def as RoleDefinition;
         console.log(`  ${name.padEnd(15)} ${roleDef.description || ''}`);
         console.log(`    base_sets: [${roleDef.base_sets?.join(', ') || ''}]`);
         console.log(`    workflow: ${roleDef.workflow || false}`);
@@ -559,10 +562,10 @@ export function registerContextCommands(program) {
       }
 
       console.log('\nOperations by Role:\n');
-      const byRole: any = listOperations(config);
+      const byRole = listOperations(config);
       for (const [role, ops] of Object.entries(byRole)) {
         console.log(`  ${role.toUpperCase()}:`);
-        for (const op of (ops as any[])) {
+        for (const op of ops) {
           const additionalSets = config.matrix[op.name] || [];
           const setsStr = additionalSets.length > 0 ? ` +[${additionalSets.join(', ')}]` : '';
           console.log(`    ${op.name.padEnd(18)}${setsStr}`);

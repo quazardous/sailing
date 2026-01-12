@@ -48,7 +48,8 @@ import {
   reconcileBranch,
   pruneOrphans,
   report as reconciliationReport,
-  BranchState
+  BranchState,
+  BranchHierarchyNode
 } from '../lib/reconciliation.js';
 
 interface AgentInfo {
@@ -1043,7 +1044,8 @@ export function registerWorktreeCommands(program: any) {
       // Sync branches
       if (options.sync) {
         for (const h of diag.hierarchy) {
-          const branchInfo = h as any;
+          if (typeof h !== 'object' || !('branch' in h)) continue;
+          const branchInfo = h as BranchHierarchyNode;
           if (branchInfo.state === BranchState.BEHIND || branchInfo.state === BranchState.DIVERGED) {
             const result = reconcileBranch(branchInfo.branch, branchInfo.parent, {
               strategy: gitConfig?.merge_strategy || 'merge',

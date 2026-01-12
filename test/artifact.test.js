@@ -19,7 +19,7 @@ import {
   editArtifact,
   listSections,
   getSection
-} from '../cli/lib/artifact.js';
+} from '../dist/cli/lib/artifact.js';
 
 // Test fixtures
 const SIMPLE_MD = `---
