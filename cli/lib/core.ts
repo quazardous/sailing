@@ -36,25 +36,13 @@ function expandPath(p: string): string {
 
   // ^ → sailing repo root (only in devinstall mode)
   if (p.startsWith('^/') || p === '^') {
-    // Lazy check for devinstall mode
-    const repoRoot = _scriptDir
-      ? path.resolve(_scriptDir, '..')
-      : path.resolve(import.meta.dirname, '../..');
-
-    const hasPrompting = fs.existsSync(path.join(repoRoot, 'prompting'));
-    const hasCli = fs.existsSync(path.join(repoRoot, 'cli'));
-    const hasInstall = fs.existsSync(path.join(repoRoot, 'install.sh'));
-
-    if (hasPrompting && hasCli && hasInstall) {
-      // Devinstall mode confirmed
-      if (p === '^') return repoRoot;
-      return path.join(repoRoot, p.slice(2));
-    } else {
-      // Not in devinstall mode - warn and fall back
-      console.error(`Warning: ^/ prefix only works in devinstall mode`);
-      console.error(`  Path "${p}" will be treated as relative to project root`);
-      return p.replace(/^\^/, '.');
+    const repoRoot = getRepoRoot();
+    if (repoRoot) {
+      return p === '^' ? repoRoot : path.join(repoRoot, p.slice(2));
     }
+    console.error(`Warning: ^/ prefix only works in devinstall mode`);
+    console.error(`  Path "${p}" will be treated as relative to project root`);
+    return p.replace(/^\^/, '.');
   }
 
   return p;
@@ -108,6 +96,7 @@ const DEFAULT_PATHS: Record<string, { path: string; type: 'dir' | 'file' }> = {
 let _config: any = null;
 let _projectRoot: string | null = null;
 let _scriptDir: string | null = null;
+let _repoRoot: string | null | undefined = undefined; // undefined = not computed yet
 
 /**
  * Set the script directory (called from rudder.js)
@@ -115,6 +104,50 @@ let _scriptDir: string | null = null;
  */
 export function setScriptDir(dir: string) {
   _scriptDir = dir;
+}
+
+// Magic marker file to identify sailing repo root
+const REPO_MAGIC_FILE = '.sailing-repo';
+const REPO_MAGIC_CONTENT = 'kaizoku-ou-ni-ore-wa-naru';
+
+/**
+ * Get sailing repo root (devinstall mode only)
+ *
+ * Looks for .sailing-repo magic file in parent directories.
+ * Returns null if not in devinstall mode.
+ */
+export function getRepoRoot(): string | null {
+  if (_repoRoot !== undefined) return _repoRoot;
+
+  const startDir = _scriptDir || import.meta.dirname;
+  if (!startDir) {
+    _repoRoot = null;
+    return null;
+  }
+
+  // Walk up looking for magic file (max 5 levels)
+  let dir = startDir;
+  for (let i = 0; i < 5; i++) {
+    const magicPath = path.join(dir, REPO_MAGIC_FILE);
+    if (fs.existsSync(magicPath)) {
+      try {
+        const content = fs.readFileSync(magicPath, 'utf8').trim();
+        if (content === REPO_MAGIC_CONTENT) {
+          _repoRoot = dir;
+          return dir;
+        }
+      } catch {
+        // Ignore read errors
+      }
+    }
+    const parent = path.dirname(dir);
+    if (parent === dir) break;
+    dir = parent;
+  }
+
+  // Not in devinstall mode
+  _repoRoot = null;
+  return null;
 }
 
 /**
