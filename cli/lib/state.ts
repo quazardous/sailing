@@ -1,7 +1,6 @@
 /**
  * State management for sailing project
  * Handles centralized ID counters and state.json
- * TODO[P1]: Define a typed State shape (counters, agents, assignments) to eliminate implicit any when strict is enabled.
  * TODO[P2]: Add runtime validation/guards on loadState/saveState to catch corrupt state early.
  * TODO[P3]: Consider splitting lock/file I/O from state helpers for easier TS migration.
  */

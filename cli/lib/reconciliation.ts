@@ -3,7 +3,6 @@
  *
  * Detects state drift between state.json and git reality.
  * Provides reconciliation strategies for branch hierarchies.
- * TODO[P1]: Typify context/prd/epic IDs and branch hierarchy entries to drop implicit any when strict is enabled.
  * TODO[P2]: Add guards when reading branching config to avoid undefined parent branches.
  * TODO[P3]: Separate reporting/diagnostics from mutation to ease gradual TS migration.
  */

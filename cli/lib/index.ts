@@ -27,7 +27,7 @@ let _memoryIndex: Map<string, { key: string; type: 'epic' | 'prd'; file: string 
  */
 export function extractIdKey(filename: string, prefix = 'T'): string | null {
   // Match prefix + optional leading zeros + digits + optional letter suffix
-  const match = filename.match(new RegExp(`^${prefix}0*(\d+)([a-z])?`, 'i'));
+  const match = filename.match(new RegExp(`^${prefix}0*(\\d+)([a-z])?`, 'i'));
   if (!match) return null;
   const num = match[1];
   const suffix = match[2] ? match[2].toLowerCase() : '';
@@ -38,7 +38,7 @@ export function extractIdKey(filename: string, prefix = 'T'): string | null {
  * Extract numeric part only (for backward compat)
  */
 export function extractNumericId(filename: string, prefix = 'T'): number | null {
-  const match = filename.match(new RegExp(`^${prefix}0*(\d+)`, 'i'));
+  const match = filename.match(new RegExp(`^${prefix}0*(\\d+)`, 'i'));
   return match ? parseInt(match[1], 10) : null;
 }
 
