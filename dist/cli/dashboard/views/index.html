@@ -1,0 +1,833 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Sailing Dashboard</title>
+  <script src="https://unpkg.com/htmx.org@2.0.4"></script>
+  <style>
+    /* === Reset & Base === */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    /* === Dark Theme === */
+    [data-theme="dark"] {
+      --bg-primary: #111827;
+      --bg-secondary: #1F2937;
+      --bg-card: #374151;
+      --bg-hover: #4B5563;
+      --ok: #10B981;
+      --ok-bg: rgba(16, 185, 129, 0.15);
+      --risk: #F59E0B;
+      --risk-bg: rgba(245, 158, 11, 0.15);
+      --blocked: #EF4444;
+      --blocked-bg: rgba(239, 68, 68, 0.15);
+      --accent: #3B82F6;
+      --accent-light: #60A5FA;
+      --text: #F9FAFB;
+      --text-muted: #9CA3AF;
+      --text-dim: #6B7280;
+      --border: #374151;
+    }
+
+    /* === Light Theme === */
+    [data-theme="light"] {
+      --bg-primary: #F9FAFB;
+      --bg-secondary: #FFFFFF;
+      --bg-card: #F3F4F6;
+      --bg-hover: #E5E7EB;
+      --ok: #059669;
+      --ok-bg: rgba(5, 150, 105, 0.1);
+      --risk: #D97706;
+      --risk-bg: rgba(217, 119, 6, 0.1);
+      --blocked: #DC2626;
+      --blocked-bg: rgba(220, 38, 38, 0.1);
+      --accent: #2563EB;
+      --accent-light: #3B82F6;
+      --text: #111827;
+      --text-muted: #6B7280;
+      --text-dim: #9CA3AF;
+      --border: #E5E7EB;
+    }
+
+    :root {
+      --radius: 6px;
+      --radius-lg: 8px;
+    }
+
+    body {
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      font-size: 14px;
+      line-height: 1.5;
+      background: var(--bg-primary);
+      color: var(--text);
+      min-height: 100vh;
+    }
+
+    /* === Layout === */
+    .app {
+      display: grid;
+      grid-template-columns: 280px 1fr;
+      grid-template-rows: 48px 1fr;
+      height: 100vh;
+    }
+
+    /* === Header === */
+    .header {
+      grid-column: 1 / -1;
+      background: var(--bg-secondary);
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 20px;
+    }
+
+    .header-left {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+    }
+
+    .logo {
+      font-weight: 600;
+      font-size: 15px;
+      color: var(--text);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .logo::before {
+      content: "⛵";
+      font-size: 18px;
+    }
+
+    .project-info {
+      color: var(--text-muted);
+      font-weight: 500;
+    }
+
+    .version-badge {
+      background: var(--bg-card);
+      padding: 4px 10px;
+      border-radius: var(--radius);
+      font-family: 'SF Mono', 'Fira Code', Consolas, monospace;
+      font-size: 12px;
+      color: var(--accent-light);
+      font-weight: 500;
+    }
+
+    /* === Sidebar === */
+    .sidebar {
+      background: var(--bg-secondary);
+      border-right: 1px solid var(--border);
+      overflow-y: auto;
+      padding: 0;
+    }
+
+    .main {
+      background: var(--bg-primary);
+      overflow-y: auto;
+      padding: 20px 24px;
+    }
+
+    /* === Native Treeview with details/summary === */
+    .treeview {
+      font-size: 13px;
+      padding: 8px 0;
+    }
+
+    .treeview details {
+      margin: 0;
+    }
+
+    .treeview summary {
+      display: flex;
+      align-items: center;
+      padding: 6px 12px;
+      cursor: pointer;
+      list-style: none;
+      gap: 8px;
+      border-radius: var(--radius);
+      margin: 1px 4px;
+      transition: background 0.1s;
+    }
+
+    .treeview summary::-webkit-details-marker { display: none; }
+
+    .treeview summary:hover {
+      background: var(--bg-hover);
+    }
+
+    .treeview summary::before {
+      content: "▶";
+      font-size: 8px;
+      color: var(--text-dim);
+      transition: transform 0.15s;
+      width: 12px;
+    }
+
+    .treeview details[open] > summary::before {
+      transform: rotate(90deg);
+    }
+
+    .treeview .node-icon {
+      font-size: 14px;
+      width: 18px;
+      text-align: center;
+    }
+
+    .treeview .node-label {
+      flex: 1;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      color: var(--text);
+    }
+
+    .treeview .node-badge {
+      font-size: 9px;
+      padding: 2px 6px;
+      border-radius: 3px;
+      font-weight: 600;
+      text-transform: uppercase;
+    }
+
+    .treeview .badge-ok { background: var(--ok-bg); color: var(--ok); }
+    .treeview .badge-risk { background: var(--risk-bg); color: var(--risk); }
+    .treeview .badge-blocked { background: var(--blocked-bg); color: var(--blocked); }
+    .treeview .badge-draft { background: var(--bg-card); color: var(--text-dim); }
+    .treeview .badge-wip { background: var(--accent); color: white; }
+
+    /* Nested levels indentation */
+    .treeview .level-1 { padding-left: 24px; }
+    .treeview .level-2 { padding-left: 40px; }
+    .treeview .level-3 { padding-left: 56px; }
+
+    .treeview .level-1 .node-label,
+    .treeview .level-2 .node-label {
+      font-size: 12px;
+      color: var(--text-muted);
+    }
+
+    /* Leaf nodes (no expand arrow) */
+    .treeview .leaf {
+      display: flex;
+      align-items: center;
+      padding: 5px 12px 5px 24px;
+      gap: 8px;
+      margin: 1px 4px;
+      cursor: pointer;
+      border-radius: var(--radius);
+      transition: background 0.1s;
+    }
+
+    .treeview .leaf:hover {
+      background: var(--bg-hover);
+    }
+
+    .treeview .leaf .node-icon {
+      font-size: 12px;
+      opacity: 0.7;
+    }
+
+    /* Header buttons */
+    .header-btn {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 6px 10px;
+      cursor: pointer;
+      color: var(--text);
+      font-size: 14px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      transition: background 0.15s;
+    }
+
+    .header-btn:hover {
+      background: var(--bg-hover);
+    }
+
+    /* === Status Badges (Feux tricolores) === */
+    .status {
+      font-size: 10px;
+      font-weight: 600;
+      padding: 3px 8px;
+      border-radius: var(--radius);
+      text-transform: uppercase;
+      letter-spacing: 0.03em;
+    }
+
+    .status-draft { background: var(--bg-card); color: var(--text-muted); }
+    .status-active, .status-in-progress, .status-wip { background: var(--accent); color: white; }
+    .status-approved { background: var(--ok-bg); color: var(--ok); border: 1px solid var(--ok); }
+    .status-review { background: var(--risk-bg); color: var(--risk); border: 1px solid var(--risk); }
+    .status-done { background: var(--ok-bg); color: var(--ok); border: 1px solid var(--ok); }
+    .status-blocked { background: var(--blocked-bg); color: var(--blocked); border: 1px solid var(--blocked); }
+    .status-ready { background: var(--ok-bg); color: var(--ok); border: 1px solid var(--ok); }
+
+    /* === Progress Bars === */
+    .progress-bar {
+      height: 4px;
+      background: var(--bg-card);
+      border-radius: 2px;
+      overflow: hidden;
+    }
+
+    .progress-bar.progress-sm { height: 3px; }
+    .progress-bar.progress-lg { height: 6px; border-radius: 3px; }
+
+    .progress-fill {
+      height: 100%;
+      background: linear-gradient(90deg, var(--accent) 0%, var(--accent-light) 100%);
+      border-radius: inherit;
+      transition: width 0.3s ease;
+    }
+
+    /* Progress color based on percentage */
+    .progress-fill.progress-low { background: var(--blocked); }
+    .progress-fill.progress-mid { background: var(--risk); }
+    .progress-fill.progress-high { background: var(--ok); }
+
+    .detail-progress {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 20px;
+    }
+
+    .detail-progress .progress-bar {
+      flex: 1;
+    }
+
+    .progress-label {
+      font-family: 'SF Mono', Consolas, monospace;
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--text);
+      min-width: 40px;
+    }
+
+    /* === KPI Cards === */
+    .kpi-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+      gap: 12px;
+      margin-bottom: 20px;
+    }
+
+    .kpi-card {
+      background: var(--bg-secondary);
+      border-radius: var(--radius-lg);
+      padding: 14px 16px;
+      border: 1px solid var(--border);
+    }
+
+    .kpi-label {
+      font-size: 11px;
+      color: var(--text-dim);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      margin-bottom: 4px;
+    }
+
+    .kpi-value {
+      font-size: 24px;
+      font-weight: 700;
+      color: var(--text);
+      font-family: 'SF Mono', Consolas, monospace;
+    }
+
+    .kpi-value.ok { color: var(--ok); }
+    .kpi-value.risk { color: var(--risk); }
+    .kpi-value.blocked { color: var(--blocked); }
+
+    /* === Detail View === */
+    .detail-header {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 16px;
+      padding-bottom: 12px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .detail-header h2 {
+      font-size: 16px;
+      font-weight: 600;
+      color: var(--text);
+      flex: 1;
+    }
+
+    /* === Epic Cards === */
+    .epic-card {
+      background: var(--bg-secondary);
+      border-radius: var(--radius-lg);
+      padding: 14px 16px;
+      margin-bottom: 10px;
+      border: 1px solid var(--border);
+      border-left: 3px solid var(--accent);
+    }
+
+    .epic-header {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 8px;
+    }
+
+    .epic-id {
+      font-family: 'SF Mono', Consolas, monospace;
+      font-size: 11px;
+      color: var(--accent-light);
+      font-weight: 500;
+    }
+
+    .epic-title {
+      flex: 1;
+      font-weight: 500;
+      font-size: 13px;
+    }
+
+    .tasks-list {
+      margin-top: 10px;
+      padding-top: 10px;
+      border-top: 1px solid var(--border);
+    }
+
+    .task-item {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 5px 0;
+      font-size: 12px;
+    }
+
+    .task-id {
+      font-family: 'SF Mono', Consolas, monospace;
+      font-size: 10px;
+      color: var(--text-dim);
+      min-width: 42px;
+    }
+
+    .task-title {
+      flex: 1;
+      color: var(--text-muted);
+    }
+
+    /* === Warnings Panel === */
+    .warnings-panel {
+      margin-top: 0;
+    }
+
+    .warning-badge {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      color: var(--risk);
+      padding: 10px 16px;
+      font-size: 12px;
+      font-weight: 500;
+    }
+
+    .blocker-item {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 10px 16px;
+      font-size: 12px;
+      border-left: 3px solid var(--blocked);
+      background: var(--blocked-bg);
+      margin: 2px 0;
+    }
+
+    .blocker-icon {
+      font-size: 10px;
+    }
+
+    .blocker-id {
+      font-family: 'SF Mono', Consolas, monospace;
+      font-size: 10px;
+      color: var(--blocked);
+      font-weight: 600;
+    }
+
+    .blocker-title {
+      flex: 1;
+      color: var(--text);
+    }
+
+    .blocker-reason {
+      color: var(--text-muted);
+      font-size: 11px;
+    }
+
+    .pending-list {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      padding: 8px 16px;
+    }
+
+    .pending-item {
+      background: var(--risk-bg);
+      color: var(--risk);
+      padding: 3px 8px;
+      border-radius: var(--radius);
+      font-family: 'SF Mono', Consolas, monospace;
+      font-size: 11px;
+      font-weight: 500;
+    }
+
+    /* === Versions === */
+    .header-right {
+      display: flex;
+      gap: 16px;
+    }
+
+    .version-item {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 12px;
+    }
+
+    .version-name {
+      color: var(--text-muted);
+    }
+
+    .version-number {
+      font-family: 'SF Mono', Consolas, monospace;
+      color: var(--text-dim);
+    }
+
+    .main-badge {
+      color: var(--ok);
+      font-size: 12px;
+    }
+
+    /* === Empty States === */
+    .empty {
+      color: var(--text-dim);
+      padding: 12px 16px;
+      font-size: 12px;
+    }
+
+    .empty.success {
+      color: var(--ok);
+      background: var(--ok-bg);
+      border-radius: var(--radius);
+      margin: 4px 8px;
+    }
+
+    /* === Loading === */
+    .htmx-request {
+      opacity: 0.5;
+    }
+
+    /* === Epics list === */
+    .epics-list {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    /* === Tabs === */
+    .tabs {
+      margin-top: 16px;
+    }
+
+    .tab-buttons {
+      display: flex;
+      gap: 4px;
+      border-bottom: 1px solid var(--border);
+      margin-bottom: 16px;
+    }
+
+    .tab-btn {
+      background: transparent;
+      border: none;
+      padding: 8px 16px;
+      font-size: 13px;
+      color: var(--text-muted);
+      cursor: pointer;
+      border-bottom: 2px solid transparent;
+      margin-bottom: -1px;
+      transition: all 0.15s;
+    }
+
+    .tab-btn:hover {
+      color: var(--text);
+      background: var(--bg-hover);
+    }
+
+    .tab-btn.active {
+      color: var(--accent-light);
+      border-bottom-color: var(--accent);
+    }
+
+    .tab-content {
+      display: none;
+    }
+
+    .tab-content.active {
+      display: block;
+    }
+
+    .description-content {
+      color: var(--text-muted);
+      line-height: 1.7;
+    }
+
+    .description-content h2, .description-content h3, .description-content h4 {
+      color: var(--text);
+      margin-top: 16px;
+      margin-bottom: 8px;
+    }
+
+    .description-content code {
+      background: var(--bg-card);
+      padding: 2px 6px;
+      border-radius: 3px;
+      font-family: 'SF Mono', Consolas, monospace;
+      font-size: 12px;
+    }
+
+    .description-content pre {
+      background: var(--bg-card);
+      padding: 12px;
+      border-radius: var(--radius);
+      overflow-x: auto;
+    }
+
+    .description-content ul, .description-content ol {
+      padding-left: 20px;
+      margin: 8px 0;
+    }
+
+    .description-content a {
+      color: var(--accent-light);
+    }
+
+    /* Meta table */
+    .meta-table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+
+    .meta-table tr {
+      border-bottom: 1px solid var(--border);
+    }
+
+    .meta-table td {
+      padding: 8px 12px;
+      vertical-align: top;
+    }
+
+    .meta-key {
+      font-weight: 600;
+      color: var(--text-muted);
+      width: 150px;
+      font-size: 12px;
+    }
+
+    .meta-value {
+      color: var(--text);
+    }
+
+    .meta-value code {
+      background: var(--bg-card);
+      padding: 2px 6px;
+      border-radius: 3px;
+      font-family: 'SF Mono', Consolas, monospace;
+      font-size: 12px;
+      white-space: pre-wrap;
+      word-break: break-all;
+    }
+
+    /* Graph/Relations */
+    .graph-container {
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+
+    .graph-section h4 {
+      font-size: 12px;
+      color: var(--text-muted);
+      margin-bottom: 8px;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+
+    .graph-item {
+      display: inline-block;
+      padding: 6px 12px;
+      margin: 4px 8px 4px 0;
+      border-radius: var(--radius);
+      font-size: 13px;
+    }
+
+    .graph-item.parent {
+      background: var(--accent);
+      background: rgba(59, 130, 246, 0.15);
+      border: 1px solid var(--accent);
+    }
+
+    .graph-item.child {
+      background: var(--ok-bg);
+      border: 1px solid var(--ok);
+    }
+
+    .graph-item.blocker {
+      background: var(--blocked-bg);
+      border: 1px solid var(--blocked);
+    }
+
+    .graph-item.story {
+      background: var(--risk-bg);
+      border: 1px solid var(--risk);
+    }
+
+    .graph-item.milestone {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+    }
+
+    .entity-link {
+      color: var(--text);
+      text-decoration: none;
+      font-weight: 500;
+      cursor: pointer;
+    }
+
+    .entity-link:hover {
+      color: var(--accent-light);
+      text-decoration: underline;
+    }
+
+    /* Settings page */
+    .settings-section {
+      margin-bottom: 24px;
+    }
+
+    .settings-section h4 {
+      font-size: 12px;
+      color: var(--text-muted);
+      margin-bottom: 12px;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+
+    .config-preview {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 12px;
+      font-family: 'SF Mono', Consolas, monospace;
+      font-size: 11px;
+      color: var(--text-muted);
+      overflow-x: auto;
+      max-height: 400px;
+      overflow-y: auto;
+    }
+
+    .badge-custom {
+      display: inline-block;
+      background: var(--risk-bg);
+      color: var(--risk);
+      font-size: 9px;
+      padding: 2px 6px;
+      border-radius: 3px;
+      margin-left: 6px;
+      font-weight: 600;
+      text-transform: uppercase;
+    }
+
+    /* === Scrollbar styling === */
+    ::-webkit-scrollbar {
+      width: 8px;
+      height: 8px;
+    }
+
+    ::-webkit-scrollbar-track {
+      background: var(--bg-primary);
+    }
+
+    ::-webkit-scrollbar-thumb {
+      background: var(--bg-card);
+      border-radius: 4px;
+    }
+
+    ::-webkit-scrollbar-thumb:hover {
+      background: var(--bg-hover);
+    }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <header class="header">
+      <div class="header-left">
+        <span class="logo" hx-get="/api/welcome" hx-target="#detail" hx-swap="innerHTML" style="cursor: pointer;" title="Home">Sailing</span>
+        <span class="project-info">{{projectName}}</span>
+        <span class="version-badge">v{{mainVersion}}</span>
+      </div>
+      <div class="header-right">
+        <button class="header-btn" hx-get="/api/settings" hx-target="#detail" hx-swap="innerHTML" title="Settings">
+          ⚙
+        </button>
+        <button class="header-btn" onclick="toggleTheme()" title="Toggle theme">
+          <span id="theme-icon">☀</span>
+        </button>
+      </div>
+    </header>
+
+    <aside class="sidebar">
+      <nav class="treeview" id="tree" hx-get="/api/tree" hx-trigger="load" hx-swap="innerHTML">
+        <div style="padding: 12px; color: var(--text-dim);">Loading...</div>
+      </nav>
+    </aside>
+
+    <main class="main">
+      <div id="detail" hx-get="/api/welcome" hx-trigger="load" hx-swap="innerHTML">
+        <div class="empty">Loading...</div>
+      </div>
+    </main>
+  </div>
+
+  <script>
+    // Theme toggle
+    function toggleTheme() {
+      const html = document.documentElement;
+      const current = html.getAttribute('data-theme');
+      const next = current === 'dark' ? 'light' : 'dark';
+      html.setAttribute('data-theme', next);
+      document.getElementById('theme-icon').textContent = next === 'dark' ? '☀' : '☾';
+      localStorage.setItem('sailing-theme', next);
+    }
+
+    // Load saved theme
+    const savedTheme = localStorage.getItem('sailing-theme');
+    if (savedTheme) {
+      document.documentElement.setAttribute('data-theme', savedTheme);
+      document.getElementById('theme-icon').textContent = savedTheme === 'dark' ? '☀' : '☾';
+    }
+
+    // Auto-refresh every 30s
+    setInterval(() => {
+      htmx.trigger('#tree', 'load');
+    }, 30000);
+
+    // Tab switching
+    function switchTab(btn, tabId) {
+      const tabs = btn.closest('.tabs');
+      tabs.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+      tabs.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+      btn.classList.add('active');
+      tabs.querySelector('#' + tabId).classList.add('active');
+    }
+  </script>
+</body>
+</html>

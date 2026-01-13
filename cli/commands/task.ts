@@ -8,7 +8,7 @@ import { findPrdDirs, findFiles, loadFile, saveFile, toKebab, loadTemplate, json
 import { normalizeId, matchesId, matchesPrdDir, parentContainsEpic } from '../lib/normalize.js';
 import { findEpicParent, findEpicFile, findTaskFile as findTaskFileFromEntities } from '../lib/entities.js';
 import { getHierarchicalMemory, ensureMemoryDir } from '../lib/memory.js';
-import { STATUS, normalizeStatus, isStatusDone, isStatusNotStarted, isStatusInProgress, isStatusCancelled, statusSymbol } from '../lib/lexicon.js';
+import { STATUS, normalizeStatus, isStatusDone, isStatusNotStarted, isStatusInProgress, isStatusCancelled, isStatusAutoDone, statusSymbol } from '../lib/lexicon.js';
 import { buildDependencyGraph, blockersResolved } from '../lib/graph.js';
 import { nextId } from '../lib/state.js';
 import { parseUpdateOptions, addLogEntry } from '../lib/update.js';
@@ -525,6 +525,37 @@ export function registerTaskCommands(program) {
       const { data } = parseUpdateOptions(opts, file.data, 'task');
       saveFile(taskFile, data, file.body);
 
+      // Auto-escalate: Epic and PRD to In Progress if not started
+      const epicMatch = data.parent?.match(/E(\d+)/i);
+      if (epicMatch) {
+        const epicId = normalizeId(`E${epicMatch[1]}`);
+        const epicFile = findEpicFile(epicId);
+        if (epicFile) {
+          const epicData = loadFile(epicFile);
+          if (epicData?.data && isStatusNotStarted(epicData.data.status)) {
+            epicData.data.status = 'In Progress';
+            saveFile(epicFile, epicData.data, epicData.body);
+            console.log(`● Epic ${epicId} → In Progress`);
+          }
+        }
+
+        // Check PRD
+        const prdMatch = data.parent?.match(/PRD-(\d+)/i);
+        if (prdMatch) {
+          const prdId = `PRD-${prdMatch[1].padStart(3, '0')}`;
+          const prdDir = findPrdDirs().find(d => matchesPrdDir(d, prdId));
+          if (prdDir) {
+            const prdFile = path.join(prdDir, 'prd.md');
+            const prdData = loadFile(prdFile);
+            if (prdData?.data && (prdData.data.status === 'Draft' || prdData.data.status === 'Approved' || isStatusNotStarted(prdData.data.status))) {
+              prdData.data.status = 'In Progress';
+              saveFile(prdFile, prdData.data, prdData.body);
+              console.log(`● PRD ${prdId} → In Progress`);
+            }
+          }
+        }
+      }
+
       if (options.json) {
         const output: any = { ...data };
         if (options.path) output.file = taskFile;
@@ -560,7 +591,7 @@ export function registerTaskCommands(program) {
 
       saveFile(taskFile, data, body);
 
-      // Check if epic is now complete
+      // Check if epic is now complete and auto-escalate to Auto-Done
       const epicMatch = data.parent?.match(/E(\d+)/i);
       if (epicMatch) {
         const epicId = normalizeId(`E${epicMatch[1]}`);
@@ -571,13 +602,54 @@ export function registerTaskCommands(program) {
           t.parent?.match(/E\d+/i)?.[0]?.toUpperCase() === epicId.toUpperCase()
         );
 
-        const allDone = epicTasks.every(t =>
+        const allTasksDone = epicTasks.every(t =>
           isStatusDone(t.status) || isStatusCancelled(t.status) || t.id === normalizeId(id)
         );
 
-        if (allDone && epicTasks.length > 0) {
-          console.log(`\n✓ All tasks in ${epicId} are now complete!`);
-          console.log(`  Consider: rudder epic:update ${epicId} --status done`);
+        if (allTasksDone && epicTasks.length > 0) {
+          // Find and update epic to Auto-Done
+          const epicFile = findEpicFile(epicId);
+          if (epicFile) {
+            const epicData = loadFile(epicFile);
+            if (epicData?.data && !isStatusDone(epicData.data.status) && !isStatusAutoDone(epicData.data.status)) {
+              epicData.data.status = 'Auto-Done';
+              saveFile(epicFile, epicData.data, epicData.body);
+              console.log(`\n◉ Epic ${epicId} → Auto-Done (to be reviewed for completion)`);
+
+              // Check if PRD should be updated
+              const prdMatch = data.parent?.match(/PRD-(\d+)/i);
+              if (prdMatch) {
+                const prdId = `PRD-${prdMatch[1].padStart(3, '0')}`;
+                const prdDir = findPrdDirs().find(d => matchesPrdDir(d, prdId));
+                if (prdDir) {
+                  const prdFile = path.join(prdDir, 'prd.md');
+                  const prdData = loadFile(prdFile);
+                  if (prdData?.data) {
+                    // Get all epics for this PRD
+                    const epicsDir = path.join(prdDir, 'epics');
+                    const epicFiles = findFiles(epicsDir, /^E\d+.*\.md$/);
+                    const allEpicsDone = epicFiles.every(ef => {
+                      const ed = loadFile(ef);
+                      return ed?.data && (isStatusDone(ed.data.status) || isStatusCancelled(ed.data.status));
+                    });
+
+                    // PRD → Auto-Done only if ALL epics are Done (not Auto-Done)
+                    if (allEpicsDone && epicFiles.length > 0 && !isStatusDone(prdData.data.status) && !isStatusAutoDone(prdData.data.status)) {
+                      prdData.data.status = 'Auto-Done';
+                      saveFile(prdFile, prdData.data, prdData.body);
+                      console.log(`◉ PRD ${prdId} → Auto-Done (to be reviewed for completion)`);
+                    }
+                    // PRD → In Progress if still at Draft/Approved
+                    else if ((prdData.data.status === 'Draft' || prdData.data.status === 'Approved') && !allEpicsDone) {
+                      prdData.data.status = 'In Progress';
+                      saveFile(prdFile, prdData.data, prdData.body);
+                      console.log(`● PRD ${prdId} → In Progress`);
+                    }
+                  }
+                }
+              }
+            }
+          }
         }
       }
 

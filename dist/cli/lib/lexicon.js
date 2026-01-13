@@ -7,8 +7,8 @@ export const ENTITY_TYPES = ['prd', 'epic', 'task'];
 // Canonical status values per entity type
 export const STATUS = {
     task: ['Not Started', 'In Progress', 'Blocked', 'Done', 'Cancelled'],
-    epic: ['Not Started', 'In Progress', 'Done'],
-    prd: ['Draft', 'In Review', 'Approved', 'In Progress', 'Done']
+    epic: ['Not Started', 'In Progress', 'Auto-Done', 'Done'],
+    prd: ['Draft', 'In Review', 'Approved', 'In Progress', 'Auto-Done', 'Done']
 };
 // Aliases mapping (lowercase, no spaces/dashes/underscores) → canonical
 export const STATUS_ALIASES = {
@@ -25,6 +25,9 @@ export const STATUS_ALIASES = {
     // Blocked
     blocked: 'Blocked',
     stuck: 'Blocked',
+    // Auto-Done (all children completed, awaiting validation)
+    autodone: 'Auto-Done',
+    'auto-done': 'Auto-Done',
     // Done
     done: 'Done',
     complete: 'Done',
@@ -100,6 +103,9 @@ export function isStatusCancelled(status) {
 export function isStatusBlocked(status) {
     return statusEquals(status, 'blocked');
 }
+export function isStatusAutoDone(status) {
+    return statusEquals(status, 'autodone');
+}
 /**
  * Validate status and return error message if invalid
  */
@@ -142,6 +148,8 @@ export function validatePriority(priority) {
 export function statusSymbol(status) {
     if (isStatusDone(status))
         return '✓';
+    if (isStatusAutoDone(status))
+        return '◉'; // Auto-Done: filled circle (awaiting validation)
     if (isStatusInProgress(status))
         return '●';
     if (isStatusBlocked(status))

@@ -137,6 +137,8 @@ import { registerDbCommands } from './commands/db.js';
 import { registerFindCommands } from './commands/find.js';
 import { registerRenumberCommands } from './commands/renumber.js';
 import { registerArchiveCommands } from './commands/archive.js';
+import { registerDashboardCommands } from './commands/dashboard.js';
+import { registerAuditCommands } from './commands/audit.js';
 // Expand colon syntax: task:list → task list (first arg only, if it looks like group:command)
 let commandExpanded = false;
 const expandedArgs = args.flatMap(arg => {
@@ -189,6 +191,8 @@ registerDbCommands(program);
 registerFindCommands(program);
 registerRenumberCommands(program);
 registerArchiveCommands(program);
+registerDashboardCommands(program);
+registerAuditCommands(program);
 registerUtilCommands(program);
 registerPermissionsCommands(program);
 // Parse with expanded args
