@@ -3,6 +3,9 @@
  *
  * Detects state drift between state.json and git reality.
  * Provides reconciliation strategies for branch hierarchies.
+ * TODO[P1]: Typify context/prd/epic IDs and branch hierarchy entries to drop implicit any when strict is enabled.
+ * TODO[P2]: Add guards when reading branching config to avoid undefined parent branches.
+ * TODO[P3]: Separate reporting/diagnostics from mutation to ease gradual TS migration.
  */
 import { execSync } from 'child_process';
 import fs from 'fs';
@@ -123,7 +126,7 @@ export function listSailingBranches() {
  */
 export function getTrackedBranches() {
   const state = loadState();
-  const agents = (state.agents || {}) as Record<string, AgentInfo>;
+  const agents = state.agents || {};
 
   const tasks = [];
   const epics = new Set<string>();
@@ -251,7 +254,7 @@ interface WorktreeDiagnosis {
  */
 export function diagnoseWorktrees() {
   const state = loadState();
-  const agents = (state.agents || {}) as Record<string, AgentInfo>;
+  const agents = state.agents || {};
   const mainBranch = getMainBranch();
   const worktrees = listAgentWorktrees();
 
@@ -482,7 +485,7 @@ export function report(context: Context = {}) {
 
   // Hierarchy (only show if there are actual branch objects, not just main)
   const branchHierarchy = diag.hierarchy.filter(
-    (h): h is BranchHierarchyNode => typeof h === 'object' && !!(h as BranchHierarchyNode).branch
+    (h): h is BranchHierarchyNode => typeof h === 'object' && h !== null && !!h.branch
   );
   if (branchHierarchy.length > 0) {
     lines.push('## Branch Hierarchy');

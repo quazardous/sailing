@@ -1,6 +1,9 @@
 /**
  * Agent commands for rudder CLI
  * Manages agent lifecycle: spawn, collect, status, merge
+ * TODO[P1]: Typify command handlers (program/options/taskId) and AgentStatus to drop implicit any when re-enabling strict.
+ * TODO[P2]: Model agent events/results as discriminated unions to avoid downcasting scattered in this file.
+ * TODO[P3]: Consider splitting spawn/collect/status into separate modules to reduce surface when converting to TS.
  */
 import fs from 'fs';
 import path from 'path';

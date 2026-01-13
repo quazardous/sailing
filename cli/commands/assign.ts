@@ -1,6 +1,9 @@
 /**
  * Assignment commands for rudder CLI
  * Formalizes skill → agent prompt transmission
+ * TODO[P1]: Typify command handlers (program/options/taskId) to remove implicit any when strict is enabled.
+ * TODO[P2]: Harden file/frontmatter parsing (null checks) then tighten types on entity lookups.
+ * TODO[P3]: Extract shared normalize/lookup helpers to shrink surface before TS migration.
  */
 import fs from 'fs';
 import path from 'path';

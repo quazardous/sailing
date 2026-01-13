@@ -9,6 +9,12 @@ import yaml from 'js-yaml';
 import { resolvePlaceholders, resolvePath } from './paths.js';
 import type { PathsInfo, ConfigInfo } from './types/config.js';
 
+export interface LoadedDoc<T = Record<string, any>> {
+  data: T;
+  body: string;
+  filepath: string;
+}
+
 /**
  * Expand special path prefixes:
  *   ~  → home directory
@@ -19,7 +25,7 @@ import type { PathsInfo, ConfigInfo } from './types/config.js';
  *   ^/core     → /path/to/sailing-repo/core (devinstall mode)
  *   ./local    → ./local (unchanged, resolved later)
  */
-function expandPath(p) {
+function expandPath(p: string): string {
   // ~ → home directory
   if (p.startsWith('~/')) {
     return path.join(os.homedir(), p.slice(2));
@@ -70,7 +76,7 @@ const expandHome = expandPath;
  *   ~/       → home directory
  *   ^/       → sailing repo root (devinstall only)
  */
-const DEFAULT_PATHS = {
+const DEFAULT_PATHS: Record<string, { path: string; type: 'dir' | 'file' }> = {
   // Project directories
   artefacts:  { path: '.sailing/artefacts', type: 'dir' },
   memory:     { path: '.sailing/memory', type: 'dir' },
@@ -99,22 +105,22 @@ const DEFAULT_PATHS = {
 };
 
 // Cached config
-let _config = null;
-let _projectRoot = null;
-let _scriptDir = null;
+let _config: any = null;
+let _projectRoot: string | null = null;
+let _scriptDir: string | null = null;
 
 /**
  * Set the script directory (called from rudder.js)
  * This is used as the starting point to find project root in normal mode
  */
-export function setScriptDir(dir) {
+export function setScriptDir(dir: string) {
   _scriptDir = dir;
 }
 
 /**
  * Set project root explicitly (for dev mode with --root or SAILING_PROJECT)
  */
-export function setProjectRoot(dir) {
+export function setProjectRoot(dir: string) {
   _projectRoot = dir;
   _config = null; // Reset config cache
 }
@@ -132,7 +138,7 @@ export function setProjectRoot(dir) {
  * This allows rudder to be called from anywhere (absolute path, symlink, PATH)
  * and still find the correct project.
  */
-export function findProjectRoot() {
+export function findProjectRoot(): string {
   if (_projectRoot) return _projectRoot;
 
   // Start from script directory if available
@@ -177,7 +183,7 @@ export function findProjectRoot() {
  * Helper: extract path string from DEFAULT_PATHS entry or user config
  * Handles both old format (string) and new format ({ path, type })
  */
-function getPathString(value) {
+function getPathString(value: any): string | null {
   if (!value) return null;
   if (typeof value === 'string') return value;
   if (typeof value === 'object' && value.path) return value.path;
@@ -187,7 +193,7 @@ function getPathString(value) {
 /**
  * Helper: get path type from DEFAULT_PATHS
  */
-export function getPathType(key) {
+export function getPathType(key: string): 'dir' | 'file' {
   const def = DEFAULT_PATHS[key];
   if (def && typeof def === 'object') return def.type;
   return 'dir'; // Default to dir for backward compatibility
@@ -197,14 +203,14 @@ export function getPathType(key) {
  * Load paths configuration from .sailing/paths.yaml
  * Falls back to defaults if not found
  */
-export function loadPathsConfig() {
+export function loadPathsConfig(): any {
   if (_config) return _config;
 
   const projectRoot = findProjectRoot();
   const pathsConfigPath = path.join(projectRoot, '.sailing', 'paths.yaml');
 
   // Build default paths (extract path strings)
-  const defaultPaths = {};
+  const defaultPaths: Record<string, string | null> = {};
   for (const [key, value] of Object.entries(DEFAULT_PATHS)) {
     defaultPaths[key] = getPathString(value);
   }
@@ -212,7 +218,7 @@ export function loadPathsConfig() {
   if (fs.existsSync(pathsConfigPath)) {
     try {
       const content = fs.readFileSync(pathsConfigPath, 'utf8');
-      const parsed = yaml.load(content);
+      const parsed = yaml.load(content) as any;
       _config = {
         paths: { ...defaultPaths, ...(parsed.paths || {}) }
       };
@@ -241,7 +247,7 @@ export function loadPathsConfig() {
  *   ${home}     → home directory
  *   ${project}  → project root
  */
-export function getPath(key) {
+export function getPath(key: string): string | null {
   const config = loadPathsConfig();
   const projectRoot = findProjectRoot();
 
@@ -277,7 +283,7 @@ export function getSailingDir() {
 }
 
 export function getArtefactsDir() {
-  return getPath('artefacts');
+  return getPath('artefacts')!;
 }
 
 export function getPrdsDir() {
@@ -285,48 +291,48 @@ export function getPrdsDir() {
 }
 
 export function getMemoryDir() {
-  return getPath('memory');
+  return getPath('memory')!;
 }
 
 export function getArchiveDir() {
-  return getPath('archive');
+  return getPath('archive')!;
 }
 
 export function getTemplatesDir() {
-  return getPath('templates');
+  return getPath('templates')!;
 }
 
 export function getPromptingDir() {
-  return getPath('prompting');
+  return getPath('prompting')!;
 }
 
 export function getStateFile() {
-  return getPath('state');
+  return getPath('state')!;
 }
 
 export function getConfigFile() {
-  return getPath('config');
+  return getPath('config')!;
 }
 
 export function getComponentsFile() {
-  return getPath('components');
+  return getPath('components')!;
 }
 
 // Haven-based paths (outside project root)
 export function getAgentsDir() {
-  return getPath('agents');
+  return getPath('agents')!;
 }
 
 export function getWorktreesDir() {
-  return getPath('worktrees');
+  return getPath('worktrees')!;
 }
 
 export function getRunsDir() {
-  return getPath('runs');
+  return getPath('runs')!;
 }
 
 export function getAssignmentsDir() {
-  return getPath('assignments');
+  return getPath('assignments')!;
 }
 
 // Legacy exports for backward compatibility
@@ -398,8 +404,8 @@ export function getPathsInfo(): PathsInfo {
   const havenPath = resolvePlaceholders('${haven}');
   const home = os.homedir();
 
-  // Helper to make path relative to home (~/...)
-  const toHomeRelative = (p) => {
+  // Helper to make path relative to home (~/...) 
+  const toHomeRelative = (p: string) => {
     if (p.startsWith(home)) {
       return '~' + p.slice(home.length);
     }
@@ -407,7 +413,7 @@ export function getPathsInfo(): PathsInfo {
   };
 
   // Helper for haven-based paths with override support
-  const getHavenPath = (key, subpath) => {
+  const getHavenPath = (key: string, subpath: string) => {
     const custom = resolvePath(key);
     const resolved = custom || path.join(havenPath, subpath);
     const template = custom ? config.paths?.[key] : '${haven}/' + subpath;
@@ -419,7 +425,7 @@ export function getPathsInfo(): PathsInfo {
   };
 
   // Helper for project-relative paths
-  const getProjectPath = (key) => {
+  const getProjectPath = (key: string) => {
     const configuredPath = config.paths[key] || DEFAULT_PATHS[key];
     const absolute = getPath(key);
     // Resolve placeholders for display, make relative to home if applicable
@@ -472,7 +478,7 @@ export function getConfigInfo(): ConfigInfo {
   const config = loadPathsConfig();
 
   // Determine which paths are custom vs default
-  const pathsInfo = {};
+  const pathsInfo: any = {};
   for (const key of Object.keys(DEFAULT_PATHS)) {
     const configuredPath = config.paths[key];
     const defaultPath = getPathString(DEFAULT_PATHS[key]);
@@ -503,7 +509,7 @@ export function getConfigInfo(): ConfigInfo {
 }
 
 // Output helpers
-export const jsonOut = (data) => console.log(JSON.stringify(data, null, 2));
+export const jsonOut = (data: any) => console.log(JSON.stringify(data, null, 2));
 
 /**
  * Find all PRD directories
@@ -520,7 +526,7 @@ export function findPrdDirs() {
 /**
  * Find files in a directory matching a pattern
  */
-export function findFiles(dir, pattern) {
+export function findFiles(dir: string, pattern: RegExp | string) {
   if (!fs.existsSync(dir)) return [];
   return fs.readdirSync(dir)
     .filter(f => f.match(pattern))
@@ -530,7 +536,7 @@ export function findFiles(dir, pattern) {
 /**
  * Load a markdown file with frontmatter
  */
-export function loadFile(filepath) {
+export function loadFile<T = Record<string, any>>(filepath: string): LoadedDoc<T> | null {
   if (!fs.existsSync(filepath)) return null;
   const content = fs.readFileSync(filepath, 'utf8');
   const { data, content: body } = matter(content);
@@ -585,13 +591,13 @@ export function loadFile(filepath) {
     }
   }
 
-  return { data, body, filepath };
+  return { data: data as T, body, filepath };
 }
 
 /**
  * Save a markdown file with frontmatter
  */
-export function saveFile(filepath, data, body) {
+export function saveFile(filepath: string, data: any, body: string) {
   // Ensure body starts with blank line for readability
   const cleanBody = body.startsWith('\n') ? body : '\n' + body;
   const content = matter.stringify(cleanBody, data);
@@ -601,14 +607,14 @@ export function saveFile(filepath, data, body) {
 /**
  * Convert string to kebab-case
  */
-export function toKebab(str) {
+export function toKebab(str: string) {
   return str.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
 }
 
 /**
  * Load a template file
  */
-export function loadTemplate(type) {
+export function loadTemplate(type: string) {
   const templatePath = path.join(getTemplates(), `${type}.md`);
   if (!fs.existsSync(templatePath)) return null;
   return fs.readFileSync(templatePath, 'utf8');
@@ -636,7 +642,7 @@ export function loadComponents() {
 /**
  * Save components configuration (YAML or JSON based on file extension)
  */
-export function saveComponents(data) {
+export function saveComponents(data: any) {
   const componentsFile = getComponentsFile();
   let content;
   if (componentsFile.endsWith('.json')) {
@@ -652,7 +658,7 @@ export function saveComponents(data) {
  * Removes <!-- ... --> (single and multi-line)
  * Also removes # comments from YAML frontmatter
  */
-export function stripComments(content) {
+export function stripComments(content: string) {
   // Split frontmatter and body
   const match = content.match(/^---\n([\s\S]*?)\n---\n([\s\S]*)$/);
   if (!match) {

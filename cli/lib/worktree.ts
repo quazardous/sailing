@@ -3,6 +3,9 @@
  *
  * Provides isolated execution environments for agents using git worktrees.
  * Each agent gets its own worktree with a dedicated branch.
+ * TODO[P1]: Type inputs/outputs (branch names, git status) to remove implicit any when strict is enabled.
+ * TODO[P2]: Wrap git exec results in typed helpers for divergence/status to avoid repeated casting.
+ * TODO[P3]: Split CLI-facing helpers vs low-level git operations to ease progressive TS adoption.
  */
 import fs from 'fs';
 import path from 'path';

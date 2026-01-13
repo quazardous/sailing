@@ -1,6 +1,9 @@
 /**
  * Dynamic help generator for rudder CLI
  * Generates detailed options summary from registered commands
+ * TODO[P1]: Replace reliance on Commander internals (_args/options) with a typed wrapper when moving to strict.
+ * TODO[P2]: Align status injection with typed STATUS map to avoid string lookups.
+ * TODO[P3]: Consider generating help from declarative metadata to reduce coupling before TS migration.
  */
 import { STATUS } from './lexicon.js';
 import type { Command as CommanderCommand, Option as CommanderOption } from 'commander';

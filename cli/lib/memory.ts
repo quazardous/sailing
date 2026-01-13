@@ -7,6 +7,9 @@
  * - Epic memory: curated tips/issues for epic scope
  * - PRD memory: cross-epic patterns, escalated by skill
  * - Project memory: architectural decisions, universal patterns
+ * TODO[P1]: Type IDs/content payloads for helpers (avoid implicit any when strict).
+ * TODO[P2]: Introduce a MemoryEntry shape (id/path/content/sections) and reuse across readers/writers.
+ * TODO[P3]: Separate pure parsing from CLI-facing utilities to simplify gradual TS adoption.
  */
 import fs from 'fs';
 import path from 'path';

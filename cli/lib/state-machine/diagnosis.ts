@@ -3,6 +3,9 @@
  *
  * Inspect actual git/filesystem state to determine current state.
  * Cross-validate state.json vs reality.
+ * TODO[P1]: Add types for worktreePath/projectRoot/context objects to drop implicit any when strict is enabled.
+ * TODO[P2]: Shape Diagnosis/Issue entries as typed objects instead of loose strings.
+ * TODO[P3]: Extract git/file I/O helpers to shrink the surface before TS migration.
  */
 import { execSync } from 'child_process';
 import fs from 'fs';

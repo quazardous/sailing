@@ -252,16 +252,57 @@ export function getComponentVersion(component: ComponentConfig): string | null {
 }
 
 /**
+ * Get CLI/package version (independent of project components)
+ * Checks common locations for dev/dist usage.
+ */
+export function getCliVersion(): string {
+  const candidates = [
+    path.resolve(import.meta.dirname, '../package.json'),       // dist/cli/package.json (if published)
+    path.resolve(import.meta.dirname, '../../package.json'),    // dist/package.json
+    path.resolve(import.meta.dirname, '../../../package.json'), // repo root package.json
+    path.resolve(import.meta.dirname, '../../cli/package.json') // repo cli/package.json (tsx/dev)
+  ];
+  for (const pkgPath of candidates) {
+    try {
+      if (!fs.existsSync(pkgPath)) continue;
+      const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf8'));
+      if (pkg?.version) return pkg.version as string;
+    } catch { /* ignore and try next */ }
+  }
+  return '0.0.0';
+}
+
+/**
  * Get main version (from component marked as main)
  * Returns '0.0.0' if components config is missing (for init/paths commands)
  */
 export function getMainVersion(): string {
   const config = loadComponentsConfig();
-  if (!config) return '0.0.0';
-  const mainComponent = config.components?.find((c: ComponentConfig) => c.main);
-  if (!mainComponent) return '0.0.0';
-  const version = getComponentVersion(mainComponent);
-  return (version && version !== 'N/A') ? version : '0.0.0';
+  if (config) {
+    const mainComponent = config.components?.find((c: ComponentConfig) => c.main);
+    if (mainComponent) {
+      const version = getComponentVersion(mainComponent);
+      if (version && version !== 'N/A') return version;
+    }
+  }
+
+  // Fallback: use package.json version (dev mode) to avoid 0.0.0 when components.yaml is missing
+  try {
+    // Try candidate package.json locations (dist/cli/lib -> dist/cli -> dist -> repo root)
+    const candidates = [
+      path.resolve(import.meta.dirname, '../package.json'),       // dist/cli/package.json (typically absent)
+      path.resolve(import.meta.dirname, '../../package.json'),    // dist/package.json (typically absent)
+      path.resolve(import.meta.dirname, '../../../package.json'), // repo root package.json
+      path.resolve(import.meta.dirname, '../../cli/package.json') // repo cli/package.json (when run from tsx)
+    ];
+    for (const pkgPath of candidates) {
+      if (!fs.existsSync(pkgPath)) continue;
+      const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf8'));
+      if (pkg?.version) return pkg.version as string;
+    }
+  } catch { /* ignore */ }
+
+  return '0.0.0';
 }
 
 /**

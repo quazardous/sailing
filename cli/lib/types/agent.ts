@@ -37,4 +37,5 @@ export interface AgentInfo {
   killed_at?: string;
   merge_strategy?: string;
   merged_to?: string;
+  [key: string]: any;
 }

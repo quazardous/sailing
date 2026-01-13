@@ -87,7 +87,7 @@ export function buildConflictMatrix() {
 
   // Get agents with worktrees that are dispatched or running
   const activeAgents = Object.entries(agents)
-    .filter(([_, info]) => (info as AgentInfo).worktree && ['dispatched', 'running'].includes((info as AgentInfo).status || ''))
+    .filter(([_, info]) => info.worktree && ['dispatched', 'running'].includes(info.status || ''))
     .map(([id]) => id);
 
   if (activeAgents.length < 2) {
@@ -174,8 +174,8 @@ export function canMergeWithoutConflict(taskId) {
   const otherAgents = Object.entries(agents)
     .filter(([id, info]) =>
       id !== taskId &&
-      (info as AgentInfo).worktree &&
-      ['dispatched', 'running'].includes((info as AgentInfo).status || '')
+      info.worktree &&
+      ['dispatched', 'running'].includes(info.status || '')
     )
     .map(([id]) => id);
 

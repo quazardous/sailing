@@ -1,10 +1,14 @@
 /**
  * State management for sailing project
  * Handles centralized ID counters and state.json
+ * TODO[P1]: Define a typed State shape (counters, agents, assignments) to eliminate implicit any when strict is enabled.
+ * TODO[P2]: Add runtime validation/guards on loadState/saveState to catch corrupt state early.
+ * TODO[P3]: Consider splitting lock/file I/O from state helpers for easier TS migration.
  */
 import fs from 'fs';
 import path from 'path';
 import { getStateFile, findPrdDirs, findFiles, getSailingDir } from './core.js';
+import { State } from './types/state.js';
 
 /**
  * Acquire exclusive lock on state file
@@ -53,7 +57,7 @@ function acquireLock(timeout = 5000) {
 /**
  * Release lock on state file
  */
-function releaseLock(lockFile) {
+function releaseLock(lockFile: string) {
   try {
     fs.unlinkSync(lockFile);
   } catch {
@@ -64,7 +68,7 @@ function releaseLock(lockFile) {
 /**
  * Load state from file, auto-initializing if needed
  */
-export function loadState() {
+export function loadState(): State {
   const stateFile = getStateFile();
   // Ensure .sailing directory exists
   const sailingDir = getSailingDir();
@@ -97,7 +101,7 @@ export function loadState() {
     });
   });
 
-  const state = { counters: { prd: maxPrd, epic: maxEpic, task: maxTask, story: maxStory } };
+  const state: State = { counters: { prd: maxPrd, epic: maxEpic, task: maxTask, story: maxStory } };
   saveState(state);
   return state;
 }
@@ -105,7 +109,7 @@ export function loadState() {
 /**
  * Save state to file
  */
-export function saveState(state) {
+export function saveState(state: State) {
   const stateFile = getStateFile();
   fs.writeFileSync(stateFile, JSON.stringify(state, null, 2) + '\n');
 }
@@ -116,7 +120,7 @@ export function saveState(state) {
  * @param {function} updateFn - Function that receives current state and returns updated state
  * @returns {object} The updated state
  */
-export function updateStateAtomic(updateFn) {
+export function updateStateAtomic(updateFn: (state: State) => State): State {
   const lockFile = acquireLock();
   try {
     const state = loadState();
@@ -131,7 +135,7 @@ export function updateStateAtomic(updateFn) {
 /**
  * Get next ID for an entity type and increment counter
  */
-export function nextId(type) {
+export function nextId(type: keyof State['counters']) {
   const state = loadState();
   // Handle null/undefined counters (e.g., story counter added after initial state.json)
   if (state.counters[type] == null) {
@@ -145,7 +149,7 @@ export function nextId(type) {
 /**
  * Peek at next ID without incrementing (for dry-run / preview)
  */
-export function peekNextId(type) {
+export function peekNextId(type: keyof State['counters']) {
   const state = loadState();
   const current = state.counters[type] ?? 0;
   return current + 1;
@@ -154,7 +158,7 @@ export function peekNextId(type) {
 /**
  * Get next number in a directory for a given prefix (fallback method)
  */
-export function getNextNumber(dir, prefix) {
+export function getNextNumber(dir: string, prefix: string) {
   if (!fs.existsSync(dir)) return 1;
   const files = fs.readdirSync(dir).filter(f => f.startsWith(prefix));
   if (files.length === 0) return 1;

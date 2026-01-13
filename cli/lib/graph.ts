@@ -30,6 +30,21 @@ type TaskNode = {
 type TasksMap = Map<string, TaskNode>;
 type BlocksMap = Map<string, string[]>;
 
+interface TaskFrontmatter {
+  id?: string;
+  title?: string;
+  status?: string;
+  assignee?: string;
+  effort?: string;
+  priority?: string;
+  tags?: unknown[];
+  blocked_by?: string[];
+  parent?: string;
+  started_at?: unknown;
+  done_at?: unknown;
+  blocked_at?: unknown;
+}
+
 /**
  * Build complete dependency graph from all tasks
  * @returns {{ tasks: Map, blocks: Map }}
@@ -41,29 +56,29 @@ export function buildDependencyGraph(): { tasks: TasksMap; blocks: BlocksMap } {
   for (const prdDir of findPrdDirs()) {
     const prdName = path.basename(prdDir);
     findFiles(path.join(prdDir, 'tasks'), /^T\d+.*\.md$/).forEach(f => {
-      const file = loadFile(f);
-      const rawId = (file?.data?.id as string | undefined) || path.basename(f, '.md').match(/^T\d+/)?.[0];
+      const file = loadFile<TaskFrontmatter>(f);
+      const rawId = file?.data?.id || path.basename(f, '.md').match(/^T\d+/)?.[0];
       if (!rawId) return;
       const id = normalizeId(rawId);
       if (!id) return;
 
-      const blockedByRaw = (file?.data?.blocked_by as string[] | undefined) || [];
+      const blockedByRaw = file?.data?.blocked_by || [];
       const blockedBy = blockedByRaw.map(extractTaskId).filter((b): b is string => Boolean(b));
 
       tasks.set(id, {
         id,
-        title: (file?.data?.title as string | undefined) || '',
-        status: (file?.data?.status as string | undefined) || 'Unknown',
-        assignee: (file?.data?.assignee as string | undefined) || 'unassigned',
-        effort: (file?.data?.effort as string | undefined) || '',
-        priority: (file?.data?.priority as string | undefined) || 'normal',
-        tags: (file?.data?.tags as unknown[]) || [],
+        title: file?.data?.title || '',
+        status: file?.data?.status || 'Unknown',
+        assignee: file?.data?.assignee || 'unassigned',
+        effort: file?.data?.effort || '',
+        priority: file?.data?.priority || 'normal',
+        tags: file?.data?.tags || [],
         blockedBy,
         blockedByRaw,
         file: f,
         prd: prdName,
-        parent: (file?.data?.parent as string | undefined) || '',
-        epic: extractEpicId((file?.data?.parent as string | undefined) || '') || undefined,
+        parent: file?.data?.parent || '',
+        epic: extractEpicId(file?.data?.parent || '') || undefined,
         started_at: file?.data?.started_at,
         done_at: file?.data?.done_at,
         blocked_at: file?.data?.blocked_at

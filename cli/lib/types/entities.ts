@@ -28,9 +28,34 @@ export interface Epic extends BaseEntity {
 
 export interface Prd extends BaseEntity {
   milestones?: { id: string; epics: string[] }[];
+  branching?: 'flat' | 'prd' | 'epic';
 }
 
 export interface Story extends BaseEntity {
   type: 'user' | 'technical' | 'api';
   parent_story?: string | null;
+}
+
+export interface TaskIndexEntry {
+  key: string;
+  id: string;
+  file: string;
+  prdDir: string;
+  data: Partial<Task>;
+}
+
+export interface EpicIndexEntry {
+  key: string;
+  id: string;
+  file: string;
+  prdDir: string;
+  data: Partial<Epic>;
+}
+
+export interface PrdIndexEntry {
+  num: number;
+  id: string;
+  dir: string;
+  file: string;
+  data: Partial<Prd>;
 }

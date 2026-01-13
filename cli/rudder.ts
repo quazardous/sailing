@@ -49,7 +49,7 @@ if (rootPath) {
 }
 
 // Now import version (which uses core.js and needs project root set)
-import { getMainVersion } from './lib/version.js';
+import { getMainVersion, getCliVersion } from './lib/version.js';
 import { registerPrdCommands } from './commands/prd.js';
 import { registerEpicCommands } from './commands/epic.js';
 import { registerTaskCommands } from './commands/task.js';
@@ -93,7 +93,8 @@ const expandedArgs = args.flatMap(arg => {
 program
   .name('rudder')
   .description('Project governance CLI for sailing workflow\n\nSyntax: rudder <group>:<command> or rudder <group> <command>\n\nHelp:\n  rudder -h              All commands\n  rudder <group> -h      Group commands (e.g., rudder task -h)\n  rudder <cmd> -h        Command options (e.g., rudder task:list -h)')
-  .version(getMainVersion());
+  // CLI version should reflect the tool, not the project components
+  .version(getCliVersion());
 
 // Register command groups
 registerPrdCommands(program);
