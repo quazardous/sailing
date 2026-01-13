@@ -13,6 +13,7 @@ import { getPrd, buildPrdIndex, clearIndexCache } from '../lib/index.js';
 import { findEpicPrd, findTaskEpic } from '../lib/memory.js';
 import { normalizeId } from '../lib/normalize.js';
 import { isGitRepo, gitMv } from '../lib/git.js';
+import { withModifies } from '../lib/help.js';
 
 interface ArchiveOptions {
   force?: boolean;
@@ -296,8 +297,8 @@ function archiveAllDone(dryRun = false) {
  * Register archive commands
  */
 export function registerArchiveCommands(program) {
-  program
-    .command('archive [prd-id]')
+  withModifies(program
+    .command('archive [prd-id]'), ['fs', 'git'])
     .description('Archive a completed PRD (or list Done PRDs if no ID)')
     .option('--list', 'List PRDs with status Done (default if no ID)')
     .option('--all', 'Archive all Done PRDs')

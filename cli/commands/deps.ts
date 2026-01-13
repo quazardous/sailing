@@ -7,7 +7,7 @@ import { findPrdDirs, findFiles, loadFile, saveFile, jsonOut } from '../lib/core
 import { normalizeId, matchesId, extractTaskId, matchesPrdDir, parentContainsEpic } from '../lib/normalize.js';
 import { STATUS, normalizeStatus, isStatusDone, isStatusNotStarted, isStatusInProgress, isStatusCancelled, statusSymbol } from '../lib/lexicon.js';
 import { buildDependencyGraph, detectCycles, findRoots, blockersResolved, longestPath, countTotalUnblocked, getAncestors, getDescendants } from '../lib/graph.js';
-import { addDynamicHelp } from '../lib/help.js';
+import { addDynamicHelp, withModifies } from '../lib/help.js';
 
 /**
  * Check if ID is an epic (ENNN) vs task (TNNN)
@@ -238,7 +238,7 @@ export function registerDepsCommands(program) {
     });
 
   // deps:validate
-  deps.command('validate')
+  withModifies(deps.command('validate'), ['fs'])
     .description('Check deps (cycles, missing refs, status) → use --fix to auto-correct')
     .option('--prd <id>', 'Filter by PRD')
     .option('--fix', 'Auto-fix issues')
@@ -838,7 +838,7 @@ export function registerDepsCommands(program) {
     });
 
   // deps:add
-  deps.command('add <id>')
+  withModifies(deps.command('add <id>'), ['fs'])
     .description('Add dependency (--blocks or --blocked-by, supports TNNN and ENNN)')
     .option('--blocks <ids...>', 'This entity blocks these entities')
     .option('--blocked-by <ids...>', 'This entity is blocked by these entities')

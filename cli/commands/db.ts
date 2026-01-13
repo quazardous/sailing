@@ -10,7 +10,7 @@ import {
   upsertAgent, getRunsForTask, migrateFromStateJson
 } from '../lib/db.js';
 import { resolvePlaceholders } from '../lib/paths.js';
-import { addDynamicHelp } from '../lib/help.js';
+import { addDynamicHelp, withModifies } from '../lib/help.js';
 import { AgentInfo } from '../lib/types/agent.js';
 
 /**
@@ -113,7 +113,7 @@ export function registerDbCommands(program) {
     });
 
   // db:delete - delete agent entry
-  db.command('delete <task-id>')
+  withModifies(db.command('delete <task-id>'), ['state'])
     .description('Delete agent entry')
     .action(async (taskId: string) => {
       taskId = taskId.toUpperCase();
@@ -130,7 +130,7 @@ export function registerDbCommands(program) {
     });
 
   // db:clear - clear all agents
-  db.command('clear')
+  withModifies(db.command('clear'), ['state'])
     .description('Clear all agents')
     .option('--confirm', 'Confirm deletion')
     .action(async (options: { confirm?: boolean }) => {
@@ -170,7 +170,7 @@ export function registerDbCommands(program) {
     });
 
   // db:migrate - migrate from haven's state.json
-  db.command('migrate')
+  withModifies(db.command('migrate'), ['state', 'fs'])
     .description('Migrate agents from haven state.json to jsondb')
     .option('--dry-run', 'Show what would be migrated')
     .action(async (options: { dryRun?: boolean }) => {
@@ -211,7 +211,7 @@ export function registerDbCommands(program) {
     });
 
   // db:compact - compact database files
-  db.command('compact')
+  withModifies(db.command('compact'), ['state'])
     .description('Compact database files (remove deleted entries)')
     .action(async () => {
       const agentsDb = getAgentsDb();

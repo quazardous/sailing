@@ -18,8 +18,11 @@ export interface OptionWithMeta extends Option {
   argChoices?: string[];
 }
 
+export type ModificationType = 'fs' | 'git' | 'state' | 'mcp';
+
 export interface CommandWithInternals extends Command {
   _args: CommandArg[];
   options: OptionWithMeta[];
   commands: Command[];
+  _modifies?: ModificationType[];
 }

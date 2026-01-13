@@ -5,7 +5,7 @@
  */
 import { STATUS, ENTITY_TYPES } from './lexicon.js';
 import { Command } from 'commander';
-import { CommandWithInternals, CommandArg, OptionWithMeta } from './types/commander-ext.js';
+import { CommandWithInternals, CommandArg, OptionWithMeta, ModificationType } from './types/commander-ext.js';
 
 /**
  * Format option flags (short + long)
@@ -26,8 +26,7 @@ function formatOptionFlags(opt: OptionWithMeta): string {
   // Add value placeholder
   if (opt.required) {
     const val = opt.argChoices ? opt.argChoices.join('|') : 'val';
-    flags += ` <${val}>
-`;
+    flags += ` <${val}>`;
   } else if (opt.optional) {
     flags += ' [val]';
   } else if (opt.variadic) {
@@ -87,11 +86,26 @@ export function generateGroupHelp(group: Command, entityType?: string): string {
 
     // Build command line with arguments
     const args = internalCmd._args.map((arg: CommandArg) =>
-      arg.required ? `<${arg.name()}>` : `[${arg.name()}]
-    `).join(' ');
+      arg.required ? `<${arg.name()}>` : `[${arg.name()}]`
+    ).join(' ');
+
+    // Add modification badges
+    let badges = '';
+    if (internalCmd._modifies && internalCmd._modifies.length > 0) {
+      const tags = internalCmd._modifies.map(m => {
+        switch (m) {
+          case 'fs': return 'FS';
+          case 'git': return 'Git';
+          case 'state': return 'DB';
+          case 'mcp': return 'MCP';
+          default: return m;
+        }
+      }).join(',');
+      badges = ` [${tags}]`;
+    }
 
     const cmdLine = args ? `${internalCmd.name()} ${args}` : internalCmd.name();
-    output.push(`• ${cmdLine}`);
+    output.push(`• ${cmdLine}${badges}`);
 
     // Get options only (skip arguments)
     const options: { flags: string; desc: string }[] = [];
@@ -134,4 +148,15 @@ export function addDynamicHelp(group: Command, extras: { entityType?: string } =
   group.addHelpText('after', () => {
     return generateGroupHelp(group, extras.entityType);
   });
+}
+
+/**
+ * Mark a command as modifying specific systems
+ * @param {Command} cmd - The command to mark
+ * @param {ModificationType[]} types - Types of modifications
+ * @returns {Command} The command (for chaining)
+ */
+export function withModifies(cmd: Command, types: ModificationType[]): Command {
+  (cmd as CommandWithInternals)._modifies = types;
+  return cmd;
 }

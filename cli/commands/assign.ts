@@ -10,7 +10,7 @@ import yaml from 'js-yaml';
 import { jsonOut, getPrompting, getMemoryDir, loadFile, getPrdsDir, saveFile, getPath, loadPathsConfig, getRunsDir, getAssignmentsDir } from '../lib/core.js';
 import { ensureDir, computeProjectHash } from '../lib/paths.js';
 import { normalizeId } from '../lib/normalize.js';
-import { addDynamicHelp } from '../lib/help.js';
+import { addDynamicHelp, withModifies } from '../lib/help.js';
 import { findLogFiles, mergeTaskLog, findTaskEpic, readLogFile } from '../lib/memory.js';
 import { addLogEntry } from '../lib/update.js';
 import { composeAgentContext } from '../lib/compose.js';
@@ -645,7 +645,7 @@ export function registerAssignCommands(program) {
     .description('Assignment operations (skill → agent prompt)');
 
   // assign:create TNNN --operation <op>
-  assign.command('create <task-id>')
+  withModifies(assign.command('create <task-id>'), ['fs'])
     .description('Create an assignment for a task')
     .requiredOption('--operation <op>', 'Operation type (task-start, etc.)')
     .option('--json', 'JSON output')
@@ -699,7 +699,7 @@ export function registerAssignCommands(program) {
     });
 
   // assign:claim <entity-id> - unified context for tasks, epics, PRDs
-  assign.command('claim <entity-id>')
+  withModifies(assign.command('claim <entity-id>'), ['fs'])
     .description('Get compiled prompt for any entity (task, epic, or PRD)')
     .requiredOption('--role <role>', 'Role context (required): only "agent" allowed')
     .option('--operation <op>', 'Operation type (auto-detected if not specified)')
@@ -746,7 +746,7 @@ export function registerAssignCommands(program) {
     });
 
   // assign:release TNNN
-  assign.command('release <task-id>')
+  withModifies(assign.command('release <task-id>'), ['fs'])
     .description('Release assignment (agent finished)')
     .action((taskId: string, options: { status: string; json?: boolean }) => {
       const normalized = normalizeId(taskId);
@@ -892,7 +892,7 @@ export function registerAssignCommands(program) {
     });
 
   // assign:complete TNNN
-  assign.command('complete <task-id>')
+  withModifies(assign.command('complete <task-id>'), ['fs'])
     .description('Mark an assignment as complete')
     .option('--success', 'Mark as successful completion')
     .option('--failure', 'Mark as failed completion')
@@ -929,7 +929,7 @@ export function registerAssignCommands(program) {
     });
 
   // assign:delete TNNN
-  assign.command('delete <task-id>')
+  withModifies(assign.command('delete <task-id>'), ['fs'])
     .description('Delete an assignment')
     .option('--force', 'Force delete even if claimed')
     .option('--json', 'JSON output')

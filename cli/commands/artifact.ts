@@ -5,7 +5,7 @@
 import fs from 'fs';
 import path from 'path';
 import { jsonOut, stripComments } from '../lib/core.js';
-import { addDynamicHelp } from '../lib/help.js';
+import { addDynamicHelp, withModifies } from '../lib/help.js';
 import {
   parseMarkdownSections,
   serializeSections,
@@ -154,7 +154,7 @@ export function registerArtifactCommands(program) {
     });
 
   // artifact:edit - Edit a section (or multiple sections via stdin)
-  artifact.command('edit <id>')
+  withModifies(artifact.command('edit <id>'), ['fs'])
     .description('Edit section(s) in an artifact')
     .option('-s, --section <name>', 'Section to edit (omit for multi-section stdin)')
     .option('-c, --content <text>', 'New content (or use stdin)')
@@ -336,7 +336,7 @@ Examples:
     });
 
   // artifact:check - Check a deliverable checkbox
-  artifact.command('check <id> <item>')
+  withModifies(artifact.command('check <id> <item>'), ['fs'])
     .description('Check a deliverable checkbox')
     .option('-s, --section <name>', 'Section containing checkbox (default: Deliverables)')
     .option('--json', 'JSON output')
@@ -362,7 +362,7 @@ Examples:
     });
 
   // artifact:uncheck - Uncheck a deliverable checkbox
-  artifact.command('uncheck <id> <item>')
+  withModifies(artifact.command('uncheck <id> <item>'), ['fs'])
     .description('Uncheck a deliverable checkbox')
     .option('-s, --section <name>', 'Section containing checkbox (default: Deliverables)')
     .option('--json', 'JSON output')
@@ -388,7 +388,7 @@ Examples:
     });
 
   // artifact:patch - Apply SEARCH/REPLACE blocks (Aider-style)
-  artifact.command('patch <id>')
+  withModifies(artifact.command('patch <id>'), ['fs'])
     .description('Apply SEARCH/REPLACE blocks to artifact (stdin or file)')
     .option('-f, --file <path>', 'Read patch from file instead of stdin')
     .option('--dry-run', 'Show what would be changed without applying')
@@ -466,7 +466,7 @@ Examples:
     });
 
   // artifact:ops - Apply JSON ops array
-  artifact.command('ops <id>')
+  withModifies(artifact.command('ops <id>'), ['fs'])
     .description('Apply JSON operations array to artifact')
     .option('-f, --file <path>', 'Read ops from file instead of stdin')
     .option('--json', 'JSON output')

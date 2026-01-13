@@ -16,7 +16,7 @@ import {
   upsertAgent, getAgent, getAllAgents, deleteAgent, clearAllAgents,
   updateAgentStatus, createRun, completeRun
 } from '../lib/db.js';
-import { addDynamicHelp } from '../lib/help.js';
+import { addDynamicHelp, withModifies } from '../lib/help.js';
 import { getAgentConfig } from '../lib/config.js';
 import {
   createWorktree, getWorktreePath, getBranchName, worktreeExists, removeWorktree,
@@ -55,7 +55,7 @@ export function registerAgentCommands(program) {
   addDynamicHelp(agent, { entityType: 'agent' });
 
   // agent:spawn - creates worktree, spawns Claude with bootstrap prompt
-  agent.command('spawn <task-id>')
+  withModifies(agent.command('spawn <task-id>'), ['fs', 'git', 'state'])
     .description('Spawn agent to execute task (creates worktree, spawns Claude)')
     .option('--role <role>', 'Role context (skill, coordinator) - agent role blocked')
     .option('--timeout <seconds>', 'Execution timeout (default: 600)', parseInt)
@@ -1206,7 +1206,7 @@ Start by running \`pwd\` and \`ls -la\`, then call the rudder MCP tool with \`co
     });
 
   // agent:collect (DEPRECATED - use agent:reap)
-  agent.command('collect <task-id>')
+  withModifies(agent.command('collect <task-id>'), ['state'])
     .description('[DEPRECATED] Collect agent result → use agent:reap instead')
     .option('--json', 'JSON output')
     .action((taskId: string, options: { json?: boolean }) => {
@@ -1386,7 +1386,7 @@ Start by running \`pwd\` and \`ls -la\`, then call the rudder MCP tool with \`co
     });
 
   // agent:sync - reconcile state.json with reality (worktrees, agents dirs)
-  agent.command('sync')
+  withModifies(agent.command('sync'), ['state'])
     .description('Sync state.json with actual worktrees/agents (recover from ghosts)')
     .action((options: { dryRun?: boolean; json?: boolean }) => {
       const config = getAgentConfig();
@@ -1514,7 +1514,7 @@ Start by running \`pwd\` and \`ls -la\`, then call the rudder MCP tool with \`co
     });
 
   // agent:clear
-  agent.command('clear [task-id]')
+  withModifies(agent.command('clear [task-id]'), ['state'])
     .description('Clear agent tracking (all or specific task)')
     .option('--force', 'Clear without confirmation')
     .action((taskId: string | undefined, options: { force?: boolean }) => {
@@ -1545,7 +1545,7 @@ Start by running \`pwd\` and \`ls -la\`, then call the rudder MCP tool with \`co
     });
 
   // agent:reap - unified harvest: wait, collect, merge, cleanup, update status
-  agent.command('reap <task-id>')
+  withModifies(agent.command('reap <task-id>'), ['fs', 'git', 'state'])
     .description('Harvest agent work: wait, merge, cleanup, update status (or escalate)')
     .option('--role <role>', 'Role context (skill, coordinator) - agent role blocked')
     .option('--no-wait', 'Skip waiting if agent not complete')
@@ -1804,7 +1804,7 @@ Start by running \`pwd\` and \`ls -la\`, then call the rudder MCP tool with \`co
     });
 
   // agent:merge (DEPRECATED - use agent:reap)
-  agent.command('merge <task-id>')
+  withModifies(agent.command('merge <task-id>'), ['fs', 'git', 'state'])
     .description('[DEPRECATED] Merge agent worktree → use agent:reap instead')
     .option('--strategy <type>', 'Merge strategy: merge|squash|rebase (default from config)')
     .option('--no-cleanup', 'Keep worktree after merge')
@@ -1952,7 +1952,7 @@ Start by running \`pwd\` and \`ls -la\`, then call the rudder MCP tool with \`co
     });
 
   // agent:reject
-  agent.command('reject <task-id>')
+  withModifies(agent.command('reject <task-id>'), ['fs', 'git', 'state'])
     .description('Reject agent work and cleanup worktree')
     .option('--reason <text>', 'Rejection reason (logged)')
     .option('--status <status>', 'New task status: blocked|not-started (default: blocked)', 'blocked')
@@ -2087,7 +2087,7 @@ Start by running \`pwd\` and \`ls -la\`, then call the rudder MCP tool with \`co
     });
 
   // agent:kill
-  agent.command('kill <task-id>')
+  withModifies(agent.command('kill <task-id>'), ['state'])
     .action((taskId: string, options: { json?: boolean }) => {
       taskId = normalizeId(taskId);
 
@@ -2299,7 +2299,7 @@ Start by running \`pwd\` and \`ls -la\`, then call the rudder MCP tool with \`co
     });
 
   // agent:check - Diagnose MCP connectivity
-  agent.command('check')
+  withModifies(agent.command('check'), ['fs'])
     .description('Diagnose MCP server connectivity (spawn quick test agent)')
     .option('--timeout <seconds>', 'Test timeout (default: 30)', parseInt, 30)
     .option('--debug', 'Show debug info')
@@ -2731,7 +2731,7 @@ Exit immediately after outputting the result.`;
     });
 
   // agent:reap-all - Reap all completed agents
-  agent.command('reap-all [task-ids...]')
+  withModifies(agent.command('reap-all [task-ids...]'), ['fs', 'git', 'state'])
     .description('Reap all completed agents (all if no IDs specified)')
     .option('--json', 'JSON output')
     .action(async (taskIds: string[], options: { json?: boolean }) => {

@@ -160,7 +160,17 @@ program
   .name('rudder')
   .description('Project governance CLI for sailing workflow\n\nSyntax: rudder <group>:<command> or rudder <group> <command>\n\nHelp:\n  rudder -h              All commands\n  rudder <group> -h      Group commands (e.g., rudder task -h)\n  rudder <cmd> -h        Command options (e.g., rudder task:list -h)')
   // CLI version should reflect the tool, not the project components
-  .version(getCliVersion());
+  .version(getCliVersion())
+  .configureHelp({
+    // Show only command name in global help (no [options] [args])
+    subcommandTerm: (cmd) => cmd.name()
+  })
+  .addHelpText('after', `
+Global Options (before command):
+  --root <path>              Project root directory (overrides SAILING_PROJECT)
+  --with-config <key=value>  Override config value (experimental, repeatable)
+  --with-path <key=value>    Override path value (experimental, repeatable)
+`);
 
 // Register command groups
 registerPrdCommands(program);

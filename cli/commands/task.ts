@@ -12,7 +12,7 @@ import { STATUS, normalizeStatus, isStatusDone, isStatusNotStarted, isStatusInPr
 import { buildDependencyGraph, blockersResolved } from '../lib/graph.js';
 import { nextId } from '../lib/state.js';
 import { parseUpdateOptions, addLogEntry } from '../lib/update.js';
-import { addDynamicHelp } from '../lib/help.js';
+import { addDynamicHelp, withModifies } from '../lib/help.js';
 import { formatId } from '../lib/config.js';
 import { parseSearchReplace, editArtifact, parseMultiSectionContent, processMultiSectionOps } from '../lib/artifact.js';
 import { Task } from '../lib/types/entities.js';
@@ -225,7 +225,7 @@ export function registerTaskCommands(program) {
     });
 
   // task:create
-  task.command('create <parent> <title>')
+  withModifies(task.command('create <parent> <title>'), ['fs'])
     .description('Create task under epic (e.g., E035 or PRD-001/E035 "Title")')
     .option('--story <id>', 'Link to story (repeatable)', (v, arr) => arr.concat(v), [])
     .option('--tag <tag>', 'Add tag (repeatable, slugified to kebab-case)', (v, arr) => arr.concat(v), [])
@@ -327,7 +327,7 @@ export function registerTaskCommands(program) {
     });
 
   // task:update
-  task.command('update <id>')
+  withModifies(task.command('update <id>'), ['fs'])
     .description('Update task (status, assignee, blockers, stories, versions)')
     .option('-s, --status <status>', `Set status (${statusHelp})`)
     .option('-a, --assignee <name>', 'Set assignee')
