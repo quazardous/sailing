@@ -3,9 +3,7 @@ node_modules/
 
 # Local settings (not distributed)
 .claude/
-# Ignore .sailing contents but track components.yaml
-.sailing/*
-!.sailing/components.yaml
+.sailing/
 
 # OS files
 .DS_Store
@@ -27,4 +25,3 @@ tmp/
 # Generated skill files (from skill/build.sh)
 skill/SKILL_INLINE.md
 skill/SKILL_WORKTREE.md
-.sailing/
