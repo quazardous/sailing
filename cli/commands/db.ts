@@ -170,7 +170,7 @@ export function registerDbCommands(program) {
     });
 
   // db:migrate - migrate from haven's state.json
-  withModifies(db.command('migrate'), ['state', 'fs'])
+  withModifies(db.command('migrate'), ['state', 'state'])
     .description('Migrate agents from haven state.json to jsondb')
     .option('--dry-run', 'Show what would be migrated')
     .action(async (options: { dryRun?: boolean }) => {

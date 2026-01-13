@@ -645,7 +645,7 @@ export function registerAssignCommands(program) {
     .description('Assignment operations (skill → agent prompt)');
 
   // assign:create TNNN --operation <op>
-  withModifies(assign.command('create <task-id>'), ['fs'])
+  withModifies(assign.command('create <task-id>'), ['task'])
     .description('Create an assignment for a task')
     .requiredOption('--operation <op>', 'Operation type (task-start, etc.)')
     .option('--json', 'JSON output')
@@ -699,7 +699,7 @@ export function registerAssignCommands(program) {
     });
 
   // assign:claim <entity-id> - unified context for tasks, epics, PRDs
-  withModifies(assign.command('claim <entity-id>'), ['fs'])
+  withModifies(assign.command('claim <entity-id>'), ['task'])
     .description('Get compiled prompt for any entity (task, epic, or PRD)')
     .requiredOption('--role <role>', 'Role context (required): only "agent" allowed')
     .option('--operation <op>', 'Operation type (auto-detected if not specified)')
@@ -746,7 +746,7 @@ export function registerAssignCommands(program) {
     });
 
   // assign:release TNNN
-  withModifies(assign.command('release <task-id>'), ['fs'])
+  withModifies(assign.command('release <task-id>'), ['task'])
     .description('Release assignment (agent finished)')
     .action((taskId: string, options: { status: string; json?: boolean }) => {
       const normalized = normalizeId(taskId);
@@ -892,7 +892,7 @@ export function registerAssignCommands(program) {
     });
 
   // assign:complete TNNN
-  withModifies(assign.command('complete <task-id>'), ['fs'])
+  withModifies(assign.command('complete <task-id>'), ['task'])
     .description('Mark an assignment as complete')
     .option('--success', 'Mark as successful completion')
     .option('--failure', 'Mark as failed completion')
@@ -929,7 +929,7 @@ export function registerAssignCommands(program) {
     });
 
   // assign:delete TNNN
-  withModifies(assign.command('delete <task-id>'), ['fs'])
+  withModifies(assign.command('delete <task-id>'), ['task'])
     .description('Delete an assignment')
     .option('--force', 'Force delete even if claimed')
     .option('--json', 'JSON output')

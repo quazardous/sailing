@@ -238,7 +238,7 @@ export function registerDepsCommands(program) {
     });
 
   // deps:validate
-  withModifies(deps.command('validate'), ['fs'])
+  withModifies(deps.command('validate'), ['task'])
     .description('Check deps (cycles, missing refs, status) → use --fix to auto-correct')
     .option('--prd <id>', 'Filter by PRD')
     .option('--fix', 'Auto-fix issues')
@@ -838,7 +838,7 @@ export function registerDepsCommands(program) {
     });
 
   // deps:add
-  withModifies(deps.command('add <id>'), ['fs'])
+  withModifies(deps.command('add <id>'), ['task'])
     .description('Add dependency (--blocks or --blocked-by, supports TNNN and ENNN)')
     .option('--blocks <ids...>', 'This entity blocks these entities')
     .option('--blocked-by <ids...>', 'This entity is blocked by these entities')

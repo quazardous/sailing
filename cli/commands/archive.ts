@@ -37,7 +37,7 @@ function moveFile(src, dest) {
       fs.mkdirSync(destDir, { recursive: true });
     }
     fs.renameSync(src, dest);
-    return 'fs';
+    return 'prd';
   }
 }
 
@@ -298,7 +298,7 @@ function archiveAllDone(dryRun = false) {
  */
 export function registerArchiveCommands(program) {
   withModifies(program
-    .command('archive [prd-id]'), ['fs', 'git'])
+    .command('archive [prd-id]'), ['prd', 'git'])
     .description('Archive a completed PRD (or list Done PRDs if no ID)')
     .option('--list', 'List PRDs with status Done (default if no ID)')
     .option('--all', 'Archive all Done PRDs')

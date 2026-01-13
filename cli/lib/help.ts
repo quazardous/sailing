@@ -7,6 +7,12 @@ import { STATUS, ENTITY_TYPES } from './lexicon.js';
 import { Command } from 'commander';
 import { CommandWithInternals, CommandArg, OptionWithMeta, ModificationType } from './types/commander-ext.js';
 
+// Extend Command prototype with chainable .modifies() method
+(Command.prototype as any).modifies = function(types: ModificationType[]): Command {
+  (this as CommandWithInternals)._modifies = types;
+  return this;
+};
+
 /**
  * Format option flags (short + long)
  * @param {Object} opt - Commander option object
@@ -89,23 +95,14 @@ export function generateGroupHelp(group: Command, entityType?: string): string {
       arg.required ? `<${arg.name()}>` : `[${arg.name()}]`
     ).join(' ');
 
-    // Add modification badges
-    let badges = '';
+    // Add modification indicator
+    let modifiesInfo = '';
     if (internalCmd._modifies && internalCmd._modifies.length > 0) {
-      const tags = internalCmd._modifies.map(m => {
-        switch (m) {
-          case 'fs': return 'FS';
-          case 'git': return 'Git';
-          case 'state': return 'DB';
-          case 'mcp': return 'MCP';
-          default: return m;
-        }
-      }).join(',');
-      badges = ` [${tags}]`;
+      modifiesInfo = ` (modifies ${internalCmd._modifies.join(', ')})`;
     }
 
     const cmdLine = args ? `${internalCmd.name()} ${args}` : internalCmd.name();
-    output.push(`• ${cmdLine}${badges}`);
+    output.push(`• ${cmdLine}${modifiesInfo}`);
 
     // Get options only (skip arguments)
     const options: { flags: string; desc: string }[] = [];

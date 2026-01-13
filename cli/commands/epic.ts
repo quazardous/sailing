@@ -191,7 +191,7 @@ export function registerEpicCommands(program) {
     });
 
   // epic:create
-  withModifies(epic.command('create <prd> <title>'), ['fs'])
+  withModifies(epic.command('create <prd> <title>'), ['epic'])
     .description('Create epic in PRD (e.g., PRD-001 "Title")')
     .option('--story <id>', 'Link to story (repeatable)', (v, arr) => arr.concat(v), [])
     .option('--tag <tag>', 'Add tag (repeatable, slugified to kebab-case)', (v, arr) => arr.concat(v), [])
@@ -289,7 +289,7 @@ updated: '${new Date().toISOString()}'
     });
 
   // epic:update
-  withModifies(epic.command('update <id>'), ['fs'])
+  withModifies(epic.command('update <id>'), ['epic'])
     .description('Update epic (status, versions, stories, blockers)')
     .option('-s, --status <status>', `Set status (${statusHelp})`)
     .option('-a, --assignee <name>', 'Set assignee')
@@ -362,7 +362,7 @@ updated: '${new Date().toISOString()}'
     });
 
   // epic:clean-logs
-  withModifies(epic.command('clean-logs <id>'), ['fs'])
+  withModifies(epic.command('clean-logs <id>'), ['epic'])
     .description('Delete epic log file')
     .action((id) => {
       const epicId = normalizeId(id);
@@ -378,7 +378,7 @@ updated: '${new Date().toISOString()}'
     });
 
   // epic:merge-logs
-  withModifies(epic.command('merge-logs <id>'), ['fs'])
+  withModifies(epic.command('merge-logs <id>'), ['epic'])
     .description('Merge task logs into epic log and flush (TNNN.log → ENNN.log)')
     .option('--keep', 'Keep task logs after merge (don\'t delete)')
     .action((id, options) => {
@@ -459,7 +459,7 @@ updated: '${new Date().toISOString()}'
     });
 
   // epic:ensure-memory
-  withModifies(epic.command('ensure-memory <id>'), ['fs'])
+  withModifies(epic.command('ensure-memory <id>'), ['epic'])
     .description('Create memory file from template if missing')
     .action((id) => {
       const epicId = normalizeId(id);
@@ -506,7 +506,7 @@ updated: '${new Date().toISOString()}'
     });
 
   // epic:memory
-  withModifies(epic.command('memory <id> <message>'), ['fs'])
+  withModifies(epic.command('memory <id> <message>'), ['epic'])
     .description('Add entry to epic memory')
     .option('--tip', 'Add as tip (what works well)')
     .option('--cmd', 'Add as command (useful commands)')
@@ -551,7 +551,7 @@ updated: '${new Date().toISOString()}'
     });
 
   // epic:patch - Apply SEARCH/REPLACE blocks to epic
-  withModifies(epic.command('patch <id>'), ['fs'])
+  withModifies(epic.command('patch <id>'), ['epic'])
     .description('Apply SEARCH/REPLACE blocks to epic (stdin or file)')
     .option('-f, --file <path>', 'Read patch from file instead of stdin')
     .option('--dry-run', 'Show what would be changed without applying')
@@ -618,7 +618,7 @@ updated: '${new Date().toISOString()}'
     });
 
   // epic:edit - Edit epic sections
-  withModifies(epic.command('edit <id>'), ['fs'])
+  withModifies(epic.command('edit <id>'), ['epic'])
     .description('Edit epic section(s)')
     .option('-s, --section <name>', 'Section to edit (omit for multi-section stdin)')
     .option('-c, --content <text>', 'New content (or use stdin)')

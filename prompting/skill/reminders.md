@@ -22,17 +22,14 @@ rudder memory:sync
 
 ```bash
 # 2. Verify task is unblocked
-rudder deps:ready --task TNNN
-
-# 3. Review task requirements
-rudder task:show TNNN
+rudder deps:show TNNN
 ```
 
 ## DURING Agent Execution
 
 Agent must call:
 ```bash
-rudder context:load TNNN  # Gets contract + epic memory + task details
+rudder context:load TNNN --role agent  # Gets contract + epic memory + task details
 ```
 
 This gives agent the accumulated knowledge from previous tasks.

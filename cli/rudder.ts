@@ -65,12 +65,14 @@ while (configIdx !== -1) {
     const parsed = parseConfigOverride(args[configIdx + 1]);
     if (parsed) {
       configOverrides[parsed.key] = parsed.value;
+    } else {
+      process.exit(1);
     }
     // Remove --with-config and its value from args
     args.splice(configIdx, 2);
   } else {
     console.error('--with-config requires a value (e.g., --with-config agent.use_subprocess=true)');
-    args.splice(configIdx, 1);
+    process.exit(1);
   }
   configIdx = args.indexOf('--with-config');
 }
@@ -94,12 +96,14 @@ while (pathIdx !== -1) {
     const parsed = parsePathOverride(args[pathIdx + 1]);
     if (parsed) {
       pathOverrides[parsed.key] = parsed.value;
+    } else {
+      process.exit(1);
     }
     // Remove --with-path and its value from args
     args.splice(pathIdx, 2);
   } else {
     console.error('--with-path requires a value (e.g., --with-path artefacts=/custom/path)');
-    args.splice(pathIdx, 1);
+    process.exit(1);
   }
   pathIdx = args.indexOf('--with-path');
 }

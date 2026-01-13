@@ -154,7 +154,7 @@ export function registerArtifactCommands(program) {
     });
 
   // artifact:edit - Edit a section (or multiple sections via stdin)
-  withModifies(artifact.command('edit <id>'), ['fs'])
+  withModifies(artifact.command('edit <id>'), ['task'])
     .description('Edit section(s) in an artifact')
     .option('-s, --section <name>', 'Section to edit (omit for multi-section stdin)')
     .option('-c, --content <text>', 'New content (or use stdin)')
@@ -336,7 +336,7 @@ Examples:
     });
 
   // artifact:check - Check a deliverable checkbox
-  withModifies(artifact.command('check <id> <item>'), ['fs'])
+  withModifies(artifact.command('check <id> <item>'), ['task'])
     .description('Check a deliverable checkbox')
     .option('-s, --section <name>', 'Section containing checkbox (default: Deliverables)')
     .option('--json', 'JSON output')
@@ -362,7 +362,7 @@ Examples:
     });
 
   // artifact:uncheck - Uncheck a deliverable checkbox
-  withModifies(artifact.command('uncheck <id> <item>'), ['fs'])
+  withModifies(artifact.command('uncheck <id> <item>'), ['task'])
     .description('Uncheck a deliverable checkbox')
     .option('-s, --section <name>', 'Section containing checkbox (default: Deliverables)')
     .option('--json', 'JSON output')
@@ -388,7 +388,7 @@ Examples:
     });
 
   // artifact:patch - Apply SEARCH/REPLACE blocks (Aider-style)
-  withModifies(artifact.command('patch <id>'), ['fs'])
+  withModifies(artifact.command('patch <id>'), ['task'])
     .description('Apply SEARCH/REPLACE blocks to artifact (stdin or file)')
     .option('-f, --file <path>', 'Read patch from file instead of stdin')
     .option('--dry-run', 'Show what would be changed without applying')
@@ -466,7 +466,7 @@ Examples:
     });
 
   // artifact:ops - Apply JSON ops array
-  withModifies(artifact.command('ops <id>'), ['fs'])
+  withModifies(artifact.command('ops <id>'), ['task'])
     .description('Apply JSON operations array to artifact')
     .option('-f, --file <path>', 'Read ops from file instead of stdin')
     .option('--json', 'JSON output')

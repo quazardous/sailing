@@ -11,7 +11,7 @@
 
 ## Required Flow
 
-1. Run pre-flight commands (memory:sync, deps:ready)
+1. Run pre-flight commands (memory:sync, deps:show TNNN)
 2. Workflow shows `agent:spawn` → you MUST spawn
 3. Spawn waits, streams output, auto-reaps on success
 4. If failed: investigate via `agent:log` or reject via `agent:reject`

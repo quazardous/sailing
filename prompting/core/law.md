@@ -31,7 +31,7 @@ Conflict between levels → STOP, log `--error`.
 
 STOP immediately if ANY is true:
 - Creating file not in Deliverables
-- Modifying >3 files (unless spec says more)
+- Modifying >3 files (unless task explicitly allows or clearly mechanical)
 - Adding dependency not in PRD/Epic/Task
 - Choosing between valid designs
 - Interpreting intent beyond explicit text
@@ -45,4 +45,4 @@ STOP immediately if ANY is true:
 STOP means:
 1. Log exactly ONE `--error` entry explaining why
 2. Perform NO other action
-3. Wait for skill decision
+3. Wait for user decision

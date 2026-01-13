@@ -154,13 +154,13 @@ function resolveFragments(config: WorkflowsConfig, operation: string, roleOverri
  * Render orchestration workflow for a specific operation and mode
  * Returns clean markdown without conditionals
  */
-function renderOrchestration(config, command, mode) {
+function renderOrchestration(config, command, mode, actualRole) {
   const steps = config.orchestration?.[command];
   if (!steps) return null;
 
   const opMeta = config.operations?.[command] || {};
   const entity = opMeta.entity?.toUpperCase() || 'ENTITY';
-  const role = opMeta.role || 'agent';
+  const role = actualRole || 'agent';
 
   const lines = [];
   lines.push(`## Workflow: ${command}`);
@@ -301,7 +301,7 @@ function composeContext(operation, options: ContextOptions = {}) {
 
   // Inject orchestration workflow if role.workflow is true
   if (roleDef.workflow) {
-    const workflow = renderOrchestration(config, operation, execMode);
+    const workflow = renderOrchestration(config, operation, execMode, role);
     if (workflow) {
       parts.push(workflow);
       sources.push(`orchestration:${operation}:${execMode}`);
@@ -388,6 +388,13 @@ export function registerContextCommands(program) {
         console.error('Error: missing required argument \'operation\'');
         console.error('Usage: rudder context:load <operation> --role <role>');
         console.error('       rudder context:load --list');
+        process.exit(1);
+      }
+
+      if (!options.role) {
+        console.error('Error: --role is required');
+        console.error('Usage: rudder context:load <operation> --role <role>');
+        console.error('Roles: agent, coordinator, skill');
         process.exit(1);
       }
 

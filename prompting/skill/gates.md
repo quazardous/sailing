@@ -4,7 +4,7 @@
 
 Before spawning agent, verify ALL:
 - [ ] `memory:sync` shows no pending
-- [ ] `deps:ready` confirms unblocked
+- [ ] `deps:show TNNN` confirms unblocked
 - [ ] Deliverables are explicit text
 
 **Any unchecked → STOP. Do not spawn.**

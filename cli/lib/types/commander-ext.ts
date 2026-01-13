@@ -18,11 +18,13 @@ export interface OptionWithMeta extends Option {
   argChoices?: string[];
 }
 
-export type ModificationType = 'fs' | 'git' | 'state' | 'mcp';
+export type ModificationType = 'prd' | 'epic' | 'task' | 'story' | 'memory' | 'git' | 'state' | 'config';
 
 export interface CommandWithInternals extends Command {
   _args: CommandArg[];
   options: OptionWithMeta[];
   commands: Command[];
   _modifies?: ModificationType[];
+  // Chainable method added via prototype extension
+  modifies?(types: ModificationType[]): Command;
 }

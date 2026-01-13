@@ -225,7 +225,7 @@ export function registerTaskCommands(program) {
     });
 
   // task:create
-  withModifies(task.command('create <parent> <title>'), ['fs'])
+  withModifies(task.command('create <parent> <title>'), ['task'])
     .description('Create task under epic (e.g., E035 or PRD-001/E035 "Title")')
     .option('--story <id>', 'Link to story (repeatable)', (v, arr) => arr.concat(v), [])
     .option('--tag <tag>', 'Add tag (repeatable, slugified to kebab-case)', (v, arr) => arr.concat(v), [])
@@ -327,7 +327,7 @@ export function registerTaskCommands(program) {
     });
 
   // task:update
-  withModifies(task.command('update <id>'), ['fs'])
+  withModifies(task.command('update <id>'), ['task'])
     .description('Update task (status, assignee, blockers, stories, versions)')
     .option('-s, --status <status>', `Set status (${statusHelp})`)
     .option('-a, --assignee <name>', 'Set assignee')

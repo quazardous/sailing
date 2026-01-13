@@ -60,6 +60,8 @@ roles:
     description: "Spawn agents, coordinate results"
     base_sets: [law, coordination]        # No agent-rules (skill spawns, doesn't execute)
     inject:
+      subprocess:
+        fragments: [skill/batch-cli, skill/agent-cli]  # Subprocess-specific CLI docs
       worktrees:                          # When use_worktrees is enabled
         fragments: [shared/worktree-coordinator]
     workflow: true
@@ -68,6 +70,8 @@ roles:
     description: "Full orchestration, memory management"
     base_sets: [law, coordination]        # No agent-rules (skill spawns, doesn't execute)
     inject:
+      subprocess:
+        fragments: [skill/batch-cli, skill/agent-cli]  # Subprocess-specific CLI docs
       worktrees:                          # When use_worktrees is enabled
         fragments: [skill/worktree-mode]  # shared/worktree redundant with agent-cli
     workflow: true
@@ -88,7 +92,7 @@ sets:
   agent-rules:  { fragments: [agent/contract, agent/cli, agent/states] }
   deps:         { fragments: [agent/deps], roles: [agent] }
   execution:    { fragments: [agent/execution], roles: [agent] }
-  coordination: { fragments: [skill/orchestration, skill/reminders, skill/gates, skill/batch-cli, skill/agent-cli] }
+  coordination: { fragments: [skill/orchestration, skill/reminders, skill/gates] }
   milestone:    { fragments: [shared/milestone] }
   versioning:   { fragments: [shared/versioning] }
   editing:      { fragments: [shared/artefact-editing] }
@@ -177,18 +181,17 @@ orchestration:
       actor: skill
       commands:
         - { cmd: "memory:sync", mode: both, purpose: "Consolidate pending logs", required: true }
-        - { cmd: "deps:ready --task {TASK}", mode: both, purpose: "Verify task unblocked", required: true }
+        - { cmd: "deps:show {TASK}", mode: both, purpose: "Verify task unblocked", required: true }
         - { cmd: "task:show {TASK}", mode: both, purpose: "Review requirements", required: true }
     - name: spawn-agent
       actor: skill
       commands:
-        - { cmd: "Task tool: assign:claim {TASK} --role agent", mode: inline, purpose: "Spawn inline agent (Task tool)", required: true, note: "Agent gets full context from claim" }
+        - { cmd: "Task tool: context:load {TASK} --role agent", mode: inline, purpose: "Spawn inline agent (Task tool)", required: true, note: "Agent gets full context from context:load" }
         - { cmd: "agent:spawn {TASK}", mode: subprocess, purpose: "Launch agent subprocess (pre-claims)" }
     - name: agent-init
       actor: agent
       commands:
-        - { cmd: "assign:claim {TASK} --role agent", mode: inline, purpose: "Get task context (contract, memory, deliverables)" }
-        - { cmd: "context:load {TASK}", mode: subprocess, purpose: "Get task context (pre-claimed by spawn)" }
+        - { cmd: "context:load {TASK} --role agent", mode: subprocess, purpose: "Get task context (contract, memory, deliverables)" }
     - name: execution
       actor: agent
       commands:
@@ -196,7 +199,6 @@ orchestration:
     - name: post-flight
       actor: skill
       commands:
-        - { cmd: "assign:release {TASK}", mode: inline, purpose: "Release task + merge logs" }
         - { cmd: "agent:reap {TASK}", mode: subprocess, purpose: "Harvest: wait, merge, cleanup, update status" }
 
   epic-breakdown:
@@ -208,13 +210,12 @@ orchestration:
     - name: spawn-agent
       actor: coordinator
       commands:
-        - { cmd: "Task tool: assign:claim {EPIC} --role agent", mode: inline, purpose: "Spawn inline agent (Task tool)", note: "Agent gets full context from claim" }
+        - { cmd: "Task tool: context:load {EPIC} --role agent", mode: inline, purpose: "Spawn inline agent (Task tool)", note: "Agent gets full context from context:load" }
         - { cmd: "agent:spawn {EPIC} --operation epic-breakdown", mode: subprocess, purpose: "Launch agent (pre-claims)" }
     - name: agent-init
       actor: agent
       commands:
-        - { cmd: "assign:claim {EPIC} --role agent", mode: inline, purpose: "Get epic context (contract, memory, PRD, epic)" }
-        - { cmd: "context:load {EPIC}", mode: subprocess, purpose: "Get epic context (pre-claimed by spawn)" }
+        - { cmd: "context:load {EPIC} --role agent", mode: subprocess, purpose: "Get epic context (contract, memory, PRD, epic)" }
     - name: execution
       actor: agent
       commands:

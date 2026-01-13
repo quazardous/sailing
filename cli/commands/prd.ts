@@ -176,7 +176,7 @@ export function registerPrdCommands(program) {
     });
 
   // prd:create
-  withModifies(prd.command('create <title>'), ['fs'])
+  withModifies(prd.command('create <title>'), ['prd'])
     .description('Create PRD directory + prd.md (status: Draft)')
     .option('--tag <tag>', 'Add tag (repeatable, slugified to kebab-case)', (v, arr) => arr.concat(v), [])
     .option('--path', 'Show file path')
@@ -228,7 +228,7 @@ export function registerPrdCommands(program) {
     });
 
   // prd:update
-  withModifies(prd.command('update <id>'), ['fs'])
+  withModifies(prd.command('update <id>'), ['prd'])
     .description('Update PRD (status, title)')
     .option('-s, --status <status>', `Set status (${statusHelp})`)
     .option('-t, --title <title>', 'Set title')
@@ -269,7 +269,7 @@ export function registerPrdCommands(program) {
     });
 
   // prd:milestone
-  withModifies(prd.command('milestone <prd-id> <milestone-id>'), ['fs'])
+  withModifies(prd.command('milestone <prd-id> <milestone-id>'), ['prd'])
     .description('Manage PRD milestone (add/remove epics)')
     .option('--add-epic <epic>', 'Add epic to milestone (repeatable)', (v, arr) => arr.concat(v), [])
     .option('--remove-epic <epic>', 'Remove epic from milestone (repeatable)', (v, arr) => arr.concat(v), [])
@@ -373,7 +373,7 @@ export function registerPrdCommands(program) {
     });
 
   // prd:patch - Apply SEARCH/REPLACE blocks to PRD
-  withModifies(prd.command('patch <id>'), ['fs'])
+  withModifies(prd.command('patch <id>'), ['prd'])
     .description('Apply SEARCH/REPLACE blocks to PRD (stdin or file)')
     .option('-f, --file <path>', 'Read patch from file instead of stdin')
     .option('--dry-run', 'Show what would be changed without applying')
@@ -439,7 +439,7 @@ export function registerPrdCommands(program) {
     });
 
   // prd:edit - Edit PRD sections (delegates to artifact:edit logic)
-  withModifies(prd.command('edit <id>'), ['fs'])
+  withModifies(prd.command('edit <id>'), ['prd'])
     .description('Edit PRD section(s)')
     .option('-s, --section <name>', 'Section to edit (omit for multi-section stdin)')
     .option('-c, --content <text>', 'New content (or use stdin)')
