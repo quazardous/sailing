@@ -720,13 +720,27 @@ echo
 # Show sandbox setup steps for worktree mode
 if [ "$USE_WORKTREE" = true ]; then
   echo -e "${YELLOW}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-  echo -e "${YELLOW}Worktree mode enabled - Sandbox setup required:${NC}"
+  echo -e "${YELLOW}Worktree mode enabled - Setup required:${NC}"
   echo -e "${YELLOW}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
   echo
-  echo "1. Install sandbox-runtime:"
+
+  # Check if git repo exists
+  STEP=1
+  if [ ! -d ".git" ]; then
+    echo "${STEP}. Initialize git repository (required for worktrees):"
+    echo "   git init"
+    echo "   git add ."
+    echo "   git commit -m \"Initial commit\""
+    echo
+    STEP=$((STEP + 1))
+  fi
+
+  echo "${STEP}. Install sandbox-runtime:"
   echo "   npm install -g @anthropic-ai/sandbox-runtime"
   echo
-  echo "2. Install dependencies:"
+  STEP=$((STEP + 1))
+
+  echo "${STEP}. Install dependencies:"
   if [[ "$OSTYPE" == "linux"* ]]; then
     if command -v dnf &> /dev/null; then
       echo "   sudo dnf install ripgrep bubblewrap socat"
@@ -737,10 +751,14 @@ if [ "$USE_WORKTREE" = true ]; then
     echo "   brew install ripgrep"
   fi
   echo
-  echo "3. Initialize sandbox config:"
+  STEP=$((STEP + 1))
+
+  echo "${STEP}. Initialize sandbox config:"
   echo "   bin/rudder sandbox:init"
   echo
-  echo "4. Verify setup:"
+  STEP=$((STEP + 1))
+
+  echo "${STEP}. Verify setup:"
   echo "   bin/rudder sandbox:check"
   echo
   echo "Documentation: docs/sandbox.md"
