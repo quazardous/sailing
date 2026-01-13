@@ -10,7 +10,7 @@
  *
  * Usage:
  *   import { Collection } from './jsondb.js';
- *   const agents = new Collection('/path/to/agents.json');
+ *   const agents = new Collection<AgentDoc>('/path/to/agents.json');
  *   await agents.insert({ taskId: 'T001', status: 'running' });
  *   const agent = await agents.findOne({ taskId: 'T001' });
  */
@@ -18,11 +18,17 @@ import fs from 'fs';
 import path from 'path';
 import crypto from 'crypto';
 
-type Query = Record<string, any>;
-type UpdateOps = Record<string, any>;
-type UpdateOptions = { upsert?: boolean; multi?: boolean };
-type RemoveOptions = { multi?: boolean };
-type EnsureIndexOptions = { fieldName?: string; unique?: boolean };
+export type Query<T> = Partial<T> & Record<string, any>;
+export type UpdateOps<T> = {
+  $set?: Partial<T>;
+  $unset?: Partial<Record<keyof T, any>>;
+  $inc?: Partial<Record<keyof T, number>>;
+  $push?: Partial<Record<keyof T, any>>;
+  [key: string]: any;
+};
+export type UpdateOptions = { upsert?: boolean; multi?: boolean };
+export type RemoveOptions = { multi?: boolean };
+export type EnsureIndexOptions = { fieldName?: string; unique?: boolean };
 
 // Lock timeout in ms (stale after this)
 const LOCK_STALE_MS = 30000;
@@ -42,11 +48,11 @@ function generateId(): string {
  * Match document against query
  * Supports: exact match, $gt, $gte, $lt, $lte, $ne, $in, $exists
  */
-function matchQuery(doc: Record<string, any>, query: Query): boolean {
+function matchQuery<T>(doc: T, query: Query<T>): boolean {
   if (!query || Object.keys(query).length === 0) return true;
 
   for (const [key, condition] of Object.entries(query)) {
-    const value = doc[key];
+    const value = (doc as any)[key];
 
     // Operator query: { age: { $gt: 18 } }
     if (condition && typeof condition === 'object' && !Array.isArray(condition)) {
@@ -80,8 +86,8 @@ function matchQuery(doc: Record<string, any>, query: Query): boolean {
  * Apply update operations to document
  * Supports: $set, $unset, $inc, $push
  */
-function applyUpdate(doc: Record<string, any>, update: UpdateOps): Record<string, any> {
-  const result = { ...doc };
+function applyUpdate<T>(doc: T, update: UpdateOps<T>): T {
+  const result = { ...doc } as any;
 
   for (const [op, fields] of Object.entries(update)) {
     switch (op) {
@@ -89,17 +95,17 @@ function applyUpdate(doc: Record<string, any>, update: UpdateOps): Record<string
         Object.assign(result, fields);
         break;
       case '$unset':
-        for (const key of Object.keys(fields)) {
+        for (const key of Object.keys(fields as object)) {
           delete result[key];
         }
         break;
       case '$inc':
-        for (const [key, amount] of Object.entries(fields)) {
-          result[key] = (result[key] || 0) + amount;
+        for (const [key, amount] of Object.entries(fields as object)) {
+          result[key] = (result[key] || 0) + (amount as number);
         }
         break;
       case '$push':
-        for (const [key, value] of Object.entries(fields)) {
+        for (const [key, value] of Object.entries(fields as object)) {
           if (!Array.isArray(result[key])) result[key] = [];
           result[key].push(value);
         }
@@ -113,13 +119,13 @@ function applyUpdate(doc: Record<string, any>, update: UpdateOps): Record<string
   }
 
   result._updatedAt = new Date().toISOString();
-  return result;
+  return result as T;
 }
 
 /**
  * JSON Collection - one file, multiple documents
  */
-export class Collection {
+export class Collection<T = Record<string, any>> {
   filepath: string;
   lockfile: string;
 
@@ -190,7 +196,7 @@ export class Collection {
   /**
    * Read all documents from file
    */
-  readAll(): Record<string, any>[] {
+  readAll(): T[] {
     if (!fs.existsSync(this.filepath)) {
       return [];
     }
@@ -205,7 +211,7 @@ export class Collection {
   /**
    * Write all documents to file (atomic)
    */
-  writeAll(docs: Record<string, any>[]): void {
+  writeAll(docs: T[]): void {
     const tempFile = this.filepath + '.tmp.' + process.pid;
     fs.writeFileSync(tempFile, JSON.stringify(docs, null, 2) + '\n');
     fs.renameSync(tempFile, this.filepath);
@@ -214,10 +220,10 @@ export class Collection {
   /**
    * Execute operation with lock
    */
-  async withLock<T>(fn: () => T | Promise<T>): Promise<T> {
+  async withLock<R>(fn: () => R | Promise<R>): Promise<R> {
     await this.acquireLock();
     try {
-      return fn();
+      return await fn();
     } finally {
       this.releaseLock();
     }
@@ -228,7 +234,7 @@ export class Collection {
   /**
    * Find all matching documents
    */
-  async find(query: Query = {}): Promise<Record<string, any>[]> {
+  async find(query: Query<T> = {}): Promise<T[]> {
     const docs = this.readAll();
     return docs.filter(doc => matchQuery(doc, query));
   }
@@ -236,7 +242,7 @@ export class Collection {
   /**
    * Find first matching document
    */
-  async findOne(query: Query = {}): Promise<Record<string, any> | null> {
+  async findOne(query: Query<T> = {}): Promise<T | null> {
     const docs = this.readAll();
     return docs.find(doc => matchQuery(doc, query)) || null;
   }
@@ -244,7 +250,7 @@ export class Collection {
   /**
    * Count matching documents
    */
-  async count(query: Query = {}): Promise<number> {
+  async count(query: Query<T> = {}): Promise<number> {
     const docs = await this.find(query);
     return docs.length;
   }
@@ -255,13 +261,13 @@ export class Collection {
    * Insert document(s)
    * @returns inserted document(s) with _id
    */
-  async insert(doc: Record<string, any> | Record<string, any>[]): Promise<any> {
+  async insert(doc: T | T[]): Promise<T | T[]> {
     const isArray = Array.isArray(doc);
     const docs = isArray ? doc : [doc];
 
     const now = new Date().toISOString();
     const toInsert = docs.map(d => ({
-      _id: d._id || generateId(),
+      _id: (d as any)._id || generateId(),
       ...d,
       _createdAt: now,
       _updatedAt: now
@@ -282,7 +288,7 @@ export class Collection {
    * @param {object} options - { upsert: boolean, multi: boolean }
    * @returns {{ matched: number, modified: number, upserted: boolean }}
    */
-  async update(query: Query, update: UpdateOps, options: UpdateOptions = {}): Promise<{ matched: number; modified: number; upserted: boolean }> {
+  async update(query: Query<T>, update: UpdateOps<T>, options: UpdateOptions = {}): Promise<{ matched: number; modified: number; upserted: boolean }> {
     const { upsert = false, multi = false } = options;
     let matched = 0, modified = 0, upserted = false;
 
@@ -306,7 +312,7 @@ export class Collection {
           _id: generateId(),
           ...query,
           _createdAt: new Date().toISOString()
-        };
+        } as unknown as T;
         docs.push(applyUpdate(newDoc, update));
         upserted = true;
         modified++;
@@ -321,7 +327,7 @@ export class Collection {
   /**
    * Update one document (upsert by default for convenience)
    */
-  async updateOne(query: Query, update: UpdateOps, options: UpdateOptions = {}): Promise<{ matched: number; modified: number; upserted: boolean }> {
+  async updateOne(query: Query<T>, update: UpdateOps<T>, options: UpdateOptions = {}): Promise<{ matched: number; modified: number; upserted: boolean }> {
     return this.update(query, update, { ...options, multi: false });
   }
 
@@ -329,13 +335,13 @@ export class Collection {
    * Remove matching documents
    * @returns number of removed documents
    */
-  async remove(query: Query, options: RemoveOptions = {}): Promise<number> {
+  async remove(query: Query<T>, options: RemoveOptions = {}): Promise<number> {
     const { multi = true } = options;
     let removed = 0;
 
     await this.withLock(() => {
       const docs = this.readAll();
-      const remaining = [];
+      const remaining: T[] = [];
 
       for (const doc of docs) {
         if (matchQuery(doc, query) && (multi || removed === 0)) {
@@ -395,6 +401,6 @@ export class Collection {
 /**
  * Create collection instance (factory function)
  */
-export function createCollection(filepath: string) {
-  return new Collection(filepath);
+export function createCollection<T = Record<string, any>>(filepath: string): Collection<T> {
+  return new Collection<T>(filepath);
 }

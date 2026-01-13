@@ -77,3 +77,45 @@ export interface Placeholders {
   sibling: string;
   [key: string]: string; // Allow custom placeholders
 }
+
+export interface SailingConfig {
+  git: {
+    main_branch: string;
+    sync_before_spawn: boolean;
+    merge_to_main: 'squash' | 'merge' | 'rebase';
+    merge_to_prd: 'squash' | 'merge' | 'rebase';
+    merge_to_epic: 'squash' | 'merge' | 'rebase';
+    squash_level: 'task' | 'epic' | 'prd';
+  };
+  agent: {
+    use_subprocess: boolean;
+    use_worktrees: boolean;
+    risky_mode: boolean;
+    sandbox: boolean;
+    timeout: number;
+    merge_strategy: 'merge' | 'squash' | 'rebase';
+    model: 'sonnet' | 'opus' | 'haiku';
+    max_parallel: number;
+    auto_merge: boolean;
+    auto_pr: boolean;
+    pr_draft: boolean;
+    pr_provider: 'auto' | 'github' | 'gitlab';
+    mcp_mode: 'socket' | 'port';
+    mcp_port_range: string;
+    max_budget_usd: number;
+    watchdog_timeout: number;
+  };
+  output: {
+    color: boolean;
+    verbose: number;
+  };
+  logging: {
+    level: 'debug' | 'info' | 'warn' | 'error';
+  };
+  ids: {
+    prd_digits: number;
+    epic_digits: number;
+    task_digits: number;
+    story_digits: number;
+  };
+}

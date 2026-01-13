@@ -1,7 +1,6 @@
 /**
  * Assignment commands for rudder CLI
  * Formalizes skill → agent prompt transmission
- * TODO[P1]: Typify command handlers (program/options/taskId) to remove implicit any when strict is enabled.
  * TODO[P2]: Harden file/frontmatter parsing (null checks) then tighten types on entity lookups.
  * TODO[P3]: Extract shared normalize/lookup helpers to shrink surface before TS migration.
  */
@@ -650,7 +649,7 @@ export function registerAssignCommands(program) {
     .description('Create an assignment for a task')
     .requiredOption('--operation <op>', 'Operation type (task-start, etc.)')
     .option('--json', 'JSON output')
-    .action((taskId, options) => {
+    .action((taskId: string, options: { operation: string; json?: boolean }) => {
       const normalized = normalizeId(taskId);
 
       // Validate task exists
@@ -709,7 +708,15 @@ export function registerAssignCommands(program) {
     .option('--sources', 'Show fragment sources used')
     .option('--debug', 'Add source comments to each section')
     .option('--json', 'JSON output')
-    .action((entityId, options) => {
+    .action((entityId: string, options: {
+      role: string;
+      operation?: string;
+      approach?: string;
+      force?: boolean;
+      sources?: boolean;
+      debug?: boolean;
+      json?: boolean;
+    }) => {
       // Role enforcement: only agents claim - skill/coordinator MUST spawn an agent
       if (options.role !== 'agent') {
         console.error(`ERROR: assign:claim requires --role agent`);
@@ -741,9 +748,7 @@ export function registerAssignCommands(program) {
   // assign:release TNNN
   assign.command('release <task-id>')
     .description('Release assignment (agent finished)')
-    .option('--status <status>', 'Task status (Done, Blocked)', 'Done')
-    .option('--json', 'JSON output')
-    .action((taskId, options) => {
+    .action((taskId: string, options: { status: string; json?: boolean }) => {
       const normalized = normalizeId(taskId);
 
       // Check if run file exists
@@ -810,9 +815,7 @@ export function registerAssignCommands(program) {
 
   // assign:show TNNN
   assign.command('show <task-id>')
-    .description('Show assignment status')
-    .option('--json', 'JSON output')
-    .action((taskId, options) => {
+    .action((taskId: string, options: { json?: boolean }) => {
       const normalized = normalizeId(taskId);
       const filePath = assignmentPath(normalized);
 
@@ -846,7 +849,7 @@ export function registerAssignCommands(program) {
     .description('List all assignments')
     .option('--status <status>', 'Filter by status (pending, claimed, complete)')
     .option('--json', 'JSON output')
-    .action((options) => {
+    .action((options: { status?: string; json?: boolean }) => {
       const dir = getAssignmentsDir();
       const files = fs.readdirSync(dir).filter(f => f.endsWith('.yaml'));
 
@@ -894,7 +897,7 @@ export function registerAssignCommands(program) {
     .option('--success', 'Mark as successful completion')
     .option('--failure', 'Mark as failed completion')
     .option('--json', 'JSON output')
-    .action((taskId, options) => {
+    .action((taskId: string, options: { success?: boolean; failure?: boolean; json?: boolean }) => {
       const normalized = normalizeId(taskId);
       const filePath = assignmentPath(normalized);
 
@@ -930,7 +933,7 @@ export function registerAssignCommands(program) {
     .description('Delete an assignment')
     .option('--force', 'Force delete even if claimed')
     .option('--json', 'JSON output')
-    .action((taskId, options) => {
+    .action((taskId: string, options: { force?: boolean; json?: boolean }) => {
       const normalized = normalizeId(taskId);
       const filePath = assignmentPath(normalized);
 

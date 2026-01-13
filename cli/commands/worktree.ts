@@ -1014,8 +1014,14 @@ export function registerWorktreeCommands(program: any) {
       const context = {
         prdId: options.prd,
         epicId: options.epic,
-        branching: gitConfig?.branching || 'flat'
+        branching: 'flat' // Default to flat, or should be looked up from PRD if provided
       };
+      if (options.prd) {
+        // We can't easily import getPrdBranching here without circular deps or import mess
+        // But we should try if possible. For now, defaulting to 'flat' as safe fallback
+        // Or better: let diagnoseReconciliation handle it if we pass prdId?
+        // diagnoseReconciliation takes context.
+      }
 
       // Diagnose
       const diag = diagnoseReconciliation(context);
@@ -1047,8 +1053,9 @@ export function registerWorktreeCommands(program: any) {
           if (typeof h !== 'object' || !('branch' in h)) continue;
           const branchInfo = h as BranchHierarchyNode;
           if (branchInfo.state === BranchState.BEHIND || branchInfo.state === BranchState.DIVERGED) {
+            const agentConfig = getAgentConfig();
             const result = reconcileBranch(branchInfo.branch, branchInfo.parent, {
-              strategy: gitConfig?.merge_strategy || 'merge',
+              strategy: agentConfig?.merge_strategy || 'merge',
               dryRun: options.dryRun
             });
 

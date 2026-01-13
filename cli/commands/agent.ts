@@ -1,7 +1,6 @@
 /**
  * Agent commands for rudder CLI
  * Manages agent lifecycle: spawn, collect, status, merge
- * TODO[P1]: Typify command handlers (program/options/taskId) and AgentStatus to drop implicit any when re-enabling strict.
  * TODO[P2]: Model agent events/results as discriminated unions to avoid downcasting scattered in this file.
  * TODO[P3]: Consider splitting spawn/collect/status into separate modules to reduce surface when converting to TS.
  */
@@ -68,9 +67,18 @@ export function registerAgentCommands(program) {
     .option('--heartbeat <seconds>', 'Heartbeat interval (default: 60 quiet, 30 verbose)', parseInt)
     .option('-v, --verbose', 'Detailed output (spawn box, Claude streaming)')
     .option('--resume', 'Reuse existing worktree (continue blocked/partial work)')
-    .option('--dry-run', 'Show what would be done without spawning')
-    .option('--json', 'JSON output')
-    .action(async (taskId, options) => {
+    .action(async (taskId: string, options: {
+      role?: string;
+      timeout?: number;
+      worktree?: boolean;
+      wait?: boolean;
+      log?: boolean;
+      heartbeat?: number | boolean; // boolean because --no-heartbeat sets it to true (Commander quirk)
+      verbose?: boolean;
+      resume?: boolean;
+      dryRun?: boolean;
+      json?: boolean;
+    }) => {
       // Role enforcement: agents cannot spawn other agents
       if (options.role === 'agent') {
         console.error('ERROR: agent:spawn cannot be called with --role agent');
@@ -910,7 +918,7 @@ Start by running \`pwd\` and \`ls -la\`, then call the rudder MCP tool with \`co
   agent.command('status [task-id]')
     .description('Show agent status (all or specific task)')
     .option('--json', 'JSON output')
-    .action((taskId, options) => {
+    .action((taskId: string | undefined, options: { json?: boolean }) => {
       const state = loadState();
       const agents: Record<string, AgentInfo> = state.agents || {};
 
@@ -993,9 +1001,13 @@ Start by running \`pwd\` and \`ls -la\`, then call the rudder MCP tool with \`co
     .option('--no-log', 'Do not tail the log file')
     .option('--no-heartbeat', 'Do not show periodic heartbeat')
     .option('--heartbeat <seconds>', 'Heartbeat interval (default: 30)', parseInt, 30)
-    .option('--no-reap', 'Do not auto-reap on completion')
-    .option('--json', 'JSON output')
-    .action(async (taskId, options) => {
+    .action(async (taskId: string, options: {
+      timeout: number;
+      log?: boolean;
+      heartbeat?: number | boolean;
+      reap?: boolean;
+      json?: boolean;
+    }) => {
       taskId = normalizeId(taskId);
 
       const state = loadState();
@@ -1197,7 +1209,7 @@ Start by running \`pwd\` and \`ls -la\`, then call the rudder MCP tool with \`co
   agent.command('collect <task-id>')
     .description('[DEPRECATED] Collect agent result → use agent:reap instead')
     .option('--json', 'JSON output')
-    .action((taskId, options) => {
+    .action((taskId: string, options: { json?: boolean }) => {
       console.error('⚠️  DEPRECATED: agent:collect is deprecated. Use agent:reap instead.');
       console.error('   agent:reap collects, merges, cleans up, and updates status.\n');
 
@@ -1376,9 +1388,7 @@ Start by running \`pwd\` and \`ls -la\`, then call the rudder MCP tool with \`co
   // agent:sync - reconcile state.json with reality (worktrees, agents dirs)
   agent.command('sync')
     .description('Sync state.json with actual worktrees/agents (recover from ghosts)')
-    .option('--dry-run', 'Show what would be done without making changes')
-    .option('--json', 'JSON output')
-    .action((options) => {
+    .action((options: { dryRun?: boolean; json?: boolean }) => {
       const config = getAgentConfig();
       const havenPath = resolvePlaceholders('${haven}');
       const worktreesDir = path.join(havenPath, 'worktrees');
@@ -1507,7 +1517,7 @@ Start by running \`pwd\` and \`ls -la\`, then call the rudder MCP tool with \`co
   agent.command('clear [task-id]')
     .description('Clear agent tracking (all or specific task)')
     .option('--force', 'Clear without confirmation')
-    .action((taskId, options) => {
+    .action((taskId: string | undefined, options: { force?: boolean }) => {
       const state = loadState();
 
       if (!state.agents) {
@@ -1542,7 +1552,13 @@ Start by running \`pwd\` and \`ls -la\`, then call the rudder MCP tool with \`co
     .option('--timeout <seconds>', 'Wait timeout (default: 300)', parseInt, 300)
     .option('-v, --verbose', 'Detailed output')
     .option('--json', 'JSON output')
-    .action(async (taskId, options) => {
+    .action(async (taskId: string, options: {
+      role?: string;
+      wait?: boolean;
+      timeout: number;
+      verbose?: boolean;
+      json?: boolean;
+    }) => {
       // Role enforcement: agents cannot reap
       if (options.role === 'agent') {
         console.error('ERROR: agent:reap cannot be called with --role agent');
@@ -1793,7 +1809,7 @@ Start by running \`pwd\` and \`ls -la\`, then call the rudder MCP tool with \`co
     .option('--strategy <type>', 'Merge strategy: merge|squash|rebase (default from config)')
     .option('--no-cleanup', 'Keep worktree after merge')
     .option('--json', 'JSON output')
-    .action((taskId, options) => {
+    .action((taskId: string, options: { strategy?: string; cleanup?: boolean; json?: boolean }) => {
       console.error('⚠️  DEPRECATED: agent:merge is deprecated. Use agent:reap instead.');
       console.error('   agent:reap handles merge, cleanup, and status update.\n');
 
@@ -1941,7 +1957,7 @@ Start by running \`pwd\` and \`ls -la\`, then call the rudder MCP tool with \`co
     .option('--reason <text>', 'Rejection reason (logged)')
     .option('--status <status>', 'New task status: blocked|not-started (default: blocked)', 'blocked')
     .option('--json', 'JSON output')
-    .action((taskId, options) => {
+    .action((taskId: string, options: { reason?: string; status: string; json?: boolean }) => {
       taskId = normalizeId(taskId);
 
       const state = loadState();
@@ -2000,7 +2016,7 @@ Start by running \`pwd\` and \`ls -la\`, then call the rudder MCP tool with \`co
     .description('List all agents with status and details')
     .option('--active', 'Only show active agents (dispatched/running)')
     .option('--json', 'JSON output')
-    .action((options) => {
+    .action((options: { active?: boolean; json?: boolean }) => {
       const state = loadState();
       const agents = state.agents || {};
 
@@ -2072,9 +2088,7 @@ Start by running \`pwd\` and \`ls -la\`, then call the rudder MCP tool with \`co
 
   // agent:kill
   agent.command('kill <task-id>')
-    .description('Force-terminate a running agent')
-    .option('--json', 'JSON output')
-    .action((taskId, options) => {
+    .action((taskId: string, options: { json?: boolean }) => {
       taskId = normalizeId(taskId);
 
       const state = loadState();
@@ -2147,7 +2161,7 @@ Start by running \`pwd\` and \`ls -la\`, then call the rudder MCP tool with \`co
   agent.command('conflicts')
     .description('Show potential file conflicts between parallel agents')
     .option('--json', 'JSON output')
-    .action((options) => {
+    .action((options: { json?: boolean }) => {
       const conflictData = buildConflictMatrix();
 
       if (options.json) {
@@ -2211,8 +2225,7 @@ Start by running \`pwd\` and \`ls -la\`, then call the rudder MCP tool with \`co
   agent.command('log <task-id>')
     .description('Show agent log (full output)')
     .option('-n, --lines <n>', 'Last N lines (default: all)', parseInt)
-    .option('--json', 'JSON output')
-    .action((taskId, options) => {
+    .action((taskId: string, options: { lines?: number; json?: boolean }) => {
       const normalizedId = normalizeId(taskId);
       const logFile = getLogFilePath(normalizedId);
 
@@ -2243,7 +2256,7 @@ Start by running \`pwd\` and \`ls -la\`, then call the rudder MCP tool with \`co
   agent.command('tail <task-id>')
     .description('Follow agent log in real-time (Ctrl+C to stop)')
     .option('-n, --lines <n>', 'Start with last N lines (default: 20)', parseInt, 20)
-    .action((taskId, options) => {
+    .action((taskId: string, options: { lines: number }) => {
       const normalizedId = normalizeId(taskId);
       const logFile = getLogFilePath(normalizedId);
 
@@ -2292,7 +2305,12 @@ Start by running \`pwd\` and \`ls -la\`, then call the rudder MCP tool with \`co
     .option('--debug', 'Show debug info')
     .option('--skip-spawn', 'Only check MCP server, skip agent spawn test')
     .option('--json', 'JSON output')
-    .action(async (options) => {
+    .action(async (options: {
+      timeout: number;
+      debug?: boolean;
+      skipSpawn?: boolean;
+      json?: boolean;
+    }) => {
       const { checkMcpServer } = await import('../lib/srt.js');
       const havenDir = resolvePlaceholders('${haven}');
       const projectRoot = findProjectRoot();
@@ -2570,7 +2588,12 @@ Exit immediately after outputting the result.`;
     .option('--timeout <seconds>', 'Timeout in seconds (default: 3600)', parseInt, 3600)
     .option('--heartbeat <seconds>', 'Heartbeat interval in seconds (default: 30)', parseInt, 30)
     .option('--json', 'JSON output')
-    .action(async (taskIds, options) => {
+    .action(async (taskIds: string[], options: {
+      any?: boolean;
+      timeout: number;
+      heartbeat: number;
+      json?: boolean;
+    }) => {
       const state = loadState();
       const agents = state.agents || {};
 
@@ -2711,7 +2734,7 @@ Exit immediately after outputting the result.`;
   agent.command('reap-all [task-ids...]')
     .description('Reap all completed agents (all if no IDs specified)')
     .option('--json', 'JSON output')
-    .action(async (taskIds, options) => {
+    .action(async (taskIds: string[], options: { json?: boolean }) => {
       const state = loadState();
       const agents = state.agents || {};
       const projectRoot = findProjectRoot();

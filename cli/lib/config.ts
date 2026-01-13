@@ -10,7 +10,7 @@
 import fs from 'fs';
 import yaml from 'js-yaml';
 import { getConfigFile } from './core.js';
-import { ConfigSchemaEntry, ConfigDisplayItem, ConfigSchema } from './types/config.js';
+import { ConfigSchemaEntry, ConfigDisplayItem, ConfigSchema, SailingConfig } from './types/config.js';
 
 /**
  * Configuration Schema
@@ -177,8 +177,8 @@ export const CONFIG_SCHEMA: Record<string, ConfigSchemaEntry> = {
 /**
  * Build DEFAULTS object from schema
  */
-function buildDefaults() {
-  const defaults = {};
+function buildDefaults(): SailingConfig {
+  const defaults: any = {};
   for (const [key, schema] of Object.entries(CONFIG_SCHEMA)) {
     const parts = key.split('.');
     let obj = defaults;
@@ -188,18 +188,18 @@ function buildDefaults() {
     }
     obj[parts[parts.length - 1]] = schema.default;
   }
-  return defaults;
+  return defaults as SailingConfig;
 }
 
 const DEFAULTS = buildDefaults();
 
 // Cached config
-let _config = null;
+let _config: SailingConfig | null = null;
 
 /**
  * Get config file path
  */
-export function getConfigPath() {
+export function getConfigPath(): string {
   return getConfigFile();
 }
 
@@ -207,7 +207,7 @@ export function getConfigPath() {
  * Load configuration from file
  * Merges with defaults, validates values
  */
-export function loadConfig() {
+export function loadConfig(): SailingConfig {
   if (_config) return _config;
 
   const configPath = getConfigPath();
@@ -223,7 +223,7 @@ export function loadConfig() {
   }
 
   // Deep merge with defaults
-  _config = deepMerge(DEFAULTS, userConfig);
+  _config = deepMerge(DEFAULTS, userConfig) as SailingConfig;
 
   // Validate
   validateConfig(_config);
@@ -234,7 +234,7 @@ export function loadConfig() {
 /**
  * Deep merge objects
  */
-function deepMerge(target, source) {
+function deepMerge(target: any, source: any): any {
   const result = { ...target };
 
   for (const key in source) {
@@ -251,7 +251,7 @@ function deepMerge(target, source) {
 /**
  * Validate configuration values against schema
  */
-function validateConfig(config) {
+function validateConfig(config: any): void {
   for (const [key, schema] of Object.entries(CONFIG_SCHEMA)) {
     const value = getNestedValue(config, key);
     if (value === undefined) continue;
@@ -294,7 +294,7 @@ function validateConfig(config) {
 /**
  * Get nested value from object using dot notation
  */
-function getNestedValue(obj, key) {
+function getNestedValue(obj: any, key: string): any {
   const parts = key.split('.');
   let value = obj;
   for (const part of parts) {
@@ -307,7 +307,7 @@ function getNestedValue(obj, key) {
 /**
  * Set nested value in object using dot notation
  */
-function setNestedValue(obj, key, value) {
+function setNestedValue(obj: any, key: string, value: any): void {
   const parts = key.split('.');
   let target = obj;
   for (let i = 0; i < parts.length - 1; i++) {
@@ -319,9 +319,8 @@ function setNestedValue(obj, key, value) {
 
 /**
  * Get agent configuration
- * @returns {{ use_worktrees: boolean, risky_mode: boolean, sandbox: boolean, timeout: number, merge_strategy: string }}
  */
-export function getAgentConfig() {
+export function getAgentConfig(): SailingConfig['agent'] {
   const config = loadConfig();
   return config.agent;
 }
@@ -331,37 +330,37 @@ export function getAgentConfig() {
  * @param {string} key - Dot-notation key (e.g., 'agent.timeout')
  * @returns {any}
  */
-export function getConfigValue(key) {
+export function getConfigValue<T = any>(key: string): T {
   const config = loadConfig();
   const parts = key.split('.');
-  let value = config;
+  let value: any = config;
 
   for (const part of parts) {
-    if (value === undefined || value === null) return undefined;
+    if (value === undefined || value === null) return undefined as any;
     value = value[part];
   }
 
-  return value;
+  return value as T;
 }
 
 /**
  * Clear config cache (for testing or after config changes)
  */
-export function clearConfigCache() {
+export function clearConfigCache(): void {
   _config = null;
 }
 
 /**
  * Check if config file exists
  */
-export function configExists() {
+export function configExists(): boolean {
   return fs.existsSync(getConfigPath());
 }
 
 /**
  * Get default configuration
  */
-export function getDefaults() {
+export function getDefaults(): SailingConfig {
   return JSON.parse(JSON.stringify(DEFAULTS));
 }
 
@@ -369,7 +368,7 @@ export function getDefaults() {
  * Get all config values with schema info for display
  * Returns array of { key, value, default, description, type, values?, isDefault }
  */
-export function getConfigDisplay() {
+export function getConfigDisplay(): ConfigDisplayItem[] {
   const config = loadConfig();
   const result: ConfigDisplayItem[] = [];
 
@@ -398,18 +397,16 @@ export function getSchema(): ConfigSchema {
 
 /**
  * Get ID configuration
- * @returns {{ prd_digits: number, epic_digits: number, task_digits: number, story_digits: number }}
  */
-export function getIdsConfig() {
+export function getIdsConfig(): SailingConfig['ids'] {
   const config = loadConfig();
   return config.ids;
 }
 
 /**
  * Get git configuration
- * @returns {{ main_branch: string }}
  */
-export function getGitConfig() {
+export function getGitConfig(): SailingConfig['git'] {
   const config = loadConfig();
   return config.git;
 }
@@ -420,9 +417,9 @@ export function getGitConfig() {
  * @param {number} num - The numeric part
  * @returns {string} Formatted ID
  */
-export function formatId(prefix, num) {
+export function formatId(prefix: string, num: number): string {
   const ids = getIdsConfig();
-  const digitMap = {
+  const digitMap: Record<string, number> = {
     'PRD-': ids.prd_digits,
     'E': ids.epic_digits,
     'T': ids.task_digits,
