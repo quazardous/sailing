@@ -275,7 +275,8 @@ export function applyOps(sections, order, ops) {
  */
 export function parseSearchReplace(input) {
   const ops = [];
-  const blockRegex = /<<<<<<< SEARCH\n([\s\S]*?)\n=======\n([\s\S]*?)\n>>>>>>> REPLACE/g;
+  // Allow optional indentation around markers to be forgiving with indented heredocs
+  const blockRegex = /^\s*<<<<<<< SEARCH\s*\n([\s\S]*?)\n^\s*=======\s*\n([\s\S]*?)\n^\s*>>>>>>> REPLACE\s*$/gms;
 
   let match;
   while ((match = blockRegex.exec(input)) !== null) {
