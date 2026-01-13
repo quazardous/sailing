@@ -354,7 +354,12 @@ export function registerContextCommands(program) {
     .option('--role <role>', 'Role: agent, coordinator, or skill')
     .option('--list', 'List available operations')
     .option('--json', 'JSON output')
-    .action((operation, options) => {
+    .action((operation: string, options: {
+      sources?: boolean;
+      role?: string;
+      list?: boolean;
+      json?: boolean;
+    }) => {
       if (options.list) {
         const config = loadWorkflowsConfig();
         const byRole = listOperations(config);
@@ -413,7 +418,11 @@ export function registerContextCommands(program) {
     .option('--sources', 'Show fragment sources used')
     .option('--list', 'List available operations')
     .option('--json', 'JSON output')
-    .action((command, options) => {
+    .action((command: string, options: {
+      sources?: boolean;
+      list?: boolean;
+      json?: boolean;
+    }) => {
       if (!options.list) {
         console.error('# Note: context:agent is deprecated, use context:load\n');
       }
@@ -462,7 +471,11 @@ export function registerContextCommands(program) {
     .option('--sources', 'Show fragment sources used')
     .option('--list', 'List available operations')
     .option('--json', 'JSON output')
-    .action((command, options) => {
+    .action((command: string, options: {
+      sources?: boolean;
+      list?: boolean;
+      json?: boolean;
+    }) => {
       if (!options.list) {
         console.error('# Note: context:skill is deprecated, use context:load\n');
       }
@@ -509,7 +522,7 @@ export function registerContextCommands(program) {
     .description('Show a specific prompting fragment')
     .argument('<fragment>', 'Fragment path (e.g., agent/contract, shared/milestone)')
     .option('--json', 'JSON output')
-    .action((fragment, options) => {
+    .action((fragment: string, options: { json?: boolean }) => {
       const content = loadFragment(fragment);
 
       if (!content) {
@@ -530,7 +543,7 @@ export function registerContextCommands(program) {
     .description('List roles, sets, and operations')
     .option('--sets', 'Show fragment sets')
     .option('--json', 'JSON output')
-    .action((options) => {
+    .action((options: { sets?: boolean; json?: boolean }) => {
       const config = loadWorkflowsConfig();
 
       if (options.json) {

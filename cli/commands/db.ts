@@ -26,7 +26,7 @@ export function registerDbCommands(program) {
   db.command('status')
     .description('Show database status and collection counts')
     .option('--json', 'JSON output')
-    .action(async (options) => {
+    .action(async (options: { json?: boolean }) => {
       const agents = await getAllAgents();
       const agentsDb = getAgentsDb();
       const runsDb = getRunsDb();
@@ -58,8 +58,7 @@ export function registerDbCommands(program) {
     .alias('list')
     .description('List all agents')
     .option('--status <status>', 'Filter by status')
-    .option('--json', 'JSON output')
-    .action(async (options) => {
+    .action(async (options: { status?: string; json?: boolean }) => {
       const agents = await getAllAgents({ status: options.status });
 
       if (options.json) {
@@ -81,7 +80,7 @@ export function registerDbCommands(program) {
   db.command('agent <task-id>')
     .description('Show agent details')
     .option('--json', 'JSON output')
-    .action(async (taskId, options) => {
+    .action(async (taskId: string, options: { json?: boolean }) => {
       taskId = taskId.toUpperCase();
       if (!taskId.startsWith('T')) taskId = 'T' + taskId;
 
@@ -116,7 +115,7 @@ export function registerDbCommands(program) {
   // db:delete - delete agent entry
   db.command('delete <task-id>')
     .description('Delete agent entry')
-    .action(async (taskId) => {
+    .action(async (taskId: string) => {
       taskId = taskId.toUpperCase();
       if (!taskId.startsWith('T')) taskId = 'T' + taskId;
 
@@ -134,7 +133,7 @@ export function registerDbCommands(program) {
   db.command('clear')
     .description('Clear all agents')
     .option('--confirm', 'Confirm deletion')
-    .action(async (options) => {
+    .action(async (options: { confirm?: boolean }) => {
       if (!options.confirm) {
         console.error('Use --confirm to clear all agents');
         process.exit(1);
@@ -148,7 +147,7 @@ export function registerDbCommands(program) {
   db.command('runs <task-id>')
     .description('Show run history for a task')
     .option('--json', 'JSON output')
-    .action(async (taskId, options) => {
+    .action(async (taskId: string, options: { json?: boolean }) => {
       taskId = taskId.toUpperCase();
       if (!taskId.startsWith('T')) taskId = 'T' + taskId;
 
@@ -174,7 +173,7 @@ export function registerDbCommands(program) {
   db.command('migrate')
     .description('Migrate agents from haven state.json to jsondb')
     .option('--dry-run', 'Show what would be migrated')
-    .action(async (options) => {
+    .action(async (options: { dryRun?: boolean }) => {
       // Read from haven's state.json (not project's)
       const havenPath = resolvePlaceholders('${haven}');
       const stateFile = path.join(havenPath, 'state.json');

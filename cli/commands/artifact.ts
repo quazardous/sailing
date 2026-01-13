@@ -55,7 +55,7 @@ function resolveArtifact(id) {
  * Read content from stdin
  * @returns {Promise<string>}
  */
-function readStdin() {
+function readStdin(): Promise<string> {
   return new Promise((resolve, reject) => {
     let data = '';
     process.stdin.setEncoding('utf8');
@@ -97,7 +97,12 @@ export function registerArtifactCommands(program) {
     .option('-l, --list', 'List section names only')
     .option('--comments', 'Include template comments (stripped by default)')
     .option('--json', 'JSON output')
-    .action((id, options) => {
+    .action((id: string, options: {
+      section?: string;
+      list?: boolean;
+      comments?: boolean;
+      json?: boolean;
+    }) => {
       const resolved = resolveArtifact(id);
       if (!resolved) {
         console.error(`Artifact not found: ${id}`);
@@ -202,7 +207,13 @@ Examples:
   >>>>>>> REPLACE
   EOF
 `)
-    .action(async (id, options) => {
+    .action(async (id: string, options: {
+      section?: string;
+      content?: string;
+      append?: boolean;
+      prepend?: boolean;
+      json?: boolean;
+    }) => {
       const resolved = resolveArtifact(id);
       if (!resolved) {
         console.error(`Artifact not found: ${id}`);
@@ -329,7 +340,7 @@ Examples:
     .description('Check a deliverable checkbox')
     .option('-s, --section <name>', 'Section containing checkbox (default: Deliverables)')
     .option('--json', 'JSON output')
-    .action((id, item, options) => {
+    .action((id: string, item: string, options: { section?: string; json?: boolean }) => {
       const resolved = resolveArtifact(id);
       if (!resolved) {
         console.error(`Artifact not found: ${id}`);
@@ -355,7 +366,7 @@ Examples:
     .description('Uncheck a deliverable checkbox')
     .option('-s, --section <name>', 'Section containing checkbox (default: Deliverables)')
     .option('--json', 'JSON output')
-    .action((id, item, options) => {
+    .action((id: string, item: string, options: { section?: string; json?: boolean }) => {
       const resolved = resolveArtifact(id);
       if (!resolved) {
         console.error(`Artifact not found: ${id}`);
@@ -382,7 +393,11 @@ Examples:
     .option('-f, --file <path>', 'Read patch from file instead of stdin')
     .option('--dry-run', 'Show what would be changed without applying')
     .option('--json', 'JSON output')
-    .action(async (id, options) => {
+    .action(async (id: string, options: {
+      file?: string;
+      dryRun?: boolean;
+      json?: boolean;
+    }) => {
       const resolved = resolveArtifact(id);
       if (!resolved) {
         console.error(`Artifact not found: ${id}`);
@@ -455,7 +470,7 @@ Examples:
     .description('Apply JSON operations array to artifact')
     .option('-f, --file <path>', 'Read ops from file instead of stdin')
     .option('--json', 'JSON output')
-    .action(async (id, options) => {
+    .action(async (id: string, options: { file?: string; json?: boolean }) => {
       const resolved = resolveArtifact(id);
       if (!resolved) {
         console.error(`Artifact not found: ${id}`);
