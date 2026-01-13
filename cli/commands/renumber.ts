@@ -410,6 +410,7 @@ export function registerRenumberCommands(program) {
     .option('--fix', 'Auto-fix duplicates (keep oldest)')
     .option('--keep <path>', 'Explicit path to keep (e.g., PRD-001/E001)')
     .option('--scope <scope>', 'Scope for reference updates: prd (default), epic, project', 'prd')
+    .option('--path', 'Show file paths (debug)')
     .option('--json', 'Output in JSON format')
     .argument('[target]', 'ID to fix (e.g., E001) or path to rename (e.g., PRD-002/E001)')
     .argument('[newId]', 'New ID for manual rename (e.g., E042)')
@@ -572,11 +573,11 @@ export function registerRenumberCommands(program) {
           jsonOut(results);
         } else {
           console.log(`✓ Renamed ${item.id} → ${normalizedNewId}`);
-          console.log(`  File: ${results.renamed.to}`);
+          if (options.path) console.log(`  File: ${results.renamed.to}`);
           if (results.refsUpdated.length > 0) {
             console.log(`  Updated ${results.refsUpdated.length} reference(s)`);
           }
-          if (results.memoryRenamed) {
+          if (options.path && results.memoryRenamed) {
             console.log(`  Memory: ${results.memoryRenamed.to}`);
           }
         }

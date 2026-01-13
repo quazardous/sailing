@@ -13,7 +13,7 @@ rudder memory:sync
 
 1. **Read** the pending log content shown
 2. **Synthesize** insights (tips, gotchas, patterns)
-3. **Execute** the `memory:edit` commands shown to update memory files
+3. **Execute** the `memory:edit` commands shown to update memory
 4. **Re-run** `rudder memory:sync` to confirm "✓ No pending logs"
 
 ⚠️ **Do NOT spawn agent until memory:sync shows "✓ No pending logs".**

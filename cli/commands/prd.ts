@@ -32,9 +32,10 @@ export function registerPrdCommands(program) {
     .option('-s, --status <status>', `Filter by status (${statusHelp})`)
     .option('-t, --tag <tag>', 'Filter by tag (repeatable, AND logic)', (v, arr) => arr.concat(v), [])
     .option('-l, --limit <n>', 'Limit results', parseInt)
+    .option('--path', 'Include directory path (discouraged)')
     .option('--json', 'JSON output')
     .action((options) => {
-      const prds: (Prd & { dir: string; epics: number; tasks: number })[] = [];
+      const prds: (Prd & { dir?: string; epics: number; tasks: number })[] = [];
 
       for (const prdDir of findPrdDirs()) {
         const prdFile = path.join(prdDir, 'prd.md');
@@ -61,15 +62,16 @@ export function registerPrdCommands(program) {
         const epicCount = findFiles(epicsDir, /^E\d+.*\.md$/).length;
         const taskCount = findFiles(tasksDir, /^T\d+.*\.md$/).length;
 
-        prds.push({
+        const prdEntry: Prd & { dir?: string; epics: number; tasks: number } = {
           id: file.data.id || path.basename(prdDir).match(/PRD-\d+/)?.[0],
           title: file.data.title || '',
           status: file.data.status || 'Unknown',
           parent: file.data.parent || '',
           epics: epicCount,
-          tasks: taskCount,
-          dir: prdDir
-        } as Prd & { dir: string; epics: number; tasks: number });
+          tasks: taskCount
+        };
+        if (options.path) prdEntry.dir = prdDir;
+        prds.push(prdEntry);
       }
 
       // Sort by ID
@@ -102,8 +104,9 @@ export function registerPrdCommands(program) {
   // prd:show
   prd.command('show <id>')
     .description('Show PRD details (epics, tasks by status)')
-    .option('--raw', 'Dump raw markdown file')
+    .option('--raw', 'Dump raw markdown')
     .option('--comments', 'Include template comments (stripped by default)')
+    .option('--path', 'Include file path (discouraged)')
     .option('--json', 'JSON output')
     .action((id, options) => {
       const prdDir = findPrdDirs().find(d => matchesPrdDir(d, id));
@@ -114,9 +117,9 @@ export function registerPrdCommands(program) {
 
       const prdFile = path.join(prdDir, 'prd.md');
 
-      // Raw mode: dump file content with path header
+      // Raw mode: dump file content
       if (options.raw) {
-        console.log(`# File: ${prdFile}\n`);
+        if (options.path) console.log(`# File: ${prdFile}\n`);
         const content = fs.readFileSync(prdFile, 'utf8');
         console.log(options.comments ? content : stripComments(content));
         return;
@@ -148,15 +151,17 @@ export function registerPrdCommands(program) {
         tasksByStatus[status] = (tasksByStatus[status] || 0) + 1;
       });
 
-      const output = {
+      const output: any = {
         ...file.data,
-        dir: prdDir,
-        file: prdFile,
         epicCount: epics.length,
         taskCount: tasks.length,
         epics,
         tasksByStatus
       };
+      if (options.path) {
+        output.dir = prdDir;
+        output.file = prdFile;
+      }
 
       if (options.json) {
         jsonOut(output);
@@ -171,7 +176,7 @@ export function registerPrdCommands(program) {
         Object.entries(tasksByStatus).forEach(([status, count]) => {
           console.log(`  ${statusSymbol(status)} ${status}: ${count}`);
         });
-        console.log(`\nDirectory: ${prdDir}`);
+        if (options.path) console.log(`\nDirectory: ${prdDir}`);
       }
     });
 
@@ -218,7 +223,12 @@ export function registerPrdCommands(program) {
       createPrdMemoryFile(id);
 
       if (options.json) {
-        jsonOut({ id, title, dir: prdDir, file: prdFile });
+        const output: any = { id, title };
+        if (options.path) {
+          output.dir = prdDir;
+          output.file = prdFile;
+        }
+        jsonOut(output);
       } else {
         console.log(`Created: ${id} - ${title}`);
         if (options.path) console.log(`File: ${prdFile}`);

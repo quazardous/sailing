@@ -42,10 +42,11 @@ export function registerEpicCommands(program) {
     .option('-t, --tag <tag>', 'Filter by tag (repeatable, AND logic)', (v, arr) => arr.concat(v), [])
     .option('-l, --limit <n>', 'Limit results', parseInt)
     .option('--prd <id>', 'Filter by PRD (alias for positional arg)')
+    .option('--path', 'Include file path (discouraged)')
     .option('--json', 'JSON output')
     .action((prdArg, options) => {
       const prd = prdArg || options.prd;
-      const epics: (Epic & { file: string; prd: string; tasks: number })[] = [];
+      const epics: (Epic & { file?: string; prd: string; tasks: number })[] = [];
 
       for (const prdDir of findPrdDirs()) {
         if (prd && !matchesPrdDir(prdDir, prd)) continue;
@@ -79,15 +80,16 @@ export function registerEpicCommands(program) {
               return parentContainsEpic(tf?.data?.parent, file.data.id);
             }).length;
 
-          epics.push({
+          const epicEntry: Epic & { file?: string; prd: string; tasks: number } = {
             id: file.data.id,
             title: file.data.title || '',
             status: file.data.status || 'Unknown',
             parent: file.data.parent || '',
             prd: prdName,
-            tasks: taskCount,
-            file: f
-          } as Epic & { file: string; prd: string; tasks: number });
+            tasks: taskCount
+          };
+          if (options.path) epicEntry.file = f;
+          epics.push(epicEntry);
         });
       }
 
@@ -123,8 +125,9 @@ export function registerEpicCommands(program) {
   epic.command('show <id>')
     .description('Show epic details (tasks count by status)')
     .option('--role <role>', 'Role context: agent blocked, skill/coordinator allowed')
-    .option('--raw', 'Dump raw markdown file')
+    .option('--raw', 'Dump raw markdown')
     .option('--comments', 'Include template comments (stripped by default)')
+    .option('--path', 'Include file path (discouraged)')
     .option('--json', 'JSON output')
     .action((id, options) => {
       // Role enforcement: agents don't access epics directly
@@ -142,9 +145,9 @@ export function registerEpicCommands(program) {
 
       const { file: epicFile, prdDir } = result;
 
-      // Raw mode: dump file content with path header
+      // Raw mode: dump file content
       if (options.raw) {
-        console.log(`# File: ${epicFile}\n`);
+        if (options.path) console.log(`# File: ${epicFile}\n`);
         const content = fs.readFileSync(epicFile, 'utf8');
         console.log(options.comments ? content : stripComments(content));
         return;
@@ -168,13 +171,13 @@ export function registerEpicCommands(program) {
         tasksByStatus[status] = (tasksByStatus[status] || 0) + 1;
       });
 
-      const output = {
+      const output: any = {
         ...file.data,
-        file: epicFile,
         prd: path.basename(prdDir),
         taskCount: tasks.length,
         tasksByStatus
       };
+      if (options.path) output.file = epicFile;
 
       if (options.json) {
         jsonOut(output);
@@ -186,7 +189,7 @@ export function registerEpicCommands(program) {
         Object.entries(tasksByStatus).forEach(([status, count]) => {
           console.log(`  ${statusSymbol(status)} ${status}: ${count}`);
         });
-        console.log(`\nFile: ${epicFile}`);
+        if (options.path) console.log(`\nFile: ${epicFile}`);
       }
     });
 
@@ -279,7 +282,12 @@ updated: '${new Date().toISOString()}'
       fs.writeFileSync(memoryFile, memoryContent);
 
       if (options.json) {
-        jsonOut({ id, title, parent: data.parent, file: epicPath, memory: memoryFile });
+        const output: any = { id, title, parent: data.parent };
+        if (options.path) {
+          output.file = epicPath;
+          output.memory = memoryFile;
+        }
+        jsonOut(output);
       } else {
         console.log(`Created: ${id} - ${title}`);
         if (options.path) console.log(`File: ${epicPath}`);
@@ -364,7 +372,8 @@ updated: '${new Date().toISOString()}'
   // epic:clean-logs
   withModifies(epic.command('clean-logs <id>'), ['epic'])
     .description('Delete epic log file')
-    .action((id) => {
+    .option('--path', 'Show file path (discouraged)')
+    .action((id, options) => {
       const epicId = normalizeId(id);
       const epicLogFile = path.join(getMemoryDir(), `${epicId}.log`);
 
@@ -374,7 +383,7 @@ updated: '${new Date().toISOString()}'
       }
 
       fs.unlinkSync(epicLogFile);
-      console.log(`Deleted: ${epicLogFile}`);
+      console.log(options.path ? `Deleted: ${epicLogFile}` : `Deleted logs for ${epicId}`);
     });
 
   // epic:merge-logs
@@ -461,7 +470,8 @@ updated: '${new Date().toISOString()}'
   // epic:ensure-memory
   withModifies(epic.command('ensure-memory <id>'), ['epic'])
     .description('Create memory file from template if missing')
-    .action((id) => {
+    .option('--path', 'Show file path (discouraged)')
+    .action((id, options) => {
       const epicId = normalizeId(id);
       const memoryFile = path.join(getMemoryDir(), `${epicId}.md`);
 
@@ -502,7 +512,7 @@ updated: '${new Date().toISOString()}'
       }
 
       fs.writeFileSync(memoryFile, template);
-      console.log(`Created: ${memoryFile}`);
+      console.log(options.path ? `Created: ${memoryFile}` : `Created memory for ${epicId}`);
     });
 
   // epic:memory

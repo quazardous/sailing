@@ -108,7 +108,8 @@ export function registerDbCommands(program) {
         if (agent.dirtyWorktree) {
           console.log(`\nDirty: ${agent.uncommittedFiles} uncommitted files`);
         }
-        if (agent.logFile) console.log(`\nLog: ${agent.logFile}`);
+        // TODO: add run log management via rudder (agent:log, agent:tail, etc.)
+        if (agent.logFile) console.log(`\nRun Log: ${agent.logFile}`);
       }
     });
 

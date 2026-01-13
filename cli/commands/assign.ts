@@ -648,8 +648,9 @@ export function registerAssignCommands(program) {
   withModifies(assign.command('create <task-id>'), ['task'])
     .description('Create an assignment for a task')
     .requiredOption('--operation <op>', 'Operation type (task-start, etc.)')
+    .option('--path', 'Show file path (discouraged)')
     .option('--json', 'JSON output')
-    .action((taskId: string, options: { operation: string; json?: boolean }) => {
+    .action((taskId: string, options: { operation: string; path?: boolean; json?: boolean }) => {
       const normalized = normalizeId(taskId);
 
       // Validate task exists
@@ -690,11 +691,13 @@ export function registerAssignCommands(program) {
       fs.writeFileSync(filePath, yaml.dump(assignment));
 
       if (options.json) {
-        jsonOut(assignment);
+        const output: any = { ...assignment };
+        if (options.path) output.file = filePath;
+        jsonOut(output);
       } else {
         console.log(`Created assignment: ${normalized}`);
         console.log(`  Operation: ${options.operation}`);
-        console.log(`  Path: ${filePath}`);
+        if (options.path) console.log(`  Path: ${filePath}`);
       }
     });
 

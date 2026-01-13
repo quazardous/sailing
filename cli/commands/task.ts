@@ -47,10 +47,11 @@ export function registerTaskCommands(program) {
     .option('-r, --ready', 'Only show ready tasks (unblocked)')
     .option('-l, --limit <n>', 'Limit results', parseInt)
     .option('--prd <id>', 'Filter by PRD (alias for positional arg)')
+    .option('--path', 'Include file path (discouraged)')
     .option('--json', 'JSON output')
     .action((prdArg, options) => {
       const prd = prdArg || options.prd;
-      const tasks: (Task & { file: string; prd: string })[] = [];
+      const tasks: (Task & { file?: string; prd: string })[] = [];
 
       for (const prdDir of findPrdDirs()) {
         if (prd && !matchesPrdDir(prdDir, prd)) continue;
@@ -85,7 +86,7 @@ export function registerTaskCommands(program) {
             if (!allTagsMatch) return;
           }
 
-          tasks.push({
+          const taskEntry: Task & { file?: string; prd: string } = {
             id: file.data.id || path.basename(f, '.md').match(/^T\d+/)?.[0],
             title: file.data.title || '',
             status: file.data.status || 'Unknown',
@@ -94,9 +95,10 @@ export function registerTaskCommands(program) {
             effort: file.data.effort || null,
             priority: file.data.priority || 'normal',
             blocked_by: file.data.blocked_by || [],
-            prd: prdName,
-            file: f
-          } as Task & { file: string; prd: string });
+            prd: prdName
+          };
+          if (options.path) taskEntry.file = f;
+          tasks.push(taskEntry);
         });
       }
 
@@ -143,8 +145,9 @@ export function registerTaskCommands(program) {
   task.command('show <id>')
     .description('Show task details (blockers, dependents, ready status)')
     .option('--role <role>', 'Role context: agent (minimal), skill/coordinator (full)')
-    .option('--raw', 'Dump raw markdown file')
+    .option('--raw', 'Dump raw markdown')
     .option('--comments', 'Include template comments (stripped by default)')
+    .option('--path', 'Include file path (discouraged)')
     .option('--json', 'JSON output')
     .action((id, options) => {
       const taskFile = findTaskFile(id);
@@ -153,9 +156,9 @@ export function registerTaskCommands(program) {
         process.exit(1);
       }
 
-      // Raw mode: dump file content with path header
+      // Raw mode: dump file content
       if (options.raw) {
-        console.log(`# File: ${taskFile}\n`);
+        if (options.path) console.log(`# File: ${taskFile}\n`);
         const content = fs.readFileSync(taskFile, 'utf8');
         console.log(options.comments ? content : stripComments(content));
         return;
@@ -166,12 +169,13 @@ export function registerTaskCommands(program) {
 
       // Agent role: minimal output (just what's needed to execute)
       if (isAgentRole) {
-        const result = {
+        const result: any = {
           id: file.data.id,
           title: file.data.title,
           status: file.data.status,
           parent: file.data.parent
         };
+        if (options.path) result.file = taskFile;
 
         if (options.json) {
           jsonOut(result);
@@ -180,7 +184,11 @@ export function registerTaskCommands(program) {
           console.log(`Status: ${file.data.status}`);
           console.log(`Parent: ${file.data.parent || '-'}`);
           console.log(`\n→ Use task:show-memory ${file.data.id} for Agent Context`);
-          console.log(`→ Use Read tool on ${taskFile} for full deliverables`);
+          if (options.path) {
+            console.log(`→ Use Read tool on ${taskFile} for full deliverables`);
+          } else {
+            console.log(`→ Use task:show ${file.data.id} --raw for full deliverables`);
+          }
         }
         return;
       }
@@ -193,13 +201,13 @@ export function registerTaskCommands(program) {
       const dependents = blocks.get(normalizedId) || [];
       const isReady = task ? blockersResolved(task, tasks) : false;
 
-      const result = {
+      const result: any = {
         ...file.data,
-        file: taskFile,
         blockers: task?.blockedBy || [],
         dependents,
         ready: isReady && !isStatusDone(file.data.status)
       };
+      if (options.path) result.file = taskFile;
 
       if (options.json) {
         jsonOut(result);
@@ -220,7 +228,7 @@ export function registerTaskCommands(program) {
         if (result.ready) {
           console.log('\n✓ Ready to start');
         }
-        console.log(`\nFile: ${taskFile}`);
+        if (options.path) console.log(`\nFile: ${taskFile}`);
       }
     });
 
@@ -317,7 +325,9 @@ export function registerTaskCommands(program) {
       saveFile(taskPath, data, body);
 
       if (options.json) {
-        jsonOut({ id, title, parent: data.parent, file: taskPath });
+        const output: any = { id, title, parent: data.parent };
+        if (options.path) output.file = taskPath;
+        jsonOut(output);
       } else {
         console.log(`Created: ${id} - ${title}`);
         if (options.path) console.log(`File: ${taskPath}`);
@@ -398,6 +408,7 @@ export function registerTaskCommands(program) {
     .description('Get next ready task (unassigned, unblocked)')
     .option('--prd <id>', 'Filter by PRD (e.g., PRD-006)')
     .option('--epic <id>', 'Filter by epic (e.g., E035)')
+    .option('--path', 'Include file path (discouraged)')
     .option('--json', 'JSON output')
     .action((options) => {
       const { tasks, blocks } = buildDependencyGraph();
@@ -461,7 +472,9 @@ export function registerTaskCommands(program) {
       }
 
       if (options.json) {
-        jsonOut({ ...next, pendingMemory: !!pendingWarning });
+        const output: any = { ...next, pendingMemory: !!pendingWarning };
+        if (!options.path) delete output.file;
+        jsonOut(output);
       } else {
         // Show warning first if pending
         if (pendingWarning) {
@@ -472,7 +485,7 @@ export function registerTaskCommands(program) {
 
         console.log(`${next.id}: ${next.title}`);
         console.log(`PRD: ${next.prd}`);
-        console.log(`File: ${next.file}`);
+        if (options.path) console.log(`File: ${next.file}`);
         if (ready.length > 1) {
           console.log(`\n${ready.length - 1} more ready task(s)`);
         }
@@ -483,6 +496,7 @@ export function registerTaskCommands(program) {
   task.command('start <id>')
     .description('Start task → sets In Progress + assignee, checks blockers')
     .option('-a, --assignee <name>', 'Assignee name', 'agent')
+    .option('--path', 'Include file path (discouraged)')
     .option('--json', 'JSON output')
     .action((id, options) => {
       const taskFile = findTaskFile(id);
@@ -512,12 +526,14 @@ export function registerTaskCommands(program) {
       saveFile(taskFile, data, file.body);
 
       if (options.json) {
-        jsonOut(data);
+        const output: any = { ...data };
+        if (options.path) output.file = taskFile;
+        jsonOut(output);
       } else {
         console.log(`Started: ${data.id} - ${data.title}`);
         console.log(`Status: ${data.status}`);
         console.log(`Assignee: ${data.assignee}`);
-        console.log(`\nFile: ${taskFile}`);
+        if (options.path) console.log(`\nFile: ${taskFile}`);
       }
     });
 
@@ -779,9 +795,10 @@ export function registerTaskCommands(program) {
   // task:targets - find tasks with target_versions for a component
   task.command('targets <component>')
     .description('Find tasks with target_versions for a component')
+    .option('--path', 'Include file path (discouraged)')
     .option('--json', 'JSON output')
     .action((component, options) => {
-      const results = [];
+      const results: any[] = [];
 
       for (const prdDir of findPrdDirs()) {
         const tasksDir = path.join(prdDir, 'tasks');
@@ -790,13 +807,14 @@ export function registerTaskCommands(program) {
         for (const taskFile of taskFiles) {
           const file = loadFile(taskFile);
           if (file.data.target_versions && file.data.target_versions[component]) {
-            results.push({
+            const entry: any = {
               id: file.data.id,
               title: file.data.title,
               status: file.data.status,
-              target_version: file.data.target_versions[component],
-              file: taskFile
-            });
+              target_version: file.data.target_versions[component]
+            };
+            if (options.path) entry.file = taskFile;
+            results.push(entry);
           }
         }
 
@@ -807,14 +825,15 @@ export function registerTaskCommands(program) {
         for (const epicFile of epicFiles) {
           const file = loadFile(epicFile);
           if (file.data.target_versions && file.data.target_versions[component]) {
-            results.push({
+            const entry: any = {
               id: file.data.id,
               title: file.data.title,
               status: file.data.status,
               target_version: file.data.target_versions[component],
-              file: epicFile,
               type: 'epic'
-            });
+            };
+            if (options.path) entry.file = epicFile;
+            results.push(entry);
           }
         }
       }

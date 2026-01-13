@@ -30,9 +30,11 @@ function findStoryFile(storyId) {
 
 /**
  * Get all stories across all PRDs
+ * @param prdFilter - Optional PRD filter
+ * @param includePath - Include file paths in result (default: false for privacy)
  */
-function getAllStories(prdFilter = null): (Story & { prd: string; file: string })[] {
-  const stories: (Story & { prd: string; file: string })[] = [];
+function getAllStories(prdFilter = null, includePath = false): (Story & { prd: string; file?: string })[] {
+  const stories: (Story & { prd: string; file?: string })[] = [];
   for (const prdDir of findPrdDirs()) {
     if (prdFilter && !matchesPrdDir(prdDir, prdFilter)) continue;
 
@@ -43,15 +45,17 @@ function getAllStories(prdFilter = null): (Story & { prd: string; file: string }
       const file = loadFile(f);
       if (!file?.data) return;
 
-      stories.push({
+      const storyEntry: Story & { prd: string; file?: string } = {
         id: file.data.id || path.basename(f, '.md').match(/^S\d+/)?.[0],
         title: file.data.title || '',
+        status: file.data.status || 'Draft',
         type: file.data.type || 'user',
         parent: file.data.parent || '',
         parent_story: file.data.parent_story || null,
-        prd: prdName,
-        file: f
-      } as Story & { prd: string; file: string });
+        prd: prdName
+      };
+      if (includePath) storyEntry.file = f;
+      stories.push(storyEntry);
     });
   }
   return stories;
@@ -135,10 +139,11 @@ export function registerStoryCommands(program) {
     .option('-t, --type <type>', `Filter by type (${STORY_TYPES.join(', ')})`)
     .option('-l, --limit <n>', 'Limit results', parseInt)
     .option('--prd <id>', 'Filter by PRD (alias for positional arg)')
+    .option('--path', 'Include file path (discouraged)')
     .option('--json', 'JSON output')
     .action((prdArg, options) => {
       const prd = prdArg || options.prd;
-      let stories = getAllStories(prd);
+      let stories = getAllStories(prd, options.path);
 
       // Type filter
       if (options.type) {
@@ -176,8 +181,9 @@ export function registerStoryCommands(program) {
   // story:show
   story.command('show <id>')
     .description('Show story details (children, references)')
-    .option('--raw', 'Dump raw markdown file')
+    .option('--raw', 'Dump raw markdown')
     .option('--comments', 'Include template comments (stripped by default)')
+    .option('--path', 'Include file path (discouraged)')
     .option('--json', 'JSON output')
     .action((id, options) => {
       const result = findStoryFile(id);
@@ -186,9 +192,9 @@ export function registerStoryCommands(program) {
         process.exit(1);
       }
 
-      // Raw mode: dump file content with path header
+      // Raw mode: dump file content
       if (options.raw) {
-        console.log(`# File: ${result.file}\n`);
+        if (options.path) console.log(`# File: ${result.file}\n`);
         const content = fs.readFileSync(result.file, 'utf8');
         console.log(options.comments ? content : stripComments(content));
         return;
@@ -204,15 +210,15 @@ export function registerStoryCommands(program) {
       const epicRefs = refs.epics[storyId] || [];
       const taskRefs = refs.tasks[storyId] || [];
 
-      const output = {
+      const output: any = {
         ...file.data,
-        file: result.file,
         prd: path.basename(result.prdDir),
         children: childrenList.map(c => c.id),
         referencedByEpics: epicRefs,
         referencedByTasks: taskRefs,
         hasTaskReference: taskRefs.length > 0
       };
+      if (options.path) output.file = result.file;
 
       if (options.json) {
         jsonOut(output);
@@ -238,7 +244,7 @@ export function registerStoryCommands(program) {
           console.log(`\n⚠️  No task references (orphan story)`);
         }
 
-        console.log(`\nFile: ${result.file}`);
+        if (options.path) console.log(`\nFile: ${result.file}`);
       }
     });
 
@@ -292,7 +298,9 @@ export function registerStoryCommands(program) {
       saveFile(storyPath, data, body);
 
       if (options.json) {
-        jsonOut({ id, title, parent: data.parent, type: data.type, file: storyPath });
+        const output: any = { id, title, parent: data.parent, type: data.type };
+        if (options.path) output.file = storyPath;
+        jsonOut(output);
       } else {
         console.log(`Created: ${id} - ${title} (${data.type})`);
         if (options.path) console.log(`File: ${storyPath}`);
@@ -406,10 +414,11 @@ export function registerStoryCommands(program) {
   story.command('roots [prd]')
     .description('List root stories (no parent)')
     .option('--prd <id>', 'Filter by PRD')
+    .option('--path', 'Include file path (discouraged)')
     .option('--json', 'JSON output')
     .action((prdArg, options) => {
       const prd = prdArg || options.prd;
-      const stories = getAllStories(prd);
+      const stories = getAllStories(prd, options.path);
       const roots = stories.filter(s => !s.parent_story);
 
       if (options.json) {
@@ -430,10 +439,11 @@ export function registerStoryCommands(program) {
   story.command('leaves [prd]')
     .description('List leaf stories (no children)')
     .option('--prd <id>', 'Filter by PRD')
+    .option('--path', 'Include file path (discouraged)')
     .option('--json', 'JSON output')
     .action((prdArg, options) => {
       const prd = prdArg || options.prd;
-      const stories = getAllStories(prd);
+      const stories = getAllStories(prd, options.path);
       const { children } = buildStoryTree(stories);
 
       const leaves = stories.filter(s => {
@@ -520,10 +530,11 @@ export function registerStoryCommands(program) {
   story.command('orphans [prd]')
     .description('List orphan stories (not referenced by any task)')
     .option('--prd <id>', 'Filter by PRD')
+    .option('--path', 'Include file path (discouraged)')
     .option('--json', 'JSON output')
     .action((prdArg, options) => {
       const prd = prdArg || options.prd;
-      const stories = getAllStories(prd);
+      const stories = getAllStories(prd, options.path);
       const refs = getStoryReferences();
 
       const orphans = stories.filter(s => {
@@ -551,11 +562,12 @@ export function registerStoryCommands(program) {
   story.command('unlinked [prd]')
     .description('List stories without task references (alias for orphans)')
     .option('--prd <id>', 'Filter by PRD')
+    .option('--path', 'Include file path (discouraged)')
     .option('--json', 'JSON output')
     .action((prdArg, options) => {
       // Same as orphans
       const prd = prdArg || options.prd;
-      const stories = getAllStories(prd);
+      const stories = getAllStories(prd, options.path);
       const refs = getStoryReferences();
 
       const unlinked = stories.filter(s => {
