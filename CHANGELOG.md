@@ -2,6 +2,11 @@
 
 All notable changes to the Sailing Framework will be documented in this file.
 
+## [1.7.4] - 2026-01-13
+
+### Changed
+- README: simplified install options, marked worktree mode as experimental
+
 ## [1.7.3] - 2026-01-13
 
 ### Changed
