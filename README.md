@@ -1,6 +1,6 @@
 # Sailing
 
-![Claude Skill](https://img.shields.io/badge/Claude-Skill-blueviolet)
+[![Claude Skill](https://img.shields.io/badge/Claude-Skill-blueviolet)](https://code.claude.com/docs/en/skills)
 
 **AI-assisted project governance** that actually remembers what it learns.
 
