@@ -2,6 +2,12 @@
 
 All notable changes to the Sailing Framework will be documented in this file.
 
+## [1.7.3] - 2026-01-13
+
+### Changed
+- Install script now auto-updates `.gitignore` with sailing framework files
+- Worktree mode install suggests `git init` if no repo exists
+
 ## [1.7.2] - 2026-01-13
 
 ### Changed
