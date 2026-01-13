@@ -12,23 +12,11 @@
 curl -sSL https://raw.githubusercontent.com/quazardous/sailing/main/install.sh | bash
 ```
 
-**Options:**
-
-| Option | Description |
-|--------|-------------|
-| `--use-worktree` | Enable worktree mode for agent isolation (recommended for parallel agents) |
-| `--folders-profile=X` | Folder profile: `project` (default), `haven`, `sibling` |
-| `--global` | Install rudder CLI globally via npm |
-| `--force` | Force overwrite protected files |
-| `--dry-run` | Show what would be done |
-
-**Worktree mode** (advanced):
+**Worktree mode** (experimental):
 ```bash
 curl -sSL https://raw.githubusercontent.com/quazardous/sailing/main/install.sh | bash -s -- --use-worktree --folders-profile=haven
 ```
-This enables git worktree isolation for parallel agent execution. Each agent works in its own branch, preventing conflicts. Requires `haven` or `sibling` profile (not `project`).
-
-Worktree mode uses [sandbox-runtime (srt)](https://github.com/anthropic-experimental/sandbox-runtime) for OS-level isolation. The installer will guide you through the setup steps.
+> ⚠️ **Experimental**: Worktree mode enables git worktree isolation for parallel agent execution. Each agent works in its own branch. Requires [sandbox-runtime (srt)](https://github.com/anthropic-experimental/sandbox-runtime) for OS-level isolation. The installer will guide you through the setup.
 
 ### 2. Create a PRD (1 minute)
 
