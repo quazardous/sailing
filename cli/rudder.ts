@@ -14,11 +14,18 @@
  *   3. Walk up from script location to find .sailing/
  *   4. Walk up from current directory (fallback)
  *
+ * Config overrides (experimental):
+ *   --with-config key=value              # Override any config value
+ *   --with-path key=value                # Override any path value
+ *   Can be specified multiple times for multiple overrides
+ *
  * Examples:
  *   rudder task:list PRD-001 --status wip
  *   rudder task:show T042
  *   rudder deps:validate --fix
  *   rudder task list PRD-001             # Same as task:list
+ *   rudder --with-config agent.use_subprocess=true agent:spawn T001
+ *   rudder --with-path artefacts=/custom/path task:list PRD-001
  *
  * Dev mode (from repo):
  *   SAILING_PROJECT=/path/to/project rudder task:list
@@ -26,7 +33,8 @@
  */
 import { program, Command } from 'commander';
 import path from 'path';
-import { setProjectRoot, setScriptDir } from './lib/core.js';
+import { setProjectRoot, setScriptDir, setPathOverrides, parsePathOverride } from './lib/core.js';
+import { setConfigOverrides, parseConfigOverride } from './lib/config.js';
 
 // Set script directory for project root detection
 setScriptDir(import.meta.dirname);
@@ -46,6 +54,64 @@ if (rootIdx !== -1 && args[rootIdx + 1]) {
 // Set explicit project root if provided
 if (rootPath) {
   setProjectRoot(path.resolve(rootPath));
+}
+
+// Extract --with-config flags manually (before commander parses)
+// Can be specified multiple times: --with-config key=value --with-config key2=value2
+const configOverrides: Record<string, any> = {};
+let configIdx = args.indexOf('--with-config');
+while (configIdx !== -1) {
+  if (args[configIdx + 1]) {
+    const parsed = parseConfigOverride(args[configIdx + 1]);
+    if (parsed) {
+      configOverrides[parsed.key] = parsed.value;
+    }
+    // Remove --with-config and its value from args
+    args.splice(configIdx, 2);
+  } else {
+    console.error('--with-config requires a value (e.g., --with-config agent.use_subprocess=true)');
+    args.splice(configIdx, 1);
+  }
+  configIdx = args.indexOf('--with-config');
+}
+
+// Apply config overrides if any
+if (Object.keys(configOverrides).length > 0) {
+  console.error('⚠️  [experimental] Config overrides applied:');
+  for (const [key, value] of Object.entries(configOverrides)) {
+    console.error(`   ${key}=${value}`);
+  }
+  console.error('');
+  setConfigOverrides(configOverrides);
+}
+
+// Extract --with-path flags manually (before commander parses)
+// Can be specified multiple times: --with-path key=value --with-path key2=value2
+const pathOverrides: Record<string, string> = {};
+let pathIdx = args.indexOf('--with-path');
+while (pathIdx !== -1) {
+  if (args[pathIdx + 1]) {
+    const parsed = parsePathOverride(args[pathIdx + 1]);
+    if (parsed) {
+      pathOverrides[parsed.key] = parsed.value;
+    }
+    // Remove --with-path and its value from args
+    args.splice(pathIdx, 2);
+  } else {
+    console.error('--with-path requires a value (e.g., --with-path artefacts=/custom/path)');
+    args.splice(pathIdx, 1);
+  }
+  pathIdx = args.indexOf('--with-path');
+}
+
+// Apply path overrides if any
+if (Object.keys(pathOverrides).length > 0) {
+  console.error('⚠️  [experimental] Path overrides applied:');
+  for (const [key, value] of Object.entries(pathOverrides)) {
+    console.error(`   ${key}=${value}`);
+  }
+  console.error('');
+  setPathOverrides(pathOverrides);
 }
 
 // Now import version (which uses core.js and needs project root set)

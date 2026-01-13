@@ -23,6 +23,7 @@ import yaml from 'js-yaml';
 import { getPrompting, jsonOut, getPathsInfo } from '../lib/core.js';
 import { addDynamicHelp } from '../lib/help.js';
 import { getAgentConfig } from '../lib/config.js';
+import { getSetFragments } from '../lib/compose.js';
 import { WorkflowsConfig, WorkflowPhase, WorkflowCommand, RoleDefinition, OperationMeta } from '../lib/types/workflows.js';
 
 type OperationListItem = OperationMeta & { name: string; allowedRoles: string[] };
@@ -115,27 +116,29 @@ function resolveFragments(config: WorkflowsConfig, operation: string, roleOverri
     return null;
   }
 
-  // 4. Collect fragments from role's base_sets
-  const allFragments = [];
+  // 4. Collect fragments from role's base_sets (no role filtering - base_sets are role-specific)
+  const allFragments: string[] = [];
   const baseSets = roleDef.base_sets || [];
 
   for (const setName of baseSets) {
-    const setFragments = config.sets[setName];
-    if (setFragments) {
-      allFragments.push(...setFragments);
-    }
+    const { fragments: setFragments } = getSetFragments(config.sets[setName]);
+    allFragments.push(...setFragments);
   }
 
-  // 5. Add operation-specific sets from matrix
+  // 5. Add operation-specific sets from matrix (with role filtering)
   const additionalSets = config.matrix[operation] || [];
   for (const setName of additionalSets) {
-    const setFragments = config.sets[setName];
-    if (setFragments) {
-      // Avoid duplicates
-      for (const frag of setFragments) {
-        if (!allFragments.includes(frag)) {
-          allFragments.push(frag);
-        }
+    const { fragments: setFragments, roles: allowedSetRoles } = getSetFragments(config.sets[setName]);
+
+    // If set has role restriction, check if current role is allowed
+    if (allowedSetRoles && !allowedSetRoles.includes(roleName)) {
+      continue;  // Skip this set - not for this role
+    }
+
+    // Avoid duplicates
+    for (const frag of setFragments) {
+      if (!allFragments.includes(frag)) {
+        allFragments.push(frag);
       }
     }
   }

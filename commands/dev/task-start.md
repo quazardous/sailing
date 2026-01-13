@@ -11,7 +11,7 @@ rudder context:load task-start --role skill
 ```
 
 The output includes a **Workflow: task-start** section with steps filtered for your execution mode:
-- **inline**: Steps include `context:load`, `memory:show`, `task:show` (for Task tool injection)
+- **inline**: Steps include `assign:claim --role agent` (for Task tool agent)
 - **subprocess**: Steps include `agent:spawn` (for subprocess execution)
 
 Follow the workflow steps exactly as shown. No conditionals to interpret — just execute the steps.
@@ -23,7 +23,9 @@ If **Worktree Isolation** section appears, agent runs in isolated git branch.
 - STOP and report the error to user
 - Constitutional rule: "When in doubt: stop, log, escalate — never guess."
 
-## Agent Prompt Template
+## Agent Prompt Template (Inline Mode)
+
+For inline agents spawned via Task tool:
 
 ```markdown
 # Assignment: {TNNN}
@@ -32,10 +34,8 @@ You are a senior engineer executing task {TNNN}.
 
 ## 1. Get your context
 
-The task is already claimed by spawn. Get your context:
-
 ```bash
-rudder context:load {TNNN}
+rudder assign:claim {TNNN} --role agent
 ```
 
 This returns your complete execution context:
@@ -53,27 +53,26 @@ Implement the deliverables. No scope expansion.
 **Logging contract:**
 - Log once when starting (approach)
 - Log once before returning control (result or blocker)
-- Minimum 2 logs required. Logs are consumed by next agent — if you don't log it, the system repeats the mistake.
+- Minimum 2 logs required.
 
 **If you cannot complete the task:**
 1. Emit one `--error` log explaining why
 2. Stop execution
 3. Return control without attempting partial fixes
 
-**Worktree mode**: You MUST NOT commit - skill handles commits after merge.
-**Non-worktree mode**: You MUST commit your changes before calling `assign:release`.
+**You MUST NOT commit, push, or modify git state.**
 
 ## Modes
 
 | Mode | Workflow |
 |------|----------|
-| **Inline** (non-subprocess) | Skill claims → loads context → Task tool executes → skill releases |
+| **Inline** (non-subprocess) | Skill spawns Task tool → agent calls `assign:claim --role agent` → skill calls `assign:release` |
 | **Subprocess** (default) | `agent:spawn` pre-claims → launches Claude → agent calls `context:load` → auto-release on exit 0 |
 | **Worktree** (subprocess+isolation) | Same as subprocess but agent runs in isolated git branch |
 
-Both modes use claim/release lifecycle:
-- **Inline**: Skill calls `assign:claim` before Task tool, `assign:release` after
-- **Subprocess**: Spawn pre-claims, auto-release on exit code 0 with work done
+Claim/release lifecycle:
+- **Inline**: Agent calls `assign:claim --role agent`, skill calls `assign:release` after agent returns
+- **Subprocess**: Spawn pre-claims, auto-release on exit code 0
 
 ## Role Mapping (optional refinement)
 

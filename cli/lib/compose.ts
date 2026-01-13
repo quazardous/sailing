@@ -98,6 +98,31 @@ export function resolveInject(roleDef, mode) {
 }
 
 /**
+ * Get fragments from a set definition
+ * Handles both legacy array format and new object format
+ * @param {any} setDef - Set definition (array or object with fragments/roles)
+ * @returns {{ fragments: string[], roles: string[] | null }}
+ */
+export function getSetFragments(setDef) {
+  if (!setDef) return { fragments: [], roles: null };
+
+  // Legacy format: array of fragments
+  if (Array.isArray(setDef)) {
+    return { fragments: setDef, roles: null };
+  }
+
+  // New format: { fragments: [...], roles?: [...] }
+  if (typeof setDef === 'object') {
+    return {
+      fragments: setDef.fragments || [],
+      roles: setDef.roles || null  // null = all roles allowed
+    };
+  }
+
+  return { fragments: [], roles: null };
+}
+
+/**
  * Resolve fragments for an operation and role
  * @param {object} config - Loaded workflows.yaml
  * @param {string} operation - Operation name
@@ -112,24 +137,26 @@ export function resolveFragments(config, operation, role, mode) {
   const roleDef = config.roles?.[role];
   if (!roleDef) return null;
 
-  // Collect fragments from role's base_sets
+  // Collect fragments from role's base_sets (no role filtering - base_sets are role-specific)
   const fragments = [];
   const baseSets = roleDef.base_sets || [];
 
   for (const setName of baseSets) {
-    const setFragments = config.sets?.[setName];
-    if (setFragments) {
-      fragments.push(...setFragments);
-    }
+    const { fragments: setFragments } = getSetFragments(config.sets?.[setName]);
+    fragments.push(...setFragments);
   }
 
-  // Add operation-specific sets from matrix
+  // Add operation-specific sets from matrix (with role filtering)
   const opSets = config.matrix?.[operation] || [];
   for (const setName of opSets) {
-    const setFragments = config.sets?.[setName];
-    if (setFragments) {
-      fragments.push(...setFragments);
+    const { fragments: setFragments, roles: allowedRoles } = getSetFragments(config.sets?.[setName]);
+
+    // If set has role restriction, check if current role is allowed
+    if (allowedRoles && !allowedRoles.includes(role)) {
+      continue;  // Skip this set - not for this role
     }
+
+    fragments.push(...setFragments);
   }
 
   // Get inject config for mode

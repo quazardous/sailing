@@ -76,18 +76,23 @@ roles:
 # SECTION 2: Sets — Reusable fragment bundles
 # ─────────────────────────────────────────────────────────────────────────────
 # Path: prompting/<path>.md (prefixes: agent/, skill/, shared/)
-# No more automatic filtering by prefix — sets are explicit
+#
+# Format: { fragments: [...], roles: [...] }
+#   - fragments: list of fragment paths (without .md)
+#   - roles: (optional) restrict set to these roles; omit = all roles
+#
+# When a set is added via matrix, it's filtered by role automatically.
 
 sets:
-  law:          [core/law]                # Authority levels only (all roles)
-  agent-rules:  [agent/contract, agent/cli, agent/states]  # Agent execution rules
-  deps:         [agent/deps]
-  execution:    [agent/execution]
-  coordination: [skill/orchestration, skill/reminders, skill/gates, skill/batch-cli, skill/agent-cli]
-  milestone:    [shared/milestone]
-  versioning:   [shared/versioning]
-  editing:      [shared/artefact-editing]
-  vision:       []                        # Placeholder for roadmap/postit injection
+  law:          { fragments: [core/law] }
+  agent-rules:  { fragments: [agent/contract, agent/cli, agent/states] }
+  deps:         { fragments: [agent/deps], roles: [agent] }
+  execution:    { fragments: [agent/execution], roles: [agent] }
+  coordination: { fragments: [skill/orchestration, skill/reminders, skill/gates, skill/batch-cli, skill/agent-cli] }
+  milestone:    { fragments: [shared/milestone] }
+  versioning:   { fragments: [shared/versioning] }
+  editing:      { fragments: [shared/artefact-editing] }
+  vision:       { fragments: [] }
 
 # ─────────────────────────────────────────────────────────────────────────────
 # SECTION 3: Operations — Metadata per operation
@@ -177,12 +182,13 @@ orchestration:
     - name: spawn-agent
       actor: skill
       commands:
-        - { cmd: "Task tool with agent prompt", mode: inline, purpose: "Launch inline agent (use Task tool)", required: true, note: "Include context:load {TASK} in prompt" }
+        - { cmd: "Task tool: assign:claim {TASK} --role agent", mode: inline, purpose: "Spawn inline agent (Task tool)", required: true, note: "Agent gets full context from claim" }
         - { cmd: "agent:spawn {TASK}", mode: subprocess, purpose: "Launch agent subprocess (pre-claims)" }
     - name: agent-init
       actor: agent
       commands:
-        - { cmd: "context:load {TASK}", mode: both, purpose: "Get task context (contract, memory, deliverables)" }
+        - { cmd: "assign:claim {TASK} --role agent", mode: inline, purpose: "Get task context (contract, memory, deliverables)" }
+        - { cmd: "context:load {TASK}", mode: subprocess, purpose: "Get task context (pre-claimed by spawn)" }
     - name: execution
       actor: agent
       commands:
@@ -199,14 +205,15 @@ orchestration:
       commands:
         - { cmd: "memory:sync", mode: both, purpose: "Consolidate pending logs" }
         - { cmd: "epic:show {EPIC}", mode: both, purpose: "Review epic" }
-    - name: context-load
+    - name: spawn-agent
       actor: coordinator
       commands:
-        - { cmd: "assign:claim {EPIC}", mode: inline, purpose: "Claim + get full context (contract, memory, PRD, epic)" }
+        - { cmd: "Task tool: assign:claim {EPIC} --role agent", mode: inline, purpose: "Spawn inline agent (Task tool)", note: "Agent gets full context from claim" }
         - { cmd: "agent:spawn {EPIC} --operation epic-breakdown", mode: subprocess, purpose: "Launch agent (pre-claims)" }
     - name: agent-init
       actor: agent
       commands:
+        - { cmd: "assign:claim {EPIC} --role agent", mode: inline, purpose: "Get epic context (contract, memory, PRD, epic)" }
         - { cmd: "context:load {EPIC}", mode: subprocess, purpose: "Get epic context (pre-claimed by spawn)" }
     - name: execution
       actor: agent

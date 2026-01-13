@@ -98,6 +98,51 @@ let _projectRoot: string | null = null;
 let _scriptDir: string | null = null;
 let _repoRoot: string | null | undefined = undefined; // undefined = not computed yet
 
+// CLI path overrides (set via --with-path flag)
+// Format: { 'artefacts': '/custom/path', ... }
+let _pathOverrides: Record<string, string> = {};
+
+/**
+ * Set path overrides from CLI flag
+ * Called very early in rudder.ts before any paths are loaded
+ * @experimental This is an experimental feature
+ */
+export function setPathOverrides(overrides: Record<string, string>): void {
+  _pathOverrides = { ..._pathOverrides, ...overrides };
+  // Invalidate cache so next loadPathsConfig() picks up overrides
+  _config = null;
+}
+
+/**
+ * Parse a path override string: "key=value"
+ * Validates key against DEFAULT_PATHS
+ */
+export function parsePathOverride(override: string): { key: string; value: string } | null {
+  const match = override.match(/^([^=]+)=(.*)$/);
+  if (!match) {
+    console.error(`Invalid path override format: ${override}`);
+    console.error(`Expected: key=value (e.g., artefacts=/custom/path)`);
+    return null;
+  }
+
+  const [, key, value] = match;
+
+  // Validate key exists in DEFAULT_PATHS
+  if (!DEFAULT_PATHS[key]) {
+    console.error(`Unknown path key: ${key}`);
+    console.error(`Available keys: ${Object.keys(DEFAULT_PATHS).join(', ')}`);
+    return null;
+  }
+
+  // Value can be any path (relative, absolute, with placeholders)
+  if (!value) {
+    console.error(`Empty value for path key: ${key}`);
+    return null;
+  }
+
+  return { key, value };
+}
+
 /**
  * Set the script directory (called from rudder.js)
  * This is used as the starting point to find project root in normal mode
@@ -261,6 +306,11 @@ export function loadPathsConfig(): any {
     }
   } else {
     _config = { paths: defaultPaths };
+  }
+
+  // Apply CLI path overrides (--with-path flag)
+  if (Object.keys(_pathOverrides).length > 0) {
+    _config.paths = { ..._config.paths, ..._pathOverrides };
   }
 
   return _config;

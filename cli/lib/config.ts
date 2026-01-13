@@ -196,6 +196,69 @@ const DEFAULTS = buildDefaults();
 // Cached config
 let _config: SailingConfig | null = null;
 
+// CLI overrides (set via --with-config flag)
+// Format: { 'agent.use_subprocess': false, ... }
+let _configOverrides: Record<string, any> = {};
+
+/**
+ * Set config overrides from CLI flag
+ * Called very early in rudder.ts before any config is loaded
+ * @experimental This is an experimental feature
+ */
+export function setConfigOverrides(overrides: Record<string, any>): void {
+  _configOverrides = { ..._configOverrides, ...overrides };
+  // Invalidate cache so next loadConfig() picks up overrides
+  _config = null;
+}
+
+/**
+ * Parse a config override string: "key=value"
+ * Handles type coercion based on schema
+ */
+export function parseConfigOverride(override: string): { key: string; value: any } | null {
+  const match = override.match(/^([^=]+)=(.*)$/);
+  if (!match) {
+    console.error(`Invalid config override format: ${override}`);
+    console.error(`Expected: key=value (e.g., agent.use_subprocess=true)`);
+    return null;
+  }
+
+  const [, key, rawValue] = match;
+  const schema = CONFIG_SCHEMA[key];
+
+  if (!schema) {
+    console.error(`Unknown config key: ${key}`);
+    console.error(`Available keys: ${Object.keys(CONFIG_SCHEMA).join(', ')}`);
+    return null;
+  }
+
+  // Coerce value based on schema type
+  let value: any = rawValue;
+  switch (schema.type) {
+    case 'boolean':
+      value = rawValue.toLowerCase() === 'true' || rawValue === '1';
+      break;
+    case 'number':
+    case 'relative-integer':
+      value = parseInt(rawValue, 10);
+      if (isNaN(value)) {
+        console.error(`Invalid number for ${key}: ${rawValue}`);
+        return null;
+      }
+      break;
+    case 'enum':
+      if (schema.values && !schema.values.includes(rawValue)) {
+        console.error(`Invalid value for ${key}: ${rawValue}`);
+        console.error(`Valid values: ${schema.values.join(', ')}`);
+        return null;
+      }
+      break;
+    // string: use as-is
+  }
+
+  return { key, value };
+}
+
 /**
  * Get config file path
  */
@@ -205,7 +268,7 @@ export function getConfigPath(): string {
 
 /**
  * Load configuration from file
- * Merges with defaults, validates values
+ * Merges with defaults, validates values, applies CLI overrides
  */
 export function loadConfig(): SailingConfig {
   if (_config) return _config;
@@ -224,6 +287,13 @@ export function loadConfig(): SailingConfig {
 
   // Deep merge with defaults
   _config = deepMerge(DEFAULTS, userConfig) as SailingConfig;
+
+  // Apply CLI overrides (--with-config flag)
+  if (Object.keys(_configOverrides).length > 0) {
+    for (const [key, value] of Object.entries(_configOverrides)) {
+      setNestedValue(_config, key, value);
+    }
+  }
 
   // Validate
   validateConfig(_config);
