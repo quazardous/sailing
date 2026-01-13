@@ -2,6 +2,19 @@
 
 All notable changes to the Sailing Framework will be documented in this file.
 
+## [1.7.2] - 2026-01-13
+
+### Changed
+- File path abstraction: CLI commands no longer show file paths by default
+  - Added `--path` flag (discouraged) to show paths when needed
+  - Applies to: prd, epic, task, story list/show/create commands
+  - Agent guidance: use `task:show --raw` instead of file paths
+- PRD template: `branching` field removed (only relevant with `agent.use_worktrees`)
+- `db:agent` output: renamed `Log:` to `Run Log:` for clarity
+
+### Fixed
+- Curl install: `dist/cli/` now committed to repo (was in .gitignore)
+
 ## [1.7.1] - 2026-01-06
 
 ### Fixed
