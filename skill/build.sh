@@ -14,14 +14,23 @@ cd "$SCRIPT_DIR"
 GREEN='\033[0;32m'
 NC='\033[0m'
 
-# SKILL_INLINE.md = base as-is
-cp SKILL.base.md SKILL_INLINE.md
+# Warning comment (inserted after frontmatter)
+WARNING="<!-- DO NOT EDIT DIRECTLY - see BUILD_SKILL.md -->"
+
+# SKILL_INLINE.md = base with warning after frontmatter
+{
+  head -5 SKILL.base.md          # frontmatter (lines 1-5: --- to ---)
+  echo "$WARNING"
+  tail -n +6 SKILL.base.md       # rest of file (line 6+)
+} > SKILL_INLINE.md
 echo -e "${GREEN}Generated: SKILL_INLINE.md${NC}"
 
-# SKILL_WORKTREE.md = base with modified title + block inserted
+# SKILL_WORKTREE.md = base with warning + modified title + block inserted
 {
-  # Read base file
-  head -7 SKILL.base.md | sed 's/^# Sailing$/# Sailing (Worktree Mode)/'
+  head -5 SKILL.base.md          # frontmatter
+  echo "$WARNING"
+  echo ""
+  sed -n '7p' SKILL.base.md | sed 's/^# Sailing$/# Sailing (Worktree Mode)/'
   cat SKILL_WORKTREE.block.md
   tail -n +8 SKILL.base.md
 } > SKILL_WORKTREE.md

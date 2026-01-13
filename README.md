@@ -1,5 +1,7 @@
 # Sailing
 
+![Claude Skill](https://img.shields.io/badge/Claude-Skill-blueviolet)
+
 **AI-assisted project governance** that actually remembers what it learns.
 
 > Stop losing context. Start building with memory.
