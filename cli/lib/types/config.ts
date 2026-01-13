@@ -67,3 +67,13 @@ export interface CheckResults {
   config: CheckEntry[];
   summary: { ok: number; warn: number; error: number };
 }
+
+export interface Placeholders {
+  home: string;
+  project: string;
+  project_name: string;
+  project_hash: string;
+  haven: string;
+  sibling: string;
+  [key: string]: string; // Allow custom placeholders
+}

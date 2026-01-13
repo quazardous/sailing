@@ -1,38 +1,18 @@
 /**
  * Dynamic help generator for rudder CLI
  * Generates detailed options summary from registered commands
- * TODO[P1]: Replace reliance on Commander internals (_args/options) with a typed wrapper when moving to strict.
- * TODO[P2]: Align status injection with typed STATUS map to avoid string lookups.
  * TODO[P3]: Consider generating help from declarative metadata to reduce coupling before TS migration.
  */
-import { STATUS } from './lexicon.js';
-import type { Command as CommanderCommand, Option as CommanderOption } from 'commander';
-
-type CommandArg = { name(): string; required: boolean; variadic?: boolean; description?: string };
-
-type OptionWithMeta = CommanderOption & {
-  short?: string;
-  long?: string;
-  description?: string;
-  negate?: boolean;
-  required?: boolean;
-  optional?: boolean;
-  variadic?: boolean;
-  argChoices?: string[];
-};
-
-type CommandWithInternals = CommanderCommand & {
-  _args: CommandArg[];
-  options: OptionWithMeta[];
-  commands: CommanderCommand[];
-};
+import { STATUS, ENTITY_TYPES } from './lexicon.js';
+import { Command } from 'commander';
+import { CommandWithInternals, CommandArg, OptionWithMeta } from './types/commander-ext.js';
 
 /**
  * Format option flags (short + long)
  * @param {Object} opt - Commander option object
  * @returns {string} Formatted flags
  */
-function formatOptionFlags(opt: OptionWithMeta) {
+function formatOptionFlags(opt: OptionWithMeta): string {
   const short = opt.short || '';
   const long = opt.long || '';
 
@@ -46,7 +26,8 @@ function formatOptionFlags(opt: OptionWithMeta) {
   // Add value placeholder
   if (opt.required) {
     const val = opt.argChoices ? opt.argChoices.join('|') : 'val';
-    flags += ` <${val}>`;
+    flags += ` <${val}>
+`;
   } else if (opt.optional) {
     flags += ' [val]';
   } else if (opt.variadic) {
@@ -61,7 +42,7 @@ function formatOptionFlags(opt: OptionWithMeta) {
  * @param {Object} cmd - Commander command object
  * @returns {string[]} Lines of help text
  */
-function generateCommandHelp(cmd: CommanderCommand) {
+function generateCommandHelp(cmd: Command): { flags: string; desc: string }[] {
   const lines: { flags: string; desc: string }[] = [];
   const command = cmd as CommandWithInternals;
 
@@ -91,26 +72,30 @@ function generateCommandHelp(cmd: CommanderCommand) {
  * @param {string} entityType - Entity type for status values (task, epic, prd)
  * @returns {string} Formatted help text
  */
-export function generateGroupHelp(group: CommanderCommand, entityType?: string) {
+export function generateGroupHelp(group: Command, entityType?: string): string {
   const output: string[] = [''];
-  const statusValues = entityType && (STATUS as Record<string, string[]>)[entityType]
-    ? (STATUS as Record<string, string[]>)[entityType].join(', ')
-    : null;
+  
+  // Validate and use entityType for status values
+  let statusValues: string | null = null;
+  if (entityType && ENTITY_TYPES.includes(entityType as any)) {
+    statusValues = STATUS[entityType as keyof typeof STATUS].join(', ');
+  }
 
-  (group as CommandWithInternals).commands.forEach((cmd: CommandWithInternals) => {
-    if (cmd.name() === 'help') return;
+  (group as CommandWithInternals).commands.forEach((cmd: Command) => {
+    const internalCmd = cmd as CommandWithInternals;
+    if (internalCmd.name() === 'help') return;
 
     // Build command line with arguments
-    const args = cmd._args.map((arg: CommandArg) =>
-      arg.required ? `<${arg.name()}>` : `[${arg.name()}]`
-    ).join(' ');
+    const args = internalCmd._args.map((arg: CommandArg) =>
+      arg.required ? `<${arg.name()}>` : `[${arg.name()}]
+    `).join(' ');
 
-    const cmdLine = args ? `${cmd.name()} ${args}` : cmd.name();
+    const cmdLine = args ? `${internalCmd.name()} ${args}` : internalCmd.name();
     output.push(`• ${cmdLine}`);
 
     // Get options only (skip arguments)
     const options: { flags: string; desc: string }[] = [];
-    cmd.options.forEach((opt: OptionWithMeta) => {
+    internalCmd.options.forEach((opt: OptionWithMeta) => {
       if (opt.short === '-h' || opt.long === '--help') return;
       if (opt.negate) return;
 
@@ -145,7 +130,7 @@ export function generateGroupHelp(group: CommanderCommand, entityType?: string) 
  * @param {Object} group - Commander command group
  * @param {Object} extras - Additional help text { entityType: 'task'|'epic'|'prd' }
  */
-export function addDynamicHelp(group: CommanderCommand, extras: { entityType?: string } = {}) {
+export function addDynamicHelp(group: Command, extras: { entityType?: string } = {}): void {
   group.addHelpText('after', () => {
     return generateGroupHelp(group, extras.entityType);
   });

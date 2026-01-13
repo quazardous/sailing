@@ -3,6 +3,25 @@
  */
 import { normalizeStatus, STATUS, EFFORT, PRIORITY } from './lexicon.js';
 import { formatId } from './config.js';
+import { Task, Epic, Prd } from './types/entities.js';
+
+interface UpdateOptions {
+  status?: string;
+  title?: string;
+  assignee?: string;
+  effort?: string;
+  priority?: string;
+  addBlocker?: string | string[];
+  removeBlocker?: string | string[];
+  clearBlockers?: boolean;
+  story?: string | string[];
+  addStory?: string | string[];
+  removeStory?: string | string[];
+  targetVersion?: string | string[];
+  removeTargetVersion?: string | string[];
+  set?: string | string[];
+  [key: string]: any; // Allow other commander options
+}
 
 /**
  * Parse update flags from command options and apply to frontmatter data
@@ -11,7 +30,11 @@ import { formatId } from './config.js';
  * @param {string} entityType - 'task', 'epic', or 'prd'
  * @returns {{ updated: boolean, data: Object }}
  */
-export function parseUpdateOptions(options, data, entityType) {
+export function parseUpdateOptions(
+  options: UpdateOptions, 
+  data: Partial<Task & Epic & Prd & Record<string, any>>,
+  entityType: 'task' | 'epic' | 'prd'
+): { updated: boolean; data: any } {
   let updated = false;
 
   // Status (all entity types)
@@ -71,8 +94,8 @@ export function parseUpdateOptions(options, data, entityType) {
   if (entityType === 'task') {
     if (options.effort) {
       const effort = options.effort.toUpperCase();
-      if (EFFORT.includes(effort)) {
-        data.effort = effort;
+      if (EFFORT.includes(effort as any)) {
+        data.effort = effort as any;
         updated = true;
       } else {
         console.error(`Invalid effort: ${effort}. Use ${EFFORT.join(', ')}.`);
@@ -81,8 +104,8 @@ export function parseUpdateOptions(options, data, entityType) {
 
     if (options.priority) {
       const priority = options.priority.toLowerCase();
-      if (PRIORITY.includes(priority)) {
-        data.priority = priority;
+      if (PRIORITY.includes(priority as any)) {
+        data.priority = priority as any;
         updated = true;
       } else {
         console.error(`Invalid priority: ${priority}. Use ${PRIORITY.join(', ')}.`);
@@ -96,8 +119,8 @@ export function parseUpdateOptions(options, data, entityType) {
       const blockers = Array.isArray(options.addBlocker) ? options.addBlocker : [options.addBlocker];
       if (!Array.isArray(data.blocked_by)) data.blocked_by = [];
       blockers.forEach(b => {
-        if (!data.blocked_by.includes(b)) {
-          data.blocked_by.push(b);
+        if (!data.blocked_by!.includes(b)) {
+          data.blocked_by!.push(b);
         }
       });
       updated = true;
@@ -136,8 +159,8 @@ export function parseUpdateOptions(options, data, entityType) {
       stories.forEach(s => {
         const num = s.match(/\d+/)?.[0];
         const normalized = num ? formatId('S', parseInt(num, 10)) : s;
-        if (!data.stories.includes(normalized)) {
-          data.stories.push(normalized);
+        if (!data.stories!.includes(normalized)) {
+          data.stories!.push(normalized);
         }
       });
       updated = true;
@@ -165,7 +188,7 @@ export function parseUpdateOptions(options, data, entityType) {
       versions.forEach(tv => {
         const [component, version] = tv.split(':');
         if (component && version) {
-          data.target_versions[component] = version;
+          data.target_versions![component] = version;
           updated = true;
         } else {
           console.error(`Invalid target-version format: ${tv}. Use component:version`);
@@ -176,7 +199,7 @@ export function parseUpdateOptions(options, data, entityType) {
     if (options.removeTargetVersion) {
       const components = Array.isArray(options.removeTargetVersion) ? options.removeTargetVersion : [options.removeTargetVersion];
       if (data.target_versions) {
-        components.forEach(c => delete data.target_versions[c]);
+        components.forEach(c => delete data.target_versions![c]);
         updated = true;
       }
     }
@@ -192,7 +215,7 @@ export function parseUpdateOptions(options, data, entityType) {
         return;
       }
       const key = kv.slice(0, eqIndex);
-      let value = kv.slice(eqIndex + 1);
+      let value: any = kv.slice(eqIndex + 1);
 
       // Parse value types
       if (value === 'true') value = true;
@@ -205,19 +228,19 @@ export function parseUpdateOptions(options, data, entityType) {
         try {
           value = JSON.parse(value);
         } catch (e) {
-          // Parse simple array syntax: [E001,E002] → ["E001", "E002"]
+          // Parse simple array syntax: [E001,E002] -> ["E001", "E002"]
           const inner = value.slice(1, -1).trim();
           if (inner === '') {
             value = [];
           } else {
-            value = inner.split(',').map(s => s.trim());
+            value = inner.split(',').map((s: string) => s.trim());
           }
         }
       }
 
       // Support nested keys with dot notation (e.g., target_versions.admin)
       const keys = key.split('.');
-      let obj = data;
+      let obj: any = data;
       for (let i = 0; i < keys.length - 1; i++) {
         if (!obj[keys[i]] || typeof obj[keys[i]] !== 'object') {
           obj[keys[i]] = {};
@@ -235,14 +258,14 @@ export function parseUpdateOptions(options, data, entityType) {
 /**
  * Add a log entry to a task/epic body
  */
-export function addLogEntry(body, message, author = 'agent') {
+export function addLogEntry(body: string, message: string, author = 'agent'): string {
   const date = new Date().toISOString().split('T')[0];
   const entry = `- ${date}: ${message} - ${author}`;
 
   // Find ## Log section and append
   const logMatch = body.match(/^## Log\s*$/m);
   if (logMatch) {
-    const insertPos = body.indexOf('\n', logMatch.index + logMatch[0].length);
+    const insertPos = body.indexOf('\n', logMatch.index! + logMatch[0].length);
     return body.slice(0, insertPos + 1) + '\n' + entry + body.slice(insertPos);
   }
 

@@ -7,8 +7,6 @@
  * - Epic memory: curated tips/issues for epic scope
  * - PRD memory: cross-epic patterns, escalated by skill
  * - Project memory: architectural decisions, universal patterns
- * TODO[P1]: Type IDs/content payloads for helpers (avoid implicit any when strict).
- * TODO[P2]: Introduce a MemoryEntry shape (id/path/content/sections) and reuse across readers/writers.
  * TODO[P3]: Separate pure parsing from CLI-facing utilities to simplify gradual TS adoption.
  */
 import fs from 'fs';
@@ -17,11 +15,12 @@ import { findPrdDirs, findFiles, loadFile, getMemoryDir } from './core.js';
 import { resolvePlaceholders, resolvePath } from './paths.js';
 import { normalizeId } from './normalize.js';
 import { getTaskEpic as indexGetTaskEpic, getEpicPrd as indexGetEpicPrd } from './index.js';
+import { LogFileEntry, LogLevelCounts, MemoryEntry } from './types/memory.js';
 
 /**
  * Get templates directory
  */
-function getTemplatesDir() {
+function getTemplatesDir(): string {
   const custom = resolvePath('templates');
   if (custom) return custom;
   // Fallback to sailing repo templates
@@ -32,7 +31,7 @@ function getTemplatesDir() {
 /**
  * Load template file content
  */
-function loadTemplate(templateName) {
+function loadTemplate(templateName: string): string | null {
   const templatePath = path.join(getTemplatesDir(), templateName);
   if (fs.existsSync(templatePath)) {
     return fs.readFileSync(templatePath, 'utf8');
@@ -41,14 +40,14 @@ function loadTemplate(templateName) {
 }
 
 // Dynamic getter for memory directory
-export function getMemoryDirPath() {
+export function getMemoryDirPath(): string {
   return getMemoryDir();
 }
 
 /**
  * Ensure memory directory exists
  */
-export function ensureMemoryDir() {
+export function ensureMemoryDir(): void {
   const memDir = getMemoryDirPath();
   if (!fs.existsSync(memDir)) {
     fs.mkdirSync(memDir, { recursive: true });
@@ -58,35 +57,35 @@ export function ensureMemoryDir() {
 /**
  * Get path to memory file (.md)
  */
-export function memoryFilePath(epicId) {
+export function memoryFilePath(epicId: string): string {
   return path.join(getMemoryDirPath(), `${normalizeId(epicId)}.md`);
 }
 
 /**
  * Get path to log file (.log)
  */
-export function logFilePath(id) {
+export function logFilePath(id: string): string {
   return path.join(getMemoryDirPath(), `${normalizeId(id)}.log`);
 }
 
 /**
  * Check if memory file exists
  */
-export function memoryFileExists(epicId) {
+export function memoryFileExists(epicId: string): boolean {
   return fs.existsSync(memoryFilePath(epicId));
 }
 
 /**
  * Check if log file exists
  */
-export function logFileExists(id) {
+export function logFileExists(id: string): boolean {
   return fs.existsSync(logFilePath(id));
 }
 
 /**
  * Read log file content (trimmed)
  */
-export function readLogFile(id) {
+export function readLogFile(id: string): string | null {
   const filePath = logFilePath(id);
   if (!fs.existsSync(filePath)) return null;
   return fs.readFileSync(filePath, 'utf8').trim();
@@ -95,7 +94,7 @@ export function readLogFile(id) {
 /**
  * Append to log file
  */
-export function appendLogFile(id, content) {
+export function appendLogFile(id: string, content: string): void {
   ensureMemoryDir();
   fs.appendFileSync(logFilePath(id), content);
 }
@@ -103,7 +102,7 @@ export function appendLogFile(id, content) {
 /**
  * Delete log file
  */
-export function deleteLogFile(id) {
+export function deleteLogFile(id: string): boolean {
   const filePath = logFilePath(id);
   if (fs.existsSync(filePath)) {
     fs.unlinkSync(filePath);
@@ -114,9 +113,8 @@ export function deleteLogFile(id) {
 
 /**
  * Find all log files
- * @returns {Array<{id: string, type: 'task'|'epic'|'other', path: string}>}
  */
-export function findLogFiles() {
+export function findLogFiles(): LogFileEntry[] {
   ensureMemoryDir();
   const memDir = getMemoryDirPath();
   return fs.readdirSync(memDir)
@@ -134,9 +132,8 @@ export function findLogFiles() {
 /**
  * Find parent epic for a task
  * Uses index library for format-agnostic lookup (T039, T0039, T00039 all work)
- * @returns {{epicId: string, title: string}|null}
  */
-export function findTaskEpic(taskId) {
+export function findTaskEpic(taskId: string | number): { epicId: string; title: string } | null {
   const result = indexGetTaskEpic(taskId);
   if (!result) return null;
 
@@ -150,8 +147,8 @@ export function findTaskEpic(taskId) {
  * Parse log content and count entries by level
  * Format: "2025-12-27T15:08:03.293Z [T139] [INFO] message"
  */
-export function parseLogLevels(content) {
-  const counts = { TIP: 0, INFO: 0, WARN: 0, ERROR: 0, CRITICAL: 0 };
+export function parseLogLevels(content: string): LogLevelCounts {
+  const counts: LogLevelCounts = { TIP: 0, INFO: 0, WARN: 0, ERROR: 0, CRITICAL: 0 };
   const lines = content.split('\n');
 
   for (const line of lines) {
@@ -159,10 +156,10 @@ export function parseLogLevels(content) {
 
     // Match level after optional [TNNN] prefix
     // Format: "timestamp [TNNN] [LEVEL] message" or "timestamp [LEVEL] message"
-    const match = line.match(/\[T\d+\]\s*\[(\w+)\]|\[(\w+)\]/);
+    const match = line.match(/ \[T\d+\]\s*\[(\w+)\]|\[(\w+)\]/);
     if (match) {
       const level = (match[1] || match[2]).toUpperCase();
-      if (counts.hasOwnProperty(level)) {
+      if (Object.prototype.hasOwnProperty.call(counts, level)) {
         counts[level]++;
       }
     }
@@ -174,7 +171,7 @@ export function parseLogLevels(content) {
 /**
  * Create epic memory file from template
  */
-export function createMemoryFile(epicId) {
+export function createMemoryFile(epicId: string): string {
   ensureMemoryDir();
   const mdPath = memoryFilePath(epicId);
   const now = new Date().toISOString();
@@ -188,7 +185,7 @@ export function createMemoryFile(epicId) {
       .replace(/updated: ''/g, `updated: '${now}'`);
   } else {
     // Fallback if template not found
-    content = `---
+    content = `--- 
 epic: ${epicId}
 created: '${now}'
 updated: '${now}'
@@ -208,26 +205,26 @@ updated: '${now}'
   return mdPath;
 }
 
-// ============ PRD Memory ============
+// ============ PRD Memory ============ 
 
 /**
  * Get path to PRD memory file
  */
-export function prdMemoryFilePath(prdId) {
+export function prdMemoryFilePath(prdId: string): string {
   return path.join(getMemoryDirPath(), `${normalizeId(prdId)}.md`);
 }
 
 /**
  * Check if PRD memory exists
  */
-export function prdMemoryExists(prdId) {
+export function prdMemoryExists(prdId: string): boolean {
   return fs.existsSync(prdMemoryFilePath(prdId));
 }
 
 /**
  * Create PRD memory file from template
  */
-export function createPrdMemoryFile(prdId) {
+export function createPrdMemoryFile(prdId: string): string {
   ensureMemoryDir();
   const mdPath = prdMemoryFilePath(prdId);
   const now = new Date().toISOString();
@@ -239,7 +236,7 @@ export function createPrdMemoryFile(prdId) {
       .replace(/created: ''/g, `created: '${now}'`)
       .replace(/updated: ''/g, `updated: '${now}'`);
   } else {
-    content = `---
+    content = `--- 
 prd: ${prdId}
 created: '${now}'
 updated: '${now}'
@@ -259,12 +256,12 @@ updated: '${now}'
   return mdPath;
 }
 
-// ============ Project Memory ============
+// ============ Project Memory ============ 
 
 /**
  * Get path to project memory file (MEMORY.md in artefacts)
  */
-export function projectMemoryFilePath() {
+export function projectMemoryFilePath(): string {
   const artefactsPath = resolvePath('artefacts') || resolvePlaceholders('${haven}/artefacts');
   return path.join(artefactsPath, 'MEMORY.md');
 }
@@ -272,14 +269,14 @@ export function projectMemoryFilePath() {
 /**
  * Check if project memory exists
  */
-export function projectMemoryExists() {
+export function projectMemoryExists(): boolean {
   return fs.existsSync(projectMemoryFilePath());
 }
 
 /**
  * Create project memory file from template
  */
-export function createProjectMemoryFile(projectName = '') {
+export function createProjectMemoryFile(projectName = ''): string {
   const mdPath = projectMemoryFilePath();
   const dir = path.dirname(mdPath);
   if (!fs.existsSync(dir)) {
@@ -294,7 +291,7 @@ export function createProjectMemoryFile(projectName = '') {
       .replace(/project: ''/g, `project: '${projectName}'`)
       .replace(/updated: ''/g, `updated: '${now}'`);
   } else {
-    content = `---
+    content = `--- 
 project: '${projectName}'
 updated: '${now}'
 ---
@@ -313,14 +310,14 @@ updated: '${now}'
   return mdPath;
 }
 
-// ============ Hierarchical Memory ============
+// ============ Hierarchical Memory ============ 
 
 /**
  * Find parent PRD for an epic
  * Uses index library for format-agnostic lookup
  * @returns {string|null} Normalized PRD ID (e.g., "PRD-001")
  */
-export function findEpicPrd(epicId) {
+export function findEpicPrd(epicId: string | number): string | null {
   const result = indexGetEpicPrd(epicId);
   if (!result) return null;
   return normalizeId(result.prdId);
@@ -330,11 +327,11 @@ export function findEpicPrd(epicId) {
  * Get hierarchical memory content for a task/epic
  * Returns: { project, prd, epic } with content for each level
  */
-export function getHierarchicalMemory(id) {
-  const result = { project: null, prd: null, epic: null };
+export function getHierarchicalMemory(id: string): { project: MemoryEntry | null; prd: MemoryEntry | null; epic: MemoryEntry | null } {
+  const result: { project: MemoryEntry | null; prd: MemoryEntry | null; epic: MemoryEntry | null } = { project: null, prd: null, epic: null };
 
   // Resolve epic ID
-  let epicId = null;
+  let epicId: string | null = null;
   if (id.startsWith('T')) {
     const taskInfo = findTaskEpic(id);
     if (taskInfo) epicId = taskInfo.epicId;
@@ -366,6 +363,7 @@ export function getHierarchicalMemory(id) {
   // Get project memory
   if (projectMemoryExists()) {
     result.project = {
+      id: 'PROJECT',
       path: projectMemoryFilePath(),
       content: fs.readFileSync(projectMemoryFilePath(), 'utf8')
     };
@@ -380,7 +378,7 @@ export function getHierarchicalMemory(id) {
  * @param {string} [actualPath] - Actual file path (avoids normalization issues)
  * @returns {{merged: boolean, epicId: string|null, deleted: boolean}}
  */
-export function mergeTaskLog(taskId, actualPath = null) {
+export function mergeTaskLog(taskId: string, actualPath: string | null = null): { merged: boolean; epicId: string | null; deleted: boolean } {
   // Use actual path if provided, otherwise calculate (may fail if format differs)
   const taskLogPath = actualPath || logFilePath(taskId);
   if (!fs.existsSync(taskLogPath)) {

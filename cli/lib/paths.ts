@@ -22,20 +22,21 @@ import crypto from 'crypto';
 import { execSync } from 'child_process';
 import yaml from 'js-yaml';
 import { findProjectRoot } from './core.js';
+import { Placeholders } from './types/config.js';
 
 // Cache for resolved paths
-const _cache = new Map();
-let _projectHash = null;
+const _cache = new Map<string, string>();
+let _projectHash: string | null = null;
 
 /**
  * Compute project hash from git remote or realpath
  * Uses first 12 chars of SHA256
  */
-export function computeProjectHash() {
+export function computeProjectHash(): string {
   if (_projectHash) return _projectHash;
 
   const projectRoot = findProjectRoot();
-  let source;
+  let source: string;
 
   try {
     // Try git remote origin URL first (suppress stderr)
@@ -57,7 +58,7 @@ export function computeProjectHash() {
 /**
  * Get built-in placeholder values
  */
-function getBuiltinPlaceholders() {
+function getBuiltinPlaceholders(): Placeholders {
   const projectRoot = findProjectRoot();
   const projectName = path.basename(projectRoot);
   const projectHash = computeProjectHash();
@@ -77,7 +78,7 @@ function getBuiltinPlaceholders() {
 /**
  * Load custom placeholders from paths.yaml
  */
-function loadCustomPlaceholders() {
+function loadCustomPlaceholders(): Record<string, string> {
   const projectRoot = findProjectRoot();
   const pathsFile = path.join(projectRoot, '.sailing', 'paths.yaml');
 
@@ -85,7 +86,7 @@ function loadCustomPlaceholders() {
 
   try {
     const content = fs.readFileSync(pathsFile, 'utf8');
-    const parsed = yaml.load(content);
+    const parsed = yaml.load(content) as { placeholders?: Record<string, string> };
     return parsed?.placeholders || {};
   } catch {
     return {};
@@ -100,7 +101,7 @@ function loadCustomPlaceholders() {
  * @param {number} depth - Current recursion depth
  * @returns {string} Resolved string
  */
-export function resolvePlaceholders(str, depth = 0) {
+export function resolvePlaceholders(str: string, depth = 0): string {
   if (!str || typeof str !== 'string') return str;
   if (depth > 5) {
     console.error(`Warning: Max placeholder resolution depth exceeded for: ${str}`);
@@ -109,12 +110,12 @@ export function resolvePlaceholders(str, depth = 0) {
 
   // Check cache (only for depth 0)
   if (depth === 0 && _cache.has(str)) {
-    return _cache.get(str);
+    return _cache.get(str)!;
   }
 
   const builtins = getBuiltinPlaceholders();
   const custom = loadCustomPlaceholders();
-  const all = { ...builtins, ...custom };
+  const all: Placeholders = { ...builtins, ...custom };
 
   let result = str;
 
@@ -160,18 +161,18 @@ export function resolvePlaceholders(str, depth = 0) {
  * @param {string} key - Path key (e.g., 'worktree', 'cache')
  * @returns {string|null} Resolved absolute path or null if not found
  */
-export function resolvePath(key) {
+export function resolvePath(key: string): string | null {
   const projectRoot = findProjectRoot();
   const pathsFile = path.join(projectRoot, '.sailing', 'paths.yaml');
 
-  let pathValue = null;
+  let pathValue: string | null = null;
 
   // Try to load from paths.yaml
   if (fs.existsSync(pathsFile)) {
     try {
       const content = fs.readFileSync(pathsFile, 'utf8');
-      const parsed = yaml.load(content);
-      pathValue = parsed?.paths?.[key];
+      const parsed = yaml.load(content) as { paths?: Record<string, string> };
+      pathValue = parsed?.paths?.[key] || null;
     } catch {
       // Ignore parse errors
     }
@@ -193,12 +194,12 @@ export function resolvePath(key) {
 /**
  * Get all available placeholders with their current values
  */
-export function getPlaceholders() {
+export function getPlaceholders(): { builtin: Placeholders; custom: Record<string, string>; all: Placeholders } {
   const builtins = getBuiltinPlaceholders();
   const custom = loadCustomPlaceholders();
 
   // Resolve custom placeholders
-  const resolvedCustom = {};
+  const resolvedCustom: Record<string, string> = {};
   for (const [key, value] of Object.entries(custom)) {
     resolvedCustom[key] = resolvePlaceholders(value);
   }
@@ -213,7 +214,7 @@ export function getPlaceholders() {
 /**
  * Clear the path cache (useful for testing or after config changes)
  */
-export function clearCache() {
+export function clearCache(): void {
   _cache.clear();
   _projectHash = null;
 }
@@ -225,7 +226,7 @@ export function clearCache() {
  * @param {string} pathWithPlaceholders - Path that may contain placeholders
  * @returns {string} Resolved absolute path
  */
-export function ensureDir(pathWithPlaceholders) {
+export function ensureDir(pathWithPlaceholders: string): string {
   const resolved = resolvePlaceholders(pathWithPlaceholders);
   const absolute = path.isAbsolute(resolved)
     ? resolved
