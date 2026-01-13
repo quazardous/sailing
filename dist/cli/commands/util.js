@@ -861,7 +861,30 @@ export function registerUtilCommands(program) {
     program.command('versions')
         .description('Show component versions (from components.yaml)')
         .option('--json', 'JSON output')
+        .option('--components', 'Show components definition with file path')
         .action((options) => {
+        // --components: show raw components definition
+        if (options.components) {
+            const componentsFile = getComponentsFile();
+            const exists = fs.existsSync(componentsFile);
+            if (options.json) {
+                const config = exists ? loadComponents() : null;
+                jsonOut({ file: componentsFile, exists, components: config?.components || [] });
+            }
+            else {
+                console.log(`## Components: ${componentsFile}`);
+                console.log(`## Edit this file to manage component versions.\n`);
+                if (!exists) {
+                    console.log(`File not found. Create it to track component versions.`);
+                    console.log(`See: docs/version_tracking.md`);
+                }
+                else {
+                    const content = fs.readFileSync(componentsFile, 'utf8');
+                    console.log(content);
+                }
+            }
+            return;
+        }
         const versions = getAllVersions();
         if (options.json) {
             jsonOut(versions);

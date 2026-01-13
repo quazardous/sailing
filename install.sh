@@ -749,6 +749,7 @@ echo "Usage:"
 echo "  bin/rudder --help"
 echo
 echo "Quick start:"
+echo "  bin/rudder versions --components  # Show/configure version tracking"
 echo "  bin/rudder prd:create \"My first PRD\""
 echo "  bin/rudder prd:list"
 echo

@@ -16,18 +16,18 @@ components:
     main: true
     changelog: CHANGELOG.md
 
-  # Example: Multiple components with package.json
-  # - key: core
-  #   name: Core Package
-  #   file: packages/core/package.json
-  #   extractor: json
-  #   path: version
-  #   changelog: packages/core/CHANGELOG.md
-  #   main: true
-  #
-  # - key: api
-  #   name: API Server
-  #   file: api/package.json
-  #   extractor: json
-  #   path: version
-  #   changelog: api/CHANGELOG.md
+# Example: Multiple components with package.json
+# - key: core
+#   name: Core Package
+#   file: packages/core/package.json
+#   extractor: json
+#   path: version
+#   changelog: packages/core/CHANGELOG.md
+#   main: true
+#
+# - key: api
+#   name: API Server
+#   file: api/package.json
+#   extractor: json
+#   path: version
+#   changelog: api/CHANGELOG.md
