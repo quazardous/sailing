@@ -716,3 +716,33 @@ echo "Quick start:"
 echo "  bin/rudder prd:create \"My first PRD\""
 echo "  bin/rudder prd:list"
 echo
+
+# Show sandbox setup steps for worktree mode
+if [ "$USE_WORKTREE" = true ]; then
+  echo -e "${YELLOW}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+  echo -e "${YELLOW}Worktree mode enabled - Sandbox setup required:${NC}"
+  echo -e "${YELLOW}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+  echo
+  echo "1. Install sandbox-runtime:"
+  echo "   npm install -g @anthropic-ai/sandbox-runtime"
+  echo
+  echo "2. Install dependencies:"
+  if [[ "$OSTYPE" == "linux"* ]]; then
+    if command -v dnf &> /dev/null; then
+      echo "   sudo dnf install ripgrep bubblewrap socat"
+    else
+      echo "   sudo apt install ripgrep bubblewrap socat"
+    fi
+  else
+    echo "   brew install ripgrep"
+  fi
+  echo
+  echo "3. Initialize sandbox config:"
+  echo "   bin/rudder sandbox:init"
+  echo
+  echo "4. Verify setup:"
+  echo "   bin/rudder sandbox:check"
+  echo
+  echo "Documentation: docs/sandbox.md"
+  echo
+fi
