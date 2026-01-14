@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Sailing Dashboard</title>
   <script src="https://unpkg.com/htmx.org@2.0.4"></script>
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
   <style>
     /* === Reset & Base === */
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -31,22 +32,22 @@
 
     /* === Light Theme === */
     [data-theme="light"] {
-      --bg-primary: #F9FAFB;
-      --bg-secondary: #FFFFFF;
-      --bg-card: #F3F4F6;
-      --bg-hover: #E5E7EB;
+      --bg-primary: #F1F3F5;
+      --bg-secondary: #FAFAFA;
+      --bg-card: #E9ECEF;
+      --bg-hover: #DEE2E6;
       --ok: #059669;
-      --ok-bg: rgba(5, 150, 105, 0.1);
-      --risk: #D97706;
-      --risk-bg: rgba(217, 119, 6, 0.1);
+      --ok-bg: rgba(5, 150, 105, 0.15);
+      --risk: #B45309;
+      --risk-bg: rgba(180, 83, 9, 0.15);
       --blocked: #DC2626;
-      --blocked-bg: rgba(220, 38, 38, 0.1);
-      --accent: #2563EB;
-      --accent-light: #3B82F6;
-      --text: #111827;
-      --text-muted: #6B7280;
-      --text-dim: #9CA3AF;
-      --border: #E5E7EB;
+      --blocked-bg: rgba(220, 38, 38, 0.15);
+      --accent: #1D4ED8;
+      --accent-light: #2563EB;
+      --text: #1F2937;
+      --text-muted: #4B5563;
+      --text-dim: #6B7280;
+      --border: #D1D5DB;
     }
 
     :root {
@@ -746,6 +747,176 @@
       text-transform: uppercase;
     }
 
+    /* DAG/Mermaid styling */
+    .dag-container {
+      background: var(--bg-secondary);
+      border-radius: var(--radius-lg);
+      padding: 16px;
+      overflow: auto;
+      max-height: calc(100vh - 250px);
+    }
+
+    .dag-container .mermaid {
+      min-width: max-content;
+      min-height: max-content;
+    }
+
+    .dag-container .mermaid svg {
+      min-width: 600px;
+      min-height: 400px;
+    }
+
+    .dag-legend {
+      display: flex;
+      gap: 16px;
+      margin-bottom: 12px;
+      flex-wrap: wrap;
+    }
+
+    .dag-legend-item {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 11px;
+      color: var(--text-muted);
+    }
+
+    .dag-legend-color {
+      width: 12px;
+      height: 12px;
+      border-radius: 2px;
+    }
+
+    .dag-legend-color.prd { background: #3B82F6; }
+    .dag-legend-color.epic { background: #10B981; }
+    .dag-legend-color.task { background: #6B7280; }
+    .dag-legend-color.done { background: #059669; }
+    .dag-legend-color.blocked { background: #EF4444; }
+    .dag-legend-color.wip { background: #F59E0B; }
+
+    .dag-toggle {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 12px;
+      color: var(--text-muted);
+      cursor: pointer;
+    }
+
+    .dag-toggle input {
+      cursor: pointer;
+    }
+
+    /* Gantt legend */
+    .gantt-legend {
+      display: flex;
+      gap: 16px;
+      margin-bottom: 12px;
+      flex-wrap: wrap;
+      align-items: center;
+    }
+
+    .gantt-legend-item {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 11px;
+      color: var(--text-muted);
+    }
+
+    .gantt-legend-color {
+      width: 12px;
+      height: 12px;
+      border-radius: 2px;
+    }
+
+    .gantt-legend-color.done { background: #059669; }
+    .gantt-legend-color.active { background: #3B82F6; }
+    .gantt-legend-color.crit { background: #EF4444; }
+
+    /* Mermaid Gantt task styling - target all possible class patterns */
+    .mermaid rect.task {
+      fill: #4B5563 !important;
+      stroke: #374151 !important;
+    }
+    /* Done tasks - green */
+    .mermaid rect.task.done,
+    .mermaid .done0, .mermaid .done1, .mermaid .done2, .mermaid .done3,
+    .mermaid rect[class*="done"] {
+      fill: #059669 !important;
+      stroke: #047857 !important;
+    }
+    /* Active/In Progress tasks - blue */
+    .mermaid rect.task.active,
+    .mermaid .active0, .mermaid .active1, .mermaid .active2, .mermaid .active3,
+    .mermaid rect[class*="active"]:not([class*="Crit"]) {
+      fill: #3B82F6 !important;
+      stroke: #1E40AF !important;
+    }
+    /* Critical path tasks - red */
+    .mermaid rect.task.crit,
+    .mermaid .crit0, .mermaid .crit1, .mermaid .crit2, .mermaid .crit3,
+    .mermaid rect[class*="crit"]:not([class*="done"]):not([class*="active"]) {
+      fill: #EF4444 !important;
+      stroke: #DC2626 !important;
+    }
+    /* Active + Critical - orange */
+    .mermaid .activeCrit0, .mermaid .activeCrit1, .mermaid .activeCrit2,
+    .mermaid rect[class*="activeCrit"] {
+      fill: #F97316 !important;
+      stroke: #EA580C !important;
+    }
+    /* Done + Critical - teal with border */
+    .mermaid .doneCrit0, .mermaid .doneCrit1, .mermaid .doneCrit2,
+    .mermaid rect[class*="doneCrit"] {
+      fill: #10B981 !important;
+      stroke: #059669 !important;
+      stroke-width: 2px !important;
+    }
+    /* Task text styling */
+    .mermaid .taskText, .mermaid .taskTextOutsideRight, .mermaid .taskTextOutsideLeft {
+      fill: var(--text) !important;
+      font-size: 13px !important;
+    }
+    /* Gantt axis/date labels */
+    .mermaid .tick text, .mermaid .grid text, .mermaid text.titleText {
+      fill: var(--text) !important;
+    }
+    .mermaid .sectionTitle, .mermaid .sectionTitle0, .mermaid .sectionTitle1 {
+      fill: var(--text-muted) !important;
+    }
+    /* Light theme: force ALL Gantt/Mermaid text to be dark */
+    [data-theme="light"] .mermaid text {
+      fill: #111827 !important;
+    }
+    [data-theme="light"] .mermaid text[class*="Text"],
+    [data-theme="light"] .mermaid text[class*="text"],
+    [data-theme="light"] .mermaid text[class*="Title"],
+    [data-theme="light"] .mermaid text[class*="title"] {
+      fill: #000000 !important;
+    }
+    [data-theme="light"] .mermaid text[class*="section"] {
+      fill: #374151 !important;
+      font-weight: 600 !important;
+    }
+
+    /* Gantt horizontal grid lines */
+    .mermaid svg .grid .tick line {
+      stroke: var(--border);
+      stroke-opacity: 0.3;
+    }
+    .mermaid svg .grid .tick:not(:first-of-type) line[x1="0"] {
+      stroke: var(--border);
+      stroke-opacity: 0.5;
+    }
+    /* Add subtle row separators for Gantt tasks */
+    .dag-container .mermaid svg g.section rect,
+    .dag-container .mermaid svg g rect.task {
+      stroke: var(--border);
+      stroke-width: 0.5;
+      stroke-opacity: 0.3;
+    }
+
     /* === Scrollbar styling === */
     ::-webkit-scrollbar {
       width: 8px;
@@ -806,6 +977,8 @@
       html.setAttribute('data-theme', next);
       document.getElementById('theme-icon').textContent = next === 'dark' ? '☀' : '☾';
       localStorage.setItem('sailing-theme', next);
+      // Re-initialize Mermaid with new theme
+      initMermaid();
     }
 
     // Load saved theme
@@ -820,6 +993,9 @@
       htmx.trigger('#tree', 'load');
     }, 30000);
 
+    // Track current tab preference
+    window._currentTab = localStorage.getItem('sailing-current-tab') || 'overview';
+
     // Tab switching
     function switchTab(btn, tabId) {
       const tabs = btn.closest('.tabs');
@@ -827,6 +1003,227 @@
       tabs.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
       btn.classList.add('active');
       tabs.querySelector('#' + tabId).classList.add('active');
+      // Save tab preference
+      window._currentTab = tabId;
+      localStorage.setItem('sailing-current-tab', tabId);
+      // Render mermaid if switching to schema or gantt tab
+      if (tabId === 'schema' || tabId === 'gantt') {
+        renderMermaid();
+      }
+    }
+
+    // Restore tab after navigation
+    function restoreTab() {
+      const tabs = document.querySelector('#detail .tabs');
+      if (!tabs) return;
+      const preferredTab = window._currentTab;
+      const targetBtn = tabs.querySelector(`.tab-btn[onclick*="'${preferredTab}'"]`);
+      if (targetBtn) {
+        switchTab(targetBtn, preferredTab);
+      }
+    }
+
+    // Mermaid initialization based on theme
+    function initMermaid() {
+      const isLight = document.documentElement.getAttribute('data-theme') === 'light';
+      mermaid.initialize({
+        startOnLoad: false,
+        securityLevel: 'loose',
+        theme: isLight ? 'default' : 'dark',
+        themeVariables: isLight ? {
+          primaryColor: '#3B82F6',
+          primaryTextColor: '#111827',
+          primaryBorderColor: '#D1D5DB',
+          lineColor: '#6B7280',
+          secondaryColor: '#10B981',
+          tertiaryColor: '#F3F4F6',
+          taskTextColor: '#111827',
+          taskTextOutsideColor: '#111827',
+          taskTextClickableColor: '#111827',
+          sectionBkgColor: '#F9FAFB',
+          gridColor: '#E5E7EB',
+          doneTaskBorderColor: '#047857',
+          doneTaskBkgColor: '#059669',
+          critBorderColor: '#DC2626',
+          critBkgColor: '#EF4444',
+          activeTaskBorderColor: '#1E40AF',
+          activeTaskBkgColor: '#3B82F6'
+        } : {
+          primaryColor: '#3B82F6',
+          primaryTextColor: '#F9FAFB',
+          primaryBorderColor: '#374151',
+          lineColor: '#6B7280',
+          secondaryColor: '#10B981',
+          tertiaryColor: '#1F2937'
+        },
+        flowchart: {
+          curve: 'basis',
+          padding: 20,
+          nodeSpacing: 50,
+          rankSpacing: 60,
+          useMaxWidth: false
+        },
+        gantt: {
+          useMaxWidth: false,
+          barHeight: 28,
+          barGap: 8,
+          topPadding: 50,
+          leftPadding: 180,
+          gridLineStartPadding: 35,
+          fontSize: 13,
+          sectionFontSize: 14
+        }
+      });
+    }
+    initMermaid();
+
+    // Render mermaid diagrams
+    async function renderMermaid() {
+      const elements = document.querySelectorAll('.mermaid:not([data-processed])');
+      for (const el of elements) {
+        el.setAttribute('data-processed', 'true');
+        const code = el.textContent;
+        try {
+          const { svg } = await mermaid.render('mermaid-' + Date.now(), code);
+          el.innerHTML = svg;
+          // Apply tooltips from window._dagTooltips
+          applyDagTooltips(el);
+          // Add horizontal grid lines to Gantt charts
+          if (code.trim().startsWith('gantt')) {
+            addGanttGridLines(el);
+          }
+        } catch (e) {
+          console.error('Mermaid error:', e);
+          el.innerHTML = '<div style="color: var(--blocked);">Error rendering diagram</div>';
+        }
+      }
+    }
+
+    // Apply title tooltips to DAG nodes
+    function applyDagTooltips(container) {
+      if (!window._dagTooltips) return;
+      const tooltips = window._dagTooltips;
+      for (const [nodeId, title] of Object.entries(tooltips)) {
+        // Mermaid creates nodes with class .node and id containing the node name
+        const nodes = container.querySelectorAll(`.node[id*="${nodeId}"], [id*="flowchart-${nodeId}"]`);
+        // Format: "E001: Title of the epic"
+        const tooltipText = `${nodeId.replace(/_/g, '-')}: ${title}`;
+        nodes.forEach(node => {
+          // Add <title> to the main group (SVG tooltip)
+          if (!node.querySelector(':scope > title')) {
+            const titleEl = document.createElementNS('http://www.w3.org/2000/svg', 'title');
+            titleEl.textContent = tooltipText;
+            node.insertBefore(titleEl, node.firstChild);
+          }
+          // Add SVG title to shape elements
+          const shape = node.querySelector('rect.label-container, rect.basic, polygon, circle, ellipse, path');
+          if (shape && !shape.querySelector('title')) {
+            const t = document.createElementNS('http://www.w3.org/2000/svg', 'title');
+            t.textContent = tooltipText;
+            shape.insertBefore(t, shape.firstChild);
+          }
+          // Add HTML title attribute to foreignObject content (for label text)
+          const foreignObject = node.querySelector('foreignObject');
+          if (foreignObject) {
+            foreignObject.setAttribute('title', tooltipText);
+            // Also add to all HTML children inside foreignObject
+            foreignObject.querySelectorAll('div, span').forEach(el => {
+              el.setAttribute('title', tooltipText);
+            });
+          }
+          // Also add SVG title to .label group
+          const labelGroup = node.querySelector('g.label');
+          if (labelGroup && !labelGroup.querySelector(':scope > title')) {
+            const t = document.createElementNS('http://www.w3.org/2000/svg', 'title');
+            t.textContent = tooltipText;
+            labelGroup.insertBefore(t, labelGroup.firstChild);
+          }
+          node.style.cursor = 'pointer';
+        });
+      }
+    }
+
+    // Add horizontal grid lines to Gantt charts
+    function addGanttGridLines(container) {
+      const svg = container.querySelector('svg');
+      if (!svg) return;
+
+      // Find all task bars to determine row positions
+      const tasks = svg.querySelectorAll('.task, .taskText');
+      if (tasks.length === 0) return;
+
+      // Get the grid area dimensions
+      const gridGroup = svg.querySelector('.grid');
+      if (!gridGroup) return;
+
+      const bbox = gridGroup.getBBox();
+      const startX = bbox.x;
+      const endX = bbox.x + bbox.width;
+
+      // Create a group for horizontal lines
+      const linesGroup = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+      linesGroup.setAttribute('class', 'gantt-row-lines');
+
+      // Get unique Y positions from task bars
+      const taskBars = svg.querySelectorAll('rect.task, rect.taskTextOutsideRight, rect.taskTextOutsideLeft');
+      const yPositions = new Set();
+      taskBars.forEach(bar => {
+        const y = parseFloat(bar.getAttribute('y') || '0');
+        const height = parseFloat(bar.getAttribute('height') || '25');
+        yPositions.add(y + height + 3); // Line below each task
+      });
+
+      // Add horizontal lines
+      yPositions.forEach(y => {
+        const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+        line.setAttribute('x1', startX.toString());
+        line.setAttribute('x2', endX.toString());
+        line.setAttribute('y1', y.toString());
+        line.setAttribute('y2', y.toString());
+        line.setAttribute('stroke', 'var(--border, #374151)');
+        line.setAttribute('stroke-width', '0.5');
+        line.setAttribute('stroke-opacity', '0.4');
+        linesGroup.appendChild(line);
+      });
+
+      // Insert lines before task bars
+      const tasksGroup = svg.querySelector('.grid');
+      if (tasksGroup) {
+        tasksGroup.parentNode.insertBefore(linesGroup, tasksGroup.nextSibling);
+      }
+    }
+
+    // Re-render mermaid after HTMX swaps
+    document.body.addEventListener('htmx:afterSettle', (evt) => {
+      // Only restore tab when swapping the detail panel
+      if (evt.detail.target.id === 'detail') {
+        restoreTab();
+        renderMermaid();
+      } else {
+        renderMermaid();
+      }
+    });
+
+    // Handle clicks on mermaid nodes (format: "type:id")
+    window.nodeClick = function(typeAndId) {
+      const [type, id] = typeAndId.split(':');
+      const apiPath = type === 'prd' ? `/api/prd/${id}` : type === 'epic' ? `/api/epic/${id}` : `/api/task/${id}`;
+      htmx.ajax('GET', apiPath, '#detail');
+    };
+
+    // Toggle tasks visibility in PRD schema
+    function toggleTasks(checkbox) {
+      const dagWithTasks = document.getElementById('dag-with-tasks');
+      const dagWithoutTasks = document.getElementById('dag-without-tasks');
+      if (checkbox.checked) {
+        dagWithTasks.style.display = 'block';
+        dagWithoutTasks.style.display = 'none';
+      } else {
+        dagWithTasks.style.display = 'none';
+        dagWithoutTasks.style.display = 'block';
+      }
+      // Re-render mermaid for the visible container
+      setTimeout(renderMermaid, 100);
     }
   </script>
 </body>

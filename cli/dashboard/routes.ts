@@ -360,6 +360,699 @@ function getMemoryContent(entityId: string, type: 'prd' | 'epic'): string {
   return '';
 }
 
+// Helper to escape title for mermaid tooltip
+function escapeTitle(title: string): string {
+  // Escape characters that could break mermaid syntax
+  return title
+    .replace(/"/g, "'")
+    .replace(/\n/g, ' ')
+    .replace(/[[\](){}:<>#]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .substring(0, 50);
+}
+
+// Helper to escape label for Gantt (more restrictive)
+function escapeGanttLabel(text: string): string {
+  return text
+    .replace(/[:<>#"'[\](){}/\\;,]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .substring(0, 35);
+}
+
+// Helper to get status class
+function getStatusClass(status: string): string {
+  const s = status.toLowerCase();
+  if (s === 'done' || s === 'auto-done') return 'done';
+  if (s === 'blocked') return 'blocked';
+  if (s === 'in progress' || s === 'wip') return 'wip';
+  if (s === 'ready') return 'ready';
+  return '';
+}
+
+// Generate Mermaid DAG for a PRD (with optional tasks)
+function generatePrdDag(prd: {
+  id: string;
+  title: string;
+  status: string;
+  epics: Array<{
+    id: string;
+    title: string;
+    status: string;
+    meta: Record<string, unknown>;
+    tasks: Array<{ id: string; title: string; status: string; meta: Record<string, unknown> }>;
+  }>;
+}, showTasks: boolean = true): { code: string; tooltips: Record<string, string> } {
+  const lines: string[] = ['flowchart TB'];
+  const clicks: string[] = [];
+  const tooltips: Record<string, string> = {};
+
+  // Style definitions
+  lines.push('  classDef prd fill:#3B82F6,stroke:#1E40AF,color:#fff');
+  lines.push('  classDef epic fill:#10B981,stroke:#047857,color:#fff');
+  lines.push('  classDef task fill:#4B5563,stroke:#374151,color:#fff');
+  lines.push('  classDef done fill:#059669,stroke:#047857,color:#fff');
+  lines.push('  classDef blocked fill:#EF4444,stroke:#DC2626,color:#fff');
+  lines.push('  classDef wip fill:#F59E0B,stroke:#D97706,color:#fff');
+  lines.push('  classDef ready fill:#3B82F6,stroke:#1E40AF,color:#fff');
+  lines.push('');
+
+  // PRD node
+  const prdNodeId = prd.id.replace(/-/g, '_');
+  lines.push(`  ${prdNodeId}["${prd.id}"]`);
+  clicks.push(`  click ${prdNodeId} href "javascript:nodeClick('prd:${prd.id}')"`);
+  tooltips[prdNodeId] = prd.title;
+
+  const blockedByEdges: string[] = [];
+
+  for (const epic of prd.epics) {
+    const epicNodeId = epic.id;
+    lines.push(`  ${epicNodeId}["${epic.id}"]`);
+    lines.push(`  ${prdNodeId} --> ${epicNodeId}`);
+    clicks.push(`  click ${epicNodeId} href "javascript:nodeClick('epic:${epic.id}')"`);
+    tooltips[epicNodeId] = epic.title;
+
+    const statusClass = getStatusClass(epic.status);
+    lines.push(`  class ${epicNodeId} ${statusClass || 'epic'}`);
+
+    // Only include tasks if showTasks is true
+    if (showTasks) {
+      for (const task of epic.tasks) {
+        const taskNodeId = task.id;
+        lines.push(`  ${taskNodeId}["${task.id}"]`);
+        lines.push(`  ${epicNodeId} --> ${taskNodeId}`);
+        clicks.push(`  click ${taskNodeId} href "javascript:nodeClick('task:${task.id}')"`);
+        tooltips[taskNodeId] = task.title;
+
+        const taskStatusClass = getStatusClass(task.status);
+        lines.push(`  class ${taskNodeId} ${taskStatusClass || 'task'}`);
+
+        const blockedBy = task.meta?.blocked_by;
+        if (blockedBy) {
+          const blockers = Array.isArray(blockedBy) ? blockedBy : [blockedBy];
+          for (const blocker of blockers) {
+            if (blocker && typeof blocker === 'string') {
+              blockedByEdges.push(`  ${blocker} -.->|blocks| ${taskNodeId}`);
+            }
+          }
+        }
+      }
+    }
+  }
+
+  // Count edges for linkStyle indexing
+  let edgeIndex = lines.filter(l => l.includes('-->')).length;
+
+  if (blockedByEdges.length > 0) {
+    lines.push('');
+    lines.push(...blockedByEdges);
+    // Style blocked_by edges in orange
+    for (let i = 0; i < blockedByEdges.length; i++) {
+      lines.push(`  linkStyle ${edgeIndex + i} stroke:#F59E0B,stroke-width:2px`);
+    }
+  }
+
+  lines.push(`  class ${prdNodeId} prd`);
+  lines.push('');
+  lines.push(...clicks);
+
+  return { code: lines.join('\n'), tooltips };
+}
+
+// Generate Mermaid DAG for an Epic (epic + tasks)
+function generateEpicDag(epic: {
+  id: string;
+  title: string;
+  status: string;
+  meta: Record<string, unknown>;
+  tasks: Array<{ id: string; title: string; status: string; meta: Record<string, unknown> }>;
+}, parentPrd: { id: string; title: string }): { code: string; tooltips: Record<string, string> } {
+  const parentPrdId = parentPrd.id;
+  const lines: string[] = ['flowchart TB'];
+  const clicks: string[] = [];
+  const tooltips: Record<string, string> = {};
+
+  lines.push('  classDef prd fill:#3B82F6,stroke:#1E40AF,color:#fff');
+  lines.push('  classDef epic fill:#10B981,stroke:#047857,color:#fff');
+  lines.push('  classDef task fill:#4B5563,stroke:#374151,color:#fff');
+  lines.push('  classDef done fill:#059669,stroke:#047857,color:#fff');
+  lines.push('  classDef blocked fill:#EF4444,stroke:#DC2626,color:#fff');
+  lines.push('  classDef wip fill:#F59E0B,stroke:#D97706,color:#fff');
+  lines.push('  classDef ready fill:#3B82F6,stroke:#1E40AF,color:#fff');
+  lines.push('');
+
+  // Parent PRD (dimmed)
+  const prdNodeId = parentPrdId.replace(/-/g, '_');
+  lines.push(`  ${prdNodeId}["${parentPrdId}"]:::prd`);
+  clicks.push(`  click ${prdNodeId} href "javascript:nodeClick('prd:${parentPrdId}')"`);
+  tooltips[prdNodeId] = parentPrd.title;
+
+  // Epic node
+  const epicNodeId = epic.id;
+  lines.push(`  ${epicNodeId}["${epic.id}"]`);
+  lines.push(`  ${prdNodeId} --> ${epicNodeId}`);
+  clicks.push(`  click ${epicNodeId} href "javascript:nodeClick('epic:${epic.id}')"`);
+  tooltips[epicNodeId] = epic.title;
+  const epicStatusClass = getStatusClass(epic.status);
+  lines.push(`  class ${epicNodeId} ${epicStatusClass || 'epic'}`);
+
+  const blockedByEdges: string[] = [];
+
+  for (const task of epic.tasks) {
+    const taskNodeId = task.id;
+    lines.push(`  ${taskNodeId}["${task.id}"]`);
+    lines.push(`  ${epicNodeId} --> ${taskNodeId}`);
+    clicks.push(`  click ${taskNodeId} href "javascript:nodeClick('task:${task.id}')"`);
+    tooltips[taskNodeId] = task.title;
+
+    const taskStatusClass = getStatusClass(task.status);
+    lines.push(`  class ${taskNodeId} ${taskStatusClass || 'task'}`);
+
+    const blockedBy = task.meta?.blocked_by;
+    if (blockedBy) {
+      const blockers = Array.isArray(blockedBy) ? blockedBy : [blockedBy];
+      for (const blocker of blockers) {
+        if (blocker && typeof blocker === 'string') {
+          blockedByEdges.push(`  ${blocker} -.->|blocks| ${taskNodeId}`);
+        }
+      }
+    }
+  }
+
+  // Count edges for linkStyle indexing
+  let edgeIndex = lines.filter(l => l.includes('-->')).length;
+
+  if (blockedByEdges.length > 0) {
+    lines.push('');
+    lines.push(...blockedByEdges);
+    // Style blocked_by edges in orange
+    for (let i = 0; i < blockedByEdges.length; i++) {
+      lines.push(`  linkStyle ${edgeIndex + i} stroke:#F59E0B,stroke-width:2px`);
+    }
+  }
+
+  lines.push('');
+  lines.push(...clicks);
+
+  return { code: lines.join('\n'), tooltips };
+}
+
+// Generate Mermaid DAG for a Task (task + blockers)
+function generateTaskDag(task: {
+  id: string;
+  title: string;
+  status: string;
+  meta: Record<string, unknown>;
+}, parentEpic: { id: string; title: string } | null, parentPrd: { id: string; title: string } | null): { code: string; tooltips: Record<string, string> } {
+  const parentEpicId = parentEpic?.id || '';
+  const parentPrdId = parentPrd?.id || '';
+  const lines: string[] = ['flowchart TB'];
+  const clicks: string[] = [];
+  const tooltips: Record<string, string> = {};
+
+  lines.push('  classDef prd fill:#3B82F6,stroke:#1E40AF,color:#fff');
+  lines.push('  classDef epic fill:#10B981,stroke:#047857,color:#fff');
+  lines.push('  classDef task fill:#4B5563,stroke:#374151,color:#fff');
+  lines.push('  classDef done fill:#059669,stroke:#047857,color:#fff');
+  lines.push('  classDef blocked fill:#EF4444,stroke:#DC2626,color:#fff');
+  lines.push('  classDef wip fill:#F59E0B,stroke:#D97706,color:#fff');
+  lines.push('');
+
+  // Parent chain
+  const prdNodeId = parentPrdId.replace(/-/g, '_');
+  lines.push(`  ${prdNodeId}["${parentPrdId}"]:::prd`);
+  clicks.push(`  click ${prdNodeId} href "javascript:nodeClick('prd:${parentPrdId}')"`);
+  tooltips[prdNodeId] = parentPrd?.title || parentPrdId;
+
+  lines.push(`  ${parentEpicId}["${parentEpicId}"]:::epic`);
+  lines.push(`  ${prdNodeId} --> ${parentEpicId}`);
+  clicks.push(`  click ${parentEpicId} href "javascript:nodeClick('epic:${parentEpicId}')"`);
+  tooltips[parentEpicId] = parentEpic?.title || parentEpicId;
+
+  // Task node
+  const taskNodeId = task.id;
+  lines.push(`  ${taskNodeId}["${task.id}"]`);
+  lines.push(`  ${parentEpicId} --> ${taskNodeId}`);
+  clicks.push(`  click ${taskNodeId} href "javascript:nodeClick('task:${task.id}')"`);
+  tooltips[taskNodeId] = task.title;
+  const taskStatusClass = getStatusClass(task.status);
+  lines.push(`  class ${taskNodeId} ${taskStatusClass || 'task'}`);
+
+  // Blocked by
+  const blockedBy = task.meta?.blocked_by;
+  let edgeIndex = lines.filter(l => l.includes('-->')).length;
+  const blockedByEdges: string[] = [];
+
+  if (blockedBy) {
+    const blockers = Array.isArray(blockedBy) ? blockedBy : [blockedBy];
+    for (const blocker of blockers) {
+      if (blocker && typeof blocker === 'string') {
+        lines.push(`  ${blocker}["${blocker}"]:::task`);
+        blockedByEdges.push(`  ${blocker} -.->|blocks| ${taskNodeId}`);
+        clicks.push(`  click ${blocker} href "javascript:nodeClick('task:${blocker}')"`);
+        tooltips[blocker] = blocker;
+      }
+    }
+  }
+
+  if (blockedByEdges.length > 0) {
+    lines.push(...blockedByEdges);
+    // Style blocked_by edges in orange
+    for (let i = 0; i < blockedByEdges.length; i++) {
+      lines.push(`  linkStyle ${edgeIndex + i} stroke:#F59E0B,stroke-width:2px`);
+    }
+  }
+
+  lines.push('');
+  lines.push(...clicks);
+
+  return { code: lines.join('\n'), tooltips };
+}
+
+// Render DAG container with legend
+function renderDag(mermaidCode: string, tooltips?: Record<string, string>): string {
+  const tooltipScript = tooltips ? `<script>window._dagTooltips = ${JSON.stringify(tooltips)};</script>` : '';
+  return `
+    <div class="dag-legend">
+      <div class="dag-legend-item"><div class="dag-legend-color prd"></div> PRD</div>
+      <div class="dag-legend-item"><div class="dag-legend-color epic"></div> Epic</div>
+      <div class="dag-legend-item"><div class="dag-legend-color task"></div> Task</div>
+      <div class="dag-legend-item"><div class="dag-legend-color done"></div> Done</div>
+      <div class="dag-legend-item"><div class="dag-legend-color wip"></div> In Progress</div>
+      <div class="dag-legend-item"><div class="dag-legend-color blocked"></div> Blocked</div>
+    </div>
+    <div class="dag-container">
+      <div class="mermaid">${mermaidCode}</div>
+    </div>
+    ${tooltipScript}
+  `;
+}
+
+// Render PRD DAG with toggle for tasks
+function renderPrdDag(
+  dagWithTasks: { code: string; tooltips: Record<string, string> },
+  dagWithoutTasks: { code: string; tooltips: Record<string, string> }
+): string {
+  const allTooltips = { ...dagWithTasks.tooltips, ...dagWithoutTasks.tooltips };
+  const tooltipScript = `<script>window._dagTooltips = ${JSON.stringify(allTooltips)};</script>`;
+  return `
+    <div class="dag-legend">
+      <div class="dag-legend-item"><div class="dag-legend-color prd"></div> PRD</div>
+      <div class="dag-legend-item"><div class="dag-legend-color epic"></div> Epic</div>
+      <div class="dag-legend-item"><div class="dag-legend-color task"></div> Task</div>
+      <div class="dag-legend-item"><div class="dag-legend-color done"></div> Done</div>
+      <div class="dag-legend-item"><div class="dag-legend-color wip"></div> In Progress</div>
+      <div class="dag-legend-item"><div class="dag-legend-color blocked"></div> Blocked</div>
+      <label class="dag-toggle" style="margin-left: auto;">
+        <input type="checkbox" checked onchange="toggleTasks(this)"> Show Tasks
+      </label>
+    </div>
+    <div class="dag-container" id="dag-with-tasks">
+      <div class="mermaid">${dagWithTasks.code}</div>
+    </div>
+    <div class="dag-container" id="dag-without-tasks" style="display: none;">
+      <div class="mermaid">${dagWithoutTasks.code}</div>
+    </div>
+    ${tooltipScript}
+  `;
+}
+
+// Generate Mermaid Gantt chart for a PRD
+function generatePrdGantt(prd: {
+  id: string;
+  title: string;
+  epics: Array<{
+    id: string;
+    title: string;
+    tasks: Array<{
+      id: string;
+      title: string;
+      status: string;
+      meta: Record<string, unknown>;
+    }>;
+  }>;
+}): { ganttCode: string; criticalPath: string[] } {
+  const lines: string[] = ['gantt'];
+  lines.push(`  title ${prd.id} - ${escapeTitle(prd.title)}`);
+  lines.push('  dateFormat YYYY-MM-DD');
+  lines.push('  axisFormat %m/%d');
+  lines.push('');
+
+  // Collect all tasks with their dates and dependencies
+  const taskData: Map<string, {
+    id: string;
+    title: string;
+    start: Date | null;
+    end: Date | null;
+    status: string;
+    blockedBy: string[];
+    epicId: string;
+    milestone: string | null;
+  }> = new Map();
+
+  for (const epic of prd.epics) {
+    for (const task of epic.tasks) {
+      const startedAt = task.meta?.started_at as string | undefined;
+      const doneAt = task.meta?.done_at as string | undefined;
+      const blockedBy = task.meta?.blocked_by;
+      const blockers = blockedBy ? (Array.isArray(blockedBy) ? blockedBy : [blockedBy]) : [];
+      const milestone = task.meta?.milestone as string | undefined;
+
+      taskData.set(task.id, {
+        id: task.id,
+        title: task.title,
+        start: startedAt ? new Date(startedAt) : null,
+        end: doneAt ? new Date(doneAt) : null,
+        status: task.status,
+        blockedBy: blockers.filter((b): b is string => typeof b === 'string'),
+        epicId: epic.id,
+        milestone: milestone || null
+      });
+    }
+  }
+
+  // Calculate critical path using simple forward/backward pass
+  const criticalPath = calculateCriticalPath(taskData);
+
+  // Group tasks by epic, then by milestone
+  for (const epic of prd.epics) {
+    if (epic.tasks.length === 0) continue;
+
+    // Group tasks by milestone within this epic
+    const tasksByMilestone: Map<string, typeof epic.tasks> = new Map();
+    tasksByMilestone.set('', []); // Tasks without milestone
+
+    for (const task of epic.tasks) {
+      const data = taskData.get(task.id);
+      const milestone = data?.milestone || '';
+      if (!tasksByMilestone.has(milestone)) {
+        tasksByMilestone.set(milestone, []);
+      }
+      tasksByMilestone.get(milestone)!.push(task);
+    }
+
+    // Output tasks by milestone (empty milestone first, then named milestones)
+    const milestoneKeys = Array.from(tasksByMilestone.keys()).sort((a, b) => {
+      if (a === '') return -1;
+      if (b === '') return 1;
+      return a.localeCompare(b);
+    });
+
+    for (const milestone of milestoneKeys) {
+      const tasks = tasksByMilestone.get(milestone)!;
+      if (tasks.length === 0) continue;
+
+      // Section label: Epic ID / Milestone or just Epic ID
+      const sectionLabel = milestone
+        ? `${epic.id} / ${escapeGanttLabel(milestone)}`
+        : epic.id;
+      lines.push(`  section ${sectionLabel}`);
+
+      for (const task of tasks) {
+        const data = taskData.get(task.id);
+        if (!data) continue;
+
+        // Determine status class for Gantt
+        const isCritical = criticalPath.includes(task.id);
+        let statusTag = '';
+        if (data.status === 'Done') {
+          statusTag = isCritical ? 'crit, done,' : 'done,';
+        } else if (data.status === 'In Progress' || data.status === 'WIP') {
+          statusTag = isCritical ? 'crit, active,' : 'active,';
+        } else if (isCritical) {
+          statusTag = 'crit,';
+        }
+
+        // Calculate duration in days
+        const durationDays = data.start && data.end
+          ? Math.max(1, Math.ceil((data.end.getTime() - data.start.getTime()) / (1000 * 60 * 60 * 24)))
+          : 1;
+
+        // Task dependencies - filter to only include valid task IDs that exist
+        const validBlockers = data.blockedBy.filter(id => taskData.has(id));
+        const afterStr = validBlockers.length > 0 ? `after ${validBlockers.join(' ')}` : '';
+
+        // Gantt task line - always use duration format for consistency
+        const statusText = data.status && data.status !== 'Done' ? ` [${data.status}]` : '';
+        const taskLabel = `${task.id} ${escapeGanttLabel(task.title)}${statusText}`;
+        const startDate = data.start ? formatGanttDate(data.start) : formatGanttDate(new Date());
+        if (afterStr) {
+          lines.push(`  ${taskLabel} :${statusTag}${task.id}, ${afterStr}, ${durationDays}d`);
+        } else {
+          // Use start date + duration
+          lines.push(`  ${taskLabel} :${statusTag}${task.id}, ${startDate}, ${durationDays}d`);
+        }
+      }
+    }
+    lines.push('');
+  }
+
+  return { ganttCode: lines.join('\n'), criticalPath };
+}
+
+// Helper to format date for Gantt
+function formatGanttDate(date: Date): string {
+  return date.toISOString().split('T')[0];
+}
+
+// Helper to add days to a date
+function addDays(date: Date, days: number): Date {
+  const result = new Date(date);
+  result.setDate(result.getDate() + days);
+  return result;
+}
+
+// Calculate critical path using simplified forward/backward pass
+function calculateCriticalPath(taskData: Map<string, {
+  id: string;
+  start: Date | null;
+  end: Date | null;
+  blockedBy: string[];
+}>): string[] {
+  const tasks = Array.from(taskData.values());
+  if (tasks.length === 0) return [];
+
+  // Build adjacency list (task -> tasks that depend on it)
+  const dependents: Map<string, string[]> = new Map();
+  for (const task of tasks) {
+    for (const blocker of task.blockedBy) {
+      if (!dependents.has(blocker)) {
+        dependents.set(blocker, []);
+      }
+      dependents.get(blocker)!.push(task.id);
+    }
+  }
+
+  // Calculate task duration in days
+  const getDuration = (task: { start: Date | null; end: Date | null }): number => {
+    if (task.start && task.end) {
+      return Math.max(1, Math.ceil((task.end.getTime() - task.start.getTime()) / (1000 * 60 * 60 * 24)));
+    }
+    return 1; // Default 1 day
+  };
+
+  // Forward pass: calculate earliest start and finish times
+  const earliestStart: Map<string, number> = new Map();
+  const earliestFinish: Map<string, number> = new Map();
+
+  const calculateEarliest = (taskId: string): number => {
+    if (earliestFinish.has(taskId)) return earliestFinish.get(taskId)!;
+
+    const task = taskData.get(taskId);
+    if (!task) return 0;
+
+    // Earliest start is max of all blockers' earliest finish
+    let es = 0;
+    for (const blocker of task.blockedBy) {
+      es = Math.max(es, calculateEarliest(blocker));
+    }
+
+    earliestStart.set(taskId, es);
+    const ef = es + getDuration(task);
+    earliestFinish.set(taskId, ef);
+    return ef;
+  };
+
+  // Calculate for all tasks
+  for (const task of tasks) {
+    calculateEarliest(task.id);
+  }
+
+  // Find project end (max earliest finish)
+  const projectEnd = Math.max(...Array.from(earliestFinish.values()));
+
+  // Backward pass: calculate latest start and finish times
+  const latestFinish: Map<string, number> = new Map();
+  const latestStart: Map<string, number> = new Map();
+
+  const calculateLatest = (taskId: string): number => {
+    if (latestStart.has(taskId)) return latestStart.get(taskId)!;
+
+    const task = taskData.get(taskId);
+    if (!task) return projectEnd;
+
+    // Latest finish is min of all dependents' latest start
+    const deps = dependents.get(taskId) || [];
+    let lf = projectEnd;
+    for (const dep of deps) {
+      lf = Math.min(lf, calculateLatest(dep));
+    }
+
+    latestFinish.set(taskId, lf);
+    const ls = lf - getDuration(task);
+    latestStart.set(taskId, ls);
+    return ls;
+  };
+
+  // Calculate for all tasks
+  for (const task of tasks) {
+    calculateLatest(task.id);
+  }
+
+  // Critical path: tasks where slack (LF - EF) is 0
+  const criticalPath: string[] = [];
+  for (const task of tasks) {
+    const ef = earliestFinish.get(task.id) || 0;
+    const lf = latestFinish.get(task.id) || 0;
+    if (lf - ef === 0) {
+      criticalPath.push(task.id);
+    }
+  }
+
+  return criticalPath;
+}
+
+// Render Gantt container with legend
+function renderGantt(ganttCode: string, criticalPath: string[]): string {
+  return `
+    <div class="gantt-legend">
+      <div class="gantt-legend-item"><div class="gantt-legend-color done"></div> Done</div>
+      <div class="gantt-legend-item"><div class="gantt-legend-color active"></div> In Progress</div>
+      <div class="gantt-legend-item"><div class="gantt-legend-color crit"></div> Critical Path</div>
+      <span style="margin-left: auto; font-size: 11px; color: var(--text-dim);">
+        ${criticalPath.length} tasks on critical path
+      </span>
+    </div>
+    <div class="dag-container">
+      <div class="mermaid">${ganttCode}</div>
+    </div>
+  `;
+}
+
+// Generate Mermaid Gantt chart for an Epic
+function generateEpicGantt(epic: {
+  id: string;
+  title: string;
+  tasks: Array<{
+    id: string;
+    title: string;
+    status: string;
+    meta: Record<string, unknown>;
+  }>;
+}): { ganttCode: string; criticalPath: string[] } {
+  const lines: string[] = ['gantt'];
+  lines.push(`  title ${epic.id} - ${escapeTitle(epic.title)}`);
+  lines.push('  dateFormat YYYY-MM-DD');
+  lines.push('  axisFormat %m/%d');
+  lines.push('');
+
+  // Collect all tasks with their dates, dependencies, and milestones
+  const taskData: Map<string, {
+    id: string;
+    start: Date | null;
+    end: Date | null;
+    blockedBy: string[];
+    milestone: string | null;
+  }> = new Map();
+
+  for (const task of epic.tasks) {
+    const startedAt = task.meta?.started_at as string | undefined;
+    const doneAt = task.meta?.done_at as string | undefined;
+    const blockedBy = task.meta?.blocked_by;
+    const blockers = blockedBy ? (Array.isArray(blockedBy) ? blockedBy : [blockedBy]) : [];
+    const milestone = task.meta?.milestone as string | undefined;
+
+    taskData.set(task.id, {
+      id: task.id,
+      start: startedAt ? new Date(startedAt) : null,
+      end: doneAt ? new Date(doneAt) : null,
+      blockedBy: blockers.filter((b): b is string => typeof b === 'string'),
+      milestone: milestone || null
+    });
+  }
+
+  // Calculate critical path
+  const criticalPath = calculateCriticalPath(taskData);
+
+  // Group tasks by milestone
+  const tasksByMilestone: Map<string, typeof epic.tasks> = new Map();
+  tasksByMilestone.set('', []); // Tasks without milestone
+
+  for (const task of epic.tasks) {
+    const data = taskData.get(task.id);
+    const milestone = data?.milestone || '';
+    if (!tasksByMilestone.has(milestone)) {
+      tasksByMilestone.set(milestone, []);
+    }
+    tasksByMilestone.get(milestone)!.push(task);
+  }
+
+  // Output tasks by milestone (empty milestone first, then named milestones)
+  const milestoneKeys = Array.from(tasksByMilestone.keys()).sort((a, b) => {
+    if (a === '') return -1;
+    if (b === '') return 1;
+    return a.localeCompare(b);
+  });
+
+  for (const milestone of milestoneKeys) {
+    const tasks = tasksByMilestone.get(milestone)!;
+    if (tasks.length === 0) continue;
+
+    // Section label: Epic ID / Milestone or just Epic ID
+    const sectionLabel = milestone
+      ? `${epic.id} / ${escapeGanttLabel(milestone)}`
+      : epic.id;
+    lines.push(`  section ${sectionLabel}`);
+
+    for (const task of tasks) {
+      const data = taskData.get(task.id);
+      if (!data) continue;
+
+      const isCritical = criticalPath.includes(task.id);
+      let statusTag = '';
+      if (task.status === 'Done') {
+        statusTag = isCritical ? 'crit, done,' : 'done,';
+      } else if (task.status === 'In Progress' || task.status === 'WIP') {
+        statusTag = isCritical ? 'crit, active,' : 'active,';
+      } else if (isCritical) {
+        statusTag = 'crit,';
+      }
+
+      // Calculate duration in days
+      const durationDays = data.start && data.end
+        ? Math.max(1, Math.ceil((data.end.getTime() - data.start.getTime()) / (1000 * 60 * 60 * 24)))
+        : 1;
+      // Task dependencies - filter to only include valid task IDs that exist
+      const validBlockers = data.blockedBy.filter(id => taskData.has(id));
+      const afterStr = validBlockers.length > 0 ? `after ${validBlockers.join(' ')}` : '';
+
+      // Gantt task line - always use duration format for consistency
+      const statusText = task.status && task.status !== 'Done' ? ` [${task.status}]` : '';
+      const taskLabel = `${task.id} ${escapeGanttLabel(task.title)}${statusText}`;
+      const startDate = data.start ? formatGanttDate(data.start) : formatGanttDate(new Date());
+      if (afterStr) {
+        lines.push(`  ${taskLabel} :${statusTag}${task.id}, ${afterStr}, ${durationDays}d`);
+      } else {
+        // Use start date + duration
+        lines.push(`  ${taskLabel} :${statusTag}${task.id}, ${startDate}, ${durationDays}d`);
+      }
+    }
+  }
+
+  return { ganttCode: lines.join('\n'), criticalPath };
+}
+
 // Helper to render tabs with content
 function renderTabs(tabs: Array<{ id: string; label: string; content: string; active?: boolean }>): string {
   const tabButtons = tabs.map(t =>
@@ -688,14 +1381,20 @@ export function createRoutes() {
     // Meta tab content
     const metaContent = renderMeta(prd.meta);
 
-    // Graph tab content
-    const graphContent = renderGraph(prd.meta, 'prd');
-
     // Memory tab content
     const memoryRaw = getMemoryContent(prd.id, 'prd');
     const memoryContent = memoryRaw
       ? `<div class="description-content">${markdownToHtml(memoryRaw)}</div>`
       : '<div class="empty">No memory</div>';
+
+    // Schema/DAG tab content (with toggle for tasks)
+    const dagWithTasks = generatePrdDag(prd, true);
+    const dagWithoutTasks = generatePrdDag(prd, false);
+    const schemaContent = renderPrdDag(dagWithTasks, dagWithoutTasks);
+
+    // Gantt tab content with critical path
+    const { ganttCode, criticalPath } = generatePrdGantt(prd);
+    const ganttContent = renderGantt(ganttCode, criticalPath);
 
     html(res, `
       <div class="detail-header">
@@ -706,7 +1405,8 @@ export function createRoutes() {
         { id: 'stats', label: 'Stats', content: statsContent, active: true },
         { id: 'desc', label: 'Description', content: descContent },
         { id: 'meta', label: 'Meta', content: metaContent },
-        { id: 'graph', label: 'Graph', content: graphContent },
+        { id: 'schema', label: 'Schema', content: schemaContent },
+        { id: 'gantt', label: 'Gantt', content: ganttContent },
         { id: 'memory', label: 'Memory', content: memoryContent }
       ])}
     `);
@@ -785,14 +1485,19 @@ export function createRoutes() {
     // Meta tab content
     const metaContent = renderMeta(foundEpic.meta);
 
-    // Graph tab content
-    const graphContent = renderGraph(foundEpic.meta, 'epic');
-
     // Memory tab content
     const memoryRaw = getMemoryContent(foundEpic.id, 'epic');
     const memoryContent = memoryRaw
       ? `<div class="description-content">${markdownToHtml(memoryRaw)}</div>`
       : '<div class="empty">No memory</div>';
+
+    // Schema/DAG tab content
+    const dagResult = generateEpicDag(foundEpic, parentPrd);
+    const schemaContent = renderDag(dagResult.code, dagResult.tooltips);
+
+    // Gantt tab content with critical path
+    const { ganttCode: epicGanttCode, criticalPath: epicCriticalPath } = generateEpicGantt(foundEpic);
+    const ganttContent = renderGantt(epicGanttCode, epicCriticalPath);
 
     html(res, `
       <div class="detail-header">
@@ -806,7 +1511,8 @@ export function createRoutes() {
         { id: 'stats', label: 'Stats', content: statsContent, active: true },
         { id: 'desc', label: 'Description', content: descContent },
         { id: 'meta', label: 'Meta', content: metaContent },
-        { id: 'graph', label: 'Graph', content: graphContent },
+        { id: 'schema', label: 'Schema', content: schemaContent },
+        { id: 'gantt', label: 'Gantt', content: ganttContent },
         { id: 'memory', label: 'Memory', content: memoryContent }
       ])}
     `);
@@ -860,8 +1566,9 @@ export function createRoutes() {
     // Meta tab content
     const metaContent = renderMeta(foundTask.meta);
 
-    // Graph tab content
-    const graphContent = renderGraph(foundTask.meta, 'task');
+    // Schema/DAG tab content
+    const dagResult = generateTaskDag(foundTask, parentEpic, parentPrd);
+    const schemaContent = renderDag(dagResult.code, dagResult.tooltips);
 
     html(res, `
       <div class="detail-header">
@@ -876,7 +1583,7 @@ export function createRoutes() {
         { id: 'stats', label: 'Stats', content: statsContent, active: true },
         { id: 'desc', label: 'Description', content: descContent },
         { id: 'meta', label: 'Meta', content: metaContent },
-        { id: 'graph', label: 'Graph', content: graphContent }
+        { id: 'schema', label: 'Schema', content: schemaContent }
       ])}
     `);
   };

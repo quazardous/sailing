@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Sailing Dashboard</title>
   <script src="https://unpkg.com/htmx.org@2.0.4"></script>
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
   <style>
     /* === Reset & Base === */
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -746,6 +747,46 @@
       text-transform: uppercase;
     }
 
+    /* DAG/Mermaid styling */
+    .dag-container {
+      background: var(--bg-secondary);
+      border-radius: var(--radius-lg);
+      padding: 16px;
+      overflow-x: auto;
+    }
+
+    .dag-container .mermaid {
+      text-align: center;
+    }
+
+    .dag-legend {
+      display: flex;
+      gap: 16px;
+      margin-bottom: 12px;
+      flex-wrap: wrap;
+    }
+
+    .dag-legend-item {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 11px;
+      color: var(--text-muted);
+    }
+
+    .dag-legend-color {
+      width: 12px;
+      height: 12px;
+      border-radius: 2px;
+    }
+
+    .dag-legend-color.prd { background: #3B82F6; }
+    .dag-legend-color.epic { background: #10B981; }
+    .dag-legend-color.task { background: #6B7280; }
+    .dag-legend-color.done { background: #059669; }
+    .dag-legend-color.blocked { background: #EF4444; }
+    .dag-legend-color.wip { background: #F59E0B; }
+
     /* === Scrollbar styling === */
     ::-webkit-scrollbar {
       width: 8px;
@@ -827,7 +868,56 @@
       tabs.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
       btn.classList.add('active');
       tabs.querySelector('#' + tabId).classList.add('active');
+      // Render mermaid if switching to schema tab
+      if (tabId === 'schema') {
+        renderMermaid();
+      }
     }
+
+    // Mermaid initialization
+    mermaid.initialize({
+      startOnLoad: false,
+      theme: 'dark',
+      themeVariables: {
+        primaryColor: '#3B82F6',
+        primaryTextColor: '#F9FAFB',
+        primaryBorderColor: '#374151',
+        lineColor: '#6B7280',
+        secondaryColor: '#10B981',
+        tertiaryColor: '#1F2937'
+      },
+      flowchart: {
+        curve: 'basis',
+        padding: 20
+      }
+    });
+
+    // Render mermaid diagrams
+    async function renderMermaid() {
+      const elements = document.querySelectorAll('.mermaid:not([data-processed])');
+      for (const el of elements) {
+        el.setAttribute('data-processed', 'true');
+        const code = el.textContent;
+        try {
+          const { svg } = await mermaid.render('mermaid-' + Date.now(), code);
+          el.innerHTML = svg;
+        } catch (e) {
+          console.error('Mermaid error:', e);
+          el.innerHTML = '<div style="color: var(--blocked);">Error rendering diagram</div>';
+        }
+      }
+    }
+
+    // Re-render mermaid after HTMX swaps
+    document.body.addEventListener('htmx:afterSwap', () => {
+      setTimeout(renderMermaid, 100);
+    });
+
+    // Handle clicks on mermaid nodes
+    window.nodeClick = function(type, id) {
+      const apiPath = type === 'prd' ? `/api/prd/${id}` : type === 'epic' ? `/api/epic/${id}` : `/api/task/${id}`;
+      htmx.ajax('GET', apiPath, '#detail');
+    };
   </script>
 </body>
 </html>
