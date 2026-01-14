@@ -145,6 +145,7 @@ import { registerArchiveCommands } from './commands/archive.js';
 import { registerDashboardCommands } from './commands/dashboard.js';
 import { registerDashboardDebugCommands } from './commands/dashboard-debug.js';
 import { registerAuditCommands } from './commands/audit.js';
+import { registerDiagnoseCommands } from './commands/diagnose.js';
 
 // Expand colon syntax: task:list → task list (first arg only, if it looks like group:command)
 let commandExpanded = false;
@@ -203,6 +204,7 @@ registerArchiveCommands(program);
 registerDashboardCommands(program);
 registerDashboardDebugCommands(program);
 registerAuditCommands(program);
+registerDiagnoseCommands(program);
 registerUtilCommands(program);
 registerPermissionsCommands(program);
 

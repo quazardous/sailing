@@ -4,7 +4,7 @@
  * Shared library for spawning Claude with or without srt sandbox.
  * Used by spawnClaude (agent:spawn) and sandbox:run.
  */
-import { spawn } from 'child_process';
+import { spawn, spawnSync } from 'child_process';
 import fs from 'fs';
 import path from 'path';
 import os from 'os';
@@ -147,6 +147,66 @@ export function checkMcpServer(havenDir) {
     }
 }
 /**
+ * Start a socat bridge from Unix socket to TCP port
+ * Used on Linux to allow sandbox agents to connect to MCP server in port mode
+ *
+ * On Linux, srt uses --unshare-net which isolates the network namespace.
+ * This means localhost inside sandbox != host localhost, breaking TCP port mode.
+ * Solution: Create a socat bridge that forwards Unix socket → TCP:
+ * - Agent inside sandbox connects to the Unix socket (with allowAllUnixSockets: true)
+ * - Socat bridges to the MCP server's TCP port on host
+ *
+ * @param {object} options - Options
+ * @param {string} options.socketPath - Unix socket path to listen on
+ * @param {number} options.targetPort - TCP port to forward to
+ * @returns {{ pid: number, socket: string, cleanup: () => void }}
+ */
+export function startSocatBridge(options) {
+    const { socketPath, targetPort } = options;
+    // Remove any stale socket
+    if (fs.existsSync(socketPath)) {
+        fs.unlinkSync(socketPath);
+    }
+    // Start socat bridge: UNIX-LISTEN:socket,fork TCP:127.0.0.1:port
+    const socat = spawn('socat', [
+        `UNIX-LISTEN:${socketPath},fork,mode=666`,
+        `TCP:127.0.0.1:${targetPort}`
+    ], {
+        stdio: ['ignore', 'ignore', 'ignore'],
+        detached: true
+    });
+    socat.unref();
+    // Wait a bit for socket to be created
+    const maxWait = 2000;
+    const start = Date.now();
+    while (!fs.existsSync(socketPath) && Date.now() - start < maxWait) {
+        // Spin wait
+        spawnSync('sleep', ['0.1'], { stdio: 'ignore' });
+    }
+    if (!fs.existsSync(socketPath)) {
+        try {
+            socat.kill();
+        }
+        catch { }
+        throw new Error(`Failed to start socat bridge (socket ${socketPath} not created)`);
+    }
+    return {
+        pid: socat.pid,
+        socket: socketPath,
+        cleanup: () => {
+            try {
+                socat.kill();
+            }
+            catch { }
+            try {
+                if (fs.existsSync(socketPath))
+                    fs.unlinkSync(socketPath);
+            }
+            catch { }
+        }
+    };
+}
+/**
  * Generate MCP config for agent
  * Supports three modes:
  * - externalSocket: Connect to Unix socket via socat (preferred for sandbox)
@@ -178,12 +238,13 @@ export function generateAgentMcpConfig(options) {
         mode = 'socket';
     }
     else if (externalPort) {
-        // TCP port mode: use socat to bridge to TCP server (fallback)
+        // TCP port mode: use nc (netcat) to bridge to TCP server
+        // nc is simpler than socat and works better in sandbox environments
         config = {
             mcpServers: {
                 rudder: {
-                    command: 'socat',
-                    args: ['-', `TCP:127.0.0.1:${externalPort}`]
+                    command: 'nc',
+                    args: ['127.0.0.1', String(externalPort)]
                 }
             }
         };
@@ -244,14 +305,16 @@ export function loadBaseSrtConfig(configPath) {
                 'registry.npmjs.org',
                 '*.npmjs.org'
             ],
-            deniedDomains: []
+            deniedDomains: [],
+            allowUnixSockets: [] // Will be populated with MCP socket path
         },
         filesystem: {
             allowWrite: [
                 `${homeDir}/.claude`,
                 `${homeDir}/.claude.json`,
                 `${homeDir}/.npm/_logs`,
-                '/tmp'
+                '/tmp',
+                '/tmp/claude' // tsx pipe files
             ],
             denyWrite: [],
             denyRead: [
@@ -269,11 +332,13 @@ export function loadBaseSrtConfig(configPath) {
  * @param {string} options.outputPath - Where to write the generated config
  * @param {string[]} options.additionalWritePaths - Additional paths to allow writing
  * @param {string[]} [options.additionalDenyReadPaths] - Additional paths to deny reading
+ * @param {string[]} [options.allowUnixSockets] - Unix sockets to allow (e.g., MCP socket, macOS only)
+ * @param {boolean} [options.allowAllUnixSockets=false] - Allow all Unix sockets (Linux: disables seccomp AF_UNIX blocking)
  * @param {boolean} [options.strictMode=false] - If true, ONLY allow /tmp + additionalWritePaths (ignore base config paths)
  * @returns {string} Path to generated config
  */
 export function generateSrtConfig(options) {
-    const { baseConfigPath, outputPath, additionalWritePaths = [], additionalDenyReadPaths = [], strictMode = false } = options;
+    const { baseConfigPath, outputPath, additionalWritePaths = [], additionalDenyReadPaths = [], allowUnixSockets = [], allowAllUnixSockets = false, strictMode = false } = options;
     const config = loadBaseSrtConfig(baseConfigPath);
     if (strictMode) {
         // Strict mode: only essential paths + explicitly provided paths
@@ -305,6 +370,35 @@ export function generateSrtConfig(options) {
         if (p && !config.filesystem.denyRead.includes(p)) {
             config.filesystem.denyRead.push(p);
         }
+    }
+    // Network configuration for MCP connectivity
+    // LIMITATION on Linux: srt uses --unshare-net which isolates the network namespace
+    // This means localhost inside sandbox != host localhost, breaking MCP TCP port mode
+    //
+    // Solution for socket mode on Linux:
+    // - allowAllUnixSockets: true  → disables seccomp AF_UNIX blocking
+    // - Use socat bridge: UNIX-LISTEN:/tmp/bridge.sock,fork TCP:127.0.0.1:PORT
+    // - Agent connects to bridge socket which forwards to MCP TCP port
+    //
+    // - socket mode on macOS: uses path-based allowUnixSockets (per-socket)
+    // - socket mode on Linux: needs allowAllUnixSockets: true (disables seccomp)
+    // Add allowed Unix sockets (e.g., MCP socket for agent communication)
+    // This works on macOS where allowUnixSockets is path-based
+    // On Linux, seccomp blocks AF_UNIX socket creation regardless of path
+    if (allowUnixSockets.length > 0) {
+        if (!config.network.allowUnixSockets) {
+            config.network.allowUnixSockets = [];
+        }
+        for (const sock of allowUnixSockets) {
+            if (sock && !config.network.allowUnixSockets.includes(sock)) {
+                config.network.allowUnixSockets.push(sock);
+            }
+        }
+    }
+    // On Linux, enable allowAllUnixSockets to disable seccomp AF_UNIX blocking
+    // This is required for socket mode MCP connectivity from inside sandbox
+    if (allowAllUnixSockets) {
+        config.network.allowAllUnixSockets = true;
     }
     // Ensure output directory exists
     ensureDir(path.dirname(outputPath));

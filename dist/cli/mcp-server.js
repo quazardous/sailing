@@ -11,6 +11,7 @@
  *   rudder-mcp start -f            # Start server (foreground)
  *   rudder-mcp status              # Check if running
  *   rudder-mcp stop                # Stop server
+ *   rudder-mcp restart             # Stop + start server
  *   rudder-mcp --socket /path      # Custom socket path
  *   rudder-mcp --port 9999         # TCP mode
  *
@@ -23,7 +24,7 @@
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { spawn } from 'child_process';
+import { spawn, spawnSync } from 'child_process';
 import { execaSync } from 'execa';
 import net from 'net';
 import { setScriptDir, setProjectRoot, findProjectRoot, getPath } from './lib/core.js';
@@ -41,7 +42,7 @@ const passArgs = [];
 for (let i = 0; i < args.length; i++) {
     const arg = args[i];
     // Commands
-    if (arg === 'start' || arg === 'status' || arg === 'stop' || arg === 'log') {
+    if (arg === 'start' || arg === 'status' || arg === 'stop' || arg === 'restart' || arg === 'log') {
         command = arg;
     }
     // Options
@@ -75,6 +76,7 @@ Usage:
 
 Commands:
   start     Start MCP server (default, daemon mode)
+  restart   Stop and start server
   status    Check if server is running
   stop      Stop MCP server
   log       Tail MCP server logs (tail -f)
@@ -90,6 +92,7 @@ Examples:
   rudder-mcp               # Start as daemon (default)
   rudder-mcp start         # Same as above
   rudder-mcp start -f      # Start in foreground
+  rudder-mcp restart       # Stop + start
   rudder-mcp status        # Check status
   rudder-mcp stop          # Stop server
   rudder-mcp log           # Tail logs
@@ -229,38 +232,67 @@ function handleStatus() {
     }
 }
 /**
- * Handle stop command
+ * Stop the server (internal, no exit)
+ * @returns {boolean} true if stopped, false if not running
  */
-function handleStop() {
+function stopServer() {
     const status = getServerStatus();
     if (!status.running) {
-        console.log('MCP server not running');
-        process.exit(0);
+        return false;
     }
     try {
         process.kill(status.pid, 'SIGTERM');
         console.log(`Stopped MCP server (pid: ${status.pid})`);
-        // Wait a bit and clean up all possible files
-        setTimeout(() => {
+        // Clean up files synchronously
+        try {
+            fs.unlinkSync(pidFile);
+        }
+        catch { }
+        try {
+            fs.unlinkSync(defaultSocket);
+        }
+        catch { }
+        try {
+            fs.unlinkSync(portFile);
+        }
+        catch { }
+        // Wait for process to fully terminate (up to 2s)
+        const start = Date.now();
+        while (Date.now() - start < 2000) {
             try {
-                fs.unlinkSync(pidFile);
+                process.kill(status.pid, 0);
+                // Still running, wait
+                spawnSync('sleep', ['0.1'], { stdio: 'ignore' });
             }
-            catch { }
-            try {
-                fs.unlinkSync(defaultSocket);
+            catch {
+                // Process gone
+                return true;
             }
-            catch { }
-            try {
-                fs.unlinkSync(portFile);
-            }
-            catch { }
-        }, 500);
-        process.exit(0);
+        }
+        // Still running after timeout, try SIGKILL
+        try {
+            process.kill(status.pid, 'SIGKILL');
+            spawnSync('sleep', ['0.5'], { stdio: 'ignore' });
+        }
+        catch {
+            // Already dead
+        }
+        return true;
     }
     catch (e) {
         console.error(`Failed to stop server: ${e.message}`);
-        process.exit(1);
+        return false;
     }
+}
+/**
+ * Handle stop command
+ */
+function handleStop() {
+    const stopped = stopServer();
+    if (!stopped) {
+        console.log('MCP server not running');
+    }
+    process.exit(0);
 }
 /**
  * Handle start command
@@ -403,6 +435,10 @@ switch (command) {
         break;
     case 'stop':
         handleStop();
+        break;
+    case 'restart':
+        stopServer();
+        handleStart();
         break;
     case 'log':
         handleLog();

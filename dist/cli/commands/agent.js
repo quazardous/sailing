@@ -22,6 +22,7 @@ import { buildConflictMatrix, suggestMergeOrder } from '../lib/conflicts.js';
 import { findTaskFile, findEpicFile, findMemoryFile, extractPrdId, extractEpicId, getPrdBranching, findDevMd, findToolset } from '../lib/entities.js';
 import { normalizeId } from '../lib/normalize.js';
 import { getAgentsBaseDir, getAgentDir, getProcessStats, formatDuration, checkAgentCompletion } from '../lib/agent-utils.js';
+import { analyzeLog, printDiagnoseResult } from '../lib/diagnose.js';
 /**
  * Register agent commands
  */
@@ -577,6 +578,20 @@ Start by running \`pwd\` and \`ls -la\`, then call the rudder MCP tool with \`co
                     console.error(`Auto-PR failed for ${taskId}: ${stderr}`);
                 }
             }
+            // Auto-diagnose after agent run (unless disabled)
+            if (agentConfig.auto_diagnose !== false) {
+                const diagLogFile = path.join(getAgentDir(taskId), 'run.jsonlog');
+                if (fs.existsSync(diagLogFile)) {
+                    const result = analyzeLog(diagLogFile, epicId);
+                    if (result.errors.length > 0) {
+                        console.log(`\n--- Diagnostic Report ---`);
+                        printDiagnoseResult(taskId, result);
+                        console.log(`\n🛑 STOP - Action required:`);
+                        console.log(`  • If noise: rudder diagnose:add-filter <id> ${taskId} --contains "pattern"`);
+                        console.log(`  • If real issue: escalate and fix the sandbox/environment problem`);
+                    }
+                }
+            }
         });
         // === NO-WAIT MODE: fire and forget ===
         if (!shouldWait) {
@@ -620,8 +635,8 @@ Start by running \`pwd\` and \`ls -la\`, then call the rudder MCP tool with \`co
         let exitSignal = null;
         if (!options.json) {
             if (isQuiet) {
-                // Quiet mode: minimal one-line status
-                process.stdout.write(`${taskId}: spawned >>> heartbeat every ${heartbeatSec}s`);
+                // Quiet mode: minimal status
+                console.log(`${taskId}: spawned (heartbeat every ${heartbeatSec}s)`);
             }
             else {
                 const budgetStr = agentConfig.max_budget_usd > 0 ? `$${agentConfig.max_budget_usd}` : 'unlimited';
@@ -653,12 +668,12 @@ Start by running \`pwd\` and \`ls -la\`, then call the rudder MCP tool with \`co
             const elapsed = Date.now() - startTime;
             const stats = getProcessStats(spawnResult.pid);
             if (isQuiet) {
-                // Quiet mode: update same line
-                process.stdout.write(`\r${taskId}: running... ${formatDuration(elapsed)}   `);
+                // Quiet mode: simple log line
+                console.log(`${taskId}: running... ${formatDuration(elapsed)}`);
             }
             else {
                 const memInfo = stats.mem ? ` (mem: ${stats.mem})` : '';
-                console.log(`\n[${formatDuration(elapsed)}] pong — ${taskId} ${stats.running ? 'running' : 'stopped'}${memInfo}`);
+                console.log(`[${formatDuration(elapsed)}] pong — ${taskId} ${stats.running ? 'running' : 'stopped'}${memInfo}`);
             }
             lastHeartbeat = Date.now();
         };
@@ -728,12 +743,12 @@ Start by running \`pwd\` and \`ls -la\`, then call the rudder MCP tool with \`co
             return;
         }
         if (isQuiet) {
-            // Quiet mode: final status on same line
+            // Quiet mode: final status
             if (exitCode === 0) {
-                console.log(`\r${taskId}: ✓ completed (${formatDuration(elapsed)})   `);
+                console.log(`${taskId}: ✓ completed (${formatDuration(elapsed)})`);
             }
             else {
-                console.log(`\r${taskId}: ✗ failed (exit: ${exitCode}, ${formatDuration(elapsed)})   `);
+                console.log(`${taskId}: ✗ failed (exit: ${exitCode}, ${formatDuration(elapsed)})`);
             }
         }
         else {
@@ -2083,8 +2098,110 @@ Start by running \`pwd\` and \`ls -la\`, then call the rudder MCP tool with \`co
             }
             process.exit(1);
         }
-        // Step 3: Skip spawn test if requested
+        // Step 3: Test connection from inside sandbox (before full agent spawn)
+        if (!options.json)
+            console.log('\nTesting connection from sandbox...');
+        const agentDir = path.join(getAgentsBaseDir(), '_check');
+        ensureDir(agentDir);
+        // On Linux, allowAllUnixSockets: true is required to disable seccomp AF_UNIX blocking
+        const { generateSrtConfig, startSocatBridge } = await import('../lib/srt.js');
+        const isLinux = process.platform === 'linux';
+        // For port mode on Linux, we need a socat bridge (--unshare-net blocks localhost)
+        let bridgeSocket = null;
+        let bridgeCleanup = null;
+        let testSocket = mcpStatus.socket;
+        if (mcpStatus.mode === 'port' && isLinux) {
+            const bridgeSocketPath = path.join(agentDir, 'mcp-bridge-test.sock');
+            debug(`Starting socat bridge: ${bridgeSocketPath} → TCP:127.0.0.1:${mcpStatus.port}`);
+            try {
+                const bridge = startSocatBridge({
+                    socketPath: bridgeSocketPath,
+                    targetPort: mcpStatus.port
+                });
+                bridgeSocket = bridge.socket;
+                bridgeCleanup = bridge.cleanup;
+                testSocket = bridgeSocket;
+                if (!options.json) {
+                    console.log(`  ✓ Bridge started (pid: ${bridge.pid})`);
+                }
+            }
+            catch (err) {
+                if (!options.json) {
+                    console.error(`  ✗ Failed to start socat bridge: ${err.message}`);
+                }
+                fs.rmSync(agentDir, { recursive: true, force: true });
+                result.status = 'bridge_failed';
+                process.exit(1);
+            }
+        }
+        // Generate minimal srt config
+        const srtConfigForTest = generateSrtConfig({
+            outputPath: path.join(agentDir, 'srt-settings-test.json'),
+            additionalWritePaths: [agentDir],
+            allowUnixSockets: testSocket ? [testSocket] : [],
+            allowAllUnixSockets: isLinux, // Required for socket mode on Linux
+            strictMode: true
+        });
+        debug(`SRT config for sandbox test: ${srtConfigForTest}`);
+        debug(`SRT config content: ${fs.readFileSync(srtConfigForTest, 'utf8')}`);
+        try {
+            let sandboxTestCmd;
+            if (mcpStatus.mode === 'port' && !isLinux) {
+                // Non-Linux port mode: direct TCP (no --unshare-net issue)
+                sandboxTestCmd = `echo '{"jsonrpc":"2.0","method":"tools/list","id":1}' | nc 127.0.0.1 ${mcpStatus.port}`;
+            }
+            else {
+                // Socket mode OR port mode on Linux (via bridge)
+                sandboxTestCmd = `echo '{"jsonrpc":"2.0","method":"tools/list","id":1}' | socat - UNIX-CONNECT:${testSocket}`;
+            }
+            debug(`Sandbox test command: srt --settings ${srtConfigForTest} sh -c "${sandboxTestCmd}"`);
+            const sandboxTestResult = execSync(`timeout 10 srt --settings ${srtConfigForTest} sh -c "${sandboxTestCmd}"`, { encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'] });
+            result.sandbox_connection_test = { success: true, response_length: sandboxTestResult.length };
+            if (!options.json) {
+                const modeDesc = mcpStatus.mode === 'port' && isLinux ? 'via bridge' : mcpStatus.mode;
+                console.log(`  ✓ Connection from sandbox OK (${sandboxTestResult.length} chars, ${modeDesc})`);
+            }
+            debug(`Sandbox test response: ${sandboxTestResult.slice(0, 100)}...`);
+        }
+        catch (err) {
+            result.sandbox_connection_test = { success: false, error: err.message, stderr: err.stderr?.slice(0, 500) };
+            if (options.json) {
+                console.log(JSON.stringify(result, null, 2));
+            }
+            else {
+                console.error(`  ✗ Connection from sandbox failed`);
+                if (options.debug) {
+                    console.error(`\nError: ${err.message}`);
+                    if (err.stderr)
+                        console.error(`Stderr: ${err.stderr.slice(0, 500)}`);
+                }
+                console.error(`\n❌ Cannot connect to MCP from inside sandbox\n`);
+                console.error('Possible causes:');
+                if (mcpStatus.mode === 'port' && isLinux) {
+                    console.error('  - Socat bridge not working');
+                    console.error('  - allowAllUnixSockets not enabled');
+                }
+                else if (mcpStatus.mode === 'port') {
+                    console.error('  - Network namespace isolation (--unshare-net) blocks localhost');
+                }
+                else {
+                    console.error('  - Unix socket blocked by seccomp (Linux)');
+                    console.error('  - Socket path not in allowUnixSockets (macOS)');
+                }
+            }
+            // Cleanup and exit
+            if (bridgeCleanup)
+                bridgeCleanup();
+            fs.rmSync(agentDir, { recursive: true, force: true });
+            result.status = 'sandbox_connection_failed';
+            process.exit(1);
+        }
+        // Cleanup bridge for this test (will be recreated for spawn test)
+        if (bridgeCleanup)
+            bridgeCleanup();
+        // Step 4: Skip spawn test if requested
         if (options.skipSpawn) {
+            fs.rmSync(agentDir, { recursive: true, force: true });
             result.status = 'ok';
             if (options.json) {
                 console.log(JSON.stringify(result, null, 2));
@@ -2094,34 +2211,53 @@ Start by running \`pwd\` and \`ls -la\`, then call the rudder MCP tool with \`co
             }
             process.exit(0);
         }
-        // Step 4: Spawn test agent
+        // Step 5: Spawn test agent
         if (!options.json)
-            console.log('\nTesting from sandbox (spawn agent)...');
-        const agentDir = path.join(getAgentsBaseDir(), '_check');
-        ensureDir(agentDir);
+            console.log('\nTesting full agent spawn...');
+        // agentDir already created in step 3
         // Generate minimal MCP config based on mode
-        const { generateAgentMcpConfig, spawnClaudeWithSrt, generateSrtConfig } = await import('../lib/srt.js');
+        // For port mode on Linux, recreate bridge for spawn test
+        const { generateAgentMcpConfig, spawnClaudeWithSrt } = await import('../lib/srt.js');
+        let spawnBridgeCleanup = null;
+        let spawnSocket = mcpStatus.socket;
+        if (mcpStatus.mode === 'port' && isLinux) {
+            const bridgeSocketPath = path.join(agentDir, 'mcp-bridge-spawn.sock');
+            debug(`Starting socat bridge for spawn: ${bridgeSocketPath} → TCP:127.0.0.1:${mcpStatus.port}`);
+            const bridge = startSocatBridge({
+                socketPath: bridgeSocketPath,
+                targetPort: mcpStatus.port
+            });
+            spawnBridgeCleanup = bridge.cleanup;
+            spawnSocket = bridge.socket;
+            if (!options.json) {
+                console.log(`  ✓ Bridge for spawn started (pid: ${bridge.pid})`);
+            }
+        }
         const mcpConfigOptions = {
             outputPath: path.join(agentDir, 'mcp-config.json'),
             projectRoot
         };
-        if (mcpStatus.mode === 'port') {
+        if (mcpStatus.mode === 'port' && !isLinux) {
+            // Non-Linux: direct TCP connection
             mcpConfigOptions.externalPort = mcpStatus.port;
         }
-        else {
-            mcpConfigOptions.externalSocket = mcpStatus.socket;
+        else if (spawnSocket) {
+            // Socket mode OR port mode on Linux (via bridge)
+            mcpConfigOptions.externalSocket = spawnSocket;
         }
         const mcpConfig = generateAgentMcpConfig(mcpConfigOptions);
         debug(`MCP config: ${mcpConfig.configPath}`);
         debug(`MCP config content: ${fs.readFileSync(mcpConfig.configPath, 'utf8')}`);
         // Minimal srt config for test
         const additionalPaths = [agentDir];
-        if (mcpStatus.socket) {
-            additionalPaths.push(path.dirname(mcpStatus.socket));
+        if (spawnSocket) {
+            additionalPaths.push(path.dirname(spawnSocket));
         }
         const srtConfig = generateSrtConfig({
             outputPath: path.join(agentDir, 'srt-settings.json'),
             additionalWritePaths: additionalPaths,
+            allowUnixSockets: spawnSocket ? [spawnSocket] : [],
+            allowAllUnixSockets: isLinux, // Required for socket mode on Linux
             strictMode: true
         });
         debug(`SRT config: ${srtConfig}`);
@@ -2205,9 +2341,14 @@ Exit immediately after outputting the result.`;
                 if (!mcpOk) {
                     console.error(`  ✗ MCP call failed (${duration}ms)`);
                 }
-                console.error(`\nOutput: ${testOutput.slice(0, 300)}`);
-                if (options.debug && testStderr) {
-                    console.error(`\nStderr: ${testStderr.slice(0, 300)}`);
+                if (options.debug) {
+                    console.error(`\nRaw output (${testOutput.length} chars):\n${testOutput}`);
+                    if (testStderr) {
+                        console.error(`\nStderr:\n${testStderr}`);
+                    }
+                }
+                else {
+                    console.error(`\nOutput: ${testOutput.slice(0, 300)}`);
                 }
                 if (!envOk) {
                     console.error('\n❌ Environment issue from sandbox\n');
@@ -2218,12 +2359,14 @@ Exit immediately after outputting the result.`;
                 else {
                     console.error('\n❌ MCP connectivity issue from sandbox\n');
                     console.error('Possible causes:');
-                    console.error('  - socat not in sandbox PATH');
-                    console.error('  - Socket/port not accessible from sandbox');
+                    console.error('  - nc/socat not in sandbox PATH');
+                    console.error('  - Port not accessible from sandbox (check allowedDomains includes 127.0.0.1)');
                     console.error('  - Claude MCP initialization failed');
                 }
             }
             // Cleanup
+            if (spawnBridgeCleanup)
+                spawnBridgeCleanup();
             fs.rmSync(agentDir, { recursive: true, force: true });
             process.exit(success ? 0 : 1);
         }
@@ -2238,6 +2381,8 @@ Exit immediately after outputting the result.`;
                 console.error('\n❌ Cannot spawn test agent\n');
             }
             // Cleanup
+            if (spawnBridgeCleanup)
+                spawnBridgeCleanup();
             fs.rmSync(agentDir, { recursive: true, force: true });
             process.exit(1);
         }

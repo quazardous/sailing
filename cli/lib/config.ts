@@ -101,8 +101,8 @@ export const CONFIG_SCHEMA: Record<string, ConfigSchemaEntry> = {
   },
   'agent.auto_pr': {
     type: 'boolean',
-    default: true,
-    description: 'Auto-create PR/MR when agent completes successfully'
+    default: false,
+    description: 'Auto-create PR/MR when agent completes successfully (WIP)'
   },
   'agent.pr_draft': {
     type: 'boolean',
@@ -119,7 +119,7 @@ export const CONFIG_SCHEMA: Record<string, ConfigSchemaEntry> = {
     type: 'enum',
     default: 'socket',
     values: ['socket', 'port'],
-    description: 'MCP transport: socket (Unix socket, required for Linux sandbox) or port (TCP)'
+    description: 'MCP transport: socket (Unix socket) or port (TCP, required for Linux sandbox)'
   },
   'agent.mcp_port_range': {
     type: 'string',
@@ -135,6 +135,11 @@ export const CONFIG_SCHEMA: Record<string, ConfigSchemaEntry> = {
     type: 'number',
     default: 300,
     description: 'Kill agent if no output for N seconds (0 = disabled)'
+  },
+  'agent.auto_diagnose': {
+    type: 'boolean',
+    default: true,
+    description: 'Auto-run diagnostic after agent completes to detect sandbox issues'
   },
   'output.color': {
     type: 'boolean',

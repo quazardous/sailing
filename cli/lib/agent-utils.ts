@@ -89,10 +89,11 @@ export function checkAgentCompletion(taskId) {
   const resultFile = path.join(agentDir, 'result.yaml');
   const sentinelFile = path.join(agentDir, 'done');
 
-  // Also check state.json for completed status with exit_code=0
+  // Also check state.json for completed status
+  // Note: exit_code may be undefined for legacy entries, so we only check status
   const state = loadState();
   const agentInfo = state.agents?.[taskId];
-  const stateComplete = agentInfo?.status === 'completed' && agentInfo?.exit_code === 0;
+  const stateComplete = agentInfo?.status === 'completed';
 
   return {
     complete: fs.existsSync(sentinelFile) || fs.existsSync(resultFile) || stateComplete,

@@ -89,6 +89,7 @@ const DEFAULT_PATHS: Record<string, { path: string; type: 'dir' | 'file' }> = {
   worktrees:    { path: '${haven}/worktrees', type: 'dir' },
   runs:         { path: '${haven}/runs', type: 'dir' },
   assignments:  { path: '${haven}/assignments', type: 'dir' },
+  diagnostics:  { path: '${haven}/diagnostics', type: 'dir' },
   srtConfig:    { path: '${haven}/srt-settings.json', type: 'file' }
 };
 

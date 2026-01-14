@@ -149,6 +149,116 @@ export function registerUtilCommands(program) {
       console.log(`Created: ${configPath}`);
     });
 
+  // config:get - get a config value
+  config.command('get <key>')
+    .description('Get a config value (e.g., agent.mcp_mode)')
+    .action((key: string) => {
+      const schema: ConfigSchema = getSchema();
+
+      // Validate key exists in schema
+      if (!schema[key]) {
+        console.error(`Unknown config key: ${key}`);
+        console.error('\nAvailable keys:');
+        Object.keys(schema).sort().forEach(k => console.error(`  ${k}`));
+        process.exit(1);
+      }
+
+      // Get current value (merged config)
+      const agentConfig = getAgentConfig();
+      const [section, ...rest] = key.split('.');
+      const property = rest.join('.');
+
+      // Navigate to the value
+      let value: unknown;
+      if (section === 'agent') {
+        value = agentConfig[property];
+      } else if (section === 'git') {
+        value = agentConfig[`git_${property}`] ?? schema[key].default;
+      } else {
+        // For other sections, read from raw config
+        const configPath = getConfigPath();
+        if (fs.existsSync(configPath)) {
+          try {
+            const configData = yaml.load(fs.readFileSync(configPath, 'utf8')) as Record<string, Record<string, unknown>> || {};
+            value = configData[section]?.[property] ?? schema[key].default;
+          } catch {
+            value = schema[key].default;
+          }
+        } else {
+          value = schema[key].default;
+        }
+      }
+
+      console.log(value);
+    });
+
+  // config:set - set a config value
+  config.command('set <key> <value>')
+    .description('Set a config value (e.g., agent.mcp_mode socket)')
+    .action((key: string, value: string) => {
+      const schema: ConfigSchema = getSchema();
+
+      // Validate key exists in schema
+      if (!schema[key]) {
+        console.error(`Unknown config key: ${key}`);
+        console.error('\nAvailable keys:');
+        Object.keys(schema).sort().forEach(k => console.error(`  ${k}`));
+        process.exit(1);
+      }
+
+      const def = schema[key];
+
+      // Validate value against schema
+      let parsedValue: unknown = value;
+
+      if (def.type === 'boolean') {
+        if (value === 'true' || value === '1') parsedValue = true;
+        else if (value === 'false' || value === '0') parsedValue = false;
+        else {
+          console.error(`Invalid boolean value: ${value} (use true/false)`);
+          process.exit(1);
+        }
+      } else if (def.type === 'number') {
+        parsedValue = parseFloat(value);
+        if (isNaN(parsedValue as number)) {
+          console.error(`Invalid number value: ${value}`);
+          process.exit(1);
+        }
+      } else if (def.type === 'enum' && def.values) {
+        if (!def.values.includes(value)) {
+          console.error(`Invalid value: ${value}`);
+          console.error(`Valid values: ${def.values.join(', ')}`);
+          process.exit(1);
+        }
+      }
+
+      // Load existing config
+      const configPath = getConfigPath();
+      let configData: Record<string, Record<string, unknown>> = {};
+
+      if (fs.existsSync(configPath)) {
+        try {
+          configData = yaml.load(fs.readFileSync(configPath, 'utf8')) as Record<string, Record<string, unknown>> || {};
+        } catch (e) {
+          console.error(`Failed to parse config.yaml: ${e.message}`);
+          process.exit(1);
+        }
+      }
+
+      // Set the value (key format: section.property)
+      const [section, ...rest] = key.split('.');
+      const property = rest.join('.');
+
+      if (!configData[section]) {
+        configData[section] = {};
+      }
+      configData[section][property] = parsedValue;
+
+      // Write back
+      fs.writeFileSync(configPath, yaml.dump(configData, { lineWidth: -1 }));
+      console.log(`Set ${key} = ${parsedValue}`);
+    });
+
   // config:check
   config.command('check')
     .description('Validate project setup (files, folders, YAML syntax)')

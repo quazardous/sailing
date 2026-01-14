@@ -4,6 +4,16 @@ All notable changes to the Sailing Framework will be documented in this file.
 
 <!-- NOTE: This is a USER changelog, not a commit log. Focus on user-visible features and benefits, not implementation details. -->
 
+## [1.9.0] - 2026-01-15
+
+### Added
+- `config:set` and `config:get` commands for easy configuration management
+- `rudder-mcp restart` command to apply config changes
+- Linux sandbox: full MCP connectivity via `allowAllUnixSockets` and socat bridge
+
+### Fixed
+- Sandbox agents can now connect to MCP server on Linux (both socket and port modes)
+
 ## [1.8.0] - 2026-01-14
 
 ### Added

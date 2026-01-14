@@ -8,7 +8,7 @@ import path from 'path';
 import fs from 'fs';
 import { getAgentConfig } from './config.js';
 import { getAgentsDir, getPathsInfo } from './core.js';
-import { spawnClaudeWithSrt, generateSrtConfig, generateAgentMcpConfig, checkMcpServer } from './srt.js';
+import { spawnClaudeWithSrt, generateSrtConfig, generateAgentMcpConfig, checkMcpServer, startSocatBridge } from './srt.js';
 // Alias for internal use
 const getAgentsBaseDir = getAgentsDir;
 /**
@@ -69,11 +69,16 @@ export function generateAgentSrtConfig(options) {
     }
     // Block artefacts - agent should use MCP context:load, not read files
     additionalDenyReadPaths.push(path.join(havenDir, 'artefacts'));
+    // On Linux, allowAllUnixSockets is required to disable seccomp AF_UNIX blocking
+    // This allows the agent to connect to MCP server via Unix socket
+    const isLinux = process.platform === 'linux';
     return generateSrtConfig({
         baseConfigPath: paths.srtConfig?.absolute,
         outputPath: path.join(agentDir, 'srt-settings.json'),
         additionalWritePaths,
         additionalDenyReadPaths,
+        allowUnixSockets: mcpSocket ? [mcpSocket] : [],
+        allowAllUnixSockets: isLinux, // Required for socket mode on Linux
         strictMode: true
     });
 }
@@ -118,6 +123,11 @@ export async function spawnClaude(options) {
     let mcpPid = null;
     let mcpPort = null;
     let mcpServerPath = null;
+    // Socat bridge for port mode on Linux (works around --unshare-net)
+    let bridgePid = null;
+    let bridgeSocket = null;
+    let bridgeCleanup = null;
+    const isLinux = process.platform === 'linux';
     if (useExternalMcp) {
         const havenDir = getHavenDir(agentDir);
         const mcpStatus = checkMcpServer(havenDir);
@@ -130,13 +140,37 @@ export async function spawnClaude(options) {
         mcpPid = mcpStatus.pid;
         // Generate MCP config based on mode (socket or port)
         if (mcpStatus.mode === 'port') {
-            mcpInfo = generateAgentMcpConfig({
-                outputPath: path.join(agentDir, 'mcp-config.json'),
-                projectRoot,
-                externalPort: mcpStatus.port
-            });
-            mcpPort = mcpStatus.port ?? null;
-            console.error(`Using MCP server (pid: ${mcpPid}, port: ${mcpStatus.port})`);
+            // On Linux with sandbox, port mode needs a socat bridge
+            // because --unshare-net isolates the network namespace
+            if (isLinux && sandbox) {
+                // Start socat bridge: Unix socket → TCP port
+                const bridgeSocketPath = path.join(agentDir, 'mcp-bridge.sock');
+                const bridge = startSocatBridge({
+                    socketPath: bridgeSocketPath,
+                    targetPort: mcpStatus.port
+                });
+                bridgePid = bridge.pid;
+                bridgeSocket = bridge.socket;
+                bridgeCleanup = bridge.cleanup;
+                // Agent connects to bridge socket instead of TCP port
+                mcpSocket = bridgeSocket;
+                mcpInfo = generateAgentMcpConfig({
+                    outputPath: path.join(agentDir, 'mcp-config.json'),
+                    projectRoot,
+                    externalSocket: bridgeSocket // Use bridge socket
+                });
+                console.error(`Using MCP server (pid: ${mcpPid}, port: ${mcpStatus.port} via bridge socket)`);
+            }
+            else {
+                // Non-Linux or no sandbox: direct TCP connection
+                mcpInfo = generateAgentMcpConfig({
+                    outputPath: path.join(agentDir, 'mcp-config.json'),
+                    projectRoot,
+                    externalPort: mcpStatus.port
+                });
+                mcpPort = mcpStatus.port ?? null;
+                console.error(`Using MCP server (pid: ${mcpPid}, port: ${mcpStatus.port})`);
+            }
         }
         else {
             mcpSocket = mcpStatus.socket;
@@ -158,6 +192,9 @@ export async function spawnClaude(options) {
         });
     }
     // Generate srt config if sandbox enabled
+    // On Linux, sandbox + MCP requires:
+    // - allowAllUnixSockets: true (disables seccomp AF_UNIX blocking)
+    // - For port mode: socat bridge (started above) to work around --unshare-net
     let srtConfigPath = null;
     if (sandbox) {
         if (agentDir) {
@@ -167,7 +204,7 @@ export async function spawnClaude(options) {
                 logFile,
                 taskId,
                 externalMcp: !!mcpSocket, // Strict sandbox if external MCP is active
-                mcpSocket // Bind-mount socket into sandbox
+                mcpSocket // Pass socket for macOS allowUnixSockets
             });
         }
         else if (paths.srtConfig?.absolute) {
@@ -207,6 +244,12 @@ export async function spawnClaude(options) {
         maxBudgetUsd,
         watchdogTimeout
     });
+    // Clean up bridge when process exits
+    if (bridgeCleanup) {
+        result.process.on('exit', () => {
+            bridgeCleanup();
+        });
+    }
     return {
         ...result,
         srtConfig: srtConfigPath,
@@ -215,7 +258,10 @@ export async function spawnClaude(options) {
         mcpPid,
         mcpPort,
         mcpServerPath,
-        sandboxHome
+        sandboxHome,
+        bridgePid,
+        bridgeSocket,
+        bridgeCleanup
     };
 }
 /**

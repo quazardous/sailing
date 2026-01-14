@@ -104,6 +104,7 @@ export interface SailingConfig {
     mcp_port_range: string;
     max_budget_usd: number;
     watchdog_timeout: number;
+    auto_diagnose: boolean;
   };
   output: {
     color: boolean;

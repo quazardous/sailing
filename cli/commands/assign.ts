@@ -751,6 +751,8 @@ export function registerAssignCommands(program) {
   // assign:release TNNN
   withModifies(assign.command('release <task-id>'), ['task'])
     .description('Release assignment (agent finished)')
+    .option('--status <status>', 'Task completion status (Done or Blocked)', 'Done')
+    .option('--json', 'JSON output')
     .action((taskId: string, options: { status: string; json?: boolean }) => {
       const normalized = normalizeId(taskId);
 
