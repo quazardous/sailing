@@ -58,8 +58,11 @@ export const STATUS_ALIASES: Record<string, string> = {
   approved: 'Approved'
 };
 
-// Effort levels
-export const EFFORT = ['S', 'M', 'L', 'XL'] as const;
+// Legacy effort levels (T-shirt sizes) - kept for backward compatibility
+export const LEGACY_EFFORT = ['S', 'M', 'L', 'XL'] as const;
+
+// Duration pattern: number followed by 'h' (e.g., "4h", "0.5h", "16h")
+const DURATION_PATTERN = /^(\d+(?:\.\d+)?)\s*h$/i;
 
 // Priority levels
 export const PRIORITY = ['low', 'normal', 'high', 'critical'] as const;
@@ -142,15 +145,90 @@ export function validateStatus(status: string | null | undefined, entityType: En
 }
 
 /**
- * Validate effort level
+ * Validate effort/duration
+ * Accepts: duration format (e.g., "4h", "0.5h") or legacy T-shirt sizes (S, M, L, XL)
  */
 export function validateEffort(effort: string | null | undefined): string | null {
   if (!effort) return null; // Optional
-  const upper = effort.toUpperCase();
-  if (!EFFORT.includes(upper as (typeof EFFORT)[number])) {
-    return `Invalid effort "${effort}". Valid: ${EFFORT.join(', ')}`;
+
+  // Check if it's a valid duration format (e.g., "4h", "0.5h")
+  if (DURATION_PATTERN.test(effort)) {
+    return null; // Valid duration
   }
-  return null;
+
+  // Check if it's a legacy T-shirt size
+  const upper = effort.toUpperCase();
+  if (LEGACY_EFFORT.includes(upper as (typeof LEGACY_EFFORT)[number])) {
+    return null; // Valid legacy effort
+  }
+
+  return `Invalid effort "${effort}". Use duration (e.g., 4h, 8h) or legacy sizes: ${LEGACY_EFFORT.join(', ')}`;
+}
+
+/**
+ * Get effort as raw string (for display)
+ */
+export function getEffort(effort: string | null | undefined): string | null {
+  if (!effort) return null;
+  return effort;
+}
+
+/**
+ * Parse effort map from config string
+ * Format: "S=2h,M=4h,L=8h,XL=16h"
+ */
+function parseEffortMap(mapStr: string): Record<string, number> {
+  const map: Record<string, number> = {};
+  for (const pair of mapStr.split(',')) {
+    const [key, value] = pair.trim().split('=');
+    if (key && value) {
+      const match = value.match(/^(\d+(?:\.\d+)?)\s*h?$/i);
+      if (match) {
+        map[key.toUpperCase()] = parseFloat(match[1]);
+      }
+    }
+  }
+  return map;
+}
+
+/**
+ * Get duration in hours from effort value
+ * - If duration format (e.g., "4h"), parse and return hours
+ * - If legacy T-shirt size, use effort_map from config
+ * - Falls back to default_duration from config
+ *
+ * @param effort - The effort value from frontmatter
+ * @param config - Optional config object { default_duration: '1h', effort_map: 'S=2h,...' }
+ * @returns Duration in hours
+ */
+export function getDuration(
+  effort: string | null | undefined,
+  config?: { default_duration?: string; effort_map?: string }
+): number {
+  const defaultDuration = config?.default_duration || '1h';
+  const effortMapStr = config?.effort_map || 'S=0.5h,M=1h,L=2h,XL=4h';
+
+  // Parse default duration
+  const defaultMatch = defaultDuration.match(/^(\d+(?:\.\d+)?)\s*h?$/i);
+  const defaultHours = defaultMatch ? parseFloat(defaultMatch[1]) : 1;
+
+  if (!effort) return defaultHours;
+
+  // Check if it's a duration format (e.g., "4h", "0.5h")
+  const durationMatch = effort.match(DURATION_PATTERN);
+  if (durationMatch) {
+    return parseFloat(durationMatch[1]);
+  }
+
+  // Check if it's a legacy T-shirt size
+  const upper = effort.toUpperCase();
+  if (LEGACY_EFFORT.includes(upper as (typeof LEGACY_EFFORT)[number])) {
+    const effortMap = parseEffortMap(effortMapStr);
+    return effortMap[upper] || defaultHours;
+  }
+
+  // Fallback to default
+  return defaultHours;
 }
 
 /**

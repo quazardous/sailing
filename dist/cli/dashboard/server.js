@@ -7,8 +7,29 @@ import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-export function createServer(port, routes) {
+const DEFAULT_TIMEOUT = 300; // 5 minutes
+export function createServer(port, routes, options = {}) {
+    const timeoutSeconds = options.timeout === undefined || options.timeout === 0
+        ? DEFAULT_TIMEOUT
+        : options.timeout;
+    let timeoutTimer = null;
+    let onTimeout = null;
+    const resetTimeout = () => {
+        if (timeoutTimer) {
+            clearTimeout(timeoutTimer);
+            timeoutTimer = null;
+        }
+        if (timeoutSeconds > 0) {
+            timeoutTimer = setTimeout(() => {
+                console.log(`\nIdle timeout (${timeoutSeconds}s) - shutting down...`);
+                if (onTimeout)
+                    onTimeout();
+            }, timeoutSeconds * 1000);
+        }
+    };
     const server = http.createServer(async (req, res) => {
+        // Reset timeout on each request
+        resetTimeout();
         const url = new URL(req.url || '/', `http://localhost:${port}`);
         const pathname = url.pathname;
         // CORS for local dev
@@ -48,7 +69,12 @@ export function createServer(port, routes) {
     });
     let actualPort = port;
     return {
-        start: (callback) => {
+        start: (callback, onShutdown) => {
+            onTimeout = () => {
+                server.close();
+                if (onShutdown)
+                    onShutdown();
+            };
             const tryListen = (p) => {
                 server.once('error', (err) => {
                     if (err.code === 'EADDRINUSE') {
@@ -62,6 +88,8 @@ export function createServer(port, routes) {
                 server.listen(p, '127.0.0.1', () => {
                     actualPort = p;
                     console.log(`Dashboard: http://127.0.0.1:${actualPort}`);
+                    // Start initial timeout
+                    resetTimeout();
                     if (callback)
                         callback(actualPort);
                 });
@@ -69,8 +97,13 @@ export function createServer(port, routes) {
             tryListen(port);
         },
         stop: () => {
+            if (timeoutTimer) {
+                clearTimeout(timeoutTimer);
+                timeoutTimer = null;
+            }
             server.close();
         },
+        resetTimeout,
         get port() {
             return actualPort;
         }

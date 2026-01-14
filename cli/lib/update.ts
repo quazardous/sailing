@@ -1,7 +1,7 @@
 /**
  * Update utilities for parsing flags and updating entity data
  */
-import { normalizeStatus, STATUS, EFFORT, PRIORITY } from './lexicon.js';
+import { normalizeStatus, STATUS, PRIORITY, validateEffort, LEGACY_EFFORT } from './lexicon.js';
 import { formatId } from './config.js';
 import { Task, Epic, Prd } from './types/entities.js';
 
@@ -93,12 +93,12 @@ export function parseUpdateOptions(
   // Task-specific options
   if (entityType === 'task') {
     if (options.effort) {
-      const effort = options.effort.toUpperCase();
-      if (EFFORT.includes(effort as any)) {
-        data.effort = effort as any;
+      const error = validateEffort(options.effort);
+      if (!error) {
+        data.effort = options.effort;
         updated = true;
       } else {
-        console.error(`Invalid effort: ${effort}. Use ${EFFORT.join(', ')}.`);
+        console.error(error);
       }
     }
 

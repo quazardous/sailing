@@ -14,7 +14,7 @@ export interface Task extends BaseEntity {
   assignee?: string;
   blocked_by?: string[];
   stories?: string[];
-  effort?: 'S' | 'M' | 'L' | 'XL';
+  effort?: string; // Duration (e.g., "4h") or legacy T-shirt size (S, M, L, XL)
   priority?: 'low' | 'normal' | 'high' | 'critical';
   target_versions?: Record<string, string>;
 }
@@ -58,4 +58,42 @@ export interface PrdIndexEntry {
   dir: string;
   file: string;
   data: Partial<Prd>;
+}
+
+/**
+ * Full task with all metadata for display/scheduling
+ */
+export interface FullTask {
+  id: string;
+  title: string;
+  status: string;
+  description: string;
+  meta: Record<string, unknown>;
+}
+
+/**
+ * Full epic with its tasks
+ */
+export interface FullEpic {
+  id: string;
+  title: string;
+  status: string;
+  description: string;
+  meta: Record<string, unknown>;
+  tasks: FullTask[];
+}
+
+/**
+ * Full PRD with epics and tasks hierarchy
+ */
+export interface FullPrd {
+  id: string;
+  title: string;
+  status: string;
+  description: string;
+  meta: Record<string, unknown>;
+  epics: FullEpic[];
+  totalTasks: number;
+  doneTasks: number;
+  progress: number;
 }

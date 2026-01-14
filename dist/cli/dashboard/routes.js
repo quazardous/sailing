@@ -6,7 +6,8 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import { html, json } from './server.js';
 import { findFiles, loadFile, getMemoryDir, findProjectRoot } from '../lib/core.js';
-import { getConfigDisplay } from '../lib/config.js';
+import { getConfigDisplay, getConfigValue } from '../lib/config.js';
+import { calculateGanttMetrics, getTaskSchedules, calculateTheoreticalSchedule, calculateRealSchedule, getScheduleEnvelope } from '../lib/scheduling.js';
 import { getConfigInfo } from '../lib/core.js';
 import { getAllVersions, getMainVersion, getMainComponentName } from '../lib/version.js';
 import { buildPrdIndex, buildEpicIndex, buildTaskIndex } from '../lib/index.js';
@@ -559,305 +560,335 @@ function renderPrdDag(dagWithTasks, dagWithoutTasks) {
     ${tooltipScript}
   `;
 }
-// Generate Mermaid Gantt chart for a PRD
+// Generate custom Gantt data for a PRD (hour-based with real scheduling)
 function generatePrdGantt(prd) {
-    const lines = ['gantt'];
-    lines.push(`  title ${prd.id} - ${escapeTitle(prd.title)}`);
-    lines.push('  dateFormat YYYY-MM-DD');
-    lines.push('  axisFormat %m/%d');
-    lines.push('');
-    // Collect all tasks with their dates and dependencies
+    // Get config for effort duration mapping
+    const effortConfig = {
+        default_duration: getConfigValue('task.default_duration') || '1h',
+        effort_map: getConfigValue('task.effort_map') || 'S=0.5h,M=1h,L=2h,XL=4h'
+    };
+    // Collect all tasks with their dependencies and real dates
     const taskData = new Map();
+    // Calculate T0 from earliest started_at
+    let earliestDate = null;
     for (const epic of prd.epics) {
         for (const task of epic.tasks) {
-            const startedAt = task.meta?.started_at;
-            const doneAt = task.meta?.done_at;
             const blockedBy = task.meta?.blocked_by;
             const blockers = blockedBy ? (Array.isArray(blockedBy) ? blockedBy : [blockedBy]) : [];
-            const milestone = task.meta?.milestone;
+            const effort = task.meta?.effort;
+            const startedAt = task.meta?.started_at;
+            const doneAt = task.meta?.done_at;
+            // Track earliest started_at for T0
+            if (startedAt) {
+                const d = new Date(startedAt);
+                if (!earliestDate || d < earliestDate) {
+                    earliestDate = d;
+                }
+            }
             taskData.set(task.id, {
                 id: task.id,
                 title: task.title,
-                start: startedAt ? new Date(startedAt) : null,
-                end: doneAt ? new Date(doneAt) : null,
                 status: task.status,
+                effort: effort || null,
                 blockedBy: blockers.filter((b) => typeof b === 'string'),
+                startedAt,
+                doneAt,
                 epicId: epic.id,
-                milestone: milestone || null
+                epicTitle: epic.title
             });
         }
     }
-    // Calculate critical path using simple forward/backward pass
-    const criticalPath = calculateCriticalPath(taskData);
-    // Group tasks by epic, then by milestone
+    // T0 = earliest started_at or today
+    const t0 = earliestDate ? new Date(earliestDate) : new Date();
+    t0.setHours(0, 0, 0, 0);
+    // Calculate all metrics using centralized function
+    const metrics = calculateGanttMetrics(taskData, effortConfig, t0);
+    const schedule = getTaskSchedules(taskData, effortConfig, t0);
+    // Build Gantt tasks array with hour-based scheduling
+    const ganttTasks = [];
+    // Build task-to-epic mapping
+    const taskToEpic = new Map();
     for (const epic of prd.epics) {
-        if (epic.tasks.length === 0)
-            continue;
-        // Group tasks by milestone within this epic
-        const tasksByMilestone = new Map();
-        tasksByMilestone.set('', []); // Tasks without milestone
         for (const task of epic.tasks) {
-            const data = taskData.get(task.id);
-            const milestone = data?.milestone || '';
-            if (!tasksByMilestone.has(milestone)) {
-                tasksByMilestone.set(milestone, []);
-            }
-            tasksByMilestone.get(milestone).push(task);
+            taskToEpic.set(task.id, epic.id);
         }
-        // Output tasks by milestone (empty milestone first, then named milestones)
-        const milestoneKeys = Array.from(tasksByMilestone.keys()).sort((a, b) => {
-            if (a === '')
-                return -1;
-            if (b === '')
-                return 1;
-            return a.localeCompare(b);
-        });
-        for (const milestone of milestoneKeys) {
-            const tasks = tasksByMilestone.get(milestone);
-            if (tasks.length === 0)
+    }
+    // Build epic dependency graph: if task in Epic B is blocked by task in Epic A, then A -> B
+    const epicBlockedBy = new Map(); // epicId -> set of epic IDs that block it
+    for (const epic of prd.epics) {
+        epicBlockedBy.set(epic.id, new Set());
+    }
+    for (const epic of prd.epics) {
+        for (const task of epic.tasks) {
+            const blockers = task.meta?.blocked_by;
+            if (!blockers)
                 continue;
-            // Section label: Epic ID / Milestone or just Epic ID
-            const sectionLabel = milestone
-                ? `${epic.id} / ${escapeGanttLabel(milestone)}`
-                : epic.id;
-            lines.push(`  section ${sectionLabel}`);
-            for (const task of tasks) {
-                const data = taskData.get(task.id);
-                if (!data)
+            const blockerList = Array.isArray(blockers) ? blockers : [blockers];
+            for (const blockerId of blockerList) {
+                if (typeof blockerId !== 'string')
                     continue;
-                // Determine status class for Gantt
-                const isCritical = criticalPath.includes(task.id);
-                let statusTag = '';
-                if (data.status === 'Done') {
-                    statusTag = isCritical ? 'crit, done,' : 'done,';
-                }
-                else if (data.status === 'In Progress' || data.status === 'WIP') {
-                    statusTag = isCritical ? 'crit, active,' : 'active,';
-                }
-                else if (isCritical) {
-                    statusTag = 'crit,';
-                }
-                // Calculate duration in days
-                const durationDays = data.start && data.end
-                    ? Math.max(1, Math.ceil((data.end.getTime() - data.start.getTime()) / (1000 * 60 * 60 * 24)))
-                    : 1;
-                // Task dependencies - filter to only include valid task IDs that exist
-                const validBlockers = data.blockedBy.filter(id => taskData.has(id));
-                const afterStr = validBlockers.length > 0 ? `after ${validBlockers.join(' ')}` : '';
-                // Gantt task line - always use duration format for consistency
-                const statusText = data.status && data.status !== 'Done' ? ` [${data.status}]` : '';
-                const taskLabel = `${task.id} ${escapeGanttLabel(task.title)}${statusText}`;
-                const startDate = data.start ? formatGanttDate(data.start) : formatGanttDate(new Date());
-                if (afterStr) {
-                    lines.push(`  ${taskLabel} :${statusTag}${task.id}, ${afterStr}, ${durationDays}d`);
-                }
-                else {
-                    // Use start date + duration
-                    lines.push(`  ${taskLabel} :${statusTag}${task.id}, ${startDate}, ${durationDays}d`);
+                const blockerEpicId = taskToEpic.get(blockerId);
+                if (blockerEpicId && blockerEpicId !== epic.id) {
+                    // Epic containing blocker task blocks this epic
+                    epicBlockedBy.get(epic.id)?.add(blockerEpicId);
                 }
             }
         }
-        lines.push('');
     }
-    return { ganttCode: lines.join('\n'), criticalPath };
-}
-// Helper to format date for Gantt
-function formatGanttDate(date) {
-    return date.toISOString().split('T')[0];
-}
-// Helper to add days to a date
-function addDays(date, days) {
-    const result = new Date(date);
-    result.setDate(result.getDate() + days);
-    return result;
-}
-// Calculate critical path using simplified forward/backward pass
-function calculateCriticalPath(taskData) {
-    const tasks = Array.from(taskData.values());
-    if (tasks.length === 0)
-        return [];
-    // Build adjacency list (task -> tasks that depend on it)
-    const dependents = new Map();
-    for (const task of tasks) {
-        for (const blocker of task.blockedBy) {
-            if (!dependents.has(blocker)) {
-                dependents.set(blocker, []);
-            }
-            dependents.get(blocker).push(task.id);
-        }
+    // Topological sort of epics (Kahn's algorithm)
+    const inDegree = new Map();
+    for (const epic of prd.epics) {
+        inDegree.set(epic.id, epicBlockedBy.get(epic.id)?.size || 0);
     }
-    // Calculate task duration in days
-    const getDuration = (task) => {
-        if (task.start && task.end) {
-            return Math.max(1, Math.ceil((task.end.getTime() - task.start.getTime()) / (1000 * 60 * 60 * 24)));
-        }
-        return 1; // Default 1 day
-    };
-    // Forward pass: calculate earliest start and finish times
-    const earliestStart = new Map();
-    const earliestFinish = new Map();
-    const calculateEarliest = (taskId) => {
-        if (earliestFinish.has(taskId))
-            return earliestFinish.get(taskId);
-        const task = taskData.get(taskId);
-        if (!task)
-            return 0;
-        // Earliest start is max of all blockers' earliest finish
-        let es = 0;
-        for (const blocker of task.blockedBy) {
-            es = Math.max(es, calculateEarliest(blocker));
-        }
-        earliestStart.set(taskId, es);
-        const ef = es + getDuration(task);
-        earliestFinish.set(taskId, ef);
-        return ef;
-    };
-    // Calculate for all tasks
-    for (const task of tasks) {
-        calculateEarliest(task.id);
+    const sortedEpics = [];
+    const queue = [];
+    // Start with epics that have no blockers
+    for (const [epicId, degree] of inDegree) {
+        if (degree === 0)
+            queue.push(epicId);
     }
-    // Find project end (max earliest finish)
-    const projectEnd = Math.max(...Array.from(earliestFinish.values()));
-    // Backward pass: calculate latest start and finish times
-    const latestFinish = new Map();
-    const latestStart = new Map();
-    const calculateLatest = (taskId) => {
-        if (latestStart.has(taskId))
-            return latestStart.get(taskId);
-        const task = taskData.get(taskId);
-        if (!task)
-            return projectEnd;
-        // Latest finish is min of all dependents' latest start
-        const deps = dependents.get(taskId) || [];
-        let lf = projectEnd;
-        for (const dep of deps) {
-            lf = Math.min(lf, calculateLatest(dep));
-        }
-        latestFinish.set(taskId, lf);
-        const ls = lf - getDuration(task);
-        latestStart.set(taskId, ls);
-        return ls;
-    };
-    // Calculate for all tasks
-    for (const task of tasks) {
-        calculateLatest(task.id);
-    }
-    // Critical path: tasks where slack (LF - EF) is 0
-    const criticalPath = [];
-    for (const task of tasks) {
-        const ef = earliestFinish.get(task.id) || 0;
-        const lf = latestFinish.get(task.id) || 0;
-        if (lf - ef === 0) {
-            criticalPath.push(task.id);
-        }
-    }
-    return criticalPath;
-}
-// Render Gantt container with legend
-function renderGantt(ganttCode, criticalPath) {
-    return `
-    <div class="gantt-legend">
-      <div class="gantt-legend-item"><div class="gantt-legend-color done"></div> Done</div>
-      <div class="gantt-legend-item"><div class="gantt-legend-color active"></div> In Progress</div>
-      <div class="gantt-legend-item"><div class="gantt-legend-color crit"></div> Critical Path</div>
-      <span style="margin-left: auto; font-size: 11px; color: var(--text-dim);">
-        ${criticalPath.length} tasks on critical path
-      </span>
-    </div>
-    <div class="dag-container">
-      <div class="mermaid">${ganttCode}</div>
-    </div>
-  `;
-}
-// Generate Mermaid Gantt chart for an Epic
-function generateEpicGantt(epic) {
-    const lines = ['gantt'];
-    lines.push(`  title ${epic.id} - ${escapeTitle(epic.title)}`);
-    lines.push('  dateFormat YYYY-MM-DD');
-    lines.push('  axisFormat %m/%d');
-    lines.push('');
-    // Collect all tasks with their dates, dependencies, and milestones
-    const taskData = new Map();
-    for (const task of epic.tasks) {
-        const startedAt = task.meta?.started_at;
-        const doneAt = task.meta?.done_at;
-        const blockedBy = task.meta?.blocked_by;
-        const blockers = blockedBy ? (Array.isArray(blockedBy) ? blockedBy : [blockedBy]) : [];
-        const milestone = task.meta?.milestone;
-        taskData.set(task.id, {
-            id: task.id,
-            start: startedAt ? new Date(startedAt) : null,
-            end: doneAt ? new Date(doneAt) : null,
-            blockedBy: blockers.filter((b) => typeof b === 'string'),
-            milestone: milestone || null
+    while (queue.length > 0) {
+        // Sort queue by earliest task startHour for deterministic ordering among independent epics
+        queue.sort((a, b) => {
+            const epicA = prd.epics.find(e => e.id === a);
+            const epicB = prd.epics.find(e => e.id === b);
+            const aMin = Math.min(...(epicA?.tasks.map(t => schedule.get(t.id)?.startHour ?? Infinity) || [Infinity]));
+            const bMin = Math.min(...(epicB?.tasks.map(t => schedule.get(t.id)?.startHour ?? Infinity) || [Infinity]));
+            return aMin - bMin;
         });
-    }
-    // Calculate critical path
-    const criticalPath = calculateCriticalPath(taskData);
-    // Group tasks by milestone
-    const tasksByMilestone = new Map();
-    tasksByMilestone.set('', []); // Tasks without milestone
-    for (const task of epic.tasks) {
-        const data = taskData.get(task.id);
-        const milestone = data?.milestone || '';
-        if (!tasksByMilestone.has(milestone)) {
-            tasksByMilestone.set(milestone, []);
+        const epicId = queue.shift();
+        const epic = prd.epics.find(e => e.id === epicId);
+        if (epic)
+            sortedEpics.push(epic);
+        // Decrease in-degree of epics that this one blocks
+        for (const [blockedEpicId, blockers] of epicBlockedBy) {
+            if (blockers.has(epicId)) {
+                const newDegree = (inDegree.get(blockedEpicId) || 1) - 1;
+                inDegree.set(blockedEpicId, newDegree);
+                if (newDegree === 0 && !sortedEpics.find(e => e.id === blockedEpicId)) {
+                    queue.push(blockedEpicId);
+                }
+            }
         }
-        tasksByMilestone.get(milestone).push(task);
     }
-    // Output tasks by milestone (empty milestone first, then named milestones)
-    const milestoneKeys = Array.from(tasksByMilestone.keys()).sort((a, b) => {
-        if (a === '')
-            return -1;
-        if (b === '')
-            return 1;
-        return a.localeCompare(b);
-    });
-    for (const milestone of milestoneKeys) {
-        const tasks = tasksByMilestone.get(milestone);
-        if (tasks.length === 0)
-            continue;
-        // Section label: Epic ID / Milestone or just Epic ID
-        const sectionLabel = milestone
-            ? `${epic.id} / ${escapeGanttLabel(milestone)}`
-            : epic.id;
-        lines.push(`  section ${sectionLabel}`);
-        for (const task of tasks) {
+    // Add any remaining epics (circular dependencies) sorted by startHour
+    for (const epic of prd.epics) {
+        if (!sortedEpics.find(e => e.id === epic.id)) {
+            sortedEpics.push(epic);
+        }
+    }
+    // Build reverse dependency map: taskId -> tasks it blocks
+    const taskBlocks = new Map();
+    for (const [taskId, data] of taskData) {
+        taskBlocks.set(taskId, []);
+    }
+    for (const [taskId, data] of taskData) {
+        for (const blockerId of data.blockedBy) {
+            if (taskData.has(blockerId)) {
+                taskBlocks.get(blockerId)?.push(taskId);
+            }
+        }
+    }
+    for (const epic of sortedEpics) {
+        // Collect tasks for this epic
+        const epicTasks = [];
+        for (const task of epic.tasks) {
             const data = taskData.get(task.id);
             if (!data)
                 continue;
-            const isCritical = criticalPath.includes(task.id);
-            let statusTag = '';
-            if (task.status === 'Done') {
-                statusTag = isCritical ? 'crit, done,' : 'done,';
+            const taskSchedule = schedule.get(task.id);
+            const isCritical = metrics.criticalPath.includes(task.id);
+            // Valid dependencies that exist in our task set
+            const validDeps = data.blockedBy.filter(id => taskData.has(id));
+            // Build task name (status shown via color)
+            const taskName = `${task.id} ${task.title}`;
+            const startHour = taskSchedule?.startHour || 0;
+            const endHour = taskSchedule?.endHour || 1;
+            const durationHrs = taskSchedule?.durationHours || 1;
+            epicTasks.push({
+                id: task.id,
+                name: taskName,
+                startHour,
+                endHour,
+                durationHours: durationHrs,
+                status: data.status,
+                dependencies: validDeps,
+                blocks: taskBlocks.get(task.id) || [],
+                isCritical,
+                epicId: data.epicId,
+                epicTitle: data.epicTitle,
+                startedAt: data.startedAt,
+                doneAt: data.doneAt
+            });
+        }
+        // Sort tasks within epic by startHour (topological order since blockers finish before blocked tasks start)
+        epicTasks.sort((a, b) => a.startHour - b.startHour);
+        ganttTasks.push(...epicTasks);
+    }
+    return {
+        tasks: ganttTasks,
+        criticalPath: metrics.criticalPath,
+        title: `${prd.id} - ${prd.title}`,
+        totalHours: metrics.maxEndHour, // Use absolute maxEndHour since bars are positioned with absolute hours
+        t0,
+        durationHours: metrics.totalEffortHours,
+        criticalTimespanHours: metrics.criticalTimespanHours
+    };
+}
+// Render custom Gantt container with legend
+function renderGantt(tasks, criticalPath, title, totalHours, t0, durationHours, criticalTimespanHours) {
+    // Use provided T0 or calculate from earliest started_at
+    let d0;
+    if (t0) {
+        d0 = new Date(t0);
+    }
+    else {
+        let earliestDate = null;
+        for (const task of tasks) {
+            if (task.startedAt) {
+                const d = new Date(task.startedAt);
+                if (!earliestDate || d < earliestDate) {
+                    earliestDate = d;
+                }
             }
-            else if (task.status === 'In Progress' || task.status === 'WIP') {
-                statusTag = isCritical ? 'crit, active,' : 'active,';
+        }
+        d0 = earliestDate || new Date();
+    }
+    d0.setHours(0, 0, 0, 0);
+    const ganttData = {
+        tasks,
+        totalHours,
+        d0: d0.toISOString(),
+        durationHours,
+        criticalTimespanHours
+    };
+    const dataJson = JSON.stringify(ganttData).replace(/</g, '\\u003c');
+    const ganttId = `gantt-${Date.now()}`;
+    // Build stats line (round values to 1 decimal)
+    const round1 = (n) => Math.round(n * 10) / 10;
+    const statsItems = [];
+    statsItems.push(`${criticalPath.length} tasks on critical path`);
+    if (durationHours !== undefined) {
+        statsItems.push(`${round1(durationHours)}h effort`);
+    }
+    if (criticalTimespanHours !== undefined) {
+        statsItems.push(`${round1(criticalTimespanHours)}h critical`);
+    }
+    statsItems.push(`${round1(totalHours)}h span`);
+    return `
+    <div class="gantt-legend">
+      <div class="gantt-legend-item"><div class="gantt-legend-color not-started"></div> Not Started</div>
+      <div class="gantt-legend-item"><div class="gantt-legend-color active"></div> In Progress</div>
+      <div class="gantt-legend-item"><div class="gantt-legend-color done"></div> Done</div>
+      <div class="gantt-legend-item"><div class="gantt-legend-color crit"></div> Critical Path</div>
+      <span style="margin-left: auto; font-size: 11px; color: var(--text-dim);">
+        ${statsItems.join(' | ')}
+      </span>
+    </div>
+    <div class="gantt-container">
+      <div class="gantt-title">${title}</div>
+      <div class="gantt-controls">
+        <button class="gantt-zoom" data-zoom="hour">Hour</button>
+        <button class="gantt-zoom active" data-zoom="day">Day</button>
+        <button class="gantt-zoom" data-zoom="week">Week</button>
+      </div>
+      <div id="${ganttId}" class="sailing-gantt-target"></div>
+      <script type="application/json" class="gantt-data">${dataJson}</script>
+    </div>
+  `;
+}
+// Generate custom Gantt data for an Epic (hour-based with real scheduling)
+function generateEpicGantt(epic) {
+    // Get config for effort duration mapping
+    const effortConfig = {
+        default_duration: getConfigValue('task.default_duration') || '1h',
+        effort_map: getConfigValue('task.effort_map') || 'S=0.5h,M=1h,L=2h,XL=4h'
+    };
+    // Collect all tasks with their dependencies and real dates
+    const taskData = new Map();
+    // Calculate T0 from earliest started_at
+    let earliestDate = null;
+    for (const task of epic.tasks) {
+        const blockedBy = task.meta?.blocked_by;
+        const blockers = blockedBy ? (Array.isArray(blockedBy) ? blockedBy : [blockedBy]) : [];
+        const effort = task.meta?.effort;
+        const startedAt = task.meta?.started_at;
+        const doneAt = task.meta?.done_at;
+        // Track earliest started_at for T0
+        if (startedAt) {
+            const d = new Date(startedAt);
+            if (!earliestDate || d < earliestDate) {
+                earliestDate = d;
             }
-            else if (isCritical) {
-                statusTag = 'crit,';
-            }
-            // Calculate duration in days
-            const durationDays = data.start && data.end
-                ? Math.max(1, Math.ceil((data.end.getTime() - data.start.getTime()) / (1000 * 60 * 60 * 24)))
-                : 1;
-            // Task dependencies - filter to only include valid task IDs that exist
-            const validBlockers = data.blockedBy.filter(id => taskData.has(id));
-            const afterStr = validBlockers.length > 0 ? `after ${validBlockers.join(' ')}` : '';
-            // Gantt task line - always use duration format for consistency
-            const statusText = task.status && task.status !== 'Done' ? ` [${task.status}]` : '';
-            const taskLabel = `${task.id} ${escapeGanttLabel(task.title)}${statusText}`;
-            const startDate = data.start ? formatGanttDate(data.start) : formatGanttDate(new Date());
-            if (afterStr) {
-                lines.push(`  ${taskLabel} :${statusTag}${task.id}, ${afterStr}, ${durationDays}d`);
-            }
-            else {
-                // Use start date + duration
-                lines.push(`  ${taskLabel} :${statusTag}${task.id}, ${startDate}, ${durationDays}d`);
+        }
+        taskData.set(task.id, {
+            id: task.id,
+            title: task.title,
+            status: task.status,
+            effort: effort || null,
+            blockedBy: blockers.filter((b) => typeof b === 'string'),
+            startedAt,
+            doneAt
+        });
+    }
+    // T0 = earliest started_at or today
+    const t0 = earliestDate ? new Date(earliestDate) : new Date();
+    t0.setHours(0, 0, 0, 0);
+    // Calculate all metrics using centralized function
+    const metrics = calculateGanttMetrics(taskData, effortConfig, t0);
+    const schedule = getTaskSchedules(taskData, effortConfig, t0);
+    // Build reverse dependency map: taskId -> tasks it blocks
+    const taskBlocks = new Map();
+    for (const [taskId] of taskData) {
+        taskBlocks.set(taskId, []);
+    }
+    for (const [taskId, data] of taskData) {
+        for (const blockerId of data.blockedBy) {
+            if (taskData.has(blockerId)) {
+                taskBlocks.get(blockerId)?.push(taskId);
             }
         }
     }
-    return { ganttCode: lines.join('\n'), criticalPath };
+    // Build Gantt tasks array with hour-based scheduling
+    const ganttTasks = [];
+    for (const task of epic.tasks) {
+        const data = taskData.get(task.id);
+        if (!data)
+            continue;
+        const taskSchedule = schedule.get(task.id);
+        const isCritical = metrics.criticalPath.includes(task.id);
+        // Valid dependencies that exist in our task set
+        const validDeps = data.blockedBy.filter(id => taskData.has(id));
+        // Build task name (status shown via color)
+        const taskName = `${task.id} ${task.title}`;
+        const startHour = taskSchedule?.startHour || 0;
+        const endHour = taskSchedule?.endHour || 1;
+        const durationHrs = taskSchedule?.durationHours || 1;
+        ganttTasks.push({
+            id: task.id,
+            name: taskName,
+            startHour,
+            endHour,
+            durationHours: durationHrs,
+            status: data.status,
+            dependencies: validDeps,
+            blocks: taskBlocks.get(task.id) || [],
+            isCritical,
+            startedAt: data.startedAt,
+            doneAt: data.doneAt
+        });
+    }
+    // Sort tasks by startHour to ensure blockers appear before blocked tasks
+    ganttTasks.sort((a, b) => a.startHour - b.startHour);
+    return {
+        tasks: ganttTasks,
+        criticalPath: metrics.criticalPath,
+        title: `${epic.id} - ${epic.title}`,
+        totalHours: metrics.maxEndHour, // Use absolute maxEndHour since bars are positioned with absolute hours
+        t0,
+        durationHours: metrics.totalEffortHours,
+        criticalTimespanHours: metrics.criticalTimespanHours
+    };
 }
 // Helper to render tabs with content
 function renderTabs(tabs) {
@@ -867,6 +898,128 @@ function renderTabs(tabs) {
     <div class="tabs">
       <div class="tab-buttons">${tabButtons}</div>
       <div class="tab-contents">${tabContents}</div>
+    </div>
+  `;
+}
+// Generate PRD overview Gantt (with real scheduling)
+function generatePrdOverviewGantt() {
+    const prds = getPrdsData();
+    const effortConfig = {
+        default_duration: getConfigValue('task.default_duration') || '1h',
+        effort_map: getConfigValue('task.effort_map') || 'S=0.5h,M=1h,L=2h,XL=4h'
+    };
+    const tasks = [];
+    let maxEndHour = 0;
+    // Calculate global T0 from earliest started_at across all PRDs
+    let globalEarliestDate = null;
+    // First pass: find global T0
+    for (const prd of prds) {
+        for (const epic of prd.epics) {
+            for (const task of epic.tasks) {
+                const startedAt = task.meta?.started_at;
+                if (startedAt) {
+                    const d = new Date(startedAt);
+                    if (!globalEarliestDate || d < globalEarliestDate) {
+                        globalEarliestDate = d;
+                    }
+                }
+            }
+        }
+    }
+    const t0 = globalEarliestDate ? new Date(globalEarliestDate) : new Date();
+    t0.setHours(0, 0, 0, 0);
+    // Second pass: calculate schedule for each PRD
+    for (const prd of prds) {
+        // Collect all tasks from all epics with real dates
+        const taskData = new Map();
+        let earliestStartedAt;
+        for (const epic of prd.epics) {
+            for (const task of epic.tasks) {
+                const blockedBy = task.meta?.blocked_by;
+                const blockers = blockedBy ? (Array.isArray(blockedBy) ? blockedBy : [blockedBy]) : [];
+                const effort = task.meta?.effort;
+                const startedAt = task.meta?.started_at;
+                const doneAt = task.meta?.done_at;
+                if (startedAt && (!earliestStartedAt || startedAt < earliestStartedAt)) {
+                    earliestStartedAt = startedAt;
+                }
+                taskData.set(task.id, {
+                    id: task.id,
+                    effort: effort || null,
+                    blockedBy: blockers.filter((b) => typeof b === 'string'),
+                    status: task.status,
+                    startedAt,
+                    doneAt
+                });
+            }
+        }
+        if (taskData.size === 0)
+            continue;
+        // Calculate real schedule for this PRD using global T0
+        const schedule = calculateRealSchedule(taskData, effortConfig, t0);
+        const envelope = getScheduleEnvelope(schedule);
+        // Calculate theoretical schedule to get critical timespan
+        const theoreticalSchedule = calculateTheoreticalSchedule(taskData, effortConfig);
+        const theoreticalEnvelope = getScheduleEnvelope(theoreticalSchedule);
+        const criticalTimespanHours = theoreticalEnvelope.weightedHours;
+        // Determine status based on task statuses
+        let status = 'Draft';
+        if (prd.doneTasks === prd.totalTasks && prd.totalTasks > 0) {
+            status = 'Done';
+        }
+        else if (prd.doneTasks > 0) {
+            status = 'In Progress';
+        }
+        const progress = prd.totalTasks > 0 ? Math.round((prd.doneTasks / prd.totalTasks) * 100) : 0;
+        tasks.push({
+            id: prd.id,
+            name: `${prd.id} ${prd.title}`,
+            startHour: envelope.earliestStart,
+            endHour: envelope.latestEnd,
+            durationHours: envelope.totalHours, // Sum of task durations (effort), not timespan
+            status,
+            progress,
+            startedAt: earliestStartedAt,
+            criticalTimespanHours
+        });
+        if (envelope.latestEnd > maxEndHour)
+            maxEndHour = envelope.latestEnd;
+    }
+    return { tasks, totalHours: maxEndHour || 8, t0 };
+}
+// Render simple Gantt (no controls, for overview)
+function renderSimpleGantt(tasks, totalHours, title, t0) {
+    // Use provided T0 or calculate from earliest started_at
+    let d0;
+    if (t0) {
+        d0 = new Date(t0);
+    }
+    else {
+        let earliestDate = null;
+        for (const task of tasks) {
+            if (task.startedAt) {
+                const d = new Date(task.startedAt);
+                if (!earliestDate || d < earliestDate) {
+                    earliestDate = d;
+                }
+            }
+        }
+        d0 = earliestDate || new Date();
+    }
+    d0.setHours(0, 0, 0, 0);
+    const ganttData = { tasks, totalHours, d0: d0.toISOString(), simple: true };
+    const dataJson = JSON.stringify(ganttData).replace(/</g, '\\u003c');
+    const ganttId = `gantt-simple-${Date.now()}`;
+    return `
+    <div class="gantt-container" style="margin-top: 16px;">
+      <div class="gantt-title">${title}</div>
+      <div class="gantt-controls">
+        <button class="gantt-zoom" data-zoom="day">Day</button>
+        <button class="gantt-zoom active" data-zoom="week">Week</button>
+        <button class="gantt-zoom" data-zoom="month">Month</button>
+      </div>
+      <div id="${ganttId}" class="sailing-gantt-target"></div>
+      <script type="application/json" class="gantt-data">${dataJson}</script>
     </div>
   `;
 }
@@ -930,8 +1083,13 @@ export function createRoutes() {
         const totalTasks = prds.reduce((acc, p) => acc + p.totalTasks, 0);
         const doneTasks = prds.reduce((acc, p) => acc + p.doneTasks, 0);
         const blockers = getBlockers();
+        // Generate PRD overview Gantt
+        const prdGantt = generatePrdOverviewGantt();
+        const prdGanttHtml = prdGantt.tasks.length > 0
+            ? renderSimpleGantt(prdGantt.tasks, prdGantt.totalHours, 'PRD Timeline', prdGantt.t0)
+            : '';
         html(res, `
-      <h2 style="font-size: 18px; margin-bottom: 20px; color: var(--text);">Welcome</h2>
+      <h2 style="font-size: 18px; margin-bottom: 20px; color: var(--text);">Ahoy sailor</h2>
 
       <h3 style="font-size: 14px; margin-bottom: 12px; color: var(--text-muted);">Project Status</h3>
       <div class="kpi-grid" style="margin-bottom: 24px;">
@@ -950,7 +1108,9 @@ export function createRoutes() {
         ${memoryHtml}
       </div>
 
-      <h3 style="font-size: 14px; margin-bottom: 12px; color: var(--text-muted);">Versions</h3>
+      ${prdGanttHtml}
+
+      <h3 style="font-size: 14px; margin-bottom: 12px; margin-top: 24px; color: var(--text-muted);">Versions</h3>
       <div class="kpi-grid">
         ${versionsHtml}
       </div>
@@ -1159,8 +1319,8 @@ export function createRoutes() {
         const dagWithoutTasks = generatePrdDag(prd, false);
         const schemaContent = renderPrdDag(dagWithTasks, dagWithoutTasks);
         // Gantt tab content with critical path
-        const { ganttCode, criticalPath } = generatePrdGantt(prd);
-        const ganttContent = renderGantt(ganttCode, criticalPath);
+        const { tasks: ganttTasks, criticalPath, title: ganttTitle, totalHours, t0: prdT0, durationHours: prdDurationHours, criticalTimespanHours: prdCriticalTimespan } = generatePrdGantt(prd);
+        const ganttContent = renderGantt(ganttTasks, criticalPath, ganttTitle, totalHours, prdT0, prdDurationHours, prdCriticalTimespan);
         html(res, `
       <div class="detail-header">
         <h2>${prd.id}: ${prd.title}</h2>
@@ -1250,8 +1410,8 @@ export function createRoutes() {
         const dagResult = generateEpicDag(foundEpic, parentPrd);
         const schemaContent = renderDag(dagResult.code, dagResult.tooltips);
         // Gantt tab content with critical path
-        const { ganttCode: epicGanttCode, criticalPath: epicCriticalPath } = generateEpicGantt(foundEpic);
-        const ganttContent = renderGantt(epicGanttCode, epicCriticalPath);
+        const { tasks: epicGanttTasks, criticalPath: epicCriticalPath, title: epicGanttTitle, totalHours: epicTotalHours, t0: epicT0, durationHours: epicDurationHours, criticalTimespanHours: epicCriticalTimespan } = generateEpicGantt(foundEpic);
+        const ganttContent = renderGantt(epicGanttTasks, epicCriticalPath, epicGanttTitle, epicTotalHours, epicT0, epicDurationHours, epicCriticalTimespan);
         html(res, `
       <div class="detail-header">
         <h2>${foundEpic.id}: ${foundEpic.title}</h2>
@@ -1297,14 +1457,53 @@ export function createRoutes() {
             return;
         }
         const statusClass = foundTask.status.toLowerCase().replace(/\s+/g, '-');
-        // Stats tab content
+        // Extract task scheduling info from meta
+        const effort = foundTask.meta?.effort;
+        const startedAt = foundTask.meta?.started_at;
+        const doneAt = foundTask.meta?.done_at;
+        const assignee = foundTask.meta?.assignee;
+        const priority = foundTask.meta?.priority;
+        const blockedBy = foundTask.meta?.blocked_by;
+        const blockers = blockedBy ? (Array.isArray(blockedBy) ? blockedBy : [blockedBy]) : [];
+        // Format dates (date only, no time)
+        const formatDate = (iso) => {
+            if (!iso)
+                return '-';
+            const d = new Date(iso);
+            return d.toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric' });
+        };
+        // Stats tab content (tabular layout)
         const statsContent = `
-      <div class="kpi-grid">
-        <div class="kpi-card">
-          <div class="kpi-label">Status</div>
-          <div class="kpi-value">${foundTask.status}</div>
-        </div>
-      </div>
+      <table class="stats-table" style="width: 100%; border-collapse: collapse; font-size: 13px;">
+        <tr>
+          <td style="padding: 6px 12px 6px 0; color: var(--text-dim); width: 100px;">Status</td>
+          <td style="padding: 6px 0;">${foundTask.status}</td>
+        </tr>
+        <tr>
+          <td style="padding: 6px 12px 6px 0; color: var(--text-dim);">Effort</td>
+          <td style="padding: 6px 0;">${effort || '-'}</td>
+        </tr>
+        <tr>
+          <td style="padding: 6px 12px 6px 0; color: var(--text-dim);">Started</td>
+          <td style="padding: 6px 0;">${formatDate(startedAt)}</td>
+        </tr>
+        <tr>
+          <td style="padding: 6px 12px 6px 0; color: var(--text-dim);">Done</td>
+          <td style="padding: 6px 0;">${formatDate(doneAt)}</td>
+        </tr>
+        ${priority ? `<tr>
+          <td style="padding: 6px 12px 6px 0; color: var(--text-dim);">Priority</td>
+          <td style="padding: 6px 0;">${priority}</td>
+        </tr>` : ''}
+        ${assignee ? `<tr>
+          <td style="padding: 6px 12px 6px 0; color: var(--text-dim);">Assignee</td>
+          <td style="padding: 6px 0;">${assignee}</td>
+        </tr>` : ''}
+        ${blockers.length > 0 ? `<tr>
+          <td style="padding: 6px 12px 6px 0; color: var(--text-dim); vertical-align: top;">Blocked by</td>
+          <td style="padding: 6px 0;">${blockers.map(b => `<span class="tag" style="cursor: pointer;" onclick="htmx.ajax('GET', '/api/task/${b}', '#detail')">${b}</span>`).join(' ')}</td>
+        </tr>` : ''}
+      </table>
     `;
         // Description tab content
         const descContent = foundTask.description

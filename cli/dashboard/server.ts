@@ -11,14 +11,48 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 type RouteHandler = (req: http.IncomingMessage, res: http.ServerResponse) => void | Promise<void>;
 
-export interface DashboardServer {
-  start: (callback?: (port: number) => void) => void;
-  stop: () => void;
-  port: number;
+export interface DashboardServerOptions {
+  /** Idle timeout in seconds. -1 = infinite, 0 = use default (300s) */
+  timeout?: number;
 }
 
-export function createServer(port: number, routes: Record<string, RouteHandler>): DashboardServer {
+export interface DashboardServer {
+  start: (callback?: (port: number) => void, onShutdown?: () => void) => void;
+  stop: () => void;
+  port: number;
+  resetTimeout: () => void;
+}
+
+const DEFAULT_TIMEOUT = 300; // 5 minutes
+
+export function createServer(
+  port: number,
+  routes: Record<string, RouteHandler>,
+  options: DashboardServerOptions = {}
+): DashboardServer {
+  const timeoutSeconds = options.timeout === undefined || options.timeout === 0
+    ? DEFAULT_TIMEOUT
+    : options.timeout;
+
+  let timeoutTimer: NodeJS.Timeout | null = null;
+  let onTimeout: (() => void) | null = null;
+
+  const resetTimeout = () => {
+    if (timeoutTimer) {
+      clearTimeout(timeoutTimer);
+      timeoutTimer = null;
+    }
+    if (timeoutSeconds > 0) {
+      timeoutTimer = setTimeout(() => {
+        console.log(`\nIdle timeout (${timeoutSeconds}s) - shutting down...`);
+        if (onTimeout) onTimeout();
+      }, timeoutSeconds * 1000);
+    }
+  };
+
   const server = http.createServer(async (req, res) => {
+    // Reset timeout on each request
+    resetTimeout();
     const url = new URL(req.url || '/', `http://localhost:${port}`);
     const pathname = url.pathname;
 
@@ -63,7 +97,12 @@ export function createServer(port: number, routes: Record<string, RouteHandler>)
   let actualPort = port;
 
   return {
-    start: (callback?: (port: number) => void) => {
+    start: (callback?: (port: number) => void, onShutdown?: () => void) => {
+      onTimeout = () => {
+        server.close();
+        if (onShutdown) onShutdown();
+      };
+
       const tryListen = (p: number) => {
         server.once('error', (err: NodeJS.ErrnoException) => {
           if (err.code === 'EADDRINUSE') {
@@ -76,14 +115,21 @@ export function createServer(port: number, routes: Record<string, RouteHandler>)
         server.listen(p, '127.0.0.1', () => {
           actualPort = p;
           console.log(`Dashboard: http://127.0.0.1:${actualPort}`);
+          // Start initial timeout
+          resetTimeout();
           if (callback) callback(actualPort);
         });
       };
       tryListen(port);
     },
     stop: () => {
+      if (timeoutTimer) {
+        clearTimeout(timeoutTimer);
+        timeoutTimer = null;
+      }
       server.close();
     },
+    resetTimeout,
     get port() {
       return actualPort;
     }

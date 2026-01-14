@@ -169,6 +169,16 @@ export const CONFIG_SCHEMA = {
         type: 'number',
         default: 3,
         description: 'Number of digits for Story IDs (S001)'
+    },
+    'task.default_duration': {
+        type: 'string',
+        default: '1h',
+        description: 'Default task duration when effort is not specified (e.g., 1h, 2h, 4h)'
+    },
+    'task.effort_map': {
+        type: 'string',
+        default: 'S=0.5h,M=1h,L=2h,XL=4h',
+        description: 'Mapping of legacy T-shirt sizes to hours (for backward compatibility)'
     }
 };
 /**

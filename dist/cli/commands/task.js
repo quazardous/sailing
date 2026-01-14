@@ -273,7 +273,7 @@ export function registerTaskCommands(program) {
             blocked_by: [],
             stories: [],
             tags: [],
-            effort: 'M',
+            effort: '1h',
             priority: 'normal',
             target_versions: {}
         };
@@ -324,7 +324,7 @@ export function registerTaskCommands(program) {
         .option('-s, --status <status>', `Set status (${statusHelp})`)
         .option('-a, --assignee <name>', 'Set assignee')
         .option('-t, --title <title>', 'Set title')
-        .option('-e, --effort <S|M|L|XL>', 'Set effort')
+        .option('-e, --effort <duration>', 'Set effort/duration (e.g., 4h, 8h or legacy S|M|L|XL)')
         .option('-p, --priority <level>', 'Set priority (low|normal|high|critical)')
         .option('--add-blocker <id>', 'Add blocker (repeatable)', (v, arr) => arr.concat(v), [])
         .option('--blocked-by <ids>', 'Set blockers (comma-separated, e.g., T001,T002)')

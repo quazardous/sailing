@@ -11,7 +11,8 @@
 import fs from 'fs';
 import path from 'path';
 import { findPrdDirs, loadFile, getMemoryDir } from './core.js';
-import { Task, Epic, Prd, TaskIndexEntry, EpicIndexEntry, PrdIndexEntry } from './types/entities.js';
+import { Task, Epic, Prd, TaskIndexEntry, EpicIndexEntry, PrdIndexEntry, FullPrd, FullEpic, FullTask } from './types/entities.js';
+import { extractEpicId } from './entities.js';
 
 // Cache for indexes (cleared when needed)
 let _taskIndex: Map<string, TaskIndexEntry> | null = null;
@@ -396,4 +397,102 @@ export function clearIndexCache() {
   _epicIndex = null;
   _prdIndex = null;
   _memoryIndex = null;
+}
+
+/**
+ * Get a fully populated PRD with all its epics and tasks
+ * @param prdId - PRD ID in any format (1, "1", "PRD-1", "PRD-001")
+ * @returns Full PRD with epics and tasks or null if not found
+ */
+export function getFullPrd(prdId: string | number): FullPrd | null {
+  const prdEntry = getPrd(prdId);
+  if (!prdEntry) return null;
+
+  const epicIndex = buildEpicIndex();
+  const taskIndex = buildTaskIndex();
+  const prdDir = prdEntry.dir;
+
+  // Load PRD file for description
+  const prdLoaded = loadFile(prdEntry.file);
+
+  const epics: FullEpic[] = [];
+  let totalTasks = 0;
+  let doneTasks = 0;
+
+  // Find epics for this PRD
+  for (const [, epic] of epicIndex) {
+    if (epic.prdDir !== prdDir) continue;
+
+    const epicId = epic.data?.id || `E${epic.key}`;
+    const tasks: FullTask[] = [];
+
+    // Find tasks for this epic
+    for (const [, task] of taskIndex) {
+      if (task.prdDir !== prdDir) continue;
+
+      const taskParent = task.data?.parent || '';
+      const taskEpicId = extractEpicId(taskParent);
+
+      // Match epic by extracted ID or by key
+      if (taskEpicId === epicId || taskEpicId === `E${epic.key}` ||
+          (taskEpicId && epic.key === taskEpicId.replace(/^E0*/, ''))) {
+        const taskLoaded = loadFile(task.file);
+        tasks.push({
+          id: task.data?.id || `T${task.key}`,
+          title: task.data?.title || 'Untitled',
+          status: task.data?.status || 'Draft',
+          description: taskLoaded?.body || '',
+          meta: task.data || {}
+        });
+        totalTasks++;
+        if (task.data?.status === 'Done') doneTasks++;
+      }
+    }
+
+    // Sort tasks by ID
+    tasks.sort((a, b) => a.id.localeCompare(b.id));
+
+    const epicLoaded = loadFile(epic.file);
+    epics.push({
+      id: epicId,
+      title: epic.data?.title || 'Untitled',
+      status: epic.data?.status || 'Draft',
+      description: epicLoaded?.body || '',
+      meta: epic.data || {},
+      tasks
+    });
+  }
+
+  // Sort epics by ID
+  epics.sort((a, b) => a.id.localeCompare(b.id));
+
+  return {
+    id: prdEntry.data?.id || prdEntry.id,
+    title: prdEntry.data?.title || 'Untitled',
+    status: prdEntry.data?.status || 'Draft',
+    description: prdLoaded?.body || '',
+    meta: prdEntry.data || {},
+    epics,
+    totalTasks,
+    doneTasks,
+    progress: totalTasks > 0 ? Math.round((doneTasks / totalTasks) * 100) : 0
+  };
+}
+
+/**
+ * Get all PRDs fully populated with epics and tasks
+ * @returns Array of full PRDs sorted by ID
+ */
+export function getAllFullPrds(): FullPrd[] {
+  const prdIndex = buildPrdIndex();
+  const prds: FullPrd[] = [];
+
+  for (const [num] of prdIndex) {
+    const prd = getFullPrd(num);
+    if (prd) prds.push(prd);
+  }
+
+  // Sort by ID
+  prds.sort((a, b) => a.id.localeCompare(b.id));
+  return prds;
 }

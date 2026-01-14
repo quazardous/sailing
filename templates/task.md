@@ -4,7 +4,7 @@ title: Task Title
 parent: PRD-NNN/ENNN
 status: Not Started
 assignee: ""
-effort: M
+effort: 1h
 priority: normal
 blocked_by: []
 stories: []
