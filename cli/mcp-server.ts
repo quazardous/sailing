@@ -343,19 +343,19 @@ async function handleStart() {
       if (usePortMode) {
         // Port mode: write port file
         fs.writeFileSync(portFile, String(allocatedPort));
-        console.log(`MCP server started (pid: ${child.pid})`);
+        console.log(`Rudder MCP server started (pid: ${child.pid})`);
         console.log(`  Port: ${allocatedPort}`);
         console.log(`  Mode: port`);
         console.log(`  Log: ${logFile}`);
       } else {
         // Socket mode
         if (fs.existsSync(defaultSocket)) {
-          console.log(`MCP server started (pid: ${child.pid})`);
+          console.log(`Rudder MCP server started (pid: ${child.pid})`);
           console.log(`  Socket: ${defaultSocket}`);
           console.log(`  Mode: socket`);
           console.log(`  Log: ${logFile}`);
         } else {
-          console.log(`MCP server starting (pid: ${child.pid})`);
+          console.log(`Rudder MCP server starting (pid: ${child.pid})`);
           console.log(`  Check log: ${logFile}`);
         }
       }
