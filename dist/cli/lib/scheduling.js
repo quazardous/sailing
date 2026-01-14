@@ -116,66 +116,60 @@ export function calculateRealSchedule(taskData, effortConfig, t0, now) {
         const schedB = theoreticalSchedule.get(b);
         return (schedA?.startHour || 0) - (schedB?.startHour || 0);
     });
+    // Helper: get max end hour of blockers from real schedule
+    const getMaxBlockerEnd = (blockedBy) => {
+        let maxEnd = 0;
+        for (const blockerId of blockedBy) {
+            if (!taskData.has(blockerId))
+                continue;
+            const blockerSched = schedule.get(blockerId);
+            if (blockerSched && blockerSched.endHour > maxEnd) {
+                maxEnd = blockerSched.endHour;
+            }
+        }
+        return maxEnd;
+    };
     for (const taskId of taskIds) {
         const task = taskData.get(taskId);
         const theoretical = theoreticalSchedule.get(taskId);
         const durationHours = getDuration(task.effort, effortConfig);
-        let startHour;
-        let endHour;
         const status = task.status?.toLowerCase() || '';
         const isDone = status === 'done' || status === 'auto-done';
         const isInProgress = status === 'in progress' || status === 'wip';
+        // Common: calculate earliest possible start from blockers
+        const maxBlockerEnd = getMaxBlockerEnd(task.blockedBy);
+        const earliestStart = Math.max(nowHoursSinceT0, maxBlockerEnd);
+        let startHour;
+        let endHour;
         if (isDone) {
-            // Done: use real dates
-            // Rules:
-            // - If started_at known but not done_at: end = start + duration
-            // - If done_at known but not started_at: start = end - duration
-            // - If neither known: use theoretical
-            if (task.startedAt && task.doneAt) {
-                startHour = dateToHours(task.startedAt);
-                endHour = dateToHours(task.doneAt);
-            }
-            else if (task.startedAt) {
-                // started_at known, done_at unknown: end = start + duration
-                startHour = dateToHours(task.startedAt);
-                endHour = startHour + durationHours;
+            // Done: use real dates but can shift forward to honor blockers
+            // Rule: can't move to past (respect known dates), can move forward for blockers
+            if (task.startedAt) {
+                // Has start date: use it as minimum, but shift forward if blockers require
+                startHour = Math.max(dateToHours(task.startedAt), maxBlockerEnd);
             }
             else if (task.doneAt) {
-                // done_at known, started_at unknown: start = end - duration
-                endHour = dateToHours(task.doneAt);
-                startHour = endHour - durationHours;
+                // Only done_at: start = max(done_at - duration, maxBlockerEnd)
+                const doneHour = dateToHours(task.doneAt);
+                startHour = Math.max(doneHour - durationHours, maxBlockerEnd);
             }
             else {
-                // Neither known: use theoretical
-                startHour = theoretical.startHour;
-                endHour = theoretical.endHour;
+                // No dates: position after blockers
+                startHour = maxBlockerEnd;
             }
+            endHour = startHour + durationHours;
         }
         else if (isInProgress) {
-            // In Progress:
-            // - end = now + duration (work remaining)
-            // - start = started_at if known, else now
-            endHour = nowHoursSinceT0 + durationHours;
-            if (task.startedAt) {
-                startHour = dateToHours(task.startedAt);
-            }
-            else {
-                startHour = nowHoursSinceT0;
-            }
+            // In Progress: end = max(now + duration, blockerEnd + duration)
+            // Start can be shifted forward to honor blockers (same granularity rule as Done)
+            endHour = Math.max(nowHoursSinceT0 + durationHours, maxBlockerEnd + durationHours);
+            startHour = task.startedAt
+                ? Math.max(dateToHours(task.startedAt), maxBlockerEnd)
+                : earliestStart;
         }
         else {
-            // Not Started: max(today, blocker end) → start + duration
-            // Find max end of blockers (from real schedule, not theoretical)
-            let maxBlockerEnd = 0;
-            const validBlockers = task.blockedBy.filter(b => taskData.has(b));
-            for (const blockerId of validBlockers) {
-                const blockerSchedule = schedule.get(blockerId);
-                if (blockerSchedule && blockerSchedule.endHour > maxBlockerEnd) {
-                    maxBlockerEnd = blockerSchedule.endHour;
-                }
-            }
-            // Start is max of today and blocker end
-            startHour = Math.max(nowHoursSinceT0, maxBlockerEnd);
+            // Not Started: start = max(now, blockerEnd), end = start + duration
+            startHour = earliestStart;
             endHour = startHour + durationHours;
         }
         schedule.set(taskId, { startHour, endHour, durationHours });
@@ -356,7 +350,7 @@ export function calculateParallelEfficiency(envelope) {
 export function calculateGanttMetrics(taskData, effortConfig, t0, now) {
     // Calculate real schedule based on actual dates
     const realSchedule = calculateRealSchedule(taskData, effortConfig, t0, now);
-    // Calculate theoretical schedule for critical path
+    // Calculate theoretical schedule for critical path (durations + blockers, no real dates)
     const theoreticalSchedule = calculateTheoreticalSchedule(taskData, effortConfig);
     const criticalPath = calculateCriticalPath(taskData, theoreticalSchedule);
     // Get theoretical envelope for critical timespan

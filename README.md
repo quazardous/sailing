@@ -160,6 +160,14 @@ your-project/
 | Sandbox (srt) | [docs/sandbox.md](docs/sandbox.md) |
 | MCP Server | [docs/mcp.md](docs/mcp.md) |
 
+## Bonus
+
+A fun dashboard to visualize your project (Gantt, etc):
+
+```bash
+bin/rudder dashboard
+```
+
 ## Requirements
 
 - Claude Code CLI

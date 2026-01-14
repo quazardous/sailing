@@ -14,6 +14,38 @@ import { buildPrdIndex, buildEpicIndex, buildTaskIndex } from '../lib/index.js';
 import { extractEpicId } from '../lib/entities.js';
 import { marked } from 'marked';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
+// Cache for expensive operations
+let _prdsDataCache = null;
+let _blockersCache = null;
+let _pendingMemoryCache = null;
+let _cacheTTL = 0;
+// Cache helper
+function getCached(cache, setCache, getData) {
+    if (_cacheTTL > 0 && cache && Date.now() - cache.timestamp < _cacheTTL * 1000) {
+        return cache.data;
+    }
+    const data = getData();
+    if (_cacheTTL > 0) {
+        setCache({ data, timestamp: Date.now() });
+    }
+    return data;
+}
+// Cached data accessors
+function getCachedPrdsData() {
+    return getCached(_prdsDataCache, c => { _prdsDataCache = c; }, getPrdsData);
+}
+function getCachedBlockers() {
+    return getCached(_blockersCache, c => { _blockersCache = c; }, getBlockers);
+}
+function getCachedPendingMemory() {
+    return getCached(_pendingMemoryCache, c => { _pendingMemoryCache = c; }, getPendingMemory);
+}
+// Clear all caches
+function clearCache() {
+    _prdsDataCache = null;
+    _blockersCache = null;
+    _pendingMemoryCache = null;
+}
 // Find views directory (works in both dev and dist)
 function getViewsDir() {
     // Try dist location first
@@ -903,7 +935,7 @@ function renderTabs(tabs) {
 }
 // Generate PRD overview Gantt (with real scheduling)
 function generatePrdOverviewGantt() {
-    const prds = getPrdsData();
+    const prds = getCachedPrdsData();
     const effortConfig = {
         default_duration: getConfigValue('task.default_duration') || '1h',
         effort_map: getConfigValue('task.effort_map') || 'S=0.5h,M=1h,L=2h,XL=4h'
@@ -1024,7 +1056,10 @@ function renderSimpleGantt(tasks, totalHours, title, t0) {
   `;
 }
 // Routes
-export function createRoutes() {
+export function createRoutes(options = {}) {
+    // Set cache TTL from options
+    _cacheTTL = options.cacheTTL || 0;
+    clearCache(); // Clear any stale cache from previous run
     const routes = {};
     // Main page
     routes['/'] = (_req, res) => {
@@ -1057,7 +1092,7 @@ export function createRoutes() {
             versionsHtml = '<div class="empty">No versions configured</div>';
         }
         // Memory status
-        const pending = getPendingMemory();
+        const pending = getCachedPendingMemory();
         let memoryHtml = '';
         if (pending.length === 0) {
             memoryHtml = `
@@ -1079,10 +1114,10 @@ export function createRoutes() {
       `;
         }
         // Quick stats
-        const prds = getPrdsData();
+        const prds = getCachedPrdsData();
         const totalTasks = prds.reduce((acc, p) => acc + p.totalTasks, 0);
         const doneTasks = prds.reduce((acc, p) => acc + p.doneTasks, 0);
-        const blockers = getBlockers();
+        const blockers = getCachedBlockers();
         // Generate PRD overview Gantt
         const prdGantt = generatePrdOverviewGantt();
         const prdGanttHtml = prdGantt.tasks.length > 0
@@ -1118,7 +1153,7 @@ export function createRoutes() {
     };
     // Tree view with native details/summary
     routes['/api/tree'] = (_req, res) => {
-        const prds = getPrdsData();
+        const prds = getCachedPrdsData();
         let content = '';
         if (prds.length === 0) {
             content = '<div style="padding: 12px; color: var(--text-dim);">No PRDs found</div>';
@@ -1178,7 +1213,7 @@ export function createRoutes() {
     };
     // PRD list fragment (HTMX) - kept for compatibility
     routes['/api/prds'] = (_req, res) => {
-        const prds = getPrdsData();
+        const prds = getCachedPrdsData();
         let content = '';
         for (const prd of prds) {
             content += `
@@ -1220,7 +1255,7 @@ export function createRoutes() {
     routes['/api/prd/:id'] = (req, res) => {
         const url = new URL(req.url || '/', 'http://localhost');
         const prdId = url.pathname.split('/').pop();
-        const prds = getPrdsData();
+        const prds = getCachedPrdsData();
         const prd = prds.find(p => p.id === prdId);
         if (!prd) {
             html(res, '<div class="empty">PRD not found</div>', 404);
@@ -1340,7 +1375,7 @@ export function createRoutes() {
     routes['/api/epic/:id'] = (req, res) => {
         const url = new URL(req.url || '/', 'http://localhost');
         const epicId = url.pathname.split('/').pop();
-        const prds = getPrdsData();
+        const prds = getCachedPrdsData();
         // Find the epic across all PRDs
         let foundEpic = null;
         let parentPrd = null;
@@ -1434,7 +1469,7 @@ export function createRoutes() {
     routes['/api/task/:id'] = (req, res) => {
         const url = new URL(req.url || '/', 'http://localhost');
         const taskId = url.pathname.split('/').pop();
-        const prds = getPrdsData();
+        const prds = getCachedPrdsData();
         // Find the task across all PRDs/epics
         let foundTask = null;
         let parentEpic = null;
@@ -1556,7 +1591,7 @@ export function createRoutes() {
     };
     // Blockers fragment
     routes['/api/blockers'] = (_req, res) => {
-        const blockers = getBlockers();
+        const blockers = getCachedBlockers();
         let content = '';
         for (const blocker of blockers) {
             content += `
@@ -1575,7 +1610,7 @@ export function createRoutes() {
     };
     // Memory warnings fragment
     routes['/api/memory'] = (_req, res) => {
-        const pending = getPendingMemory();
+        const pending = getCachedPendingMemory();
         let content = '';
         if (pending.length > 0) {
             content = `
@@ -1622,10 +1657,15 @@ export function createRoutes() {
     // JSON API for raw data
     routes['/api/data'] = (_req, res) => {
         json(res, {
-            prds: getPrdsData(),
-            blockers: getBlockers(),
-            pendingMemory: getPendingMemory()
+            prds: getCachedPrdsData(),
+            blockers: getCachedBlockers(),
+            pendingMemory: getCachedPendingMemory()
         });
+    };
+    // Refresh cache endpoint
+    routes['/api/refresh'] = (_req, res) => {
+        clearCache();
+        json(res, { status: 'ok', message: 'Cache cleared' });
     };
     // Settings/Config page
     routes['/api/settings'] = (_req, res) => {

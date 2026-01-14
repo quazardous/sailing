@@ -6,6 +6,7 @@ import { createRoutes } from '../dashboard/routes.js';
 
 const DEFAULT_PORT = 3456;
 const DEFAULT_TIMEOUT = 300; // 5 minutes
+const DEFAULT_CACHE = 300; // 5 minutes
 
 /**
  * Register dashboard commands
@@ -15,10 +16,12 @@ export function registerDashboardCommands(program: any) {
     .description('Start web dashboard for project overview')
     .option('-p, --port <port>', 'Port number', String(DEFAULT_PORT))
     .option('-t, --timeout <seconds>', `Idle timeout in seconds (default: ${DEFAULT_TIMEOUT}, -1 for infinite)`, String(DEFAULT_TIMEOUT))
+    .option('-c, --cache <seconds>', `Data cache TTL in seconds (default: ${DEFAULT_CACHE}, 0 to disable)`, String(DEFAULT_CACHE))
     .option('--no-open', 'Do not open browser automatically')
-    .action(async (options: { port: string; timeout: string; open: boolean }) => {
+    .action(async (options: { port: string; timeout: string; cache: string; open: boolean }) => {
       const port = parseInt(options.port, 10);
       const timeout = parseInt(options.timeout, 10);
+      const cacheTTL = parseInt(options.cache, 10);
 
       if (isNaN(port) || port < 1 || port > 65535) {
         console.error(`Invalid port: ${options.port}`);
@@ -30,9 +33,14 @@ export function registerDashboardCommands(program: any) {
         process.exit(1);
       }
 
+      if (isNaN(cacheTTL) || cacheTTL < 0) {
+        console.error(`Invalid cache TTL: ${options.cache} (use 0 to disable)`);
+        process.exit(1);
+      }
+
       console.log('Starting Sailing Dashboard...');
 
-      const routes = createRoutes();
+      const routes = createRoutes({ cacheTTL });
       const server = createServer(port, routes, { timeout });
 
       // Handle shutdown
@@ -54,6 +62,11 @@ export function registerDashboardCommands(program: any) {
           console.log(`Idle timeout: ${timeout}s`);
         } else if (timeout === -1) {
           console.log('Idle timeout: disabled');
+        }
+        if (cacheTTL > 0) {
+          console.log(`Cache TTL: ${cacheTTL}s`);
+        } else {
+          console.log('Cache: disabled');
         }
         console.log('Press Ctrl+C to stop');
 

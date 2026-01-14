@@ -1064,14 +1064,23 @@
       font-weight: 400;
       pointer-events: none;
     }
+    .sailing-gantt-target .gantt-task-ref {
+      fill: var(--text-dim);
+      font-size: 10px;
+      font-family: 'SF Mono', Consolas, monospace;
+      font-weight: 400;
+      pointer-events: none;
+      opacity: 0.6;
+    }
     .sailing-gantt-target .gantt-dep-arrow {
       fill: none;
       stroke: #6B7280;
       stroke-width: 1;
     }
     .sailing-gantt-target .gantt-dep-arrow.critical {
-      stroke: #B91C1C;
-      stroke-width: 1;
+      stroke: #EF4444;
+      stroke-width: 1.5;
+      filter: drop-shadow(0 0 2px #7F1D1D) drop-shadow(0 0 3px #991B1B);
     }
     .sailing-gantt-target .gantt-now-line {
       stroke: #00D4FF;
@@ -1114,6 +1123,9 @@
     }
     [data-theme="light"] .sailing-gantt-target .gantt-bar-label {
       fill: #374151;
+    }
+    [data-theme="light"] .sailing-gantt-target .gantt-task-ref {
+      fill: #9CA3AF;
     }
 
     /* === Scrollbar styling === */
@@ -1585,8 +1597,10 @@
       }
 
       // PASS 3: Draw dependency arrows (behind task bars) - skip in simple mode
+      // Render normal arrows first, then critical arrows on top
       if (!simpleMode) {
         svg += `<g class="gantt-arrows">`;
+        // First pass: normal arrows only
         tasks.forEach(task => {
           if (!task.dependencies || task.dependencies.length === 0) return;
           const toPos = taskPositions.get(task.id);
@@ -1596,18 +1610,38 @@
             const fromPos = taskPositions.get(depId);
             if (!fromPos) return;
 
+            const depTask = tasks.find(t => t.id === depId);
+            const isCriticalDep = task.isCritical && depTask && depTask.isCritical;
+            if (isCriticalDep) return; // Skip critical, render later
+
             const fromX = fromPos.endX;
             const fromY = fromPos.y;
             const dropX = toPos.x + 4;
             const toY = toPos.topY + 2;
+            const r = 4;
+            svg += `<path d="M${fromX},${fromY} H${dropX - r} Q${dropX},${fromY} ${dropX},${fromY + r} V${toY}" class="gantt-dep-arrow" marker-end="url(#arrowhead-down)"/>`;
+          });
+        });
+        // Second pass: critical arrows on top
+        tasks.forEach(task => {
+          if (!task.dependencies || task.dependencies.length === 0) return;
+          const toPos = taskPositions.get(task.id);
+          if (!toPos) return;
 
-          const depTask = tasks.find(t => t.id === depId);
-          const isCriticalDep = task.isCritical && depTask && depTask.isCritical;
-          const arrowClass = isCriticalDep ? 'gantt-dep-arrow critical' : 'gantt-dep-arrow';
-          const markerIdDown = isCriticalDep ? 'arrowhead-down-crit' : 'arrowhead-down';
+          task.dependencies.forEach(depId => {
+            const fromPos = taskPositions.get(depId);
+            if (!fromPos) return;
 
-          const r = 4;
-          svg += `<path d="M${fromX},${fromY} H${dropX - r} Q${dropX},${fromY} ${dropX},${fromY + r} V${toY}" class="${arrowClass}" marker-end="url(#${markerIdDown})"/>`;
+            const depTask = tasks.find(t => t.id === depId);
+            const isCriticalDep = task.isCritical && depTask && depTask.isCritical;
+            if (!isCriticalDep) return; // Skip normal
+
+            const fromX = fromPos.endX;
+            const fromY = fromPos.y;
+            const dropX = toPos.x + 4;
+            const toY = toPos.topY + 2;
+            const r = 4;
+            svg += `<path d="M${fromX},${fromY} H${dropX - r} Q${dropX},${fromY} ${dropX},${fromY + r} V${toY}" class="gantt-dep-arrow critical" marker-end="url(#arrowhead-down-crit)"/>`;
           });
         });
         svg += `</g>`;
@@ -1662,6 +1696,9 @@
               : barW;
 
             svg += `<g class="gantt-bar" data-task-id="${task.id}" data-name="${escapeHtml(task.name)}" data-epic="${escapeHtml(task.epicTitle || '')}" data-start="${task.startHour}" data-end="${task.endHour}" data-duration="${task.durationHours}" data-status="${task.status}" data-critical="${task.isCritical ? '1' : ''}" data-blocked-by="${(task.dependencies || []).join(',')}" data-blocks="${(task.blocks || []).join(',')}" onclick="htmx.ajax('GET', '/api/task/${task.id}', '#detail')">`;
+
+            // Task ID reference before the bar (gray)
+            svg += `<text x="${barX - 5}" y="${barY + 10}" class="gantt-task-ref" text-anchor="end">${task.id}</text>`;
 
             // For in-progress tasks: stretch on left, duration on right
             // For done tasks with stretch: duration on left, stretch on right
@@ -1736,6 +1773,11 @@
           // Different onclick for simple mode (PRD) vs normal mode (Task)
           const apiPath = simpleMode ? `/api/prd/${task.id}` : `/api/task/${task.id}`;
           svg += `<g class="gantt-bar" data-task-id="${task.id}" data-name="${escapeHtml(task.name)}" data-epic="${escapeHtml(task.epicTitle || '')}" data-start="${task.startHour}" data-end="${task.endHour}" data-duration="${task.durationHours}" data-status="${task.status}" data-critical="${!simpleMode && task.isCritical ? '1' : ''}" data-blocked-by="${(task.dependencies || []).join(',')}" data-blocks="${(task.blocks || []).join(',')}" data-progress="${task.progress || ''}" onclick="htmx.ajax('GET', '${apiPath}', '#detail')">`;
+
+          // Task ID reference before the bar (gray) - skip in simple mode (PRD overview)
+          if (!simpleMode) {
+            svg += `<text x="${barX - 5}" y="${barY + 10}" class="gantt-task-ref" text-anchor="end">${task.id}</text>`;
+          }
 
           // For in-progress tasks: stretch on left, duration on right
           // For done tasks with stretch: duration on left, stretch on right

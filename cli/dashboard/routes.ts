@@ -28,6 +28,66 @@ import { marked } from 'marked';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
+// Routes configuration options
+export interface RoutesOptions {
+  /** Cache TTL in seconds (0 = disabled) */
+  cacheTTL?: number;
+}
+
+// Cache for expensive operations
+let _prdsDataCache: { data: ReturnType<typeof getPrdsData>; timestamp: number } | null = null;
+let _blockersCache: { data: ReturnType<typeof getBlockers>; timestamp: number } | null = null;
+let _pendingMemoryCache: { data: ReturnType<typeof getPendingMemory>; timestamp: number } | null = null;
+let _cacheTTL = 0;
+
+// Cache helper
+function getCached<T>(
+  cache: { data: T; timestamp: number } | null,
+  setCache: (c: { data: T; timestamp: number }) => void,
+  getData: () => T
+): T {
+  if (_cacheTTL > 0 && cache && Date.now() - cache.timestamp < _cacheTTL * 1000) {
+    return cache.data;
+  }
+  const data = getData();
+  if (_cacheTTL > 0) {
+    setCache({ data, timestamp: Date.now() });
+  }
+  return data;
+}
+
+// Cached data accessors
+function getCachedPrdsData() {
+  return getCached(
+    _prdsDataCache,
+    c => { _prdsDataCache = c; },
+    getPrdsData
+  );
+}
+
+function getCachedBlockers() {
+  return getCached(
+    _blockersCache,
+    c => { _blockersCache = c; },
+    getBlockers
+  );
+}
+
+function getCachedPendingMemory() {
+  return getCached(
+    _pendingMemoryCache,
+    c => { _pendingMemoryCache = c; },
+    getPendingMemory
+  );
+}
+
+// Clear all caches
+function clearCache() {
+  _prdsDataCache = null;
+  _blockersCache = null;
+  _pendingMemoryCache = null;
+}
+
 // Find views directory (works in both dev and dist)
 function getViewsDir(): string {
   // Try dist location first
@@ -1150,7 +1210,7 @@ interface SimpleGanttTask {
 
 // Generate PRD overview Gantt (with real scheduling)
 function generatePrdOverviewGantt(): { tasks: SimpleGanttTask[]; totalHours: number; t0: Date } {
-  const prds = getPrdsData();
+  const prds = getCachedPrdsData();
   const effortConfig = {
     default_duration: getConfigValue<string>('task.default_duration') || '1h',
     effort_map: getConfigValue<string>('task.effort_map') || 'S=0.5h,M=1h,L=2h,XL=4h'
@@ -1286,7 +1346,11 @@ function renderSimpleGantt(tasks: SimpleGanttTask[], totalHours: number, title: 
 }
 
 // Routes
-export function createRoutes() {
+export function createRoutes(options: RoutesOptions = {}) {
+  // Set cache TTL from options
+  _cacheTTL = options.cacheTTL || 0;
+  clearCache(); // Clear any stale cache from previous run
+
   const routes: Record<string, (req: http.IncomingMessage, res: http.ServerResponse) => void> = {};
 
   // Main page
@@ -1322,7 +1386,7 @@ export function createRoutes() {
     }
 
     // Memory status
-    const pending = getPendingMemory();
+    const pending = getCachedPendingMemory();
     let memoryHtml = '';
     if (pending.length === 0) {
       memoryHtml = `
@@ -1344,10 +1408,10 @@ export function createRoutes() {
     }
 
     // Quick stats
-    const prds = getPrdsData();
+    const prds = getCachedPrdsData();
     const totalTasks = prds.reduce((acc, p) => acc + p.totalTasks, 0);
     const doneTasks = prds.reduce((acc, p) => acc + p.doneTasks, 0);
-    const blockers = getBlockers();
+    const blockers = getCachedBlockers();
 
     // Generate PRD overview Gantt
     const prdGantt = generatePrdOverviewGantt();
@@ -1386,7 +1450,7 @@ export function createRoutes() {
 
   // Tree view with native details/summary
   routes['/api/tree'] = (_req, res) => {
-    const prds = getPrdsData();
+    const prds = getCachedPrdsData();
     let content = '';
 
     if (prds.length === 0) {
@@ -1455,7 +1519,7 @@ export function createRoutes() {
 
   // PRD list fragment (HTMX) - kept for compatibility
   routes['/api/prds'] = (_req, res) => {
-    const prds = getPrdsData();
+    const prds = getCachedPrdsData();
     let content = '';
 
     for (const prd of prds) {
@@ -1499,7 +1563,7 @@ export function createRoutes() {
   routes['/api/prd/:id'] = (req, res) => {
     const url = new URL(req.url || '/', 'http://localhost');
     const prdId = url.pathname.split('/').pop();
-    const prds = getPrdsData();
+    const prds = getCachedPrdsData();
     const prd = prds.find(p => p.id === prdId);
 
     if (!prd) {
@@ -1654,7 +1718,7 @@ export function createRoutes() {
   routes['/api/epic/:id'] = (req, res) => {
     const url = new URL(req.url || '/', 'http://localhost');
     const epicId = url.pathname.split('/').pop();
-    const prds = getPrdsData();
+    const prds = getCachedPrdsData();
 
     // Find the epic across all PRDs
     let foundEpic = null;
@@ -1776,7 +1840,7 @@ export function createRoutes() {
   routes['/api/task/:id'] = (req, res) => {
     const url = new URL(req.url || '/', 'http://localhost');
     const taskId = url.pathname.split('/').pop();
-    const prds = getPrdsData();
+    const prds = getCachedPrdsData();
 
     // Find the task across all PRDs/epics
     let foundTask = null;
@@ -1910,7 +1974,7 @@ export function createRoutes() {
 
   // Blockers fragment
   routes['/api/blockers'] = (_req, res) => {
-    const blockers = getBlockers();
+    const blockers = getCachedBlockers();
     let content = '';
 
     for (const blocker of blockers) {
@@ -1933,7 +1997,7 @@ export function createRoutes() {
 
   // Memory warnings fragment
   routes['/api/memory'] = (_req, res) => {
-    const pending = getPendingMemory();
+    const pending = getCachedPendingMemory();
     let content = '';
 
     if (pending.length > 0) {
@@ -1985,10 +2049,16 @@ export function createRoutes() {
   // JSON API for raw data
   routes['/api/data'] = (_req, res) => {
     json(res, {
-      prds: getPrdsData(),
-      blockers: getBlockers(),
-      pendingMemory: getPendingMemory()
+      prds: getCachedPrdsData(),
+      blockers: getCachedBlockers(),
+      pendingMemory: getCachedPendingMemory()
     });
+  };
+
+  // Refresh cache endpoint
+  routes['/api/refresh'] = (_req, res) => {
+    clearCache();
+    json(res, { status: 'ok', message: 'Cache cleared' });
   };
 
   // Settings/Config page
