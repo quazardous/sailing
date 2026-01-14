@@ -1,10 +1,19 @@
 /**
  * Self-invocation utilities for rudder CLI
  *
- * Handles dev mode (tsx) vs dist mode (node) transparently
- * for internal execSync calls (assign:claim, agent:reap, etc.)
+ * Handles dev mode (tsx) vs dist mode (node) transparently.
+ *
+ * ⚠️ STRONGLY DISCOURAGED: These functions should ONLY be used when there is
+ * NO library alternative. Prefer using lib functions directly:
+ *   - Task updates: use loadFile/saveFile from core.ts
+ *   - Context generation: use composeAgentContext from compose.ts
+ *   - State management: use functions from state.ts, db.ts
+ *
+ * Only use execRudder/execRudderSafe for complex orchestration where
+ * the command has side effects that are hard to replicate (e.g., agent:reap
+ * which does cleanup, state updates, and git operations atomically).
  */
-import { execSync, ExecSyncOptions } from 'child_process';
+import { execaSync, type SyncOptions } from 'execa';
 
 /**
  * Detect if running in dev mode (TypeScript via tsx)
@@ -14,60 +23,52 @@ export function isDevMode(): boolean {
 }
 
 /**
- * Get the command prefix to invoke rudder
- * - Dev mode: npx tsx /path/to/rudder.ts
- * - Dist mode: node /path/to/rudder.js
+ * Get the command parts to invoke rudder
+ * - Dev mode: ['npx', ['tsx', '/path/to/rudder.ts']]
+ * - Dist mode: ['node', ['/path/to/rudder.js']]
  */
-export function getRudderCommand(): string {
+export function getRudderCommand(): { cmd: string; baseArgs: string[] } {
   const script = process.argv[1];
   if (isDevMode()) {
-    return `npx tsx ${script}`;
+    return { cmd: 'npx', baseArgs: ['tsx', script] };
   }
-  return `${process.argv[0]} ${script}`;
+  return { cmd: process.argv[0], baseArgs: [script] };
 }
 
 /**
  * Execute a rudder command synchronously
- * Automatically uses correct invocation for dev/dist mode
  *
- * @param args - Command arguments (e.g., "assign:claim T001 --json")
- * @param options - execSync options (cwd, encoding, etc.)
+ * ⚠️ LAST RESORT ONLY - prefer lib functions. See module docs.
+ *
+ * @param args - Command arguments (e.g., "agent:reap T001")
+ * @param options - execa options (cwd, etc.)
  * @returns Command output as string
+ * @deprecated Prefer using lib functions directly when possible
  */
-export function execRudder(args: string, options?: ExecSyncOptions): string {
-  const cmd = `${getRudderCommand()} ${args}`;
-  return execSync(cmd, {
-    encoding: 'utf8',
-    ...options
-  }) as string;
+export function execRudder(args: string, options?: SyncOptions): string {
+  const { cmd, baseArgs } = getRudderCommand();
+  const allArgs = [...baseArgs, ...args.split(/\s+/)];
+  const { stdout } = execaSync(cmd, allArgs, options);
+  return String(stdout);
 }
 
 /**
  * Execute a rudder command with captured stderr
- * Returns { stdout, stderr } instead of throwing on non-zero exit
+ *
+ * ⚠️ LAST RESORT ONLY - prefer lib functions. See module docs.
  *
  * @param args - Command arguments
- * @param options - execSync options
+ * @param options - execa options
  * @returns { stdout, stderr, exitCode }
+ * @deprecated Prefer using lib functions directly when possible
  */
-export function execRudderSafe(args: string, options?: ExecSyncOptions): {
+export function execRudderSafe(args: string, options?: SyncOptions): {
   stdout: string;
   stderr: string;
   exitCode: number;
 } {
-  const cmd = `${getRudderCommand()} ${args}`;
-  try {
-    const stdout = execSync(cmd, {
-      encoding: 'utf8',
-      stdio: ['pipe', 'pipe', 'pipe'],
-      ...options
-    }) as string;
-    return { stdout, stderr: '', exitCode: 0 };
-  } catch (e: any) {
-    return {
-      stdout: e.stdout?.toString() || '',
-      stderr: e.stderr?.toString() || '',
-      exitCode: e.status ?? 1
-    };
-  }
+  const { cmd, baseArgs } = getRudderCommand();
+  const allArgs = [...baseArgs, ...args.split(/\s+/)];
+  const result = execaSync(cmd, allArgs, { reject: false, ...options });
+  return { stdout: String(result.stdout), stderr: String(result.stderr), exitCode: result.exitCode ?? 0 };
 }

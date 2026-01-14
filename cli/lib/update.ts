@@ -256,6 +256,44 @@ export function parseUpdateOptions(
 }
 
 /**
+ * Update task status directly (for internal use)
+ * Handles status normalization and timestamp tracking
+ */
+export function updateTaskStatus(
+  taskFile: string,
+  newStatus: string,
+  options: { loadFileFn: Function; saveFileFn: Function }
+): { success: boolean; error?: string } {
+  const { loadFileFn, saveFileFn } = options;
+
+  const file = loadFileFn(taskFile);
+  if (!file) {
+    return { success: false, error: `Task file not found: ${taskFile}` };
+  }
+
+  const normalized = normalizeStatus(newStatus, 'task');
+  if (!normalized) {
+    return { success: false, error: `Invalid status: ${newStatus}` };
+  }
+
+  const now = new Date().toISOString();
+  const prevStatus = file.data.status;
+
+  file.data.status = normalized;
+
+  // Track timestamps
+  if (normalized === 'In Progress' && prevStatus !== 'In Progress') {
+    file.data.started_at = now;
+  }
+  if (normalized === 'Done' && prevStatus !== 'Done') {
+    file.data.done_at = now;
+  }
+
+  saveFileFn(taskFile, file.data, file.body);
+  return { success: true };
+}
+
+/**
  * Add a log entry to a task/epic body
  */
 export function addLogEntry(body: string, message: string, author = 'agent'): string {

@@ -9,9 +9,11 @@
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.25.1",
     "commander": "^12.1.0",
+    "execa": "^9.6.1",
     "gray-matter": "^4.0.3",
     "js-yaml": "^4.1.0",
-    "marked": "^17.0.1"
+    "marked": "^17.0.1",
+    "simple-git": "^3.30.0"
   },
   "devDependencies": {
     "@types/node": "^22.8.1",

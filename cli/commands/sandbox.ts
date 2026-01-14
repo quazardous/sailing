@@ -5,7 +5,7 @@
 import fs from 'fs';
 import path from 'path';
 import os from 'os';
-import { execSync } from 'child_process';
+import { execaSync } from 'execa';
 import { getPathsInfo, findProjectRoot } from '../lib/core.js';
 import { spawnClaudeWithSrt, generateSrtConfig, loadBaseSrtConfig } from '../lib/srt.js';
 
@@ -48,7 +48,7 @@ function detectPlatform() {
  */
 function commandExists(cmd) {
   try {
-    execSync(`which ${cmd}`, { stdio: 'ignore' });
+    execaSync('which', [cmd], { stdio: 'ignore' });
     return true;
   } catch {
     return false;
@@ -71,9 +71,9 @@ function checkSrt() {
 
   // Check srt
   try {
-    const version = execSync('npm list -g @anthropic-ai/sandbox-runtime --depth=0 2>/dev/null', { encoding: 'utf8' });
-    results.srtInstalled = version.includes('@anthropic-ai/sandbox-runtime');
-    const match = version.match(/@anthropic-ai\/sandbox-runtime@([\d.]+)/);
+    const { stdout } = execaSync('npm', ['list', '-g', '@anthropic-ai/sandbox-runtime', '--depth=0'], { reject: false });
+    results.srtInstalled = stdout.includes('@anthropic-ai/sandbox-runtime');
+    const match = stdout.match(/@anthropic-ai\/sandbox-runtime@([\d.]+)/);
     if (match) results.srtVersion = match[1];
   } catch {
     results.srtInstalled = commandExists('srt');

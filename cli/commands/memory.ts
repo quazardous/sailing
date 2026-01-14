@@ -31,7 +31,7 @@ import {
   findEpicPrd
 } from '../lib/memory.js';
 import { getMemoryFile, getTask, getEpic } from '../lib/index.js';
-import { isGitRepo, gitMv } from '../lib/git.js';
+import { getGit } from '../lib/git.js';
 import {
   extractAllSections as extractAllSectionsLib,
   findSection,
@@ -171,7 +171,7 @@ export function registerMemoryCommands(program) {
     .option('--no-create', 'Do not create missing memory (.md) files')
     .option('--role <role>', 'Role context (skill, coordinator, agent)')
     .option('--json', 'JSON output')
-    .action((id, options) => {
+    .action(async (id, options) => {
       // Block agents - they don't manage memory
       checkWriteAccess(options.role, 'memory:sync');
       ensureMemoryDir();
@@ -203,17 +203,22 @@ export function registerMemoryCommands(program) {
       // Step 0: Archive orphan memory files (logs and .md for entities that no longer exist)
       const archiveMemDir = path.join(getArchiveDir(), 'memory');
       const projectRoot = findProjectRoot();
-      const useGit = isGitRepo(projectRoot);
+      const git = getGit(projectRoot);
+      const useGit = await git.checkIsRepo();
       const memoryDir = getMemoryDirPath();
 
       // Helper to archive a file
-      const archiveFile = (filePath) => {
+      const archiveFile = async (filePath) => {
         if (!fs.existsSync(archiveMemDir)) {
           fs.mkdirSync(archiveMemDir, { recursive: true });
         }
         const destPath = path.join(archiveMemDir, path.basename(filePath));
         if (useGit) {
-          gitMv(filePath, destPath, projectRoot);
+          try {
+            await git.mv(filePath, destPath);
+          } catch {
+            fs.renameSync(filePath, destPath);
+          }
         } else {
           fs.renameSync(filePath, destPath);
         }
@@ -230,7 +235,7 @@ export function registerMemoryCommands(program) {
           isOrphan = !getEpic(logId);
         }
         if (isOrphan) {
-          archiveFile(logPath);
+          await archiveFile(logPath);
         }
       }
 
@@ -240,7 +245,7 @@ export function registerMemoryCommands(program) {
         for (const file of mdFiles) {
           const epicId = file.replace('.md', '');
           if (!getEpic(epicId)) {
-            archiveFile(path.join(memoryDir, file));
+            await archiveFile(path.join(memoryDir, file));
           }
         }
       }

@@ -29,12 +29,7 @@ import {
   diagnoseAgentState,
   getRecommendedActions
 } from '../lib/state-machine/index.js';
-import {
-  getMainBranch as getGitMainBranch,
-  getStatus as getGitStatus,
-  getDivergence,
-  fetch as gitFetch
-} from '../lib/git.js';
+import { getGit, getMainBranch as getGitMainBranch } from '../lib/git.js';
 import {
   detectProvider,
   checkCli as checkPrCli,
@@ -71,29 +66,37 @@ interface AgentInfo {
 /**
  * Get main branch status
  */
-function getMainBranchStatus(projectRoot) {
+async function getMainBranchStatus(projectRoot) {
+  const git = getGit(projectRoot);
   const mainBranch = getGitMainBranch();
-  const gitStatus = getGitStatus(projectRoot);
+  const gitStatus = await git.status();
+  const allFiles = [...gitStatus.modified, ...gitStatus.created, ...gitStatus.deleted, ...gitStatus.not_added];
   const result = {
     branch: mainBranch,
-    clean: gitStatus.clean,
-    uncommitted: gitStatus.files.length,
+    clean: gitStatus.isClean(),
+    uncommitted: allFiles.length,
     ahead: 0,
     behind: 0,
     upToDate: true
   };
 
   // Fetch to check remote status
-  const fetchResult = gitFetch({ cwd: projectRoot });
-  if (!fetchResult.success) {
+  try {
+    await git.fetch();
+  } catch {
     return result;
   }
 
-  // Check ahead/behind
-  const divergence = getDivergence('HEAD', `origin/${mainBranch}`, projectRoot);
-  result.ahead = divergence.ahead;
-  result.behind = divergence.behind;
-  result.upToDate = divergence.behind === 0;
+  // Check ahead/behind using rev-list
+  try {
+    const ahead = await git.raw(['rev-list', '--count', `origin/${mainBranch}..HEAD`]);
+    const behind = await git.raw(['rev-list', '--count', `HEAD..origin/${mainBranch}`]);
+    result.ahead = parseInt(ahead.trim(), 10) || 0;
+    result.behind = parseInt(behind.trim(), 10) || 0;
+    result.upToDate = result.behind === 0;
+  } catch {
+    // Ignore divergence errors
+  }
 
   return result;
 }
@@ -101,7 +104,7 @@ function getMainBranchStatus(projectRoot) {
 /**
  * Get PR status for a branch (wrapper for pr.js)
  */
-function getPrStatus(taskId, projectRoot, provider) {
+async function getPrStatus(taskId, projectRoot, provider) {
   const branch = getBranchName(taskId);
   return getPrStatusFromLib(branch, projectRoot, provider);
 }
@@ -109,7 +112,7 @@ function getPrStatus(taskId, projectRoot, provider) {
 /**
  * Create PR for a task (wrapper for pr.js)
  */
-function createPr(taskId, options, projectRoot) {
+async function createPr(taskId, options, projectRoot) {
   const state = loadState();
   const agentInfo = state.agents?.[taskId];
 
@@ -141,15 +144,15 @@ export function registerWorktreeCommands(program: any) {
   worktree.command('status')
     .description('Show status of all agent worktrees and PRs')
     .option('--json', 'JSON output')
-    .action((options) => {
+    .action(async (options) => {
       const projectRoot = findProjectRoot();
       const state = loadState();
       const agents = state.agents || {};
       const config = getAgentConfig();
-      const provider = config.pr_provider === 'auto' ? detectProvider(projectRoot) : config.pr_provider;
+      const provider = config.pr_provider === 'auto' ? await detectProvider(projectRoot) : config.pr_provider;
 
       // Get main branch status
-      const mainStatus = getMainBranchStatus(projectRoot);
+      const mainStatus = await getMainBranchStatus(projectRoot);
 
       // Get all agent worktrees
       const worktrees = [];
@@ -178,7 +181,7 @@ export function registerWorktreeCommands(program: any) {
         // Check PR status if provider available
         if (provider && info.pr_url) {
           entry.pr = { url: info.pr_url };
-          const prStatus = getPrStatus(taskId, projectRoot, provider);
+          const prStatus = await getPrStatus(taskId, projectRoot, provider);
           if (prStatus) {
             entry.pr.state = prStatus.state;
             entry.pr.mergeable = prStatus.mergeable;
@@ -189,7 +192,7 @@ export function registerWorktreeCommands(program: any) {
       }
 
       // Build conflict matrix
-      const conflictMatrix = buildConflictMatrix();
+      const conflictMatrix = await buildConflictMatrix();
 
       const result = {
         main_branch: mainStatus,
@@ -262,12 +265,12 @@ export function registerWorktreeCommands(program: any) {
   worktree.command('preflight')
     .description('Check if agent spawn is possible, report blockers')
     .option('--json', 'JSON output')
-    .action((options) => {
+    .action(async (options) => {
       const projectRoot = findProjectRoot();
       const state = loadState();
       const agents = state.agents || {};
       const config = getAgentConfig();
-      const provider = config.pr_provider === 'auto' ? detectProvider(projectRoot) : config.pr_provider;
+      const provider = config.pr_provider === 'auto' ? await detectProvider(projectRoot) : config.pr_provider;
 
       const blockers = [];
       const warnings = [];
@@ -275,7 +278,7 @@ export function registerWorktreeCommands(program: any) {
       const runningAgents = [];
 
       // Check main branch
-      const mainStatus = getMainBranchStatus(projectRoot);
+      const mainStatus = await getMainBranchStatus(projectRoot);
       if (!mainStatus.clean) {
         blockers.push(`Main branch has ${mainStatus.uncommitted} uncommitted changes`);
       }
@@ -305,7 +308,7 @@ export function registerWorktreeCommands(program: any) {
       }
 
       // Check for conflicts
-      const conflictMatrix = buildConflictMatrix();
+      const conflictMatrix = await buildConflictMatrix();
       if (conflictMatrix.hasConflicts) {
         warnings.push(`${conflictMatrix.conflicts.length} potential conflict(s) between running agents`);
       }
@@ -379,7 +382,7 @@ export function registerWorktreeCommands(program: any) {
     .description('Push branch and create PR/MR for agent work')
     .option('--draft', 'Create as draft PR')
     .option('--json', 'JSON output')
-    .action((taskId, options) => {
+    .action(async (taskId, options) => {
       taskId = taskId.toUpperCase();
       if (!taskId.startsWith('T')) taskId = 'T' + taskId;
 
@@ -405,7 +408,7 @@ export function registerWorktreeCommands(program: any) {
 
       // Detect provider
       const config = getAgentConfig();
-      const provider = config.pr_provider === 'auto' ? detectProvider(projectRoot) : config.pr_provider;
+      const provider = config.pr_provider === 'auto' ? await detectProvider(projectRoot) : config.pr_provider;
 
       if (!provider) {
         console.error('Cannot detect PR provider. Set agent.pr_provider in config.');
@@ -441,7 +444,7 @@ export function registerWorktreeCommands(program: any) {
 
       // Create PR
       try {
-        const pr = createPr(taskId, options, projectRoot);
+        const pr = await createPr(taskId, options, projectRoot);
 
         // Update state with PR URL
         state.agents[taskId].pr_url = pr.url;
@@ -464,7 +467,7 @@ export function registerWorktreeCommands(program: any) {
     .description('Remove worktree and branch after PR is merged')
     .option('--force', 'Force cleanup even if PR not merged')
     .option('--json', 'JSON output')
-    .action((taskId, options) => {
+    .action(async (taskId, options) => {
       taskId = taskId.toUpperCase();
       if (!taskId.startsWith('T')) taskId = 'T' + taskId;
 
@@ -480,10 +483,10 @@ export function registerWorktreeCommands(program: any) {
       // Check PR status if exists
       if (agentInfo.pr_url && !options.force) {
         const config = getAgentConfig();
-        const provider = config.pr_provider === 'auto' ? detectProvider(projectRoot) : config.pr_provider;
+        const provider = config.pr_provider === 'auto' ? await detectProvider(projectRoot) : config.pr_provider;
 
         if (provider) {
-          const prStatus = getPrStatus(taskId, projectRoot, provider);
+          const prStatus = await getPrStatus(taskId, projectRoot, provider);
           if (prStatus && prStatus.state !== 'MERGED' && prStatus.state !== 'merged') {
             console.error(`PR is not merged (state: ${prStatus.state}). Use --force to cleanup anyway.`);
             process.exit(1);
@@ -544,12 +547,12 @@ export function registerWorktreeCommands(program: any) {
     .description('Check PR status, cleanup merged worktrees, update state')
     .option('--dry-run', 'Show what would be done without doing it')
     .option('--json', 'JSON output')
-    .action((options) => {
+    .action(async (options) => {
       const projectRoot = findProjectRoot();
       const state = loadState();
       const agents = state.agents || {};
       const config = getAgentConfig();
-      const provider = config.pr_provider === 'auto' ? detectProvider(projectRoot) : config.pr_provider;
+      const provider = config.pr_provider === 'auto' ? await detectProvider(projectRoot) : config.pr_provider;
 
       const actions = [];
 
@@ -559,7 +562,7 @@ export function registerWorktreeCommands(program: any) {
 
         // Check if has PR
         if (info.pr_url && provider) {
-          const prStatus = getPrStatus(taskId, projectRoot, provider);
+          const prStatus = await getPrStatus(taskId, projectRoot, provider);
           if (prStatus && (prStatus.state === 'MERGED' || prStatus.state === 'merged')) {
             actions.push({
               action: 'cleanup',

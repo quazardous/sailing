@@ -12,7 +12,7 @@ import {
   ListToolsRequestSchema,
   Tool,
 } from '@modelcontextprotocol/sdk/types.js';
-import { execSync } from 'child_process';
+import { execaSync } from 'execa';
 import fs from 'fs';
 import path from 'path';
 import net from 'net';
@@ -55,17 +55,16 @@ function runRudder(command: string, options: { json?: boolean } = {}): RunResult
   const { json = false } = options;
 
   try {
-    const fullCmd = `${RUDDER_BIN} ${command}${json ? ' --json' : ''}`;
-    const result = execSync(fullCmd, {
+    const args = command.split(/\s+/);
+    if (json) args.push('--json');
+    const { stdout, stderr } = execaSync(RUDDER_BIN, args, {
       cwd: projectRoot,
-      encoding: 'utf8',
-      stdio: ['pipe', 'pipe', 'pipe'],
       env: {
         ...process.env,
         SAILING_PROJECT: projectRoot
       }
     });
-    return { success: true, output: result.trim() };
+    return { success: true, output: stdout.trim(), stderr };
   } catch (error: any) {
     return {
       success: false,

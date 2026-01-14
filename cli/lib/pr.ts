@@ -3,10 +3,10 @@
  *
  * GitHub and GitLab PR/MR management.
  */
-import { execSync } from 'child_process';
+import { execa, execaSync } from 'execa';
 import { findProjectRoot } from './core.js';
 import { getAgentConfig } from './config.js';
-import { getRemoteUrl, push } from './git.js';
+import { getGit } from './git.js';
 import { getBranchName } from './worktree.js';
 
 interface PrOptions {
@@ -23,16 +23,21 @@ interface PrOptions {
  * @param {string} cwd - Working directory
  * @returns {'github'|'gitlab'|null}
  */
-export function detectProvider(cwd: string) {
-  const remote = getRemoteUrl('origin', cwd);
-  if (!remote) return null;
+export async function detectProvider(cwd: string) {
+  try {
+    const git = getGit(cwd);
+    const remote = await git.remote(['get-url', 'origin']);
+    if (!remote) return null;
 
-  if (remote.includes('github.com') || remote.includes('github:')) {
-    return 'github';
-  } else if (remote.includes('gitlab.com') || remote.includes('gitlab:')) {
-    return 'gitlab';
+    if (remote.includes('github.com') || remote.includes('github:')) {
+      return 'github';
+    } else if (remote.includes('gitlab.com') || remote.includes('gitlab:')) {
+      return 'gitlab';
+    }
+    return null;
+  } catch {
+    return null;
   }
-  return null;
 }
 
 /**
@@ -40,7 +45,7 @@ export function detectProvider(cwd: string) {
  * @param {string} cwd - Working directory
  * @returns {'github'|'gitlab'|null}
  */
-export function getProvider(cwd: string) {
+export async function getProvider(cwd: string) {
   const config = getAgentConfig();
   if (config.pr_provider && config.pr_provider !== 'auto') {
     return config.pr_provider;
@@ -56,7 +61,7 @@ export function getProvider(cwd: string) {
 export function checkCli(provider: string) {
   const cmd = provider === 'github' ? 'gh' : 'glab';
   try {
-    execSync(`${cmd} --version`, { stdio: 'pipe' });
+    execaSync(cmd, ['--version']);
     return { available: true, cmd };
   } catch {
     return { available: false, cmd };
@@ -70,25 +75,17 @@ export function checkCli(provider: string) {
  * @param {'github'|'gitlab'} provider - Provider type
  * @returns {object|null} PR status or null
  */
-export function getStatus(branch: string, cwd: string, provider?: string) {
-  provider = provider || getProvider(cwd) || undefined;
+export async function getStatus(branch: string, cwd: string, provider?: string) {
+  provider = provider || await getProvider(cwd) || undefined;
   if (!provider) return null;
 
   try {
     if (provider === 'github') {
-      const output = execSync(`gh pr view ${branch} --json state,url,number,mergeable`, {
-        cwd,
-        encoding: 'utf8',
-        stdio: ['pipe', 'pipe', 'pipe']
-      });
-      return JSON.parse(output);
+      const { stdout } = await execa('gh', ['pr', 'view', branch, '--json', 'state,url,number,mergeable'], { cwd });
+      return JSON.parse(stdout);
     } else if (provider === 'gitlab') {
-      const output = execSync(`glab mr view ${branch} -F json`, {
-        cwd,
-        encoding: 'utf8',
-        stdio: ['pipe', 'pipe', 'pipe']
-      });
-      return JSON.parse(output);
+      const { stdout } = await execa('glab', ['mr', 'view', branch, '-F', 'json'], { cwd });
+      return JSON.parse(stdout);
     }
   } catch {
     return null;
@@ -101,8 +98,8 @@ export function getStatus(branch: string, cwd: string, provider?: string) {
  * @param {string} cwd - Working directory
  * @returns {boolean}
  */
-export function exists(branch: string, cwd: string) {
-  return getStatus(branch, cwd) !== null;
+export async function exists(branch: string, cwd: string) {
+  return await getStatus(branch, cwd) !== null;
 }
 
 /**
@@ -117,9 +114,9 @@ export function exists(branch: string, cwd: string) {
  * @param {string} options.prdId - PRD ID (for body)
  * @returns {{ url: string, provider: string }|{ error: string }}
  */
-export function create(taskId: string, options: PrOptions = {}) {
+export async function create(taskId: string, options: PrOptions = {}) {
   const cwd = options.cwd || findProjectRoot();
-  const provider = getProvider(cwd);
+  const provider = await getProvider(cwd);
 
   if (!provider) {
     return { error: 'Cannot detect PR provider. Set agent.pr_provider in config.' };
@@ -139,28 +136,26 @@ export function create(taskId: string, options: PrOptions = {}) {
   if (options.prdId) body += `\nPRD: ${options.prdId}`;
 
   // Push branch first
-  const pushResult = push(branch, { cwd, setUpstream: true });
-  if (!pushResult.success) {
-    return { error: `Failed to push branch: ${pushResult.error}` };
+  const git = getGit(cwd);
+  try {
+    await git.push('origin', branch, ['--set-upstream']);
+  } catch (e: any) {
+    return { error: `Failed to push branch: ${e.message}` };
   }
 
   // Create PR
-  const draftFlag = options.draft ? '--draft' : '';
-
   try {
     if (provider === 'github') {
-      const output = execSync(
-        `gh pr create --head ${branch} --title "${title}" --body "${body}" ${draftFlag}`,
-        { cwd, encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'] }
-      );
-      return { url: output.trim(), provider: 'github' };
+      const args = ['pr', 'create', '--head', branch, '--title', title, '--body', body];
+      if (options.draft) args.push('--draft');
+      const { stdout } = await execa('gh', args, { cwd });
+      return { url: stdout.trim(), provider: 'github' };
     } else if (provider === 'gitlab') {
-      const output = execSync(
-        `glab mr create --source-branch ${branch} --title "${title}" --description "${body}" ${draftFlag ? '--draft' : ''}`,
-        { cwd, encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'] }
-      );
-      const urlMatch = output.match(/https:\/\/[^\s]+/);
-      return { url: urlMatch ? urlMatch[0] : output.trim(), provider: 'gitlab' };
+      const args = ['mr', 'create', '--source-branch', branch, '--title', title, '--description', body];
+      if (options.draft) args.push('--draft');
+      const { stdout } = await execa('glab', args, { cwd });
+      const urlMatch = stdout.match(/https:\/\/[^\s]+/);
+      return { url: urlMatch ? urlMatch[0] : stdout.trim(), provider: 'gitlab' };
     }
   } catch (e: any) {
     return { error: `Failed to create PR: ${e.message}` };
@@ -175,8 +170,8 @@ export function create(taskId: string, options: PrOptions = {}) {
  * @param {string} cwd - Working directory
  * @returns {boolean}
  */
-export function isMerged(branch: string, cwd: string) {
-  const status = getStatus(branch, cwd);
+export async function isMerged(branch: string, cwd: string) {
+  const status = await getStatus(branch, cwd);
   if (!status) return false;
   return status.state === 'MERGED' || status.state === 'merged';
 }

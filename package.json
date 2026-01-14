@@ -35,5 +35,8 @@
     "ai-agent"
   ],
   "author": "quazardous",
-  "license": "MIT"
+  "license": "MIT",
+  "dependencies": {
+    "execa": "^9.6.1"
+  }
 }

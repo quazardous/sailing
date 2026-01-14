@@ -19,7 +19,7 @@ import fs from 'fs';
 import path from 'path';
 import os from 'os';
 import crypto from 'crypto';
-import { execSync } from 'child_process';
+import { execaSync } from 'execa';
 import yaml from 'js-yaml';
 import { findProjectRoot } from './core.js';
 import { Placeholders } from './types/config.js';
@@ -39,14 +39,19 @@ export function computeProjectHash(): string {
   let source: string;
 
   try {
-    // Try git remote origin URL first (suppress stderr)
-    source = execSync('git remote get-url origin 2>/dev/null', {
+    // Try git remote origin URL first
+    const result = execaSync('git', ['remote', 'get-url', 'origin'], {
       cwd: projectRoot,
-      encoding: 'utf8',
-      stdio: ['pipe', 'pipe', 'pipe']
-    }).trim();
+      reject: false
+    });
+    if (result.exitCode === 0) {
+      source = String(result.stdout).trim();
+    } else {
+      // Fallback to realpath (not a git repo or no remote)
+      source = fs.realpathSync(projectRoot);
+    }
   } catch {
-    // Fallback to realpath (not a git repo or no remote)
+    // Fallback to realpath
     source = fs.realpathSync(projectRoot);
   }
 

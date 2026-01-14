@@ -9,7 +9,8 @@ import path from 'path';
 import yaml from 'js-yaml';
 import { execSync } from 'child_process';
 import { findProjectRoot, loadFile, jsonOut } from '../lib/core.js';
-import { execRudder, execRudderSafe } from '../lib/invoke.js';
+import { execRudderSafe } from '../lib/invoke.js';
+import { getGit, getMainBranch as getMainBranchConfig } from '../lib/git.js';
 import { resolvePlaceholders, resolvePath, ensureDir } from '../lib/paths.js';
 import { createMission, validateMission, validateResult } from '../lib/agent-schema.js';
 import { loadState, saveState, updateStateAtomic } from '../lib/state.js';
@@ -169,32 +170,19 @@ export function registerAgentCommands(program) {
           const branch = agentInfo.worktree.branch;
 
           if (fs.existsSync(worktreePath)) {
-            // Check for uncommitted changes
-            let isDirty = false;
-            let hasCommits = false;
-            try {
-              const gitStatus = execSync('git status --porcelain', {
-                cwd: worktreePath,
-                encoding: 'utf8',
-                stdio: ['pipe', 'pipe', 'pipe']
-              }).trim();
-              isDirty = gitStatus.length > 0;
-
-              // Check commits ahead of base
-              const baseBranch = agentInfo.worktree.base_branch || 'main';
-              const ahead = execSync(`git rev-list --count ${baseBranch}..HEAD`, {
-                cwd: worktreePath,
-                encoding: 'utf8',
-                stdio: ['pipe', 'pipe', 'pipe']
-              }).trim();
-              hasCommits = parseInt(ahead, 10) > 0;
-            } catch { /* ignore */ }
+            // Check for uncommitted changes and commits ahead
+            const baseBranch = agentInfo.worktree.base_branch || 'main';
+            const worktreeGit = getGit(worktreePath);
+            const worktreeStatus = await worktreeGit.status();
+            const isDirty = !worktreeStatus.isClean();
+            const worktreeLog = await worktreeGit.log({ from: baseBranch, to: 'HEAD' });
+            const commitsAhead = worktreeLog.total;
 
             // Completed agent with work to merge
-            if ((status === 'completed' || status === 'reaped') && (isDirty || hasCommits)) {
+            if ((status === 'completed' || status === 'reaped') && (isDirty || commitsAhead > 0)) {
               if (options.resume) {
                 if (!options.json) {
-                  console.log(`Resuming ${taskId} with existing work (${isDirty ? 'uncommitted changes' : hasCommits + ' commits'})...`);
+                  console.log(`Resuming ${taskId} with existing work (${isDirty ? 'uncommitted changes' : commitsAhead + ' commits'})...`);
                 }
                 // Continue - reuse worktree
               } else {
@@ -223,14 +211,14 @@ export function registerAgentCommands(program) {
             }
 
             // Has commits but not merged
-            if (hasCommits && !['reaped'].includes(status)) {
+            if (commitsAhead > 0 && !['reaped'].includes(status)) {
               if (options.resume) {
                 if (!options.json) {
-                  console.log(`Resuming ${taskId} with ${hasCommits} commit(s)...`);
+                  console.log(`Resuming ${taskId} with ${commitsAhead} commit(s)...`);
                 }
                 // Continue - reuse worktree
               } else {
-                escalate(`Agent ${taskId} has ${hasCommits} commit(s) not merged`, [
+                escalate(`Agent ${taskId} has ${commitsAhead} commit(s) not merged`, [
                   `agent:spawn ${taskId} --resume  # Continue with existing work`,
                   `agent:reap ${taskId}            # Merge + cleanup`,
                   `agent:reject ${taskId}          # Discard work`
@@ -239,7 +227,7 @@ export function registerAgentCommands(program) {
             }
 
             // Clean worktree, can reuse - auto-cleanup
-            if (!isDirty && !hasCommits) {
+            if (!isDirty && commitsAhead === 0) {
               if (!options.json) {
                 console.log(`Auto-cleaning previous ${taskId} (no changes)...`);
               }
@@ -281,40 +269,34 @@ export function registerAgentCommands(program) {
 
       // Verify git repo and clean state if worktree mode is enabled
       if (useWorktree) {
-        const gitOpts: any = { cwd: projectRoot, encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'] };
+        const git = getGit(projectRoot);
 
         // Check git repo exists
-        try {
-          execSync('git rev-parse --git-dir 2>/dev/null', gitOpts);
-        } catch {
+        const isRepo = await git.checkIsRepo();
+        if (!isRepo) {
           console.error('BLOCKED: use_worktrees requires a git repository\n');
           console.error('Escalate for resolution.');
           process.exit(1);
         }
 
         // Check for uncommitted changes
-        try {
-          const status = execSync('git status --porcelain', gitOpts).trim();
-          if (status) {
-            console.error('BLOCKED: Working directory has uncommitted changes\n');
-            console.error('Worktree isolation requires a clean working directory.');
-            console.error('Escalate for resolution.\n');
-            console.error('Uncommitted files:');
-            status.split('\n').slice(0, 10).forEach(line => console.error(`  ${line}`));
-            if (status.split('\n').length > 10) {
-              console.error(`  ... and ${status.split('\n').length - 10} more`);
-            }
-            process.exit(1);
+        const gitStatus = await git.status();
+        if (!gitStatus.isClean()) {
+          console.error('BLOCKED: Working directory has uncommitted changes\n');
+          console.error('Worktree isolation requires a clean working directory.');
+          console.error('Escalate for resolution.\n');
+          console.error('Uncommitted files:');
+          const allFiles = [...gitStatus.modified, ...gitStatus.created, ...gitStatus.deleted, ...gitStatus.not_added];
+          allFiles.slice(0, 10).forEach(file => console.error(`  ${file}`));
+          if (allFiles.length > 10) {
+            console.error(`  ... and ${allFiles.length - 10} more`);
           }
-        } catch (e) {
-          console.error('ERROR: Failed to check git status:', e.message);
           process.exit(1);
         }
 
         // Check for commits (git worktree requires at least one commit)
-        try {
-          execSync('git rev-parse HEAD 2>/dev/null', gitOpts);
-        } catch {
+        const repoLog = await git.log().catch(() => ({ total: 0 }));
+        if (repoLog.total === 0) {
           console.error('BLOCKED: No commits in repository\n');
           console.error('Git worktree requires at least one commit to create branches.');
           console.error('Escalate for resolution.');
@@ -460,36 +442,22 @@ Start by running \`pwd\` and \`ls -la\`, then call the rudder MCP tool with \`co
         if (worktreeExists(taskId)) {
           const worktreePath = getWorktreePath(taskId);
           const branch = getBranchName(taskId);
-
-          // Check if worktree is clean (reusable)
-          let isDirty = false;
-          let hasCommits = false;
           const mainBranch = getMainBranch();
 
-          try {
-            const gitStatus = execSync('git status --porcelain', {
-              cwd: worktreePath,
-              encoding: 'utf8',
-              stdio: ['pipe', 'pipe', 'pipe']
-            }).trim();
-            isDirty = gitStatus.length > 0;
+          // Check if worktree is clean (reusable)
+          const wtGit = getGit(worktreePath);
+          const wtStatus = await wtGit.status();
+          const isDirty = !wtStatus.isClean();
+          const wtLog = await wtGit.log({ from: mainBranch, to: 'HEAD' });
+          const commitsAhead = wtLog.total;
 
-            // Check commits ahead of main
-            const ahead = execSync(`git rev-list --count ${mainBranch}..HEAD`, {
-              cwd: worktreePath,
-              encoding: 'utf8',
-              stdio: ['pipe', 'pipe', 'pipe']
-            }).trim();
-            hasCommits = parseInt(ahead, 10) > 0;
-          } catch { /* ignore */ }
-
-          if (isDirty || hasCommits) {
+          if (isDirty || commitsAhead > 0) {
             if (options.resume) {
               // Resume mode: reuse existing worktree with work
               if (!options.json) {
                 console.log(`Resuming in existing worktree for ${taskId}...`);
                 if (isDirty) console.log(`  (has uncommitted changes)`);
-                if (hasCommits) console.log(`  (has ${hasCommits} commit(s) ahead of ${mainBranch})`);
+                if (commitsAhead > 0) console.log(`  (has ${commitsAhead} commit(s) ahead of ${mainBranch})`);
               }
               // Use existing worktree - set worktreeInfo and cwd
               worktreeInfo = {
@@ -505,7 +473,7 @@ Start by running \`pwd\` and \`ls -la\`, then call the rudder MCP tool with \`co
               escalate(`Orphaned worktree exists for ${taskId}`, [
                 `Path: ${worktreePath}`,
                 `Branch: ${branch}`,
-                isDirty ? `Has uncommitted changes` : `Has ${hasCommits} commit(s) ahead of ${mainBranch}`,
+                isDirty ? `Has uncommitted changes` : `Has ${commitsAhead} commit(s) ahead of ${mainBranch}`,
                 ``,
                 `Options:`,
                 `  agent:spawn ${taskId} --resume  # Continue with existing work`,
@@ -556,7 +524,7 @@ Start by running \`pwd\` and \`ls -la\`, then call the rudder MCP tool with \`co
       // Pre-claim task before spawning agent
       // This ensures task is marked as in-progress even if agent doesn't call MCP
       {
-        const { stderr, exitCode } = execRudderSafe(`assign:claim ${taskId} --json`, { cwd: projectRoot });
+        const { stderr, exitCode } = execRudderSafe(`assign:claim ${taskId} --role agent --json`, { cwd: projectRoot });
         if (exitCode === 0) {
           if (!options.json) {
             console.log(`Task ${taskId} claimed`);
@@ -619,42 +587,26 @@ Start by running \`pwd\` and \`ls -la\`, then call the rudder MCP tool with \`co
       });
 
       // Handle process exit
-      spawnResult.process.on('exit', (code, signal) => {
+      spawnResult.process.on('exit', async (code, signal) => {
         // Check for uncommitted changes and commits ahead of base
-        let dirtyWorktree = false;
-        let uncommittedFiles = 0;
-        let hasCommits = false;
+        const exitGit = getGit(cwd);
+        const gitStatusResult = await exitGit.status();
+        const dirtyWorktree = !gitStatusResult.isClean();
+        const allModified = [...gitStatusResult.modified, ...gitStatusResult.created, ...gitStatusResult.deleted, ...gitStatusResult.not_added];
+        const uncommittedFiles = allModified.length;
 
-        try {
-          const gitStatus = execSync('git status --porcelain', {
-            cwd,
-            encoding: 'utf8',
-            stdio: ['pipe', 'pipe', 'pipe']
-          }).trim();
+        if (dirtyWorktree && !useWorktree) {
+          // Non-worktree mode: agent should have committed
+          console.error(`\n⚠️  WARNING: Agent ${taskId} left uncommitted changes`);
+          console.error(`   ${uncommittedFiles} file(s) modified but not committed.`);
+          console.error(`   Agent should have committed before releasing task.\n`);
+        }
 
-          if (gitStatus) {
-            dirtyWorktree = true;
-            uncommittedFiles = gitStatus.split('\n').length;
-
-            if (!useWorktree) {
-              // Non-worktree mode: agent should have committed
-              console.error(`\n⚠️  WARNING: Agent ${taskId} left uncommitted changes`);
-              console.error(`   ${uncommittedFiles} file(s) modified but not committed.`);
-              console.error(`   Agent should have committed before releasing task.\n`);
-            }
-          }
-
-          // Check for commits ahead of base branch
-          if (useWorktree && worktreeInfo?.base_branch) {
-            const ahead = execSync(`git rev-list --count ${worktreeInfo.base_branch}..HEAD`, {
-              cwd,
-              encoding: 'utf8',
-              stdio: ['pipe', 'pipe', 'pipe']
-            }).trim();
-            hasCommits = parseInt(ahead, 10) > 0;
-          }
-        } catch (e) {
-          // Git check failed, ignore
+        // Check for commits ahead of base branch
+        let commitsAhead = 0;
+        if (useWorktree && worktreeInfo?.base_branch) {
+          const exitLog = await exitGit.log({ from: worktreeInfo.base_branch, to: 'HEAD' });
+          commitsAhead = exitLog.total;
         }
 
         // Update state atomically
@@ -675,7 +627,7 @@ Start by running \`pwd\` and \`ls -la\`, then call the rudder MCP tool with \`co
 
         // Auto-release if agent exited successfully with work done
         // This handles cases where agent forgot to call assign:release
-        if (code === 0 && (dirtyWorktree || hasCommits)) {
+        if (code === 0 && (dirtyWorktree || commitsAhead > 0)) {
           const { stdout, stderr, exitCode } = execRudderSafe(`assign:release ${taskId} --json`, { cwd: projectRoot });
           if (exitCode === 0) {
             console.log(`✓ Auto-released ${taskId} (agent didn't call assign:release)`);
@@ -1182,7 +1134,7 @@ Start by running \`pwd\` and \`ls -la\`, then call the rudder MCP tool with \`co
   withModifies(agent.command('collect <task-id>'), ['state'])
     .description('[DEPRECATED] Collect agent result → use agent:reap instead')
     .option('--json', 'JSON output')
-    .action((taskId: string, options: { json?: boolean }) => {
+    .action(async (taskId: string, options: { json?: boolean }) => {
       console.error('⚠️  DEPRECATED: agent:collect is deprecated. Use agent:reap instead.');
       console.error('   agent:reap collects, merges, cleans up, and updates status.\n');
 
@@ -1238,41 +1190,24 @@ Start by running \`pwd\` and \`ls -la\`, then call the rudder MCP tool with \`co
         const worktreePath = agentInfo.worktree.path;
         if (fs.existsSync(worktreePath)) {
           try {
-            // Get files modified in worktree
-            const diffOutput = execSync('git diff --name-only HEAD', {
-              cwd: worktreePath,
-              encoding: 'utf8',
-              stdio: ['pipe', 'pipe', 'pipe']
-            }).trim();
+            const collectGit = getGit(worktreePath);
 
-            // Get uncommitted files (staged + unstaged)
-            const statusOutput = execSync('git status --porcelain', {
-              cwd: worktreePath,
-              encoding: 'utf8',
-              stdio: ['pipe', 'pipe', 'pipe']
-            }).trim();
+            // Get status including staged + unstaged files
+            const collectStatus = await collectGit.status();
 
             // Parse status to get changed files
-            const changedFiles = statusOutput
-              .split('\n')
-              .filter(line => line.trim())
-              .map(line => ({
-                status: line.substring(0, 2).trim(),
-                file: line.substring(3)
-              }));
+            const changedFiles = [
+              ...collectStatus.modified.map(f => ({ status: 'M', file: f })),
+              ...collectStatus.created.map(f => ({ status: 'A', file: f })),
+              ...collectStatus.deleted.map(f => ({ status: 'D', file: f })),
+              ...collectStatus.not_added.map(f => ({ status: '?', file: f })),
+              ...collectStatus.staged.map(f => ({ status: 'S', file: f }))
+            ];
 
             // Get commit count ahead of base branch
-            let commitsAhead = 0;
-            try {
-              const countOutput = execSync('git rev-list --count HEAD ^origin/HEAD 2>/dev/null || echo 0', {
-                cwd: worktreePath,
-                encoding: 'utf8',
-                stdio: ['pipe', 'pipe', 'pipe']
-              }).trim();
-              commitsAhead = parseInt(countOutput, 10) || 0;
-            } catch {
-              // No upstream or base, ignore
-            }
+            const baseBranch = agentInfo.worktree.base_branch || 'origin/HEAD';
+            const collectLog = await collectGit.log({ from: baseBranch, to: 'HEAD' });
+            const commitsAhead = collectLog.total;
 
             worktreeInfo = {
               path: worktreePath,
@@ -1361,7 +1296,7 @@ Start by running \`pwd\` and \`ls -la\`, then call the rudder MCP tool with \`co
   // agent:sync - reconcile state.json with reality (worktrees, agents dirs)
   withModifies(agent.command('sync'), ['state'])
     .description('Sync state.json with actual worktrees/agents (recover from ghosts)')
-    .action((options: { dryRun?: boolean; json?: boolean }) => {
+    .action(async (options: { dryRun?: boolean; json?: boolean }) => {
       const config = getAgentConfig();
       const havenPath = resolvePlaceholders('${haven}');
       const worktreesDir = path.join(havenPath, 'worktrees');
@@ -1412,17 +1347,13 @@ Start by running \`pwd\` and \`ls -la\`, then call the rudder MCP tool with \`co
             }
 
             // Check for uncommitted changes
-            try {
-              const gitStatus = execSync('git status --porcelain', {
-                cwd: worktreePath,
-                encoding: 'utf8',
-                stdio: ['pipe', 'pipe', 'pipe']
-              }).trim();
-              if (gitStatus) {
-                entry.dirty_worktree = true;
-                entry.uncommitted_files = gitStatus.split('\n').length;
-              }
-            } catch { /* ignore */ }
+            const syncGit = getGit(worktreePath);
+            const syncStatus = await syncGit.status();
+            if (!syncStatus.isClean()) {
+              entry.dirty_worktree = true;
+              const syncAllFiles = [...syncStatus.modified, ...syncStatus.created, ...syncStatus.deleted, ...syncStatus.not_added];
+              entry.uncommitted_files = syncAllFiles.length;
+            }
 
             if (!options.dryRun) {
               state.agents[taskId] = entry;
@@ -1637,40 +1568,26 @@ Start by running \`pwd\` and \`ls -la\`, then call the rudder MCP tool with \`co
         }
 
         // 5a. Auto-commit if dirty
-        try {
-          const gitStatus = execSync('git status --porcelain', {
-            cwd: worktreePath,
-            encoding: 'utf8',
-            stdio: ['pipe', 'pipe', 'pipe']
-          }).trim();
-
-          if (gitStatus) {
+        const reapGit = getGit(worktreePath);
+        const reapStatus = await reapGit.status();
+        if (!reapStatus.isClean()) {
+          try {
+            const reapAllFiles = [...reapStatus.modified, ...reapStatus.created, ...reapStatus.deleted, ...reapStatus.not_added];
             if (!options.json) {
-              console.log(`⚠️  Auto-committing ${gitStatus.split('\n').length} uncommitted file(s)`);
+              console.log(`⚠️  Auto-committing ${reapAllFiles.length} uncommitted file(s)`);
             }
-            execSync('git add -A', { cwd: worktreePath, stdio: 'pipe' });
-            execSync(`git commit -m "chore(${taskId}): auto-commit agent changes"`, {
-              cwd: worktreePath,
-              stdio: 'pipe'
-            });
+            await reapGit.add('-A');
+            await reapGit.commit(`chore(${taskId}): auto-commit agent changes`);
+          } catch (e) {
+            // Commit failed
           }
-        } catch (e) {
-          // Commit failed or nothing to commit
         }
 
         // 5b. Check for conflicts
+        const mainGit = getGit(projectRoot);
         try {
-          const mergeBase = execSync(`git merge-base HEAD ${branch}`, {
-            cwd: projectRoot,
-            encoding: 'utf8',
-            stdio: ['pipe', 'pipe', 'pipe']
-          }).trim();
-
-          const mergeTree = execSync(`git merge-tree ${mergeBase} HEAD ${branch}`, {
-            cwd: projectRoot,
-            encoding: 'utf8',
-            stdio: ['pipe', 'pipe', 'pipe']
-          });
+          const mergeBase = await mainGit.raw(['merge-base', 'HEAD', branch]);
+          const mergeTree = await mainGit.raw(['merge-tree', mergeBase.trim(), 'HEAD', branch]);
 
           if (mergeTree.includes('<<<<<<<') || mergeTree.includes('>>>>>>>')) {
             // Extract conflicting files
@@ -1711,15 +1628,12 @@ Start by running \`pwd\` and \`ls -la\`, then call the rudder MCP tool with \`co
           }
 
           if (strategy === 'squash') {
-            execSync(`git merge --squash ${branch}`, { cwd: projectRoot, stdio: 'pipe' });
-            execSync(`git commit -m "feat(${taskId}): ${agentInfo.worktree.branch}"`, {
-              cwd: projectRoot,
-              stdio: 'pipe'
-            });
+            await mainGit.merge([branch, '--squash']);
+            await mainGit.commit(`feat(${taskId}): ${agentInfo.worktree.branch}`);
           } else if (strategy === 'rebase') {
-            execSync(`git rebase ${branch}`, { cwd: projectRoot, stdio: 'pipe' });
+            await mainGit.rebase([branch]);
           } else {
-            execSync(`git merge ${branch} --no-edit`, { cwd: projectRoot, stdio: 'pipe' });
+            await mainGit.merge([branch, '--no-edit']);
           }
         } catch (e) {
           escalate(`Merge failed: ${e.message}`, [
@@ -2130,8 +2044,8 @@ Start by running \`pwd\` and \`ls -la\`, then call the rudder MCP tool with \`co
   agent.command('conflicts')
     .description('Show potential file conflicts between parallel agents')
     .option('--json', 'JSON output')
-    .action((options: { json?: boolean }) => {
-      const conflictData = buildConflictMatrix();
+    .action(async (options: { json?: boolean }) => {
+      const conflictData = await buildConflictMatrix();
 
       if (options.json) {
         jsonOut(conflictData);
