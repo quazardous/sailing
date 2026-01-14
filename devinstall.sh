@@ -323,9 +323,9 @@ read -r -d '' RUDDER_MCP_CONTENT << EOF || true
 PROJECT_ROOT="\$(realpath "\$(dirname "\$0")/..")"
 MODE_FILE="\$PROJECT_ROOT/SAILING_DIST"
 if [ -f "\$MODE_FILE" ] && [ "\$(cat "\$MODE_FILE" | tr -d '[:space:]')" = "dev" ]; then
-  SAILING_PROJECT="\$PROJECT_ROOT" exec npx tsx "\$SCRIPT_DIR/cli/mcp-server.ts" "\$@"
+  SAILING_PROJECT="\$PROJECT_ROOT" exec npx tsx "$SCRIPT_DIR/cli/mcp-server.ts" "\$@"
 else
-  SAILING_PROJECT="\$PROJECT_ROOT" exec node "\$SCRIPT_DIR/dist/cli/mcp-server.js" "\$@"
+  SAILING_PROJECT="\$PROJECT_ROOT" exec node "$SCRIPT_DIR/dist/cli/mcp-server.js" "\$@"
 fi
 EOF
 
