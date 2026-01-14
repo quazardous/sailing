@@ -798,6 +798,12 @@ if [ "$USE_WORKTREE" = true ]; then
   echo "${STEP}. Verify setup:"
   echo "   bin/rudder sandbox:check"
   echo
+  STEP=$((STEP + 1))
+
+  echo "${STEP}. Before spawning agents, start the MCP server:"
+  echo "   bin/rudder-mcp start"
+  echo "   (keep it running in a terminal or use: bin/rudder-mcp start &)"
+  echo
   echo "Documentation: docs/sandbox.md"
   echo
 fi
