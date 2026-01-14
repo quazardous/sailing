@@ -9,6 +9,7 @@ import path from 'path';
 import yaml from 'js-yaml';
 import { execSync } from 'child_process';
 import { findProjectRoot, loadFile, jsonOut } from '../lib/core.js';
+import { execRudderSafe } from '../lib/invoke.js';
 import { resolvePlaceholders, ensureDir } from '../lib/paths.js';
 import { createMission, validateResult } from '../lib/agent-schema.js';
 import { loadState, saveState, updateStateAtomic } from '../lib/state.js';
@@ -493,19 +494,14 @@ Start by running \`pwd\` and \`ls -la\`, then call the rudder MCP tool with \`co
         }
         // Pre-claim task before spawning agent
         // This ensures task is marked as in-progress even if agent doesn't call MCP
-        try {
-            execSync(`${process.argv[0]} ${process.argv[1]} assign:claim ${taskId} --json`, {
-                cwd: projectRoot,
-                encoding: 'utf8',
-                stdio: ['pipe', 'pipe', 'pipe']
-            });
-            if (!options.json) {
-                console.log(`Task ${taskId} claimed`);
+        {
+            const { stderr, exitCode } = execRudderSafe(`assign:claim ${taskId} --json`, { cwd: projectRoot });
+            if (exitCode === 0) {
+                if (!options.json) {
+                    console.log(`Task ${taskId} claimed`);
+                }
             }
-        }
-        catch (e) {
-            const stderr = e.stderr?.toString().trim() || '';
-            if (stderr.includes('already claimed')) {
+            else if (stderr.includes('already claimed')) {
                 // Resume scenario - task was already claimed, that's fine
                 if (!options.json) {
                     console.log(`Task ${taskId} resuming (already claimed)`);
@@ -611,41 +607,23 @@ Start by running \`pwd\` and \`ls -la\`, then call the rudder MCP tool with \`co
             // Auto-release if agent exited successfully with work done
             // This handles cases where agent forgot to call assign:release
             if (code === 0 && (dirtyWorktree || hasCommits)) {
-                try {
-                    // Run assign:release to update task status
-                    const releaseResult = execSync(`${process.argv[0]} ${process.argv[1]} assign:release ${taskId} --json`, {
-                        cwd: projectRoot,
-                        encoding: 'utf8',
-                        stdio: ['pipe', 'pipe', 'pipe']
-                    });
+                const { stdout, stderr, exitCode } = execRudderSafe(`assign:release ${taskId} --json`, { cwd: projectRoot });
+                if (exitCode === 0) {
                     console.log(`✓ Auto-released ${taskId} (agent didn't call assign:release)`);
                 }
-                catch (e) {
-                    // Release might fail if already released or no claim
-                    // Check if it's a real error vs expected "already released"
-                    const stderr = e.stderr?.toString() || '';
-                    const stdout = e.stdout?.toString() || '';
-                    if (stderr.includes('not claimed') || stdout.includes('not claimed')) {
-                        // Expected - agent already released, ignore
-                    }
-                    else if (e.status !== 0) {
-                        console.error(`⚠ Auto-release failed for ${taskId}: ${stderr || e.message}`);
-                    }
+                else if (!stderr.includes('not claimed') && !stdout.includes('not claimed')) {
+                    console.error(`⚠ Auto-release failed for ${taskId}: ${stderr}`);
                 }
             }
             // Auto-create PR if enabled and agent completed successfully
             if (code === 0 && agentConfig.auto_pr && updatedState.agents?.[taskId]?.worktree) {
-                try {
-                    const draftFlag = agentConfig.pr_draft ? '--draft' : '';
-                    execSync(`${process.argv[0]} ${process.argv[1]} worktree pr ${taskId} ${draftFlag} --json`, {
-                        cwd: projectRoot,
-                        encoding: 'utf8',
-                        stdio: ['pipe', 'pipe', 'pipe']
-                    });
+                const draftFlag = agentConfig.pr_draft ? '--draft' : '';
+                const { stderr, exitCode } = execRudderSafe(`worktree pr ${taskId} ${draftFlag} --json`, { cwd: projectRoot });
+                if (exitCode === 0) {
                     console.log(`Auto-PR created for ${taskId}`);
                 }
-                catch (e) {
-                    console.error(`Auto-PR failed for ${taskId}: ${e.message}`);
+                else {
+                    console.error(`Auto-PR failed for ${taskId}: ${stderr}`);
                 }
             }
         });
@@ -820,17 +798,15 @@ Start by running \`pwd\` and \`ls -la\`, then call the rudder MCP tool with \`co
         if (exitCode === 0) {
             if (!isQuiet)
                 console.log(`\nAuto-reaping ${taskId}...`);
-            try {
-                execSync(`${process.argv[0]} ${process.argv[1]} agent:reap ${taskId}${!isQuiet ? ' --verbose' : ''}`, {
-                    cwd: projectRoot,
-                    encoding: 'utf8',
-                    stdio: isQuiet ? 'pipe' : 'inherit'
-                });
+            const { stdout, stderr, exitCode: reapCode } = execRudderSafe(`agent:reap ${taskId}${!isQuiet ? ' --verbose' : ''}`, { cwd: projectRoot });
+            if (reapCode === 0) {
+                if (!isQuiet && stdout)
+                    console.log(stdout);
                 if (isQuiet)
                     console.log(`${taskId}: ✓ reaped`);
             }
-            catch (e) {
-                console.error(`Reap failed: ${e.message}`);
+            else {
+                console.error(`Reap failed: ${stderr}`);
                 console.error(`Manual: bin/rudder agent:reap ${taskId}`);
             }
         }
@@ -945,15 +921,13 @@ Start by running \`pwd\` and \`ls -la\`, then call the rudder MCP tool with \`co
                 console.log(`${taskId} already completed`);
                 if (options.reap !== false) {
                     console.log(`\nReaping ${taskId}...`);
-                    try {
-                        execSync(`${process.argv[0]} ${process.argv[1]} agent:reap ${taskId}`, {
-                            cwd: projectRoot,
-                            encoding: 'utf8',
-                            stdio: 'inherit'
-                        });
+                    const { stdout, stderr, exitCode } = execRudderSafe(`agent:reap ${taskId}`, { cwd: projectRoot });
+                    if (exitCode === 0) {
+                        if (stdout)
+                            console.log(stdout);
                     }
-                    catch (e) {
-                        console.error(`Reap failed: ${e.message}`);
+                    else {
+                        console.error(`Reap failed: ${stderr}`);
                     }
                 }
             }
@@ -1092,15 +1066,13 @@ Start by running \`pwd\` and \`ls -la\`, then call the rudder MCP tool with \`co
         // Auto-reap if successful
         if (exitCode === 0 && options.reap !== false) {
             console.log(`\nAuto-reaping ${taskId}...`);
-            try {
-                execSync(`${process.argv[0]} ${process.argv[1]} agent:reap ${taskId}`, {
-                    cwd: projectRoot,
-                    encoding: 'utf8',
-                    stdio: 'inherit'
-                });
+            const { stdout, stderr, exitCode: reapCode } = execRudderSafe(`agent:reap ${taskId}`, { cwd: projectRoot });
+            if (reapCode === 0) {
+                if (stdout)
+                    console.log(stdout);
             }
-            catch (e) {
-                console.error(`Reap failed: ${e.message}`);
+            else {
+                console.error(`Reap failed: ${stderr}`);
                 console.error(`Manual: bin/rudder agent:reap ${taskId}`);
             }
         }
@@ -1627,19 +1599,15 @@ Start by running \`pwd\` and \`ls -la\`, then call the rudder MCP tool with \`co
         }
         // 6. Update task status
         const taskStatus = resultStatus === 'completed' ? 'Done' : 'Blocked';
-        try {
-            execSync(`${process.argv[0]} ${process.argv[1]} task:update ${taskId} --status "${taskStatus}"`, {
-                cwd: projectRoot,
-                encoding: 'utf8',
-                stdio: 'pipe'
-            });
+        const { stderr, exitCode } = execRudderSafe(`task:update ${taskId} --status "${taskStatus}"`, { cwd: projectRoot });
+        if (exitCode === 0) {
             if (!options.json) {
                 console.log(`✓ Task ${taskId} → ${taskStatus}`);
             }
         }
-        catch (e) {
+        else {
             if (!options.json) {
-                console.error(`Warning: Could not update task status: ${e.message}`);
+                console.error(`Warning: Could not update task status: ${stderr}`);
             }
         }
         // 7. Update agent state
@@ -2527,20 +2495,15 @@ Exit immediately after outputting the result.`;
         }
         const results = [];
         for (const taskId of completed) {
-            try {
-                // Call reap for each (reuse existing logic)
-                execSync(`${process.argv[0]} ${process.argv[1]} agent:reap ${taskId} --json`, {
-                    cwd: projectRoot,
-                    encoding: 'utf8',
-                    stdio: ['pipe', 'pipe', 'pipe']
-                });
+            // Call reap for each (reuse existing logic)
+            const { stderr, exitCode } = execRudderSafe(`agent:reap ${taskId} --json`, { cwd: projectRoot });
+            if (exitCode === 0) {
                 results.push({ task_id: taskId, status: 'reaped' });
                 if (!options.json) {
                     console.log(`  ✓ ${taskId} reaped`);
                 }
             }
-            catch (e) {
-                const stderr = e.stderr?.toString() || e.message;
+            else {
                 results.push({ task_id: taskId, status: 'failed', error: stderr.slice(0, 100) });
                 if (!options.json) {
                     console.error(`  ✗ ${taskId} failed: ${stderr.slice(0, 50)}`);

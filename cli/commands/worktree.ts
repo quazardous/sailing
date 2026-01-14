@@ -6,6 +6,7 @@ import fs from 'fs';
 import path from 'path';
 import { execSync } from 'child_process';
 import { findProjectRoot, jsonOut } from '../lib/core.js';
+import { execRudderSafe } from '../lib/invoke.js';
 import { loadState, saveState } from '../lib/state.js';
 import { getAgentConfig, getGitConfig } from '../lib/config.js';
 import { addDynamicHelp } from '../lib/help.js';
@@ -593,13 +594,11 @@ export function registerWorktreeCommands(program: any) {
 
           if (!options.dryRun && action.action === 'cleanup') {
             // Execute cleanup
-            try {
-              execSync(`${process.argv[0]} ${process.argv[1]} worktree cleanup ${action.taskId} --force`, {
-                cwd: projectRoot,
-                stdio: 'inherit'
-              });
-            } catch {
-              console.error(`  Failed to cleanup ${action.taskId}`);
+            const { stdout, stderr, exitCode } = execRudderSafe(`worktree cleanup ${action.taskId} --force`, { cwd: projectRoot });
+            if (exitCode === 0) {
+              if (stdout) console.log(stdout);
+            } else {
+              console.error(`  Failed to cleanup ${action.taskId}: ${stderr}`);
             }
           }
         }

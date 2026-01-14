@@ -5,6 +5,7 @@ import fs from 'fs';
 import path from 'path';
 import { execSync } from 'child_process';
 import { findPrdDirs, findFiles, loadFile, saveFile, toKebab, loadTemplate, jsonOut, getMemoryDir, stripComments } from '../lib/core.js';
+import { execRudderSafe } from '../lib/invoke.js';
 import { normalizeId, matchesId, matchesPrdDir, parentContainsEpic } from '../lib/normalize.js';
 import { findEpicParent, findEpicFile, findTaskFile as findTaskFileFromEntities } from '../lib/entities.js';
 import { getHierarchicalMemory, ensureMemoryDir } from '../lib/memory.js';
@@ -458,17 +459,16 @@ export function registerTaskCommands(program) {
 
       // Check for pending memory (preflight)
       let pendingWarning = null;
-      try {
-        const syncResult = execSync(`${process.argv[0]} ${process.argv[1]} memory:sync --json`, {
-          encoding: 'utf8',
-          stdio: ['pipe', 'pipe', 'pipe']
-        });
-        const syncData = JSON.parse(syncResult);
-        if (syncData.pending) {
-          pendingWarning = `⚠ PENDING LOGS: ${syncData.logs?.length || '?'} epic(s) need consolidation`;
+      const { stdout, exitCode } = execRudderSafe('memory:sync --json');
+      if (exitCode === 0) {
+        try {
+          const syncData = JSON.parse(stdout);
+          if (syncData.pending) {
+            pendingWarning = `⚠ PENDING LOGS: ${syncData.logs?.length || '?'} epic(s) need consolidation`;
+          }
+        } catch {
+          // Ignore JSON parse errors
         }
-      } catch (e) {
-        // Ignore errors, just skip the check
       }
 
       if (options.json) {
