@@ -232,30 +232,71 @@ export function registerUtilCommands(program) {
         }
       }
 
-      // Load existing config
+      // Set the value preserving comments
       const configPath = getConfigPath();
-      let configData: Record<string, Record<string, unknown>> = {};
-
-      if (fs.existsSync(configPath)) {
-        try {
-          configData = yaml.load(fs.readFileSync(configPath, 'utf8')) as Record<string, Record<string, unknown>> || {};
-        } catch (e) {
-          console.error(`Failed to parse config.yaml: ${e.message}`);
-          process.exit(1);
-        }
-      }
-
-      // Set the value (key format: section.property)
       const [section, ...rest] = key.split('.');
       const property = rest.join('.');
 
-      if (!configData[section]) {
-        configData[section] = {};
-      }
-      configData[section][property] = parsedValue;
+      // Format value for YAML
+      const yamlValue = typeof parsedValue === 'string' ? parsedValue : String(parsedValue);
 
-      // Write back
-      fs.writeFileSync(configPath, yaml.dump(configData, { lineWidth: -1 }));
+      if (!fs.existsSync(configPath)) {
+        // Create new file
+        fs.writeFileSync(configPath, `${section}:\n  ${property}: ${yamlValue}\n`);
+        console.log(`Set ${key} = ${parsedValue}`);
+        return;
+      }
+
+      // Read and modify in-place to preserve comments
+      const lines = fs.readFileSync(configPath, 'utf8').split('\n');
+      let inSection = false;
+      let sectionIndent = 0;
+      let foundKey = false;
+      let sectionEndIndex = -1;
+
+      for (let i = 0; i < lines.length; i++) {
+        const line = lines[i];
+        const trimmed = line.trimStart();
+
+        // Check for section start (no leading whitespace, ends with :)
+        if (!line.startsWith(' ') && !line.startsWith('\t') && trimmed.endsWith(':') && !trimmed.startsWith('#')) {
+          const sectionName = trimmed.slice(0, -1);
+          if (sectionName === section) {
+            inSection = true;
+            sectionIndent = 2; // Standard YAML indent
+            sectionEndIndex = i;
+          } else if (inSection) {
+            // Exited section without finding key
+            sectionEndIndex = i;
+            break;
+          }
+        } else if (inSection && trimmed && !trimmed.startsWith('#')) {
+          // Check if this is our property
+          const match = trimmed.match(/^(\w+):/);
+          if (match && match[1] === property) {
+            // Replace this line, preserve any inline comment
+            const commentMatch = line.match(/#.*$/);
+            const comment = commentMatch ? '  ' + commentMatch[0] : '';
+            lines[i] = `  ${property}: ${yamlValue}${comment}`;
+            foundKey = true;
+            break;
+          }
+          sectionEndIndex = i + 1;
+        }
+      }
+
+      if (!foundKey) {
+        if (sectionEndIndex === -1) {
+          // Section doesn't exist, add it
+          lines.push(`${section}:`);
+          lines.push(`  ${property}: ${yamlValue}`);
+        } else {
+          // Add key to existing section
+          lines.splice(sectionEndIndex, 0, `  ${property}: ${yamlValue}`);
+        }
+      }
+
+      fs.writeFileSync(configPath, lines.join('\n'));
       console.log(`Set ${key} = ${parsedValue}`);
     });
 
