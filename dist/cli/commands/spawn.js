@@ -11,41 +11,33 @@ import { addDynamicHelp } from '../lib/help.js';
 import { getBranchName, getParentBranch, getBranchHierarchy, getMainBranch } from '../lib/worktree.js';
 import { findTaskFile, extractPrdId, extractEpicId, getPrdBranching } from '../lib/entities.js';
 import { diagnose as diagnoseReconciliation, BranchState } from '../lib/reconciliation.js';
-import { getStatus as getGitStatus, getCommitCount } from '../lib/git.js';
+import { getGit } from '../lib/git.js';
 import { buildConflictMatrix } from '../lib/conflicts.js';
 /**
  * Check if git repo is ready for spawn
  */
-function checkGitState(projectRoot) {
+async function checkGitState(projectRoot) {
     const issues = [];
     const actions = [];
+    const git = getGit(projectRoot);
     // Check if git repo
-    try {
-        execSync('git rev-parse --git-dir', {
-            cwd: projectRoot,
-            stdio: ['pipe', 'pipe', 'pipe']
-        });
-    }
-    catch {
+    const isRepo = await git.checkIsRepo();
+    if (!isRepo) {
         issues.push('Not a git repository');
         return { ready: false, issues, actions, fatal: true };
     }
     // Check if has commits
-    try {
-        execSync('git rev-parse HEAD', {
-            cwd: projectRoot,
-            stdio: ['pipe', 'pipe', 'pipe']
-        });
-    }
-    catch {
+    const log = await git.log().catch(() => ({ total: 0 }));
+    if (log.total === 0) {
         issues.push('Repository has no commits');
         actions.push({ type: 'escalate', msg: 'Escalate: repository needs initial commit' });
         return { ready: false, issues, actions, fatal: true };
     }
     // Check for uncommitted changes
-    const status = getGitStatus(projectRoot);
-    if (!status.clean) {
-        issues.push(`${status.files.length} uncommitted changes`);
+    const status = await git.status();
+    if (!status.isClean()) {
+        const allFiles = [...status.modified, ...status.created, ...status.deleted, ...status.not_added];
+        issues.push(`${allFiles.length} uncommitted changes`);
         actions.push({
             type: 'escalate',
             msg: 'Escalate: uncommitted changes must be resolved'
@@ -165,8 +157,8 @@ function checkDependencies(taskId) {
 /**
  * Check for potential conflicts with running agents
  */
-function checkConflicts(taskId) {
-    const matrix = buildConflictMatrix();
+async function checkConflicts(taskId) {
+    const matrix = await buildConflictMatrix();
     if (!matrix.hasConflicts) {
         return { ready: true, issues: [], conflicts: [] };
     }
@@ -204,7 +196,7 @@ export function registerSpawnCommands(program) {
         .argument('<task-id>', 'Task ID to check')
         .option('--json', 'JSON output')
         .option('--for-merge', 'Allow spawn for merge/conflict resolution (conflicts become warnings)')
-        .action((taskId, options) => {
+        .action(async (taskId, options) => {
         if (!options.json) {
             console.error('⚠️  DEPRECATED: spawn:preflight is deprecated.');
             console.error('   agent:spawn now handles pre-flight checks automatically.\n');
@@ -233,10 +225,10 @@ export function registerSpawnCommands(program) {
         const context = { prdId, epicId, branching };
         const forMerge = options.forMerge || false;
         // Run all checks
-        const gitCheck = checkGitState(projectRoot);
+        const gitCheck = await checkGitState(projectRoot);
         const branchCheck = checkBranchState(context, projectRoot, { forMerge });
         const depsCheck = checkDependencies(taskId);
-        const conflictCheck = checkConflicts(taskId);
+        const conflictCheck = await checkConflicts(taskId);
         // Aggregate results
         const allIssues = [
             ...gitCheck.issues,
@@ -321,7 +313,7 @@ export function registerSpawnCommands(program) {
         .description('[DEPRECATED] Post-spawn check → use agent:reap instead')
         .argument('<task-id>', 'Task ID to check')
         .option('--json', 'JSON output')
-        .action((taskId, options) => {
+        .action(async (taskId, options) => {
         if (!options.json) {
             console.error('⚠️  DEPRECATED: spawn:postflight is deprecated. Use agent:reap instead.');
             console.error('   agent:reap handles wait, merge, cleanup, and status update.\n');
@@ -357,10 +349,12 @@ export function registerSpawnCommands(program) {
         if (agentInfo.worktree) {
             const worktreePath = agentInfo.worktree.path;
             if (fs.existsSync(worktreePath)) {
+                const postGit = getGit(projectRoot);
                 // Count commits
                 try {
                     const baseBranch = agentInfo.worktree.base_branch || parentBranch;
-                    commitCount = getCommitCount(baseBranch, branch, projectRoot);
+                    const postLog = await postGit.log({ from: baseBranch, to: branch });
+                    commitCount = postLog.total;
                     hasChanges = commitCount > 0;
                 }
                 catch {
@@ -368,16 +362,14 @@ export function registerSpawnCommands(program) {
                 }
                 // Check for potential merge conflicts
                 try {
-                    execSync(`git merge-tree $(git merge-base ${parentBranch} ${branch}) ${parentBranch} ${branch}`, {
-                        cwd: projectRoot,
-                        encoding: 'utf8',
-                        stdio: ['pipe', 'pipe', 'pipe']
-                    });
-                }
-                catch (e) {
-                    if (e.stdout && e.stdout.includes('<<<<<<')) {
+                    const mergeBase = await postGit.raw(['merge-base', parentBranch, branch]);
+                    const mergeTree = await postGit.raw(['merge-tree', mergeBase.trim(), parentBranch, branch]);
+                    if (mergeTree.includes('<<<<<<')) {
                         conflictDetected = true;
                     }
+                }
+                catch {
+                    // merge-tree failed, assume no conflict
                 }
             }
         }

@@ -12,16 +12,29 @@ import { getArchiveDir, getMemoryDir, loadFile, saveFile, findProjectRoot } from
 import { getPrd, buildPrdIndex, clearIndexCache } from '../lib/index.js';
 import { findEpicPrd, findTaskEpic } from '../lib/memory.js';
 import { normalizeId } from '../lib/normalize.js';
-import { isGitRepo, gitMv } from '../lib/git.js';
+import { getGit } from '../lib/git.js';
 import { withModifies } from '../lib/help.js';
 /**
  * Move file/directory using git mv if in git repo, otherwise fs.rename
  */
-function moveFile(src, dest) {
+async function moveFile(src, dest) {
     const cwd = findProjectRoot();
-    if (isGitRepo(cwd)) {
-        const result = gitMv(src, dest, cwd);
-        return result.method;
+    const git = getGit(cwd);
+    const isRepo = await git.checkIsRepo();
+    if (isRepo) {
+        try {
+            await git.mv(src, dest);
+            return 'git';
+        }
+        catch {
+            // Fallback to fs if git mv fails
+            const destDir = path.dirname(dest);
+            if (!fs.existsSync(destDir)) {
+                fs.mkdirSync(destDir, { recursive: true });
+            }
+            fs.renameSync(src, dest);
+            return 'fs';
+        }
     }
     else {
         // Ensure parent directory exists
@@ -30,7 +43,7 @@ function moveFile(src, dest) {
             fs.mkdirSync(destDir, { recursive: true });
         }
         fs.renameSync(src, dest);
-        return 'prd';
+        return 'fs';
     }
 }
 /**
@@ -120,7 +133,7 @@ function addArchivedAt(prdFile) {
 /**
  * Archive a PRD
  */
-function archivePrd(prdId, options = {}) {
+async function archivePrd(prdId, options = {}) {
     const { force = false, dryRun = false } = options;
     // Find PRD
     const prd = getPrd(prdId);
@@ -191,12 +204,12 @@ function archivePrd(prdId, options = {}) {
     if (memoryFiles.length > 0) {
         for (const m of memoryFiles) {
             const destFile = path.join(archiveMemoryDir, path.basename(m.file));
-            const method = moveFile(m.file, destFile);
+            const method = await moveFile(m.file, destFile);
             console.log(`✓ Moved ${m.id} memory${method === 'git' ? ' (git)' : ''}`);
         }
     }
     // Move PRD folder
-    const method = moveFile(prd.dir, archivePrdDest);
+    const method = await moveFile(prd.dir, archivePrdDest);
     console.log(`✓ Moved PRD folder${method === 'git' ? ' (git)' : ''}`);
     // Clear index cache
     clearIndexCache();
@@ -236,7 +249,7 @@ function listDonePrds() {
 /**
  * Archive all Done PRDs
  */
-function archiveAllDone(dryRun = false) {
+async function archiveAllDone(dryRun = false) {
     const donePrds = getDonePrds();
     if (donePrds.length === 0) {
         console.log('No PRDs with status Done');
@@ -245,7 +258,7 @@ function archiveAllDone(dryRun = false) {
     console.log(`${dryRun ? '=== Dry Run ===' : '=== Archiving all Done PRDs ==='}\n`);
     for (const prd of donePrds) {
         console.log(`--- ${prd.id} ---`);
-        archivePrd(prd.id, { force: false, dryRun });
+        await archivePrd(prd.id, { force: false, dryRun });
         console.log();
     }
 }
@@ -260,20 +273,20 @@ export function registerArchiveCommands(program) {
         .option('--all', 'Archive all Done PRDs')
         .option('--force', 'Archive even if PRD is not done')
         .option('--dry-run', 'Show what would be archived without doing it')
-        .action((prdId, options) => {
+        .action(async (prdId, options) => {
         if (options.all) {
             if (options.force) {
                 console.error('✗ --all and --force are incompatible');
                 process.exit(1);
             }
-            archiveAllDone(options.dryRun || false);
+            await archiveAllDone(options.dryRun || false);
             return;
         }
         if (!prdId || options.list) {
             listDonePrds();
             return;
         }
-        archivePrd(prdId, {
+        await archivePrd(prdId, {
             force: options.force || false,
             dryRun: options.dryRun || false
         });

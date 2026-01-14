@@ -3,48 +3,39 @@
  *
  * Detects file conflicts between agent worktrees to support parallel execution.
  */
-import { execSync } from 'child_process';
 import fs from 'fs';
 import { findProjectRoot } from './core.js';
+import { getGit } from './git.js';
 import { getWorktreePath, getBranchName } from './worktree.js';
 import { loadState } from './state.js';
 /**
  * Get modified files for an agent worktree
  * @param {string} taskId - Task ID
- * @returns {string[]} List of modified file paths
+ * @returns {Promise<string[]>} List of modified file paths
  */
-export function getModifiedFiles(taskId) {
+export async function getModifiedFiles(taskId) {
     const projectRoot = findProjectRoot();
     const branch = getBranchName(taskId);
     const worktreePath = getWorktreePath(taskId);
     if (!fs.existsSync(worktreePath)) {
         return [];
     }
+    const git = getGit(projectRoot);
     try {
         // Get files modified compared to main branch
-        const output = execSync(`git diff --name-only main...${branch}`, {
-            cwd: projectRoot,
-            encoding: 'utf8',
-            stdio: ['pipe', 'pipe', 'pipe']
-        }).trim();
-        if (!output)
+        const output = await git.raw(['diff', '--name-only', `main...${branch}`]);
+        const trimmed = output.trim();
+        if (!trimmed)
             return [];
-        return output.split('\n').filter(f => f.trim());
+        return trimmed.split('\n').filter(f => f.trim());
     }
     catch (e) {
         // Branch might not have diverged yet
         try {
             // Try getting uncommitted changes instead
-            const output = execSync('git status --porcelain', {
-                cwd: worktreePath,
-                encoding: 'utf8',
-                stdio: ['pipe', 'pipe', 'pipe']
-            }).trim();
-            if (!output)
-                return [];
-            return output.split('\n')
-                .filter(line => line.trim())
-                .map(line => line.substring(3));
+            const worktreeGit = getGit(worktreePath);
+            const status = await worktreeGit.status();
+            return [...status.modified, ...status.created, ...status.deleted, ...status.not_added];
         }
         catch {
             return [];
@@ -55,11 +46,15 @@ export function getModifiedFiles(taskId) {
  * Detect conflicts between two task worktrees
  * @param {string} taskId1 - First task ID
  * @param {string} taskId2 - Second task ID
- * @returns {{ files: string[], count: number }}
+ * @returns {Promise<{ files: string[], count: number }>}
  */
-export function detectConflicts(taskId1, taskId2) {
-    const files1 = new Set(getModifiedFiles(taskId1));
-    const files2 = new Set(getModifiedFiles(taskId2));
+export async function detectConflicts(taskId1, taskId2) {
+    const [filesList1, filesList2] = await Promise.all([
+        getModifiedFiles(taskId1),
+        getModifiedFiles(taskId2)
+    ]);
+    const files1 = new Set(filesList1);
+    const files2 = new Set(filesList2);
     const conflicts = [];
     for (const file of files1) {
         if (files2.has(file)) {
@@ -73,9 +68,9 @@ export function detectConflicts(taskId1, taskId2) {
 }
 /**
  * Build conflict matrix for all active agents
- * @returns {{ agents: string[], matrix: object, conflicts: object[] }}
+ * @returns {Promise<{ agents: string[], matrix: object, conflicts: object[], hasConflicts: boolean }>}
  */
-export function buildConflictMatrix() {
+export async function buildConflictMatrix() {
     const state = loadState();
     const agents = state.agents || {};
     // Get agents with worktrees that are dispatched or running
@@ -90,10 +85,14 @@ export function buildConflictMatrix() {
             hasConflicts: false
         };
     }
-    // Get modified files for each agent
+    // Get modified files for each agent (in parallel)
     const filesByAgent = {};
-    for (const taskId of activeAgents) {
-        filesByAgent[taskId] = getModifiedFiles(taskId);
+    const fileResults = await Promise.all(activeAgents.map(async (taskId) => ({
+        taskId,
+        files: await getModifiedFiles(taskId)
+    })));
+    for (const { taskId, files } of fileResults) {
+        filesByAgent[taskId] = files;
     }
     // Build conflict matrix
     const matrix = {};
@@ -103,7 +102,7 @@ export function buildConflictMatrix() {
         matrix[id1] = {};
         for (let j = i + 1; j < activeAgents.length; j++) {
             const id2 = activeAgents[j];
-            const conflict = detectConflicts(id1, id2);
+            const conflict = await detectConflicts(id1, id2);
             matrix[id1][id2] = conflict.count;
             if (conflict.count > 0) {
                 conflicts.push({
@@ -146,9 +145,9 @@ export function suggestMergeOrder(conflictData) {
 /**
  * Check if a specific task can be merged without conflicts
  * @param {string} taskId - Task to check
- * @returns {{ canMerge: boolean, conflictsWith: string[] }}
+ * @returns {Promise<{ canMerge: boolean, conflictsWith: string[] }>}
  */
-export function canMergeWithoutConflict(taskId) {
+export async function canMergeWithoutConflict(taskId) {
     const state = loadState();
     const agents = state.agents || {};
     // Get other active agents
@@ -159,7 +158,7 @@ export function canMergeWithoutConflict(taskId) {
         .map(([id]) => id);
     const conflictsWith = [];
     for (const otherId of otherAgents) {
-        const conflict = detectConflicts(taskId, otherId);
+        const conflict = await detectConflicts(taskId, otherId);
         if (conflict.count > 0) {
             conflictsWith.push(otherId);
         }

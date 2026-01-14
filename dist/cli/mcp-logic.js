@@ -7,7 +7,7 @@
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { CallToolRequestSchema, ListToolsRequestSchema, } from '@modelcontextprotocol/sdk/types.js';
-import { execSync } from 'child_process';
+import { execaSync } from 'execa';
 import fs from 'fs';
 import path from 'path';
 import net from 'net';
@@ -40,17 +40,17 @@ const RUDDER_BIN = path.join(projectRoot, 'bin', 'rudder');
 function runRudder(command, options = {}) {
     const { json = false } = options;
     try {
-        const fullCmd = `${RUDDER_BIN} ${command}${json ? ' --json' : ''}`;
-        const result = execSync(fullCmd, {
+        const args = command.split(/\s+/);
+        if (json)
+            args.push('--json');
+        const { stdout, stderr } = execaSync(RUDDER_BIN, args, {
             cwd: projectRoot,
-            encoding: 'utf8',
-            stdio: ['pipe', 'pipe', 'pipe'],
             env: {
                 ...process.env,
                 SAILING_PROJECT: projectRoot
             }
         });
-        return { success: true, output: result.trim() };
+        return { success: true, output: stdout.trim(), stderr };
     }
     catch (error) {
         return {

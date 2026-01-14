@@ -23,7 +23,8 @@
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { spawn, execSync } from 'child_process';
+import { spawn } from 'child_process';
+import { execaSync } from 'execa';
 import net from 'net';
 import { setScriptDir, setProjectRoot, findProjectRoot, getPath } from './lib/core.js';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -138,8 +139,11 @@ function getServerStatus() {
             // Verify the port is actually in use by our PID
             // This prevents stale port files from misleading us
             try {
-                const lsof = execSync(`lsof -i :${port} -t 2>/dev/null`, { encoding: 'utf8' }).trim();
-                const portPids = lsof.split('\n').map(p => parseInt(p, 10));
+                const { stdout, exitCode } = execaSync('lsof', ['-i', `:${port}`, '-t'], { reject: false });
+                if (exitCode !== 0 || !stdout.trim()) {
+                    throw new Error('Port not in use');
+                }
+                const portPids = stdout.trim().split('\n').map(p => parseInt(p, 10));
                 if (!portPids.includes(pid)) {
                     // Port is no longer used by our process, clean up
                     throw new Error('Port not owned by MCP');
@@ -341,7 +345,7 @@ async function handleStart() {
             if (usePortMode) {
                 // Port mode: write port file
                 fs.writeFileSync(portFile, String(allocatedPort));
-                console.log(`MCP server started (pid: ${child.pid})`);
+                console.log(`Rudder MCP server started (pid: ${child.pid})`);
                 console.log(`  Port: ${allocatedPort}`);
                 console.log(`  Mode: port`);
                 console.log(`  Log: ${logFile}`);
@@ -349,13 +353,13 @@ async function handleStart() {
             else {
                 // Socket mode
                 if (fs.existsSync(defaultSocket)) {
-                    console.log(`MCP server started (pid: ${child.pid})`);
+                    console.log(`Rudder MCP server started (pid: ${child.pid})`);
                     console.log(`  Socket: ${defaultSocket}`);
                     console.log(`  Mode: socket`);
                     console.log(`  Log: ${logFile}`);
                 }
                 else {
-                    console.log(`MCP server starting (pid: ${child.pid})`);
+                    console.log(`Rudder MCP server starting (pid: ${child.pid})`);
                     console.log(`  Check log: ${logFile}`);
                 }
             }

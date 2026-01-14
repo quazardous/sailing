@@ -4,7 +4,7 @@
  */
 import fs from 'fs';
 import path from 'path';
-import { execSync } from 'child_process';
+import { execaSync } from 'execa';
 import { loadComponents as loadComponentsConfig, getComponentsFile, findProjectRoot } from './core.js';
 /**
  * Parse semver version string
@@ -74,15 +74,35 @@ const extractors = {
     },
     // Git tag - gets latest tag matching pattern (default: v*)
     git: (_filePath, pattern = 'v*') => {
+        const projectRoot = findProjectRoot();
+        let tag = '';
+        // Try git describe first
         try {
-            const projectRoot = findProjectRoot();
-            const tag = execSync(`git describe --tags --abbrev=0 --match "${pattern}" 2>/dev/null || git tag -l "${pattern}" --sort=-v:refname 2>/dev/null | head -1`, { cwd: projectRoot, encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'] }).trim();
-            const version = tag.replace(/^v/, '') || null;
-            return { version, source: `git tag ${pattern}` };
+            const result = execaSync('git', ['describe', '--tags', '--abbrev=0', '--match', pattern], {
+                cwd: projectRoot,
+                reject: false
+            });
+            if (result.exitCode === 0) {
+                tag = String(result.stdout).trim();
+            }
         }
-        catch {
-            return { version: null, source: `git tag ${pattern}` };
+        catch { /* ignore */ }
+        // Fallback to git tag -l with sorting
+        if (!tag) {
+            try {
+                const result = execaSync('git', ['tag', '-l', pattern, '--sort=-v:refname'], {
+                    cwd: projectRoot,
+                    reject: false
+                });
+                if (result.exitCode === 0) {
+                    const tags = String(result.stdout).trim().split('\n');
+                    tag = tags[0] || '';
+                }
+            }
+            catch { /* ignore */ }
         }
+        const version = tag.replace(/^v/, '') || null;
+        return { version, source: `git tag ${pattern}` };
     }
 };
 /**

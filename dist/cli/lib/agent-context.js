@@ -6,7 +6,7 @@
  */
 import fs from 'fs';
 import path from 'path';
-import { execSync } from 'child_process';
+import { execaSync } from 'execa';
 import { findProjectRoot } from './core.js';
 /**
  * Check if current directory is a git worktree
@@ -14,19 +14,19 @@ import { findProjectRoot } from './core.js';
  */
 function checkGitWorktree() {
     try {
-        const result = execSync('git rev-parse --git-common-dir 2>/dev/null', {
-            encoding: 'utf8',
-            stdio: ['pipe', 'pipe', 'pipe']
-        }).trim();
-        const gitDir = execSync('git rev-parse --git-dir 2>/dev/null', {
-            encoding: 'utf8',
-            stdio: ['pipe', 'pipe', 'pipe']
-        }).trim();
+        const commonDirResult = execaSync('git', ['rev-parse', '--git-common-dir'], { reject: false });
+        if (commonDirResult.exitCode !== 0)
+            return { isWorktree: false };
+        const commonDir = String(commonDirResult.stdout).trim();
+        const gitDirResult = execaSync('git', ['rev-parse', '--git-dir'], { reject: false });
+        if (gitDirResult.exitCode !== 0)
+            return { isWorktree: false };
+        const gitDir = String(gitDirResult.stdout).trim();
         // If git-common-dir != git-dir, we're in a worktree
-        const isWorktree = result !== gitDir && result !== '.git';
+        const isWorktree = commonDir !== gitDir && commonDir !== '.git';
         if (isWorktree) {
             // Main repo is parent of git-common-dir
-            const mainPath = path.dirname(result);
+            const mainPath = path.dirname(commonDir);
             return { isWorktree: true, mainPath };
         }
         return { isWorktree: false };
