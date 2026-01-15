@@ -1,0 +1,236 @@
+---
+description: Start all ready tasks in parallel (project)
+argument-hint: "[PRD-NNN] [--limit N]"
+allowed-tools: Read, Edit, Glob, Task, Bash
+---
+
+# Batch Start Ready Tasks
+
+> 📖 CLI reference: `bin/rudder -h`
+
+**Arguments:** $ARGUMENTS
+
+⚠️ **Safety notice**: Without a PRD argument, this command may start tasks across multiple PRDs. Use intentionally.
+
+---
+
+## Purpose
+
+Orchestrate the **parallel start of ready tasks** while strictly preserving project invariants:
+
+* **Rudder is the single source of truth** for state
+* **Agents are authoritative** for execution outcomes
+* This command performs **coordination only**, never implementation or inference
+
+The batch runner prepares and launches work, then steps aside.
+
+---
+
+## Pre-flight (MANDATORY)
+
+```bash
+rudder context:load tasks-batch --role skill
+```
+
+This tells you:
+- **Execution mode**: subprocess vs inline
+- **Worktree isolation**: enabled/disabled
+- How to spawn agents (agent:spawn vs Task tool)
+
+**⚠️ NO AUTO-FALLBACK**: If worktree mode is enabled but fails (no git, no commits, spawn error):
+- DO NOT switch to inline mode on your own
+- STOP and report the error to user
+- Constitutional rule: "When in doubt: stop, log, escalate — never guess."
+
+---
+
+## Workflow
+
+1. **Memory Sync (MANDATORY)**
+
+   ```bash
+   rudder memory:sync
+   ```
+
+   | Output | Action |
+   |--------|--------|
+   | `✓ No pending logs` | Proceed to step 2 |
+   | `⚠ MEMORY SYNC REQUIRED` | Consolidate logs, run `epic:clean-logs`, then re-run sync |
+
+   **Invariant**: Memory not consolidated = lost. Lost memory = system failure.
+
+2. **Validate dependencies (MANDATORY)**
+
+   ```bash
+   rudder deps:validate --fix
+   ```
+
+3. **Find ready tasks**
+
+   ```bash
+   # If PRD specified (recommended)
+   rudder deps:ready --prd PRD-005 [--tag <tag>] --limit 6
+
+   # Or filter by epic
+   rudder deps:ready --epic E048 --limit 4
+
+   # Otherwise, all ready tasks (⚠️ cross-PRD)
+   rudder deps:ready --limit 6
+   ```
+
+   **CRITICAL**: Tasks from `deps:ready` are **guaranteed independent** — no manual check needed.
+
+4. **Fail fast**
+
+   * If no ready tasks are found:
+     * Print a clear message
+     * Exit immediately
+     * **Do NOT spawn agents**
+
+5. **Mark tasks In Progress**
+
+   ```bash
+   for task in T101 T102 T103; do
+     rudder task:update $task --status "In Progress" --assignee agent
+   done
+   ```
+
+6. **Spawn parallel agents**
+
+   Check your execution mode from `rudder context:load tasks-batch` output.
+
+   **If spawning fails mid-batch:**
+   - Do NOT attempt recovery
+   - Report which tasks are already marked In Progress
+   - User decides whether to reset them
+   - This command is NOT idempotent — re-running may spawn duplicate work
+
+   **Mode: subprocess** (`use_subprocess: true`):
+   ```bash
+   rudder agent:spawn T101
+   rudder agent:spawn T102
+   rudder agent:spawn T103
+   ```
+
+   Each spawn:
+   - Streams agent output to console
+   - Shows heartbeat every 30s
+   - Auto-reaps on completion (merge + cleanup + status update)
+
+   If worktree isolation is enabled, each agent gets its own git worktree.
+
+   **Mode: inline** (`use_subprocess: false`):
+   * Spawn agents in a **single message** using multiple `Task` tools
+   * Each agent runs `assign:claim TNNN --role agent` to get its full context
+
+   ```
+   ┌─ Task(T101) ─┐
+   ├─ Task(T102) ─┼─► Parallel: each agent runs `assign:claim TNNN --role agent`
+   ├─ Task(T103) ─┤
+   └─ Task(T104) ─┘
+   ```
+
+7. **Results**
+
+   **Mode: subprocess**:
+
+   Results are handled automatically by spawn:
+   - Agent output streamed to console
+   - Heartbeat shows progress every 30s
+   - On completion: auto-merge, cleanup, status update
+
+   **If reap fails (conflicts, errors):**
+   - Command outputs next steps
+   - Follow the guidance or escalate to user
+   - Example: `/dev:merge T042` for conflict resolution
+
+   **Mode: inline**:
+   * Wait for Task tool agents to complete
+   * Summarize outcomes (Done / Blocked)
+   * Report newly unblocked tasks if relevant
+
+8. **Memory Sync AFTER batch (MANDATORY)**
+
+   Before starting another batch or ending the session:
+
+   ```bash
+   rudder memory:sync
+   ```
+
+   Consolidate any pending logs before spawning new agents.
+
+---
+
+## Authority Model
+
+* The **batch runner NEVER changes task status after spawn**
+* Each **agent is authoritative** for its task and must:
+  * Set status to `Done` or `Blocked`
+  * Log reasons when blocked
+
+The orchestrator observes and reports — it does not correct or override.
+
+---
+
+## Agent Brief — Inline Mode
+
+For inline agents (Task tool), the prompt is minimal. The agent gets its context via `assign:claim`:
+
+```markdown
+# Assignment: {TNNN}
+
+You are a senior engineer executing task {TNNN}.
+
+## 1. Get your context
+
+```bash
+rudder assign:claim {TNNN} --role agent
+```
+
+This returns your complete execution context:
+- Agent Contract (constitutional rules, CLI contract, logging protocol)
+- Epic memory (learnings from previous work)
+- Epic context (tech notes, constraints)
+- Task details (deliverables, workflow)
+
+**Read and follow the contract strictly.**
+
+## 2. Execute
+
+Implement the deliverables. No scope expansion.
+
+**Logging contract:**
+- Log once when starting (approach)
+- Log once before returning control (result or blocker)
+- Minimum 2 logs required.
+
+**If you cannot complete:** emit `--error` log, stop, return control.
+
+**You MUST NOT commit, push, or modify git state.**
+
+## 3. Complete
+
+Exit normally. The skill will call `assign:release {TNNN}` after you return.
+
+---
+
+## Non-Goals (Explicit)
+
+This command does **NOT**:
+
+* Interpret or modify task scope
+* Resolve ambiguities or make design decisions
+* Retry, reassign, or recover failed tasks
+* Change task or epic status after agents are spawned
+* Perform implementation or validation work
+
+Any uncertainty is delegated to agents, who must stop and escalate.
+
+---
+
+## Limits
+
+* **Max 6 agents per batch** (context & performance)
+* If more than 6 tasks ready → run multiple batches sequentially
+* Parallelization allowed **only if tasks are dependency-independent**
+* If internal dependencies exist → run tasks **sequentially**, not in batch
