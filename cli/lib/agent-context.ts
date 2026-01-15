@@ -3,27 +3,37 @@
  *
  * Detects whether CLI is running in main mode or agent mode
  * Agent mode: running in a git worktree with a mission.yaml present
+ *
+ * PURE LIB: No config access, no manager imports.
+ * Uses POO encapsulation: AgentContext class holds projectRoot and cwd.
  */
 import fs from 'fs';
 import path from 'path';
 import { execaSync } from 'execa';
-import { findProjectRoot } from '../managers/core-manager.js';
 
-type MissionInfo = {
+// ============================================================================
+// Types
+// ============================================================================
+
+export type MissionInfo = {
   taskId: string;
   missionPath: string;
   agentDir: string;
 };
 
-type ModeInfo =
+export type ModeInfo =
   | { mode: 'agent'; taskId: string; missionPath: string; agentDir: string; projectRoot: string }
   | { mode: 'main'; projectRoot: string };
 
+// ============================================================================
+// Pure Utility Functions (no shared context)
+// ============================================================================
+
 /**
  * Check if current directory is a git worktree
- * @returns {{ isWorktree: boolean, mainPath?: string }}
+ * Pure utility - no config needed
  */
-function checkGitWorktree(): { isWorktree: boolean; mainPath?: string } {
+export function checkGitWorktree(): { isWorktree: boolean; mainPath?: string } {
   try {
     const commonDirResult = execaSync('git', ['rev-parse', '--git-common-dir'], { reject: false });
     if (commonDirResult.exitCode !== 0) return { isWorktree: false };
@@ -48,100 +58,110 @@ function checkGitWorktree(): { isWorktree: boolean; mainPath?: string } {
   }
 }
 
+// ============================================================================
+// AgentContext Class (POO Encapsulation)
+// ============================================================================
+
 /**
- * Find mission file for current context
- * Checks: haven agents folder, current directory, worktree parent
+ * Agent context detection with encapsulated projectRoot and cwd.
+ * Instantiate in manager, use for mode detection.
+ *
+ * @example
+ * // In manager:
+ * const ctx = new AgentContext(findProjectRoot(), process.cwd());
+ * const mode = ctx.detectMode();
  */
-function findMissionFile(): MissionInfo | null {
-  const projectRoot = findProjectRoot();
+export class AgentContext {
+  constructor(
+    private readonly projectRoot: string,
+    private readonly cwd: string
+  ) {}
 
-  // Check for mission.yaml in agent folder pattern
-  // If we're in a worktree at ${haven}/agents/TNNN/worktree
-  // mission.yaml would be at ${haven}/agents/TNNN/mission.yaml
-  const cwd = process.cwd();
-  const cwdParts = cwd.split(path.sep);
+  /**
+   * Find mission file for current context
+   * Checks: haven agents folder, current directory, worktree parent
+   */
+  private findMissionFile(): MissionInfo | null {
+    const cwdParts = this.cwd.split(path.sep);
 
-  // Look for agents/<TNNN> pattern in path
-  for (let i = 0; i < cwdParts.length - 1; i++) {
-    if (cwdParts[i] === 'agents' && /^T\d+$/.test(cwdParts[i + 1])) {
-      const agentDir = cwdParts.slice(0, i + 2).join(path.sep);
-      const missionPath = path.join(agentDir, 'mission.yaml');
+    // Look for agents/<TNNN> pattern in path
+    for (let i = 0; i < cwdParts.length - 1; i++) {
+      if (cwdParts[i] === 'agents' && /^T\d+$/.test(cwdParts[i + 1])) {
+        const agentDir = cwdParts.slice(0, i + 2).join(path.sep);
+        const missionPath = path.join(agentDir, 'mission.yaml');
+        if (fs.existsSync(missionPath)) {
+          return {
+            taskId: cwdParts[i + 1],
+            missionPath,
+            agentDir
+          };
+        }
+      }
+    }
+
+    // Check if we're in a worktree and the parent has mission.yaml
+    const worktreeInfo = checkGitWorktree();
+    if (worktreeInfo.isWorktree) {
+      // Worktree might be at ${haven}/agents/TNNN/worktree
+      // Mission would be at ${haven}/agents/TNNN/mission.yaml
+      const worktreeParent = path.dirname(this.projectRoot);
+      const missionPath = path.join(worktreeParent, 'mission.yaml');
       if (fs.existsSync(missionPath)) {
-        return {
-          taskId: cwdParts[i + 1],
-          missionPath,
-          agentDir
-        };
+        const taskId = path.basename(worktreeParent);
+        if (/^T\d+$/.test(taskId)) {
+          return {
+            taskId,
+            missionPath,
+            agentDir: worktreeParent
+          };
+        }
       }
     }
+
+    return null;
   }
 
-  // Check if we're in a worktree and the parent has mission.yaml
-  const worktreeInfo = checkGitWorktree();
-  if (worktreeInfo.isWorktree) {
-    // Worktree might be at ${haven}/agents/TNNN/worktree
-    // Mission would be at ${haven}/agents/TNNN/mission.yaml
-    const worktreeParent = path.dirname(projectRoot);
-    const missionPath = path.join(worktreeParent, 'mission.yaml');
-    if (fs.existsSync(missionPath)) {
-      const taskId = path.basename(worktreeParent);
-      if (/^T\d+$/.test(taskId)) {
-        return {
-          taskId,
-          missionPath,
-          agentDir: worktreeParent
-        };
-      }
+  /**
+   * Detect execution mode
+   */
+  detectMode(): ModeInfo {
+    const missionInfo = this.findMissionFile();
+
+    if (missionInfo) {
+      return {
+        mode: 'agent',
+        taskId: missionInfo.taskId,
+        missionPath: missionInfo.missionPath,
+        agentDir: missionInfo.agentDir,
+        projectRoot: this.projectRoot
+      };
     }
-  }
 
-  return null;
-}
-
-/**
- * Detect execution mode
- * @returns {{ mode: 'main'|'agent', taskId?: string, missionPath?: string, agentDir?: string, projectRoot: string }}
- */
-export function detectMode(): ModeInfo {
-  const projectRoot = findProjectRoot();
-  const missionInfo = findMissionFile();
-
-  if (missionInfo) {
     return {
-      mode: 'agent',
-      taskId: missionInfo.taskId,
-      missionPath: missionInfo.missionPath,
-      agentDir: missionInfo.agentDir,
-      projectRoot
+      mode: 'main',
+      projectRoot: this.projectRoot
     };
   }
 
-  return {
-    mode: 'main',
-    projectRoot
-  };
-}
-
-/**
- * Check if running in agent mode
- * @returns {boolean}
- */
-export function isAgentMode(): boolean {
-  return detectMode().mode === 'agent';
-}
-
-/**
- * Get agent info if in agent mode
- * @returns {{ taskId: string, missionPath: string, agentDir: string } | null}
- */
-export function getAgentInfo(): MissionInfo | null {
-  const mode = detectMode();
-  if (mode.mode === 'agent') {
-    return {
-      taskId: mode.taskId,
-      missionPath: mode.missionPath,
-      agentDir: mode.agentDir
-    };
+  /**
+   * Check if running in agent mode
+   */
+  isAgentMode(): boolean {
+    return this.detectMode().mode === 'agent';
   }
-  return null;
+
+  /**
+   * Get agent info if in agent mode
+   */
+  getAgentInfo(): MissionInfo | null {
+    const mode = this.detectMode();
+    if (mode.mode === 'agent') {
+      return {
+        taskId: mode.taskId,
+        missionPath: mode.missionPath,
+        agentDir: mode.agentDir
+      };
+    }
+    return null;
+  }
 }

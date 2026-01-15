@@ -5,7 +5,7 @@ import fs from 'fs';
 import path from 'path';
 import yaml from 'js-yaml';
 import { execSync } from 'child_process';
-import { findProjectRoot, jsonOut, loadFile, saveFile } from '../../managers/core-manager.js';
+import { findProjectRoot, jsonOut, loadFile, saveFile, getAgentsDir } from '../../managers/core-manager.js';
 import { parseUpdateOptions } from '../../lib/update.js';
 import { reapAgent } from '../../managers/agent-manager.js';
 import { getGit } from '../../lib/git.js';
@@ -16,7 +16,7 @@ import { getAgentConfig } from '../../managers/core-manager.js';
 import { removeWorktree } from '../../managers/worktree-manager.js';
 import { getTask, getTaskEpic } from '../../managers/artefacts-manager.js';
 import { normalizeId } from '../../lib/normalize.js';
-import { getAgentDir, checkAgentCompletion } from '../../lib/agent-utils.js';
+import { AgentUtils, type AgentCompletionInfo } from '../../lib/agent-utils.js';
 import { analyzeLog, printDiagnoseResult } from '../../managers/diagnose-manager.js';
 
 export function registerHarvestCommands(agent) {
@@ -49,6 +49,8 @@ export function registerHarvestCommands(agent) {
       const agentInfo = state.agents?.[taskId];
       const projectRoot = findProjectRoot();
       const config = getAgentConfig();
+      const agentsDir = getAgentsDir();
+      const agentUtils = new AgentUtils(agentsDir);
 
       const escalate = (reason, nextSteps) => {
         if (options.json) {
@@ -78,7 +80,7 @@ export function registerHarvestCommands(agent) {
           const startTime = Date.now();
           const timeoutMs = options.timeout * 1000;
           while (true) {
-            const completion = checkAgentCompletion(taskId);
+            const completion = agentUtils.checkCompletion(taskId, agentInfo as AgentCompletionInfo);
             if (completion.complete) break;
             if (Date.now() - startTime > timeoutMs) {
               escalate(`Timeout waiting for agent ${taskId}`, [
@@ -93,7 +95,7 @@ export function registerHarvestCommands(agent) {
         } catch { /* not running */ }
       }
 
-      const completion = checkAgentCompletion(taskId);
+      const completion = agentUtils.checkCompletion(taskId, agentInfo as AgentCompletionInfo);
       if (!completion.complete) {
         escalate(`Agent ${taskId} did not complete`, [
           `agent:status ${taskId}    # Check status`,
@@ -102,7 +104,7 @@ export function registerHarvestCommands(agent) {
       }
 
       let resultStatus = 'completed';
-      const agentDir = getAgentDir(taskId);
+      const agentDir = agentUtils.getAgentDir(taskId);
       const resultFile = path.join(agentDir, 'result.yaml');
       if (fs.existsSync(resultFile)) {
         try {
@@ -240,6 +242,7 @@ export function registerHarvestCommands(agent) {
       taskId = normalizeId(taskId);
       const state = loadState();
       const agentInfo = state.agents?.[taskId];
+      const agentUtilsMerge = new AgentUtils(getAgentsDir());
 
       if (!agentInfo) {
         console.error(`No agent found for task: ${taskId}`);
@@ -250,7 +253,7 @@ export function registerHarvestCommands(agent) {
         process.exit(1);
       }
 
-      const completion = checkAgentCompletion(taskId);
+      const completion = agentUtilsMerge.checkCompletion(taskId, agentInfo as AgentCompletionInfo);
       if (!completion.complete) {
         console.error(`Agent ${taskId} has not completed`);
         process.exit(1);
@@ -358,13 +361,14 @@ export function registerHarvestCommands(agent) {
       taskId = normalizeId(taskId);
       const state = loadState();
       const agentInfo = state.agents?.[taskId];
+      const agentUtilsCollect = new AgentUtils(getAgentsDir());
 
       if (!agentInfo) {
         console.error(`No agent found for task: ${taskId}`);
         process.exit(1);
       }
 
-      const agentDir = getAgentDir(taskId);
+      const agentDir = agentUtilsCollect.getAgentDir(taskId);
       const resultFile = path.join(agentDir, 'result.yaml');
 
       if (!fs.existsSync(resultFile)) {
@@ -415,10 +419,12 @@ export function registerHarvestCommands(agent) {
       const state = loadState();
       const agents = state.agents || {};
       const projectRoot = findProjectRoot();
+      const agentUtilsReapAll = new AgentUtils(getAgentsDir());
 
       let toReap = taskIds.length > 0 ? taskIds.map(id => normalizeId(id)) : Object.keys(agents);
       const completed = toReap.filter(taskId => {
-        const completion = checkAgentCompletion(taskId);
+        const agentInfo = agents[taskId];
+        const completion = agentUtilsReapAll.checkCompletion(taskId, agentInfo as AgentCompletionInfo);
         return completion.complete;
       });
 

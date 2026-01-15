@@ -1,14 +1,20 @@
 /**
  * Formatting utilities - locale detection
+ *
+ * PURE LIB: No config access, no manager imports.
+ * Accepts env parameter for testability.
  */
 
 /**
  * Get the system locale (from environment)
  * Returns undefined if no locale detected (uses system default)
+ * @param env - Environment variables (defaults to process.env)
  */
-export function getSystemLocale(): string | undefined {
+export function getSystemLocale(
+  env: Record<string, string | undefined> = process.env
+): string | undefined {
   // Check common environment variables for locale
-  const envLocale = process.env.LC_ALL || process.env.LC_TIME || process.env.LANG || process.env.LANGUAGE;
+  const envLocale = env.LC_ALL || env.LC_TIME || env.LANG || env.LANGUAGE;
   if (envLocale) {
     // Extract locale code (e.g., "fr_FR.UTF-8" -> "fr-FR")
     const match = envLocale.match(/^([a-z]{2})[-_]([A-Z]{2})/i);

@@ -7,7 +7,7 @@
 import fs from 'fs';
 import path from 'path';
 import yaml from 'js-yaml';
-import { loadFile, saveFile, findProjectRoot } from './core-manager.js';
+import { loadFile, saveFile, findProjectRoot, getAgentsDir } from './core-manager.js';
 import { loadState, saveState } from './state-manager.js';
 import { getGit } from '../lib/git.js';
 import { getAgentConfig } from './core-manager.js';
@@ -15,7 +15,7 @@ import { removeWorktree } from './worktree-manager.js';
 import { getTask } from './artefacts-manager.js';
 import { normalizeId } from '../lib/normalize.js';
 import { parseUpdateOptions } from '../lib/update.js';
-import { getAgentDir, checkAgentCompletion } from '../lib/agent-utils.js';
+import { AgentUtils, type AgentCompletionInfo } from '../lib/agent-utils.js';
 
 // ============================================================================
 // Types
@@ -95,9 +95,13 @@ export async function waitForAgent(taskId: string, timeoutSec: number): Promise<
   taskId = normalizeId(taskId);
   const timeoutMs = timeoutSec * 1000;
   const startTime = Date.now();
+  const agentUtils = new AgentUtils(getAgentsDir());
 
   while (true) {
-    const completion = checkAgentCompletion(taskId);
+    // Re-load state each iteration to get latest agent info
+    const state = loadState();
+    const agentInfo = state.agents?.[taskId] as AgentCompletionInfo | undefined;
+    const completion = agentUtils.checkCompletion(taskId, agentInfo);
     if (completion.complete) {
       return { success: true, taskId };
     }
@@ -254,6 +258,7 @@ export async function reapAgent(taskId: string, options: ReapOptions = {}): Prom
   const agentInfo = state.agents?.[taskId];
   const projectRoot = findProjectRoot();
   const config = getAgentConfig();
+  const agentUtils = new AgentUtils(getAgentsDir());
 
   // Validation
   if (!agentInfo) {
@@ -312,7 +317,7 @@ export async function reapAgent(taskId: string, options: ReapOptions = {}): Prom
   }
 
   // Check completion
-  const completion = checkAgentCompletion(taskId);
+  const completion = agentUtils.checkCompletion(taskId, agentInfo as AgentCompletionInfo);
   if (!completion.complete) {
     return {
       success: false,
@@ -333,7 +338,7 @@ export async function reapAgent(taskId: string, options: ReapOptions = {}): Prom
 
   // Read result status
   let resultStatus: 'completed' | 'blocked' = 'completed';
-  const agentDir = getAgentDir(taskId);
+  const agentDir = agentUtils.getAgentDir(taskId);
   const resultFile = path.join(agentDir, 'result.yaml');
   if (fs.existsSync(resultFile)) {
     try {

@@ -8,6 +8,9 @@
  * - MongoDB-like API (find, insert, update, remove)
  * - Stale lock detection
  *
+ * PURE LIB: No config access, no manager imports.
+ * Accepts optional hostname for lock diagnostics.
+ *
  * Usage:
  *   import { Collection } from './jsondb.js';
  *   const agents = new Collection<AgentDoc>('/path/to/agents.json');
@@ -29,6 +32,7 @@ export type UpdateOps<T> = {
 export type UpdateOptions = { upsert?: boolean; multi?: boolean };
 export type RemoveOptions = { multi?: boolean };
 export type EnsureIndexOptions = { fieldName?: string; unique?: boolean };
+export type CollectionOptions = { hostname?: string };
 
 // Lock timeout in ms (stale after this)
 const LOCK_STALE_MS = 30000;
@@ -36,6 +40,8 @@ const LOCK_STALE_MS = 30000;
 const LOCK_RETRY_MS = 50;
 // Default lock acquire timeout
 const LOCK_TIMEOUT_MS = 5000;
+// Default hostname for lock diagnostics
+const DEFAULT_HOSTNAME = 'localhost';
 
 /**
  * Generate unique ID
@@ -128,10 +134,12 @@ function applyUpdate<T>(doc: T, update: UpdateOps<T>): T {
 export class Collection<T = Record<string, any>> {
   filepath: string;
   lockfile: string;
+  private readonly hostname: string;
 
-  constructor(filepath: string) {
+  constructor(filepath: string, options: CollectionOptions = {}) {
     this.filepath = filepath;
     this.lockfile = filepath + '.lock';
+    this.hostname = options.hostname ?? DEFAULT_HOSTNAME;
 
     // Ensure directory exists
     const dir = path.dirname(filepath);
@@ -153,7 +161,7 @@ export class Collection<T = Record<string, any>> {
         fs.writeFileSync(this.lockfile, JSON.stringify({
           pid,
           time: Date.now(),
-          host: process.env.HOSTNAME || 'localhost'
+          host: this.hostname
         }), { flag: 'wx' });
         return true;
       } catch (err) {
@@ -401,6 +409,9 @@ export class Collection<T = Record<string, any>> {
 /**
  * Create collection instance (factory function)
  */
-export function createCollection<T = Record<string, any>>(filepath: string): Collection<T> {
-  return new Collection<T>(filepath);
+export function createCollection<T = Record<string, any>>(
+  filepath: string,
+  options: CollectionOptions = {}
+): Collection<T> {
+  return new Collection<T>(filepath, options);
 }

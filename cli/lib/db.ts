@@ -30,7 +30,7 @@ export function getAgentsDb(dbDir: string): Collection {
     db.ensureIndex({ fieldName: 'taskId', unique: true });
     agentsDbCache.set(dbDir, db);
   }
-  return agentsDbCache.get(dbDir)!;
+  return agentsDbCache.get(dbDir);
 }
 
 /**
@@ -43,7 +43,7 @@ export function getRunsDb(dbDir: string): Collection {
     db.ensureIndex({ fieldName: 'taskId' });
     runsDbCache.set(dbDir, db);
   }
-  return runsDbCache.get(dbDir)!;
+  return runsDbCache.get(dbDir);
 }
 
 // ============ Agent Operations ============
@@ -202,7 +202,7 @@ export async function migrateFromStateJson(dbDir: string, stateAgents: Record<st
   for (const [taskId, data] of Object.entries(stateAgents)) {
     await db.update(
       { taskId },
-      { $set: { taskId, ...(data as object), migratedAt: new Date().toISOString() } },
+      { $set: { taskId, ...(data), migratedAt: new Date().toISOString() } },
       { upsert: true }
     );
     count++;

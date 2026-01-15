@@ -4,9 +4,8 @@
 import fs from 'fs';
 import path from 'path';
 import { execSync } from 'child_process';
-import { findProjectRoot, resolvePlaceholders, ensureDir } from '../../managers/core-manager.js';
+import { findProjectRoot, resolvePlaceholders, ensureDir, getAgentsDir } from '../../managers/core-manager.js';
 import { withModifies } from '../../lib/help.js';
-import { getAgentsBaseDir } from '../../lib/agent-utils.js';
 
 interface McpConfigOptions {
   outputPath: string;
@@ -130,7 +129,7 @@ export function registerCheckCommand(agent) {
       // Step 3: Test connection from inside sandbox (before full agent spawn)
       if (!options.json) console.log('\nTesting connection from sandbox...');
 
-      const agentDir = path.join(getAgentsBaseDir(), '_check');
+      const agentDir = path.join(getAgentsDir(), '_check');
       ensureDir(agentDir);
 
       const { generateSrtConfig, startSocatBridge } = await import('../../lib/srt.js');

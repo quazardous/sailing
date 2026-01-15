@@ -1,12 +1,11 @@
 /**
  * Claude Subprocess Management
  *
- * Pure technical operations for spawning Claude Code.
- * Config values should be passed as parameters.
+ * PURE LIB: No config access, no manager imports.
+ * All config values must be passed as parameters.
  */
 import path from 'path';
 import fs from 'fs';
-import { getAgentsDir, getPathsInfo } from '../managers/core-manager.js';
 import { spawnClaudeWithSrt, generateSrtConfig, generateAgentMcpConfig, checkMcpServer, startSocatBridge } from './srt.js';
 import type { ChildProcess } from 'child_process';
 
@@ -27,25 +26,29 @@ export interface SpawnClaudeResult {
   bridgeCleanup?: (() => void) | null;
 }
 
-// Alias for internal use
-const getAgentsBaseDir = getAgentsDir;
-
 /**
  * Generate agent-specific srt config
  * When using external MCP (sandbox mode), agent only needs worktree write access
  * MCP server runs outside sandbox and handles all sailing operations
- * @param {object} options - Options
- * @param {string} options.agentDir - Agent directory path
- * @param {string} options.cwd - Working directory (worktree)
- * @param {string} options.logFile - Log file path
- * @param {string} options.taskId - Task ID (to identify current worktree)
- * @param {boolean} [options.externalMcp=false] - If true, only allow worktree writes (MCP handles haven)
- * @param {string} [options.mcpSocket] - MCP Unix socket path to bind-mount into sandbox
- * @returns {string} Path to generated srt config
+ * @param options.agentDir - Agent directory path
+ * @param options.cwd - Working directory (worktree)
+ * @param options.logFile - Log file path
+ * @param options.taskId - Task ID (to identify current worktree)
+ * @param options.baseSrtConfigPath - Base srt config path (optional)
+ * @param options.externalMcp - If true, only allow worktree writes (MCP handles haven)
+ * @param options.mcpSocket - MCP Unix socket path to bind-mount into sandbox
+ * @returns Path to generated srt config
  */
-export function generateAgentSrtConfig(options) {
-  const { agentDir, cwd, logFile, taskId, externalMcp = false, mcpSocket } = options;
-  const paths = getPathsInfo();
+export function generateAgentSrtConfig(options: {
+  agentDir: string;
+  cwd: string;
+  logFile: string;
+  taskId: string;
+  baseSrtConfigPath?: string;
+  externalMcp?: boolean;
+  mcpSocket?: string;
+}): string {
+  const { agentDir, cwd, logFile, taskId, baseSrtConfigPath, externalMcp = false, mcpSocket } = options;
 
   // Base write paths: worktree + log directory
   const additionalWritePaths = [
@@ -101,7 +104,7 @@ export function generateAgentSrtConfig(options) {
   const isLinux = process.platform === 'linux';
 
   return generateSrtConfig({
-    baseConfigPath: paths.srtConfig?.absolute,
+    baseConfigPath: baseSrtConfigPath,
     outputPath: path.join(agentDir, 'srt-settings.json'),
     additionalWritePaths,
     additionalDenyReadPaths,
@@ -136,15 +139,15 @@ export interface SpawnClaudeOptions {
   quietMode?: boolean;
   maxBudgetUsd?: number;
   watchdogTimeout?: number;
+  baseSrtConfigPath?: string;  // Base srt config path for sandbox mode
 }
 
 /**
  * Spawn Claude subprocess
- * Config values (riskyMode, sandbox, maxBudgetUsd, watchdogTimeout) should be passed explicitly.
+ * Config values (riskyMode, sandbox, maxBudgetUsd, watchdogTimeout, baseSrtConfigPath) should be passed explicitly.
  */
 export async function spawnClaude(options: SpawnClaudeOptions): Promise<SpawnClaudeResult> {
-  const { prompt, cwd, logFile, timeout, agentDir, taskId, projectRoot, stderrToFile, quietMode } = options;
-  const paths = getPathsInfo();
+  const { prompt, cwd, logFile, timeout, agentDir, taskId, projectRoot, stderrToFile, quietMode, baseSrtConfigPath } = options;
 
   // Config values must be passed explicitly (no defaults from config)
   const riskyMode = options.riskyMode ?? false;
@@ -249,11 +252,12 @@ export async function spawnClaude(options: SpawnClaudeOptions): Promise<SpawnCla
         cwd,
         logFile,
         taskId,
+        baseSrtConfigPath,
         externalMcp: !!mcpSocket,  // Strict sandbox if external MCP is active
         mcpSocket                   // Pass socket for macOS allowUnixSockets
       });
-    } else if (paths.srtConfig?.absolute) {
-      srtConfigPath = paths.srtConfig.absolute;
+    } else if (baseSrtConfigPath) {
+      srtConfigPath = baseSrtConfigPath;
     }
   }
 
@@ -379,9 +383,10 @@ export function buildPromptFromMission(mission) {
 
 /**
  * Get log file path for a task
- * @param {string} taskId - Task ID
- * @returns {string} Absolute path to log file
+ * @param agentsDir - Agents directory path
+ * @param taskId - Task ID
+ * @returns Absolute path to log file
  */
-export function getLogFilePath(taskId) {
-  return path.join(getAgentsBaseDir(), taskId, 'run.log');
+export function getLogFilePath(agentsDir: string, taskId: string): string {
+  return path.join(agentsDir, taskId, 'run.log');
 }

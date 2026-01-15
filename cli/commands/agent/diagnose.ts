@@ -3,8 +3,8 @@
  */
 import fs from 'fs';
 import path from 'path';
-import { jsonOut } from '../../managers/core-manager.js';
-import { getAgentDir } from '../../lib/agent-utils.js';
+import { jsonOut, getAgentsDir } from '../../managers/core-manager.js';
+import { AgentUtils } from '../../lib/agent-utils.js';
 import { normalizeId } from '../../lib/normalize.js';
 import { getTaskEpic } from '../../managers/artefacts-manager.js';
 import {
@@ -80,7 +80,8 @@ export function registerDiagnoseCommands(agent) {
     .action(async (taskId: string, options: any) => {
       const maxLineLen = parseInt(options.maxLineLen) || 500;
       const normalized = normalizeId(taskId);
-      const agentDir = getAgentDir(normalized);
+      const agentUtils = new AgentUtils(getAgentsDir());
+      const agentDir = agentUtils.getAgentDir(normalized);
       const logFile = path.join(agentDir, 'run.jsonlog');
 
       if (!fs.existsSync(logFile)) {

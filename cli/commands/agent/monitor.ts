@@ -3,13 +3,13 @@
  */
 import fs from 'fs';
 import path from 'path';
-import { findProjectRoot, jsonOut } from '../../managers/core-manager.js';
+import { findProjectRoot, jsonOut, getAgentsDir } from '../../managers/core-manager.js';
 import { loadState } from '../../managers/state-manager.js';
 import { reapAgent } from '../../managers/agent-manager.js';
 import { normalizeId } from '../../lib/normalize.js';
 import {
-  getAgentsBaseDir, getAgentDir, getProcessStats, formatDuration,
-  checkAgentCompletion, getLogFilePath
+  AgentUtils, getProcessStats, formatDuration,
+  type AgentCompletionInfo
 } from '../../lib/agent-utils.js';
 import { AgentInfo } from '../../lib/types/agent.js';
 import { getTaskEpic } from '../../managers/artefacts-manager.js';
@@ -26,6 +26,7 @@ export function registerMonitorCommands(agent) {
     .action((taskId: string | undefined, options: { json?: boolean }) => {
       const state = loadState();
       const agents: Record<string, AgentInfo> = state.agents || {};
+      const agentUtils = new AgentUtils(getAgentsDir());
 
       if (taskId) {
         taskId = normalizeId(taskId);
@@ -36,7 +37,7 @@ export function registerMonitorCommands(agent) {
           process.exit(1);
         }
 
-        const completion = checkAgentCompletion(taskId);
+        const completion = agentUtils.checkCompletion(taskId, agentData as AgentCompletionInfo);
         const liveStatus = completion.complete ? 'complete' : agentData.status;
 
         if (options.json) {
@@ -63,7 +64,7 @@ export function registerMonitorCommands(agent) {
 
       // Show all agents with live completion status
       const agentList: (AgentInfo & { task_id: string; live_complete: boolean })[] = Object.entries(agents).map(([id, data]) => {
-        const completion = checkAgentCompletion(id);
+        const completion = agentUtils.checkCompletion(id, data as AgentCompletionInfo);
         return {
           task_id: id,
           ...data,
@@ -106,10 +107,11 @@ export function registerMonitorCommands(agent) {
     .action((options: { active?: boolean; json?: boolean }) => {
       const state = loadState();
       const agents = state.agents || {};
+      const agentUtils = new AgentUtils(getAgentsDir());
 
       let agentList = Object.entries(agents).map(([id, info]) => {
         const agentData = info as AgentInfo;
-        const completion = checkAgentCompletion(id);
+        const completion = agentUtils.checkCompletion(id, agentData as AgentCompletionInfo);
         const liveComplete = completion.complete;
 
         return {
@@ -189,13 +191,14 @@ export function registerMonitorCommands(agent) {
       const state = loadState();
       const agentInfo = state.agents?.[taskId];
       const projectRoot = findProjectRoot();
+      const agentUtils = new AgentUtils(getAgentsDir());
 
       if (!agentInfo) {
         console.error(`No agent found for task: ${taskId}`);
         process.exit(1);
       }
 
-      const initialCompletion = checkAgentCompletion(taskId);
+      const initialCompletion = agentUtils.checkCompletion(taskId, agentInfo as AgentCompletionInfo);
       if (initialCompletion.complete) {
         if (options.json) {
           jsonOut({ task_id: taskId, status: 'already_complete' });
@@ -315,11 +318,12 @@ export function registerMonitorCommands(agent) {
             process.exit(2);
           }
 
-          const completion = checkAgentCompletion(taskId);
+          const currentState = loadState();
+          const currentAgentInfo = currentState.agents?.[taskId];
+          const completion = agentUtils.checkCompletion(taskId, currentAgentInfo as AgentCompletionInfo);
           if (completion.complete) {
             completed = true;
-            const currentState = loadState();
-            exitCode = currentState.agents?.[taskId]?.exit_code ?? 0;
+            exitCode = currentAgentInfo?.exit_code ?? 0;
             resolve();
           }
         }, 1000);
@@ -398,15 +402,19 @@ export function registerMonitorCommands(agent) {
         console.log(`Waiting for ${mode} of ${waitFor.length} agent(s): ${waitFor.join(', ')}`);
       }
 
+      const agentUtils = new AgentUtils(getAgentsDir());
       const startTime = Date.now();
       const timeoutMs = options.timeout * 1000;
       const completed = [];
-      const stateFile = path.join(getAgentsBaseDir(), '..', 'state.json');
+      const agentsDir = getAgentsDir();
+      const stateFile = path.join(agentsDir, '..', 'state.json');
 
-      const checkCompletion = () => {
+      const checkAllCompletion = () => {
+        const currentState = loadState();
         for (const taskId of waitFor) {
           if (completed.includes(taskId)) continue;
-          const completion = checkAgentCompletion(taskId);
+          const agentInfo = currentState.agents?.[taskId];
+          const completion = agentUtils.checkCompletion(taskId, agentInfo as AgentCompletionInfo);
           if (completion.complete) {
             completed.push(taskId);
             if (!options.json) {
@@ -418,7 +426,7 @@ export function registerMonitorCommands(agent) {
         return completed.length >= waitFor.length;
       };
 
-      if (checkCompletion()) {
+      if (checkAllCompletion()) {
         if (options.json) {
           jsonOut({ status: 'complete', completed, elapsed_ms: Date.now() - startTime });
         } else if (!options.any) {
@@ -464,7 +472,7 @@ export function registerMonitorCommands(agent) {
 
         try {
           watcher = fs.watch(stateFile, { persistent: true }, (eventType) => {
-            if (eventType === 'change' && checkCompletion()) {
+            if (eventType === 'change' && checkAllCompletion()) {
               onComplete();
             }
           });
@@ -483,7 +491,7 @@ export function registerMonitorCommands(agent) {
             return;
           }
 
-          if (checkCompletion()) {
+          if (checkAllCompletion()) {
             onComplete();
             return;
           }
@@ -510,10 +518,11 @@ export function registerMonitorCommands(agent) {
     .option('--json', 'JSON output')
     .action((taskId: string, options: { lines?: number; tail?: boolean; events?: boolean; raw?: boolean; json?: boolean }) => {
       const normalizedId = normalizeId(taskId);
+      const agentUtils = new AgentUtils(getAgentsDir());
 
       // Events mode: show filtered JSON events from run.jsonlog
       if (options.events) {
-        const agentDir = getAgentDir(normalizedId);
+        const agentDir = agentUtils.getAgentDir(normalizedId);
         const jsonLogFile = path.join(agentDir, 'run.jsonlog');
 
         if (!fs.existsSync(jsonLogFile)) {
@@ -575,7 +584,7 @@ export function registerMonitorCommands(agent) {
       }
 
       // Raw text log file
-      const logFile = getLogFilePath(normalizedId);
+      const logFile = agentUtils.getLogFilePath(normalizedId);
 
       if (!fs.existsSync(logFile)) {
         console.error(`No log file for ${taskId}`);

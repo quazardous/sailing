@@ -4,10 +4,10 @@
 import fs from 'fs';
 import path from 'path';
 import yaml from 'js-yaml';
-import { findProjectRoot, loadFile, jsonOut, resolvePlaceholders, getAgentConfig, ensureDir } from '../../managers/core-manager.js';
+import { findProjectRoot, loadFile, jsonOut, resolvePlaceholders, getAgentConfig, ensureDir, getAgentsDir, getPathsInfo } from '../../managers/core-manager.js';
 import { getGit } from '../../lib/git.js';
 import { create as createPr } from '../../managers/pr-manager.js';
-import { claimTask, releaseTask } from '../../lib/agent-run.js';
+import { AgentRunManager } from '../../lib/agent-run.js';
 import { reapAgent } from '../../managers/agent-manager.js';
 import { createMission } from '../../lib/agent-schema.js';
 import { loadState, saveState, updateStateAtomic } from '../../managers/state-manager.js';
@@ -22,7 +22,7 @@ import { checkMcpServer } from '../../lib/srt.js';
 import { extractPrdId, extractEpicId, normalizeId } from '../../lib/normalize.js';
 import { findDevMd, findToolset } from '../../managers/core-manager.js';
 import { getTask, getEpic, getMemoryFile, getPrdBranching } from '../../managers/artefacts-manager.js';
-import { getAgentDir, getProcessStats, formatDuration } from '../../lib/agent-utils.js';
+import { AgentUtils, getProcessStats, formatDuration } from '../../lib/agent-utils.js';
 import { AgentInfo } from '../../lib/types/agent.js';
 import { analyzeLog, printDiagnoseResult } from '../../managers/diagnose-manager.js';
 
@@ -240,7 +240,10 @@ export function registerSpawnCommand(agent) {
       }
 
       // Determine agent directory
-      const agentDir = ensureDir(getAgentDir(taskId));
+      const agentsDir = getAgentsDir();
+      const agentUtils = new AgentUtils(agentsDir);
+      const runManager = new AgentRunManager(agentsDir);
+      const agentDir = ensureDir(agentUtils.getAgentDir(taskId));
 
       // Determine if worktree should be created (agentConfig loaded at function start)
       let useWorktree = agentConfig.use_worktrees;
@@ -441,7 +444,7 @@ export function registerSpawnCommand(agent) {
 
       // Pre-claim task before spawning agent
       {
-        const claimResult = claimTask(taskId, 'task');
+        const claimResult = runManager.claim(taskId, 'task');
         if (claimResult.success) {
           if (!options.json) {
             if (claimResult.alreadyClaimed) {
@@ -459,13 +462,14 @@ export function registerSpawnCommand(agent) {
       fs.writeFileSync(missionFile, yaml.dump(mission));
 
       // Get log file path
-      const logFile = getLogFilePath(taskId);
+      const logFile = getLogFilePath(getAgentsDir(), taskId);
 
       // Spawn Claude with bootstrap prompt
       const shouldWait = options.wait !== false;
       const isQuiet = options.verbose !== true;
       const shouldLog = options.log !== false && shouldWait && !isQuiet;
 
+      const paths = getPathsInfo();
       const spawnResult = await spawnClaude({
         prompt: bootstrapPrompt,
         cwd,
@@ -479,7 +483,8 @@ export function registerSpawnCommand(agent) {
         riskyMode: agentConfig.risky_mode,
         sandbox: agentConfig.sandbox,
         maxBudgetUsd: agentConfig.max_budget_usd,
-        watchdogTimeout: agentConfig.watchdog_timeout
+        watchdogTimeout: agentConfig.watchdog_timeout,
+        baseSrtConfigPath: paths.srtConfig?.absolute
       });
 
       // Update state atomically
@@ -540,7 +545,7 @@ export function registerSpawnCommand(agent) {
 
         // Auto-release if agent exited successfully with work done
         if (code === 0 && (dirtyWorktree || commitsAhead > 0)) {
-          const releaseResult = releaseTask(taskId);
+          const releaseResult = runManager.release(taskId);
           if (releaseResult.success && !releaseResult.notClaimed) {
             console.log(`✓ Auto-released ${taskId} (agent didn't call assign:release)`);
           } else if (!releaseResult.success) {
@@ -570,7 +575,7 @@ export function registerSpawnCommand(agent) {
 
         // Auto-diagnose after agent run
         if (agentConfig.auto_diagnose !== false) {
-          const diagLogFile = path.join(getAgentDir(taskId), 'run.jsonlog');
+          const diagLogFile = path.join(agentUtils.getAgentDir(taskId), 'run.jsonlog');
           if (fs.existsSync(diagLogFile)) {
             const result = analyzeLog(diagLogFile, epicId);
             if (result.errors.length > 0) {
