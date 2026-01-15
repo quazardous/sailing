@@ -34,6 +34,23 @@ for (let i = 0; i < args.length; i++) {
     }
 }
 const RUDDER_BIN = path.join(projectRoot, 'bin', 'rudder');
+// Logging helper
+let logFile = null;
+function log(level, message, context) {
+    const timestamp = new Date().toISOString();
+    const ctx = context ? ` ${JSON.stringify(context)}` : '';
+    const line = `[${timestamp}] [${level}] ${message}${ctx}\n`;
+    // Write to log file if available, otherwise stderr
+    if (logFile) {
+        try {
+            fs.appendFileSync(logFile, line);
+        }
+        catch { }
+    }
+    else {
+        process.stderr.write(line);
+    }
+}
 /**
  * Execute rudder command and return result
  */
@@ -211,17 +228,51 @@ class SocketTransport {
     async send(message) { this.socket.write(JSON.stringify(message) + '\n'); }
     async close() { this.socket.end(); }
 }
+let connectionCounter = 0;
 function createConnectionHandler(mode) {
     return async (socket) => {
+        const connId = ++connectionCounter;
+        let clientTaskId = null; // Will be detected from first tool call
+        log('INFO', `Client #${connId} connected`, { mode });
         const clientServer = new Server({ name: 'rudder-mcp', version: '1.0.0' }, { capabilities: { tools: {} } });
-        clientServer.setRequestHandler(ListToolsRequestSchema, async () => ({ tools: TOOLS }));
-        clientServer.setRequestHandler(CallToolRequestSchema, async (request) => handleToolCall(request));
+        clientServer.setRequestHandler(ListToolsRequestSchema, async () => {
+            log('DEBUG', `Client #${connId} listed tools`, { taskId: clientTaskId });
+            return { tools: TOOLS };
+        });
+        clientServer.setRequestHandler(CallToolRequestSchema, async (request) => {
+            const { name, arguments: callArgs } = request.params;
+            const args = callArgs;
+            // Detect task ID from first call that has one
+            if (!clientTaskId && args.task_id) {
+                clientTaskId = args.task_id;
+            }
+            // Also detect from context:load operation
+            if (!clientTaskId && name === 'context_load' && args.operation) {
+                const match = args.operation.match(/^T\d+$/);
+                if (match)
+                    clientTaskId = match[0];
+            }
+            log('INFO', `Client #${connId} call`, { tool: name, taskId: clientTaskId, args });
+            const result = await handleToolCall(request);
+            if (result.isError) {
+                log('WARN', `Client #${connId} error`, { tool: name, taskId: clientTaskId });
+            }
+            return result;
+        });
+        socket.on('close', () => {
+            log('INFO', `Client #${connId} disconnected`, { taskId: clientTaskId });
+        });
         const transport = new SocketTransport(socket);
         await clientServer.connect(transport);
     };
 }
 async function main() {
+    // Set log file path (same directory as socket/pid files)
+    if (socketPath) {
+        logFile = socketPath.replace(/\.sock$/, '.log');
+    }
     if (port) {
+        log('INFO', 'MCP server starting', { mode: 'tcp', port, projectRoot });
         net.createServer(createConnectionHandler('tcp')).listen(port, '127.0.0.1');
     }
     else if (socketPath) {
@@ -229,6 +280,7 @@ async function main() {
             fs.unlinkSync(socketPath);
         }
         catch (e) { }
+        log('INFO', 'MCP server starting', { mode: 'unix', socket: socketPath, projectRoot });
         net.createServer(createConnectionHandler('unix')).listen(socketPath);
     }
     else {

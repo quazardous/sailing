@@ -34,7 +34,7 @@
 import { program } from 'commander';
 import path from 'path';
 import { setProjectRoot, setScriptDir, setPathOverrides, parsePathOverride } from './lib/core.js';
-import { setConfigOverrides, parseConfigOverride } from './lib/config.js';
+import { setConfigOverrides, parseConfigOverride, validateConfigCoherence } from './lib/config.js';
 // Set script directory for project root detection
 setScriptDir(import.meta.dirname);
 // Check for --root flag or SAILING_PROJECT env BEFORE parsing
@@ -81,6 +81,13 @@ if (Object.keys(configOverrides).length > 0) {
     }
     console.error('');
     setConfigOverrides(configOverrides);
+}
+// Early boot: validate config coherence
+// use_worktrees is the master - use_subprocess must be aligned
+const coherenceError = validateConfigCoherence();
+if (coherenceError) {
+    console.error(`\n❌ Config incoherence detected:\n   ${coherenceError}\n`);
+    process.exit(1);
 }
 // Extract --with-path flags manually (before commander parses)
 // Can be specified multiple times: --with-path key=value --with-path key2=value2

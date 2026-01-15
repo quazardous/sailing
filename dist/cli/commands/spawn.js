@@ -9,7 +9,8 @@ import { loadState } from '../lib/state.js';
 import { getAgentConfig, getGitConfig } from '../lib/config.js';
 import { addDynamicHelp } from '../lib/help.js';
 import { getBranchName, getParentBranch, getBranchHierarchy, getMainBranch } from '../lib/worktree.js';
-import { findTaskFile, extractPrdId, extractEpicId, getPrdBranching } from '../lib/entities.js';
+import { extractPrdId, extractEpicId, getPrdBranching } from '../lib/entities.js';
+import { getTask } from '../lib/index.js';
 import { diagnose as diagnoseReconciliation, BranchState } from '../lib/reconciliation.js';
 import { getGit } from '../lib/git.js';
 import { buildConflictMatrix } from '../lib/conflicts.js';
@@ -208,7 +209,7 @@ export function registerSpawnCommands(program) {
         const gitConfig = getGitConfig();
         const agentConfig = getAgentConfig();
         // Find task and extract context
-        const taskFile = findTaskFile(taskId);
+        const taskFile = getTask(taskId)?.file;
         if (!taskFile) {
             if (options.json) {
                 jsonOut({ ready: false, fatal: true, issues: [`Task not found: ${taskId}`] });
@@ -334,7 +335,7 @@ export function registerSpawnCommands(program) {
             process.exit(1);
         }
         // Get task context
-        const taskFile = findTaskFile(taskId);
+        const taskFile = getTask(taskId)?.file;
         const task = taskFile ? loadFile(taskFile) : null;
         const prdId = task ? extractPrdId(task.data.parent) : null;
         const epicId = task ? extractEpicId(task.data.parent) : null;

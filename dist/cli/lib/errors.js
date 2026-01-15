@@ -2,7 +2,7 @@
  * Common error helpers for DRY validation
  */
 import { loadFile } from './core.js';
-import { findTaskFile, findEpicFile, findPrdFile } from './entities.js';
+import { getTask, getEpic, getPrd } from './index.js';
 import { loadState } from './state.js';
 import { normalizeId } from './normalize.js';
 /**
@@ -14,7 +14,7 @@ import { normalizeId } from './normalize.js';
  */
 export function requireTask(id, options = {}) {
     const normalized = normalizeId(id) ?? '';
-    const file = findTaskFile(normalized);
+    const file = getTask(normalized)?.file || null;
     if (!file) {
         if (options.json) {
             console.log(JSON.stringify({ error: `Task not found: ${normalized}` }));
@@ -46,7 +46,7 @@ export function requireTask(id, options = {}) {
  */
 export function requireEpic(id, options = {}) {
     const normalized = normalizeId(id) ?? '';
-    const file = findEpicFile(normalized);
+    const file = getEpic(normalized)?.file || null;
     if (!file) {
         if (options.json) {
             console.log(JSON.stringify({ error: `Epic not found: ${normalized}` }));
@@ -78,7 +78,7 @@ export function requireEpic(id, options = {}) {
  */
 export function requirePrd(id, options = {}) {
     const normalized = normalizeId(id) ?? '';
-    const file = findPrdFile(normalized);
+    const file = getPrd(normalized)?.file || null;
     if (!file) {
         if (options.json) {
             console.log(JSON.stringify({ error: `PRD not found: ${normalized}` }));

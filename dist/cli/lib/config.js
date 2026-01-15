@@ -389,6 +389,40 @@ export function getAgentConfig() {
     return config.agent;
 }
 /**
+ * Validate config coherence (early boot check)
+ * use_worktrees is the master config
+ *
+ * Rules:
+ *   1. use_subprocess must equal use_worktrees (master)
+ *   2. if use_subprocess=true → sandbox must be true (no subprocess without sandbox yet)
+ *   3. if use_subprocess=false → sandbox is ignored
+ *
+ * @returns {string|null} Error message if incoherent, null if OK
+ */
+export function validateConfigCoherence() {
+    const config = loadConfig();
+    const { use_worktrees, use_subprocess, sandbox } = config.agent;
+    const errors = [];
+    const fixes = [];
+    // Rule 1: use_subprocess must follow use_worktrees
+    if (use_worktrees !== use_subprocess) {
+        errors.push(`agent.use_subprocess=${use_subprocess} (should be ${use_worktrees})`);
+        fixes.push(`rudder config:set agent.use_subprocess ${use_worktrees}`);
+    }
+    // Rule 2: if subprocess mode, sandbox is required
+    if (use_subprocess && !sandbox) {
+        errors.push(`agent.sandbox=${sandbox} (must be true when use_subprocess=true)`);
+        fixes.push(`rudder config:set agent.sandbox true`);
+    }
+    if (errors.length > 0) {
+        return `agent.use_worktrees=${use_worktrees} but:\n` +
+            errors.map(e => `   - ${e}`).join('\n') + '\n\n' +
+            `   use_worktrees is the master setting.\n\n` +
+            `   Fix:\n   ${fixes.join('\n   ')}`;
+    }
+    return null;
+}
+/**
  * Get a specific config value
  * @param {string} key - Dot-notation key (e.g., 'agent.timeout')
  * @returns {any}

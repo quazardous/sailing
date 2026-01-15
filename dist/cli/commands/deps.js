@@ -4,7 +4,8 @@
 import fs from 'fs';
 import path from 'path';
 import { findPrdDirs, findFiles, loadFile, saveFile, jsonOut } from '../lib/core.js';
-import { normalizeId, matchesId, extractTaskId, matchesPrdDir, parentContainsEpic } from '../lib/normalize.js';
+import { normalizeId, extractTaskId, matchesPrdDir, parentContainsEpic } from '../lib/normalize.js';
+import { getEpic } from '../lib/index.js';
 import { STATUS, normalizeStatus, isStatusDone, isStatusNotStarted, isStatusInProgress, isStatusCancelled, statusSymbol } from '../lib/lexicon.js';
 import { buildDependencyGraph, detectCycles, findRoots, blockersResolved, longestPath, countTotalUnblocked, getAncestors, getDescendants } from '../lib/graph.js';
 import { addDynamicHelp, withModifies } from '../lib/help.js';
@@ -15,22 +16,15 @@ function isEpicId(id) {
     return /^E\d+$/i.test(id);
 }
 /**
- * Find an epic file by ID
+ * Find an epic file by ID (via index.ts)
  * @returns {{ file: string, prdDir: string, data: object } | null}
  */
 function findEpicFile(epicId) {
-    const normalizedId = normalizeId(epicId);
-    for (const prdDir of findPrdDirs()) {
-        const epicsDir = path.join(prdDir, 'epics');
-        const files = findFiles(epicsDir, /^E\d+.*\.md$/);
-        for (const f of files) {
-            if (matchesId(f, epicId)) {
-                const fileData = loadFile(f);
-                return { file: f, prdDir, data: fileData };
-            }
-        }
-    }
-    return null;
+    const epic = getEpic(epicId);
+    if (!epic)
+        return null;
+    const fileData = loadFile(epic.file);
+    return { file: epic.file, prdDir: epic.prdDir, data: fileData };
 }
 /**
  * Build epic dependency map

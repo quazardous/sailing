@@ -6,7 +6,7 @@ import fs from 'fs';
 import { jsonOut, stripComments } from '../lib/core.js';
 import { addDynamicHelp, withModifies } from '../lib/help.js';
 import { parseMarkdownSections, serializeSections, parseSearchReplace, applySearchReplace, editArtifact, listSections, getSection, parseMultiSectionContent, applySedCommands, parseCheckboxItems } from '../lib/artifact.js';
-import { findTaskFile, findEpicFile, findPrdFile } from '../lib/entities.js';
+import { getTask, getEpic, getPrd } from '../lib/index.js';
 /**
  * Resolve artifact ID to file path
  * @param {string} id - Artifact ID (T042, E001, PRD-001)
@@ -15,15 +15,15 @@ import { findTaskFile, findEpicFile, findPrdFile } from '../lib/entities.js';
 function resolveArtifact(id) {
     const normalized = id.toUpperCase();
     if (normalized.startsWith('T')) {
-        const file = findTaskFile(normalized);
+        const file = getTask(normalized)?.file;
         return file ? { path: file, type: 'task' } : null;
     }
     if (normalized.startsWith('E')) {
-        const file = findEpicFile(normalized);
+        const file = getEpic(normalized)?.file;
         return file ? { path: file, type: 'epic' } : null;
     }
     if (normalized.startsWith('PRD-')) {
-        const file = findPrdFile(normalized);
+        const file = getPrd(normalized)?.file;
         return file ? { path: file, type: 'prd' } : null;
     }
     return null;

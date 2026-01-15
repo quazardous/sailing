@@ -1,20 +1,6 @@
-/**
- * Context commands for rudder CLI
- * Provides optimized prompting context based on roles
- *
- * Uses compose.ts lib for context composition (SINGLE SOURCE OF TRUTH).
- *
- * Resolution flow:
- *   context:load <op> →
- *     1. operations[op].role → roles[role]
- *     2. roles[role].base_sets → fragments
- *     3. matrix[op] → additional fragments
- *     4. roles[role].inject → project files
- *     5. if roles[role].workflow → orchestration[op]
- */
 import { jsonOut } from '../lib/core.js';
 import { addDynamicHelp } from '../lib/help.js';
-import { loadWorkflowsConfig, loadFragment, composeContext } from '../lib/compose.js';
+import { loadWorkflowsConfig, loadFragment, composeContext, buildAgentSpawnPrompt } from '../lib/compose.js';
 /**
  * List available operations grouped by role
  */
@@ -45,6 +31,7 @@ export function registerContextCommands(program) {
         .argument('[operation]', 'Operation name (task-start, prd-breakdown, etc.)')
         .option('--sources', 'Show fragment sources used')
         .option('--role <role>', 'Role: agent, coordinator, or skill')
+        .option('--task <id>', 'Task ID - generates full agent spawn prompt (debug)')
         .option('--list', 'List available operations')
         .option('--json', 'JSON output')
         .action((operation, options) => {
@@ -68,10 +55,33 @@ export function registerContextCommands(program) {
             }
             return;
         }
-        // Validate required args when not --list
+        // Handle --task option: generate full agent spawn prompt
+        if (options.task) {
+            const result = buildAgentSpawnPrompt(options.task);
+            if (!result) {
+                console.error(`Error: Task not found: ${options.task}`);
+                process.exit(1);
+            }
+            if (options.json) {
+                jsonOut({
+                    taskId: result.taskId,
+                    epicId: result.epicId,
+                    prdId: result.prdId,
+                    prompt: result.prompt
+                });
+                return;
+            }
+            console.log(`# Agent Spawn Prompt for ${result.taskId}`);
+            console.log(`# Epic: ${result.epicId}, PRD: ${result.prdId}`);
+            console.log(`# This is the exact prompt sent to agent:spawn\n`);
+            console.log(result.prompt);
+            return;
+        }
+        // Validate required args when not --list or --task
         if (!operation) {
             console.error('Error: missing required argument \'operation\'');
             console.error('Usage: rudder context:load <operation> --role <role>');
+            console.error('       rudder context:load --task <id>');
             console.error('       rudder context:load --list');
             process.exit(1);
         }
