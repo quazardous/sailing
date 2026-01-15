@@ -267,10 +267,11 @@ echo -e "${BLUE}Getting sailing source...${NC}"
 TEMP_DIR=$(mktemp -d)
 trap "rm -rf $TEMP_DIR" EXIT
 
-git clone --depth 1 --branch "$DIST_BRANCH" "$REPO_URL" "$TEMP_DIR/sailing" 2>/dev/null || {
-  echo -e "${RED}Failed to clone repository (dist branch)${NC}"
+curl -sL "$REPO_URL/archive/refs/heads/$DIST_BRANCH.tar.gz" | tar xz -C "$TEMP_DIR" || {
+  echo -e "${RED}Failed to download dist archive${NC}"
   exit 1
 }
+mv "$TEMP_DIR/sailing-$DIST_BRANCH" "$TEMP_DIR/sailing"
 
 SRC="$TEMP_DIR/sailing"
 
