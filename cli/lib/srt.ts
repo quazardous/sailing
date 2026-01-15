@@ -323,6 +323,7 @@ export function loadBaseSrtConfig(configPath) {
         `${homeDir}/.claude`,
         `${homeDir}/.claude.json`,
         `${homeDir}/.npm/_logs`,
+        `${homeDir}/.gradle`,     // Gradle/Android build cache
         '/tmp',
         '/tmp/claude'             // tsx pipe files
       ],
@@ -532,8 +533,27 @@ export function spawnClaudeWithSrt(options) {
     jsonLogFile = `${basePath}.jsonlog`;
     filteredLogFile = `${basePath}.log`;
 
-    jsonLogStream = fs.createWriteStream(jsonLogFile, { flags: 'a' });
-    filteredLogStream = fs.createWriteStream(filteredLogFile, { flags: 'a' });
+    // Rotate logs: .3 deleted, .2 → .3, .1 → .2, current → .1, start fresh
+    const rotateLog = (filePath: string) => {
+      try {
+        // Delete .3 if exists
+        if (fs.existsSync(`${filePath}.3`)) fs.unlinkSync(`${filePath}.3`);
+        // .2 → .3
+        if (fs.existsSync(`${filePath}.2`)) fs.renameSync(`${filePath}.2`, `${filePath}.3`);
+        // .1 → .2
+        if (fs.existsSync(`${filePath}.1`)) fs.renameSync(`${filePath}.1`, `${filePath}.2`);
+        // current → .1
+        if (fs.existsSync(filePath)) fs.renameSync(filePath, `${filePath}.1`);
+      } catch {
+        // Ignore rotation errors
+      }
+    };
+
+    rotateLog(jsonLogFile);
+    rotateLog(filteredLogFile);
+
+    jsonLogStream = fs.createWriteStream(jsonLogFile, { flags: 'w' });
+    filteredLogStream = fs.createWriteStream(filteredLogFile, { flags: 'w' });
 
     const startTime = new Date().toISOString();
     const header = [
@@ -554,6 +574,9 @@ export function spawnClaudeWithSrt(options) {
   const spawnEnv = { ...process.env };
   if (debug) spawnEnv.SRT_DEBUG = '1';
 
+  // Track sandbox credentials for cleanup on exit
+  let sandboxCredentialsPath: string | null = null;
+
   // Sandbox HOME isolation: Claude writes to isolated home instead of real ~/.claude.json
   if (sandboxHome) {
     ensureDir(sandboxHome);
@@ -566,7 +589,7 @@ export function spawnClaudeWithSrt(options) {
     const realCredentials = path.join(realHome, '.claude', '.credentials.json');
     const sandboxClaudeJson = path.join(sandboxHome, '.claude.json');
     const sandboxClaudeDir = path.join(sandboxHome, '.claude');
-    const sandboxCredentials = path.join(sandboxClaudeDir, '.credentials.json');
+    sandboxCredentialsPath = path.join(sandboxClaudeDir, '.credentials.json');
 
     // Copy .claude.json (full copy - Claude needs various fields to work)
     if (fs.existsSync(realClaudeJson)) {
@@ -578,18 +601,10 @@ export function spawnClaudeWithSrt(options) {
     }
 
     // Copy .claude/.credentials.json (contains OAuth tokens)
+    // Credentials are cleaned up when Claude exits (see child.on('exit') handler)
     if (fs.existsSync(realCredentials)) {
       try {
-        fs.copyFileSync(realCredentials, sandboxCredentials);
-        // Schedule cleanup of credentials.json only (not .claude.json which Claude needs)
-        // 5 seconds is enough for Claude to read and cache the tokens
-        setTimeout(() => {
-          try {
-            if (fs.existsSync(sandboxCredentials)) fs.unlinkSync(sandboxCredentials);
-          } catch {
-            // Ignore cleanup errors
-          }
-        }, 5000);
+        fs.copyFileSync(realCredentials, sandboxCredentialsPath);
       } catch {
         // Ignore errors
       }
@@ -723,6 +738,15 @@ export function spawnClaudeWithSrt(options) {
   child.on('exit', (code, signal) => {
     if (timeoutId) clearTimeout(timeoutId);
     if (watchdogId) clearTimeout(watchdogId);
+
+    // Cleanup sandbox credentials (security: don't leave OAuth tokens lying around)
+    if (sandboxCredentialsPath) {
+      try {
+        if (fs.existsSync(sandboxCredentialsPath)) fs.unlinkSync(sandboxCredentialsPath);
+      } catch {
+        // Ignore cleanup errors
+      }
+    }
 
     const endTime = new Date().toISOString();
     const footer = `\n=== Claude Exited: ${endTime} ===\nExit code: ${code}, Signal: ${signal}\n`;

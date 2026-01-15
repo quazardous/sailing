@@ -11,7 +11,7 @@ import { parseUpdateOptions } from '../lib/update.js';
 import { addDynamicHelp, withModifies } from '../lib/help.js';
 import { formatId } from '../lib/config.js';
 import { parseSearchReplace, editArtifact, parseMultiSectionContent, processMultiSectionOps } from '../lib/artifact.js';
-import { findPrdFile } from '../lib/entities.js';
+import { getPrd } from '../lib/index.js';
 import { createPrdMemoryFile } from '../lib/memory.js';
 import { Prd } from '../lib/types/entities.js';
 
@@ -389,7 +389,7 @@ export function registerPrdCommands(program) {
     .option('--dry-run', 'Show what would be changed without applying')
     .option('--json', 'JSON output')
     .action(async (id, options) => {
-      const prdPath = findPrdFile(id);
+      const prdPath = getPrd(id)?.file;
 
       if (!prdPath) {
         console.error(`PRD not found: ${id}`);
@@ -462,7 +462,7 @@ Operations: [replace], [append], [prepend], [delete], [sed], [check], [uncheck],
 See: bin/rudder artifact edit --help for full documentation
 `)
     .action(async (id, options) => {
-      const prdPath = findPrdFile(id);
+      const prdPath = getPrd(id)?.file;
       if (!prdPath) {
         console.error(`PRD not found: ${id}`);
         process.exit(1);

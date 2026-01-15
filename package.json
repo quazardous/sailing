@@ -37,6 +37,10 @@
   "author": "quazardous",
   "license": "MIT",
   "dependencies": {
-    "execa": "^9.6.1"
+    "execa": "^9.6.1",
+    "nunjucks": "^3.2.4"
+  },
+  "devDependencies": {
+    "@types/nunjucks": "^3.2.6"
   }
 }

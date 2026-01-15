@@ -2,7 +2,7 @@
  * Common error helpers for DRY validation
  */
 import { loadFile } from './core.js';
-import { findTaskFile, findEpicFile, findPrdFile } from './entities.js';
+import { getTask, getEpic, getPrd } from './index.js';
 import { loadState } from './state.js';
 import { normalizeId } from './normalize.js';
 
@@ -35,7 +35,7 @@ interface AgentResult {
  */
 export function requireTask(id: string, options: JsonOption = {}): RequireResult {
   const normalized = normalizeId(id) ?? '';
-  const file = findTaskFile(normalized);
+  const file = getTask(normalized)?.file || null;
 
   if (!file) {
     if (options.json) {
@@ -69,7 +69,7 @@ export function requireTask(id: string, options: JsonOption = {}): RequireResult
  */
 export function requireEpic(id: string, options: JsonOption = {}): RequireResult {
   const normalized = normalizeId(id) ?? '';
-  const file = findEpicFile(normalized);
+  const file = getEpic(normalized)?.file || null;
 
   if (!file) {
     if (options.json) {
@@ -103,7 +103,7 @@ export function requireEpic(id: string, options: JsonOption = {}): RequireResult
  */
 export function requirePrd(id: string, options: JsonOption = {}): RequireResult {
   const normalized = normalizeId(id) ?? '';
-  const file = findPrdFile(normalized);
+  const file = getPrd(normalized)?.file || null;
 
   if (!file) {
     if (options.json) {

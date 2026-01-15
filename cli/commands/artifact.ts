@@ -19,11 +19,7 @@ import {
   applySedCommands,
   parseCheckboxItems
 } from '../lib/artifact.js';
-import {
-  findTaskFile,
-  findEpicFile,
-  findPrdFile
-} from '../lib/entities.js';
+import { getTask, getEpic, getPrd } from '../lib/index.js';
 
 /**
  * Resolve artifact ID to file path
@@ -34,17 +30,17 @@ function resolveArtifact(id) {
   const normalized = id.toUpperCase();
 
   if (normalized.startsWith('T')) {
-    const file = findTaskFile(normalized);
+    const file = getTask(normalized)?.file;
     return file ? { path: file, type: 'task' } : null;
   }
 
   if (normalized.startsWith('E')) {
-    const file = findEpicFile(normalized);
+    const file = getEpic(normalized)?.file;
     return file ? { path: file, type: 'epic' } : null;
   }
 
   if (normalized.startsWith('PRD-')) {
-    const file = findPrdFile(normalized);
+    const file = getPrd(normalized)?.file;
     return file ? { path: file, type: 'prd' } : null;
   }
 

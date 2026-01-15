@@ -7,7 +7,7 @@ import { execSync } from 'child_process';
 import { findPrdDirs, findFiles, loadFile, saveFile, toKebab, loadTemplate, jsonOut, getMemoryDir, stripComments } from '../lib/core.js';
 import { execRudderSafe } from '../lib/invoke.js';
 import { normalizeId, matchesId, matchesPrdDir, parentContainsEpic } from '../lib/normalize.js';
-import { findEpicParent, findEpicFile, findTaskFile as findTaskFileFromEntities } from '../lib/entities.js';
+import { getTask, getEpic, getEpicPrd } from '../lib/index.js';
 import { getHierarchicalMemory, ensureMemoryDir } from '../lib/memory.js';
 import { STATUS, normalizeStatus, isStatusDone, isStatusNotStarted, isStatusInProgress, isStatusCancelled, isStatusAutoDone, statusSymbol } from '../lib/lexicon.js';
 import { buildDependencyGraph, blockersResolved } from '../lib/graph.js';
@@ -19,13 +19,33 @@ import { parseSearchReplace, editArtifact, parseMultiSectionContent, processMult
 import { Task } from '../lib/types/entities.js';
 
 /**
- * Find a task file by ID (format-agnostic via entities.js)
+ * Find a task file by ID (format-agnostic via index.ts)
  */
 function findTaskFile(taskId) {
-  return findTaskFileFromEntities(taskId);
+  return getTask(taskId)?.file || null;
 }
 
-// findEpicParent imported from lib/entities.js
+/**
+ * Find an epic file by ID (format-agnostic via index.ts)
+ */
+function findEpicFile(epicId) {
+  return getEpic(epicId)?.file || null;
+}
+
+/**
+ * Find PRD directory containing an epic (via index.ts)
+ */
+function findEpicParent(epicId) {
+  const epic = getEpic(epicId);
+  if (!epic) return null;
+
+  const prdInfo = getEpicPrd(epic.id);
+  return {
+    prdDir: epic.prdDir,
+    epicFile: epic.file,
+    prdId: prdInfo?.prdId || 'unknown'
+  };
+}
 
 /**
  * Register task commands

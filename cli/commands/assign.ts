@@ -10,67 +10,31 @@ import yaml from 'js-yaml';
 import { jsonOut, getPrompting, getMemoryDir, loadFile, getPrdsDir, saveFile, getPath, loadPathsConfig, getRunsDir, getAssignmentsDir } from '../lib/core.js';
 import { ensureDir, computeProjectHash } from '../lib/paths.js';
 import { normalizeId } from '../lib/normalize.js';
+import { getTask, getEpic, getPrd } from '../lib/index.js';
 import { addDynamicHelp, withModifies } from '../lib/help.js';
 import { findLogFiles, mergeTaskLog, findTaskEpic, readLogFile } from '../lib/memory.js';
 import { addLogEntry } from '../lib/update.js';
 import { composeAgentContext } from '../lib/compose.js';
 
 /**
- * Find task file by ID
+ * Find task file by ID (via index.ts)
  */
 function findTaskFile(taskId) {
-  const prdsDir = getPrdsDir();
-  if (!fs.existsSync(prdsDir)) return null;
-
-  for (const prdDir of fs.readdirSync(prdsDir)) {
-    const tasksDir = path.join(prdsDir, prdDir, 'tasks');
-    if (!fs.existsSync(tasksDir)) continue;
-
-    for (const file of fs.readdirSync(tasksDir)) {
-      if (file.startsWith(taskId + '-') && file.endsWith('.md')) {
-        return path.join(tasksDir, file);
-      }
-    }
-  }
-  return null;
+  return getTask(taskId)?.file || null;
 }
 
 /**
- * Find epic file by ID
+ * Find epic file by ID (via index.ts)
  */
 function findEpicFile(epicId) {
-  const prdsDir = getPrdsDir();
-  if (!fs.existsSync(prdsDir)) return null;
-
-  for (const prdDir of fs.readdirSync(prdsDir)) {
-    const epicsDir = path.join(prdsDir, prdDir, 'epics');
-    if (!fs.existsSync(epicsDir)) continue;
-
-    for (const file of fs.readdirSync(epicsDir)) {
-      if (file.startsWith(epicId + '-') && file.endsWith('.md')) {
-        return path.join(epicsDir, file);
-      }
-    }
-  }
-  return null;
+  return getEpic(epicId)?.file || null;
 }
 
 /**
- * Find PRD file by ID
+ * Find PRD file by ID (via index.ts)
  */
 function findPrdFile(prdId) {
-  const prdsDir = getPrdsDir();
-  if (!fs.existsSync(prdsDir)) return null;
-
-  for (const prdDir of fs.readdirSync(prdsDir)) {
-    if (prdDir.startsWith(prdId + '-') || prdDir === prdId) {
-      const prdFile = path.join(prdsDir, prdDir, 'prd.md');
-      if (fs.existsSync(prdFile)) {
-        return prdFile;
-      }
-    }
-  }
-  return null;
+  return getPrd(prdId)?.file || null;
 }
 
 /**

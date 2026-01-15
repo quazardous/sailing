@@ -1,45 +1,20 @@
 /**
  * Entity Resolution
  *
- * Centralized functions for finding PRD/Epic/Task/Story files.
- * Single source of truth for entity path resolution.
+ * Provides utility functions for entity ID parsing and project file search.
+ * For entity file lookups, use lib/index.ts instead (getTask, getEpic, getPrd).
  *
- * Uses index.js for format-agnostic lookups (T39 finds T0039-foo.md)
+ * This module provides:
+ *   - extractPrdId/extractEpicId/extractTaskId (string parsing)
+ *   - normalizeId (ID normalization)
+ *   - getPrdBranching (PRD config)
+ *   - findStoryFile (story file search - no index.ts equivalent yet)
+ *   - findDevMd/findToolset (project file search)
  */
 import fs from 'fs';
 import path from 'path';
-import { getPrdsDir, getMemoryDir, loadFile } from './core.js';
-import { getTask, getEpic, getPrd, getMemoryFile as getMemoryFileFromIndex } from './index.js';
-
-/**
- * Find task file by ID (format-agnostic: T39, T039, T0039 all work)
- * @param {string} taskId - Task ID (e.g., T042, T42, 42)
- * @returns {string|null} Absolute path to task file or null
- */
-export function findTaskFile(taskId) {
-  const task = getTask(taskId);
-  return task ? task.file : null;
-}
-
-/**
- * Find epic file by ID (format-agnostic: E14, E014, E0014 all work)
- * @param {string} epicId - Epic ID (e.g., E001, E1, 1)
- * @returns {string|null} Absolute path to epic file or null
- */
-export function findEpicFile(epicId) {
-  const epic = getEpic(epicId);
-  return epic ? epic.file : null;
-}
-
-/**
- * Find PRD file by ID (format-agnostic: PRD-1, PRD-001 all work)
- * @param {string} prdId - PRD ID (e.g., PRD-001, PRD-1, 1)
- * @returns {string|null} Absolute path to prd.md or null
- */
-export function findPrdFile(prdId) {
-  const prd = getPrd(prdId);
-  return prd ? prd.file : null;
-}
+import { getPrdsDir } from './core.js';
+import { getPrd } from './index.js';
 
 /**
  * Find story file by ID
@@ -62,16 +37,6 @@ export function findStoryFile(storyId) {
     }
   }
   return null;
-}
-
-/**
- * Find memory file for epic (format-agnostic)
- * @param {string} epicId - Epic ID
- * @returns {string|null} Absolute path to memory file or null
- */
-export function findMemoryFile(epicId) {
-  const mem = getMemoryFileFromIndex(epicId);
-  return mem ? mem.file : null;
 }
 
 /**
@@ -128,32 +93,10 @@ export function normalizeId(id, prefix) {
  * @returns {string} 'flat' | 'prd' | 'epic'
  */
 export function getPrdBranching(prdId) {
-  const prdFile = findPrdFile(prdId);
-  if (!prdFile) return 'flat';
+  const prd = getPrd(prdId);
+  if (!prd) return 'flat';
 
-  const prd = loadFile(prdFile);
-  if (!prd || !prd.data) return 'flat';
-
-  return prd.data.branching || 'flat';
-}
-
-/**
- * Get parent info for a task
- * @param {string} taskId - Task ID
- * @returns {{ prdId: string|null, epicId: string|null, taskFile: string|null }}
- */
-export function getTaskParentInfo(taskId) {
-  const taskFile = findTaskFile(taskId);
-  if (!taskFile) return { prdId: null, epicId: null, taskFile: null };
-
-  const task = loadFile(taskFile);
-  if (!task || !task.data) return { prdId: null, epicId: null, taskFile };
-
-  return {
-    prdId: extractPrdId(task.data.parent),
-    epicId: extractEpicId(task.data.parent),
-    taskFile
-  };
+  return prd.data?.branching || 'flat';
 }
 
 /**
@@ -194,24 +137,4 @@ export function findToolset(projectRoot) {
     }
   }
   return null;
-}
-
-/**
- * Find PRD directory containing an epic (format-agnostic)
- * @param {string} epicId - Epic ID (e.g., E0076, E76, 76)
- * @returns {{ prdDir: string, epicFile: string, prdId: string } | null}
- */
-export function findEpicParent(epicId) {
-  const epic = getEpic(epicId);
-  if (!epic) return null;
-
-  const prdDir = epic.prdDir;
-  const prdDirName = path.basename(prdDir);
-  const prdId = prdDirName.match(/^PRD-\d+/)?.[0] || prdDirName.split('-').slice(0, 2).join('-');
-
-  return {
-    prdDir,
-    epicFile: epic.file,
-    prdId
-  };
 }

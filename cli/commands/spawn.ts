@@ -14,8 +14,9 @@ import {
   getParentBranch, getBranchHierarchy, getMainBranch
 } from '../lib/worktree.js';
 import {
-  findTaskFile, extractPrdId, extractEpicId, getPrdBranching
+  extractPrdId, extractEpicId, getPrdBranching
 } from '../lib/entities.js';
+import { getTask } from '../lib/index.js';
 import {
   diagnose as diagnoseReconciliation,
   getBranchState,
@@ -242,7 +243,7 @@ export function registerSpawnCommands(program) {
       const agentConfig = getAgentConfig();
 
       // Find task and extract context
-      const taskFile = findTaskFile(taskId);
+      const taskFile = getTask(taskId)?.file;
       if (!taskFile) {
         if (options.json) {
           jsonOut({ ready: false, fatal: true, issues: [`Task not found: ${taskId}`] });
@@ -384,7 +385,7 @@ export function registerSpawnCommands(program) {
       }
 
       // Get task context
-      const taskFile = findTaskFile(taskId);
+      const taskFile = getTask(taskId)?.file;
       const task = taskFile ? loadFile(taskFile) : null;
       const prdId = task ? extractPrdId(task.data.parent) : null;
       const epicId = task ? extractEpicId(task.data.parent) : null;

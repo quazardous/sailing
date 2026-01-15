@@ -20,6 +20,7 @@ import {
 } from '../lib/db.js';
 import { addDynamicHelp, withModifies } from '../lib/help.js';
 import { getAgentConfig } from '../lib/config.js';
+import { buildAgentSpawnPrompt } from '../lib/compose.js';
 import {
   createWorktree, getWorktreePath, getBranchName, worktreeExists, removeWorktree,
   ensureBranchHierarchy, syncParentBranch, getParentBranch, getMainBranch
@@ -27,10 +28,10 @@ import {
 import { spawnClaude, buildPromptFromMission, getLogFilePath } from '../lib/claude.js';
 import { buildConflictMatrix, suggestMergeOrder } from '../lib/conflicts.js';
 import {
-  findTaskFile, findEpicFile, findMemoryFile,
   extractPrdId, extractEpicId, getPrdBranching,
   findDevMd, findToolset
 } from '../lib/entities.js';
+import { getTask, getEpic, getMemoryFile } from '../lib/index.js';
 import { normalizeId } from '../lib/normalize.js';
 import {
   getAgentsBaseDir, getAgentDir, getProcessStats, formatDuration,
@@ -100,7 +101,7 @@ export function registerAgentCommands(program) {
       taskId = normalizeId(taskId);
 
       // Find task file
-      const taskFile = findTaskFile(taskId);
+      const taskFile = getTask(taskId)?.file;
       if (!taskFile) {
         console.error(`Task not found: ${taskId}`);
         process.exit(1);
@@ -350,78 +351,23 @@ export function registerAgentCommands(program) {
         prd_id: prdId,
         instruction: task.body.trim(),
         dev_md: findDevMd(projectRoot) || '',
-        epic_file: findEpicFile(epicId),
+        epic_file: getEpic(epicId)?.file || null,
         task_file: taskFile,
-        memory: findMemoryFile(epicId),
+        memory: getMemoryFile(epicId)?.file || null,
         toolset: findToolset(projectRoot),
         constraints: { no_git_commit: useWorktree },
         timeout
       });
       const missionFile = path.join(agentDir, 'mission.yaml');
 
-      // Build bootstrap prompt - uses MCP rudder tool (not bash)
-      // Commit instructions depend on worktree mode:
-      // - With worktree: skill handles commits, agent must NOT commit
-      // - Without worktree: agent must commit before releasing task
-      const commitInstructions = useWorktree
-        ? `- **NO git commit** - worktree mode: skill handles commits after review
-- Follow the task deliverables exactly
-- Log meaningful tips for knowledge transfer`
-        : `- **MUST commit before release**: Stage and commit your changes with a clear message before calling assign:release
-- Follow the task deliverables exactly
-- Log meaningful tips for knowledge transfer
-- Use conventional commit format: \`feat(scope): description\` or \`fix(scope): description\``;
-
-      const bootstrapPrompt = `# Agent Bootstrap: ${taskId}
-
-You are an autonomous agent assigned to task ${taskId}.
-
-## Environment Check
-
-First, verify your working environment:
-1. Run \`pwd\` to confirm you're in your worktree
-2. Run \`ls -la\` to see the project structure
-3. Your CWD should be the project root where you'll implement the task
-
-## MCP Rudder Tool
-
-You have access to a **rudder** MCP tool for all sailing operations. Use it like this:
-
-\`\`\`
-Tool: mcp__rudder__cli
-Arguments: { "command": "..." }
-\`\`\`
-
-**Do NOT use Bash to run \`rudder\` commands.** Use the MCP tool.
-
-## Instructions
-
-The task is already claimed. Your job:
-
-1. **Get your context** by calling:
-   \`\`\`json
-   { "command": "context:load ${taskId}" }
-   \`\`\`
-   This outputs your instructions, memory, and task deliverables.
-   **Use this context for the task. Do NOT search for sailing artefacts files.**
-
-2. **Execute the task** according to the deliverables.
-   Work in your current directory (the project worktree).
-
-3. **Log tips** during your work (at least 1):
-   \`\`\`json
-   { "command": "task:log ${taskId} \\"useful insight for future agents\\" --tip" }
-   \`\`\`
-   ⚠️ **NEVER create log files** (no .tip-log.txt, no *.log). Use the MCP tool above.
-
-4. **When complete**, just finish. Auto-release happens on exit 0.
-
-## Constraints
-
-${commitInstructions}
-
-Start by running \`pwd\` and \`ls -la\`, then call the rudder MCP tool with \`context:load ${taskId}\` to get your instructions.
-`;
+      // Build bootstrap prompt using shared function (DRY)
+      // Same prompt as context:load --task
+      const promptResult = buildAgentSpawnPrompt(taskId, { useWorktree });
+      if (!promptResult) {
+        console.error(`Error: Failed to build prompt for task ${taskId}`);
+        process.exit(1);
+      }
+      const bootstrapPrompt = promptResult.prompt;
 
       if (options.dryRun) {
         console.log('Agent spawn (dry run):\n');

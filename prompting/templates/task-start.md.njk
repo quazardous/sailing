@@ -1,0 +1,123 @@
+{#
+variables:
+  taskId: string        # Task ID (T001)
+  epicId: string        # Parent epic ID (E001)
+  epicTitle: string|null # Epic title (optional)
+  prdId: string         # Parent PRD ID (PRD-001)
+  prdTitle: string|null # PRD title (optional)
+  mode: worktree|inline # Execution mode
+  sandbox: boolean      # Running in sandbox (MCP only)
+  role: agent|skill     # Actor role
+  taskBody: string      # Task deliverables content
+  memory: string|null   # Epic memory content (optional)
+#}
+{% if role == 'skill' %}
+## Task {{ taskId }} - Skill Role
+
+**You are the skill. You do NOT implement tasks.**
+
+{% if sandbox %}
+Use `rudder agent:spawn {{ taskId }}` to delegate to an agent.
+{% else %}{# inline mode #}
+Use the **Task tool** to spawn an inline agent with this context.
+{% endif %}{# /sandbox #}
+{% else %}{# role == 'agent' #}
+# Agent Mission: {{ taskId }}
+
+Epic: {{ epicId }}{% if epicTitle %} - {{ epicTitle }}{% endif %} | PRD: {{ prdId }}{% if prdTitle %} - {{ prdTitle }}{% endif %}
+
+---
+
+## Contract
+
+**Rudder CLI = Single Source of Truth.** All task operations go through rudder.
+
+NEVER:
+- Edit files in `.sailing/` directly
+- Expand scope to unblock yourself
+- Implement dependency code (it should exist)
+- Chain to other tasks
+- Skip deliverables
+
+**If blocked** → log error and STOP:
+{% if sandbox %}
+`task:log {{ taskId }} "BLOCKED: <reason>" --error`
+{% else %}{# inline #}
+`rudder task:log {{ taskId }} "BLOCKED: <reason>" --error`
+{% endif %}{# /sandbox #}
+
+---
+
+## Rudder CLI
+
+{% if sandbox %}
+MCP tool for all rudder operations:
+```
+Tool: mcp__rudder__cli
+Arguments: { "command": "<command>" }
+```
+**Do NOT use Bash for rudder.**
+{% else %}{# !sandbox #}
+Bash for rudder commands:
+```bash
+rudder <command>
+```
+{% endif %}{# /sandbox #}
+
+---
+
+## Logging (MANDATORY)
+
+You MUST log at least ONE notable insight before completing.
+
+**Notable** = something useful for future agents:
+- A gotcha or pitfall you discovered
+- A non-obvious decision (and why)
+- A dependency quirk or version issue
+
+**NOT notable**: "completed task", "done", "implemented feature"
+
+{% if sandbox %}
+```json
+{ "command": "task:log {{ taskId }} \"<insight>\" --tip" }
+```
+{% else %}{# inline #}
+```bash
+rudder task:log {{ taskId }} "<insight>" --tip
+```
+{% endif %}{# /sandbox #}
+
+---
+
+## Git
+
+{% if mode == 'worktree' %}
+**Commit before exiting**: `feat({{ taskId }}): <description>`
+
+Types: `feat` | `fix` | `refactor` | `chore`
+{% else %}{# mode == 'inline' #}
+**No commit** - coordinator handles git.
+{% endif %}{# /mode #}
+
+---
+
+## Complete
+
+Exit normally when done. Auto-release on exit 0.
+
+**Rejection triggers**: incomplete deliverables, no logs, `.sailing/` edited directly.
+
+---
+
+# Task Deliverables
+
+{{ taskBody }}
+
+{% if memory %}
+---
+
+# Epic Memory
+
+{{ memory }}
+{% endif %}{# /memory #}
+{% endif %}{# /role #}

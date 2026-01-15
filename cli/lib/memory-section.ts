@@ -4,6 +4,10 @@
  * Provides section extraction and editing for memory files.
  * Memory files have a simpler structure than artifacts (no code blocks).
  */
+import fs from 'fs';
+import path from 'path';
+import { getMemoryFile, getEpicPrd } from './index.js';
+import { getMemoryDir, getRepoRoot } from './core.js';
 
 type Section = { name: string; content: string };
 type FoundSection = { header: string; content: string; match: RegExpMatchArray };
@@ -152,4 +156,75 @@ export function parseMultiSectionInput(input: string): ParsedSection[] {
   }
 
   return sections;
+}
+
+/**
+ * Agent-relevant section names
+ * These are the only sections shown to agents by default
+ */
+export const AGENT_RELEVANT_SECTIONS = [
+  'Agent Context',
+  'Escalation',
+  'Cross-Epic Patterns',
+  'Architecture Decisions',
+  'Patterns & Conventions'
+];
+
+/**
+ * Get filtered memory content for an agent (epic-level)
+ * Returns only agent-relevant sections from the memory hierarchy
+ *
+ * @param epicId - Epic ID (e.g., 'E001')
+ * @returns Formatted markdown with agent-relevant sections, or null
+ */
+export function getAgentMemory(epicId: string): string | null {
+  const parts: string[] = [];
+
+  // 1. Epic memory
+  const epicMemory = getMemoryFile(epicId);
+  if (epicMemory && fs.existsSync(epicMemory.file)) {
+    const content = fs.readFileSync(epicMemory.file, 'utf8');
+    const sections = extractAllSections(content);
+    const relevant = sections.filter(s => AGENT_RELEVANT_SECTIONS.includes(s.name));
+    if (relevant.length > 0) {
+      parts.push(`### Epic ${epicId}\n`);
+      for (const sec of relevant) {
+        parts.push(`**${sec.name}**\n${sec.content}\n`);
+      }
+    }
+  }
+
+  // 2. PRD memory (if exists)
+  const prd = getEpicPrd(epicId);
+  if (prd) {
+    const prdMemoryPath = path.join(getMemoryDir(), `${prd.prdId}.md`);
+    if (fs.existsSync(prdMemoryPath)) {
+      const content = fs.readFileSync(prdMemoryPath, 'utf8');
+      const sections = extractAllSections(content);
+      const relevant = sections.filter(s => AGENT_RELEVANT_SECTIONS.includes(s.name));
+      if (relevant.length > 0) {
+        parts.push(`### PRD ${prd.prdId}\n`);
+        for (const sec of relevant) {
+          parts.push(`**${sec.name}**\n${sec.content}\n`);
+        }
+      }
+    }
+  }
+
+  // 3. Project memory (if exists)
+  const repoRoot = getRepoRoot();
+  const projectMemoryPath = repoRoot ? path.join(repoRoot, '.sailing', 'memory', 'PROJECT.md') : null;
+  if (projectMemoryPath && fs.existsSync(projectMemoryPath)) {
+    const content = fs.readFileSync(projectMemoryPath, 'utf8');
+    const sections = extractAllSections(content);
+    const relevant = sections.filter(s => AGENT_RELEVANT_SECTIONS.includes(s.name));
+    if (relevant.length > 0) {
+      parts.push(`### Project\n`);
+      for (const sec of relevant) {
+        parts.push(`**${sec.name}**\n${sec.content}\n`);
+      }
+    }
+  }
+
+  return parts.length > 0 ? parts.join('\n') : null;
 }

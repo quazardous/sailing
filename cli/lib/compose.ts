@@ -13,8 +13,11 @@
 import fs from 'fs';
 import path from 'path';
 import yaml from 'js-yaml';
-import { getPrompting, getPathsInfo } from './core.js';
+import { getPrompting, getPathsInfo, loadFile } from './core.js';
 import { getAgentConfig } from './config.js';
+import { getTask, getTaskEpic, getEpicPrd, getEpic, getPrd, getMemoryFile } from './index.js';
+import { renderTemplate } from './template.js';
+import { getAgentMemory } from './memory-section.js';
 
 /**
  * Load unified workflows.yaml configuration
@@ -400,4 +403,127 @@ export function composeAgentContext(operation, debug = false) {
   });
 
   return result || { content: '', sources: [], role: 'agent', operation };
+}
+
+/**
+ * Build complete agent spawn prompt for a task
+ * This is the SINGLE SOURCE OF TRUTH for agent prompts.
+ * Used by both agent:spawn and context:load --task
+ *
+ * Uses prompting_v2 Nunjucks templates when available, falls back to legacy.
+ *
+ * @param {string} taskId - Task ID (e.g., 'T102')
+ * @param {object} [options] - Options
+ * @param {boolean} [options.useWorktree] - Whether worktree mode is enabled
+ * @returns {{ prompt: string, taskId: string, epicId: string, prdId: string } | null}
+ */
+export function buildAgentSpawnPrompt(taskId: string, options: { useWorktree?: boolean } = {}) {
+  const agentConfig = getAgentConfig();
+  const useWorktree = options.useWorktree ?? agentConfig.use_worktrees ?? true;
+  const sandbox = agentConfig.sandbox ?? false;
+
+  // Get task from index
+  const taskEntry = getTask(taskId);
+  if (!taskEntry) {
+    return null;
+  }
+
+  // Load full task content (including body)
+  const taskFile = loadFile(taskEntry.file);
+  if (!taskFile) {
+    return null;
+  }
+
+  // Get epic and PRD from index
+  const epic = getTaskEpic(taskId);
+  const epicId = epic?.epicId || 'unknown';
+  const epicTitle = epic?.epicId ? getEpic(epic.epicId)?.data?.title || null : null;
+  const prd = epic ? getEpicPrd(epic.epicId) : null;
+  const prdId = prd?.prdId || 'unknown';
+  const prdTitle = prdId !== 'unknown' ? getPrd(prdId)?.data?.title || null : null;
+
+  // Load agent-relevant memory (filtered sections only)
+  const memory = getAgentMemory(epicId);
+
+  // Filter task body: remove Log section and HTML comment lines
+  const taskBody = taskFile.body
+    .split(/^(?=## )/m)
+    .filter(section => !section.startsWith('## Log'))
+    .join('')
+    .split('\n')
+    .filter(line => !line.trim().startsWith('<!--'))  // Remove comment lines
+    .join('\n')
+    .replace(/\n{3,}/g, '\n\n')       // Collapse multiple blank lines
+    .trim();
+
+  // Try prompting_v2 template first
+  const prompt = renderTemplate('task-start', {
+    taskId,
+    epicId,
+    epicTitle,
+    prdId,
+    prdTitle,
+    mode: useWorktree ? 'worktree' : 'inline',
+    sandbox,
+    role: 'agent',
+    taskBody,
+    memory
+  });
+
+  if (prompt) {
+    return { prompt, taskId, epicId, prdId };
+  }
+
+  // Fallback to legacy (will be removed once v2 is stable)
+  console.error('Warning: prompting_v2 template not found, using legacy');
+  return buildAgentSpawnPromptLegacy(taskId, options);
+}
+
+/**
+ * Legacy prompt builder (deprecated, kept for fallback)
+ */
+function buildAgentSpawnPromptLegacy(taskId: string, options: { useWorktree?: boolean } = {}) {
+  const agentConfig = getAgentConfig();
+  const useWorktree = options.useWorktree ?? agentConfig.use_worktrees ?? true;
+
+  const taskEntry = getTask(taskId);
+  if (!taskEntry) return null;
+
+  const taskFile = loadFile(taskEntry.file);
+  if (!taskFile) return null;
+
+  const epic = getTaskEpic(taskId);
+  const epicId = epic?.epicId || 'unknown';
+  const prd = epic ? getEpicPrd(epic.epicId) : null;
+  const prdId = prd?.prdId || 'unknown';
+
+  let memoryContent = '';
+  const memoryEntry = getMemoryFile(epicId);
+  if (memoryEntry && fs.existsSync(memoryEntry.file)) {
+    memoryContent = fs.readFileSync(memoryEntry.file, 'utf8').trim();
+  }
+
+  const agentContext = composeAgentContext('task-start');
+
+  const prompt = `# Agent Mission: ${taskId}
+
+You are an autonomous agent assigned to task ${taskId}.
+Epic: ${epicId}, PRD: ${prdId}
+
+${useWorktree ? '**Worktree mode**: Commit before exiting.' : '**Inline mode**: No commit needed.'}
+
+---
+
+# Task Deliverables
+
+${taskFile.body.trim()}
+
+---
+
+${memoryContent ? `# Epic Memory\n\n${memoryContent}\n\n---\n\n` : ''}# Agent Contract
+
+${agentContext.content}
+`;
+
+  return { prompt, taskId, epicId, prdId };
 }
