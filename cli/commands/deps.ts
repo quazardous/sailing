@@ -7,13 +7,88 @@ import { loadFile, saveFile, jsonOut } from '../managers/core-manager.js';
 import { normalizeId, extractTaskId, matchesPrdDir, parentContainsEpic } from '../lib/normalize.js';
 import { getEpic, getAllEpics } from '../managers/artefacts-manager.js';
 import { STATUS, normalizeStatus, isStatusDone, isStatusNotStarted, isStatusInProgress, isStatusCancelled, statusSymbol } from '../lib/lexicon.js';
-import { buildDependencyGraph, detectCycles, findRoots, blockersResolved, longestPath, countTotalUnblocked, getAncestors, getDescendants } from '../managers/graph-manager.js';
+import { buildDependencyGraph, detectCycles, findRoots, blockersResolved, longestPath, countTotalUnblocked, getAncestors, getDescendants, type TaskNode } from '../managers/graph-manager.js';
 import { addDynamicHelp, withModifies } from '../lib/help.js';
+import type { Command } from 'commander';
+
+interface EpicDependency {
+  id: string;
+  file: string;
+  status: string;
+  blockedBy: string[];
+  prdDir: string;
+}
+
+interface TreeOptions {
+  ancestors?: boolean;
+  descendants?: boolean;
+  depth?: number;
+  tag?: string[];
+  ready?: boolean;
+  json?: boolean;
+}
+
+interface ValidateOptions {
+  prd?: string;
+  fix?: boolean;
+  json?: boolean;
+}
+
+interface ValidationError {
+  type: string;
+  task?: string;
+  epic?: string;
+  blocker?: string;
+  path?: string[];
+  message: string;
+}
+
+interface Fix {
+  task?: string;
+  epic?: string;
+  file: string;
+  action: string;
+  blockerId?: string;
+  raw?: string;
+  normalized?: string;
+  oldStatus?: string;
+  newStatus?: string;
+  oldName?: string;
+  newName?: string;
+}
+
+interface ImpactOptions {
+  json?: boolean;
+}
+
+interface ReadyOptions {
+  role?: string;
+  prd?: string;
+  epic?: string;
+  tag?: string[];
+  limit?: number;
+  json?: boolean;
+}
+
+interface CriticalOptions {
+  prd?: string;
+  limit?: number;
+}
+
+interface AddOptions {
+  blocks?: string[];
+  blockedBy?: string[];
+}
+
+interface ShowOptions {
+  role?: string;
+  json?: boolean;
+}
 
 /**
  * Check if ID is an epic (ENNN) vs task (TNNN)
  */
-function isEpicId(id) {
+function isEpicId(id: string): boolean {
   return /^E\d+$/i.test(id);
 }
 
@@ -21,7 +96,7 @@ function isEpicId(id) {
  * Find an epic file by ID (via index.ts)
  * @returns {{ file: string, prdDir: string, data: object } | null}
  */
-function findEpicFile(epicId) {
+function findEpicFile(epicId: string) {
   const epic = getEpic(epicId);
   if (!epic) return null;
   const fileData = loadFile(epic.file);
@@ -32,8 +107,8 @@ function findEpicFile(epicId) {
  * Build epic dependency map
  * @returns {Map<string, { id, file, status, blockedBy, prdDir }>}
  */
-function buildEpicDependencyMap() {
-  const epics = new Map();
+function buildEpicDependencyMap(): Map<string, EpicDependency> {
+  const epics = new Map<string, EpicDependency>();
 
   // Use artefacts.ts contract - single entry point for epic access
   for (const epicEntry of getAllEpics()) {
@@ -60,12 +135,12 @@ function buildEpicDependencyMap() {
  * @param {Map} epics - Epic dependency map
  * @returns {string[][]} Array of cycles
  */
-function detectEpicCycles(epics) {
-  const cycles = [];
-  const visited = new Set();
-  const recStack = new Set();
+function detectEpicCycles(epics: Map<string, EpicDependency>): string[][] {
+  const cycles: string[][] = [];
+  const visited = new Set<string>();
+  const recStack = new Set<string>();
 
-  const dfs = (id, path) => {
+  const dfs = (id: string, path: string[]): void => {
     if (recStack.has(id)) {
       // Found a cycle - extract it
       const cycleStart = path.indexOf(id);
@@ -100,7 +175,7 @@ function detectEpicCycles(epics) {
 /**
  * Register deps commands
  */
-export function registerDepsCommands(program) {
+export function registerDepsCommands(program: Command): void {
   const deps = program.command('deps').description('Dependency graph operations');
 
   // Dynamic help generated from registered commands
@@ -115,9 +190,9 @@ export function registerDepsCommands(program) {
     .option('-t, --tag <tag>', 'Filter by tag (repeatable, AND logic)', (v, arr) => arr.concat(v), [])
     .option('--ready', 'Only show ready tasks')
     .option('--json', 'JSON output')
-    .action((taskId, options) => {
+    .action((taskId: string | undefined, options: TreeOptions) => {
       const { tasks, blocks } = buildDependencyGraph();
-      const maxDepth = options.depth || Infinity;
+      const maxDepth = (options.depth as number | undefined) || Infinity;
 
       if (taskId) {
         const id = normalizeId(taskId);
@@ -182,9 +257,9 @@ export function registerDepsCommands(program) {
       } else {
         // Show roots and their trees
         const roots = findRoots(tasks);
-        const output = [];
+        const output: Array<{id: string; title: string; status: string; depth: number; ready: boolean}> = [];
 
-        function printTree(id, indent = '', depth = 0) {
+        function printTree(id: string, indent = '', depth = 0): void {
           if (depth > maxDepth) return;
           const task = tasks.get(id);
           if (!task) return;
@@ -232,11 +307,11 @@ export function registerDepsCommands(program) {
     .option('--prd <id>', 'Filter by PRD')
     .option('--fix', 'Auto-fix issues')
     .option('--json', 'JSON output')
-    .action((options) => {
+    .action((options: ValidateOptions) => {
       const { tasks, blocks } = buildDependencyGraph();
-      const errors = [];
-      const warnings = [];
-      const fixes = [];
+      const errors: ValidationError[] = [];
+      const warnings: ValidationError[] = [];
+      const fixes: Fix[] = [];
 
       // Filter tasks by PRD if specified
       const prdFilter = options.prd ? normalizeId(options.prd) : null;
@@ -363,7 +438,7 @@ export function registerDepsCommands(program) {
               message: `${epicId}: blocked_by references non-existent epic ${blockerId}`
             });
             if (options.fix) {
-              fixes.push({ epic: epicId, file: epic.file, action: 'remove_epic_blocker', blockerId });
+              fixes.push({ epic: epicId, file: epic.file, action: 'remove_epic_blocker', blockerId } as Fix);
             }
           }
         }
@@ -376,7 +451,7 @@ export function registerDepsCommands(program) {
             message: `${epicId}: blocked_by contains self-reference`
           });
           if (options.fix) {
-            fixes.push({ epic: epicId, file: epic.file, action: 'remove_epic_self_ref' });
+            fixes.push({ epic: epicId, file: epic.file, action: 'remove_epic_self_ref' } as Fix);
           }
         }
       }
@@ -425,27 +500,27 @@ export function registerDepsCommands(program) {
       }
 
       // 10. Epic/Task consistency
-      const tasksByEpic = new Map();
+      const tasksByEpic = new Map<string, TaskNode[]>();
       for (const [id, task] of tasks) {
         if (prdFilter && !task.prd?.includes(prdFilter)) continue;
         const epicMatch = task.parent?.match(/E(\d+)/i);
         if (epicMatch) {
           const epicId = normalizeId(`E${epicMatch[1]}`);
           if (!tasksByEpic.has(epicId)) tasksByEpic.set(epicId, []);
-          tasksByEpic.get(epicId).push(task);
+          (tasksByEpic.get(epicId) as TaskNode[]).push(task);
         }
       }
 
       // Use artefacts.ts contract - single entry point for epic access
       for (const epicEntry of getAllEpics()) {
         // Skip PRDs not matching filter
-        if (prdFilter && !matchesPrdDir(epicEntry.prdDir, options.prd)) continue;
+        if (prdFilter && !matchesPrdDir(epicEntry.prdDir, options.prd as string)) continue;
 
         const epicId = normalizeId(epicEntry.data?.id);
         if (!epicId) continue;
 
-        const epicStatus = epicEntry.data?.status || 'Unknown';
-        const epicTasks = tasksByEpic.get(epicId) || [];
+        const epicStatus = (epicEntry.data?.status as string | undefined) || 'Unknown';
+        const epicTasks = (tasksByEpic.get(epicId) || []) as TaskNode[];
 
         if (epicTasks.length === 0) continue;
 
@@ -476,7 +551,7 @@ export function registerDepsCommands(program) {
         }
 
         if (isStatusDone(epicStatus) && !allDone) {
-          const notDone = epicTasks.filter(t => !isStatusDone(t.status) && !isStatusCancelled(t.status));
+          const notDone = (epicTasks as TaskNode[]).filter(t => !isStatusDone(t.status) && !isStatusCancelled(t.status));
           errors.push({
             type: 'epic_done_prematurely',
             epic: epicId,
@@ -488,12 +563,12 @@ export function registerDepsCommands(program) {
       // Apply fixes
       let fixedCount = 0;
       if (options.fix && fixes.length > 0) {
-        const fileUpdates = new Map();
+        const fileUpdates = new Map<string, {file: ReturnType<typeof loadFile>; fixes: Fix[]}>();
         for (const f of fixes) {
           if (!fileUpdates.has(f.file)) {
             fileUpdates.set(f.file, { file: loadFile(f.file), fixes: [] });
           }
-          fileUpdates.get(f.file).fixes.push(f);
+          (fileUpdates.get(f.file) as {file: ReturnType<typeof loadFile>; fixes: Fix[]}).fixes.push(f);
         }
 
         for (const [filepath, { file, fixes: fileFixes }] of fileUpdates) {
@@ -507,17 +582,17 @@ export function registerDepsCommands(program) {
 
             switch (fix.action) {
               case 'normalize': {
-                const idx = file.data.blocked_by.indexOf(fix.raw);
+                const idx = (file.data.blocked_by as unknown[]).indexOf(fix.raw as string);
                 if (idx !== -1) {
-                  file.data.blocked_by[idx] = fix.normalized;
+                  (file.data.blocked_by as unknown[])[idx] = fix.normalized as string;
                   updated = true;
                   fixedCount++;
                 }
                 break;
               }
               case 'remove_duplicates': {
-                const unique = [...new Set(file.data.blocked_by)];
-                if (unique.length !== file.data.blocked_by.length) {
+                const unique = [...new Set(file.data.blocked_by as unknown[])];
+                if (unique.length !== (file.data.blocked_by as unknown[]).length) {
                   file.data.blocked_by = unique;
                   updated = true;
                   fixedCount++;
@@ -525,8 +600,8 @@ export function registerDepsCommands(program) {
                 break;
               }
               case 'remove_self': {
-                const filtered = file.data.blocked_by.filter(b => extractTaskId(b) !== fix.task);
-                if (filtered.length !== file.data.blocked_by.length) {
+                const filtered = (file.data.blocked_by as unknown[]).filter(b => extractTaskId(b as string) !== fix.task);
+                if (filtered.length !== (file.data.blocked_by as unknown[]).length) {
                   file.data.blocked_by = filtered;
                   updated = true;
                   fixedCount++;
@@ -535,8 +610,8 @@ export function registerDepsCommands(program) {
               }
               case 'remove_missing':
               case 'remove_cancelled': {
-                const filtered = file.data.blocked_by.filter(b => extractTaskId(b) !== fix.blockerId);
-                if (filtered.length !== file.data.blocked_by.length) {
+                const filtered = (file.data.blocked_by as unknown[]).filter(b => extractTaskId(b as string) !== fix.blockerId);
+                if (filtered.length !== (file.data.blocked_by as unknown[]).length) {
                   file.data.blocked_by = filtered;
                   updated = true;
                   fixedCount++;
@@ -545,7 +620,7 @@ export function registerDepsCommands(program) {
               }
               case 'normalize_status': {
                 if (file.data.status !== fix.newStatus) {
-                  file.data.status = fix.newStatus;
+                  file.data.status = fix.newStatus as string;
                   updated = true;
                   fixedCount++;
                 }
@@ -553,7 +628,7 @@ export function registerDepsCommands(program) {
               }
               case 'update_epic_status': {
                 if (file.data.status !== fix.newStatus) {
-                  file.data.status = fix.newStatus;
+                  file.data.status = fix.newStatus as string;
                   updated = true;
                   fixedCount++;
                 }
@@ -620,7 +695,7 @@ export function registerDepsCommands(program) {
   deps.command('impact <taskId>')
     .description('What gets unblocked when task completes')
     .option('--json', 'JSON output')
-    .action((taskId, options) => {
+    .action((taskId: string, options: ImpactOptions) => {
       const id = normalizeId(taskId);
       const { tasks, blocks } = buildDependencyGraph();
       const task = tasks.get(id);
@@ -704,7 +779,7 @@ export function registerDepsCommands(program) {
     .option('-t, --tag <tag>', 'Filter by tag (repeatable, AND logic)', (v, arr) => arr.concat(v), [])
     .option('-l, --limit <n>', 'Limit results', parseInt)
     .option('--json', 'JSON output')
-    .action((options) => {
+    .action((options: ReadyOptions) => {
       // Role enforcement: agents don't query dependencies
       if (options.role === 'agent') {
         console.error('ERROR: deps:ready cannot be called with --role agent');
@@ -713,10 +788,10 @@ export function registerDepsCommands(program) {
       }
       const { tasks, blocks } = buildDependencyGraph();
       const epics = buildEpicDependencyMap();
-      const ready = [];
+      const ready: Array<ReturnType<typeof buildDependencyGraph>['tasks'] extends Map<string, infer T> ? T & {impact: number; criticalPath: number} : never> = [];
 
       // Helper: check if epic blockers are resolved
-      const epicBlockersResolved = (epicId) => {
+      const epicBlockersResolved = (epicId: string | undefined): boolean => {
         if (!epicId) return true;
         const epic = epics.get(epicId);
         if (!epic) return true;
@@ -790,7 +865,7 @@ export function registerDepsCommands(program) {
     .description('Find bottlenecks (tasks blocking the most work)')
     .option('--prd <id>', 'Filter by PRD')
     .option('-l, --limit <n>', 'Limit results', parseInt, 5)
-    .action((options) => {
+    .action((options: CriticalOptions) => {
       const { tasks, blocks } = buildDependencyGraph();
 
       // Calculate impact score for each incomplete task
@@ -827,7 +902,7 @@ export function registerDepsCommands(program) {
     .description('Add dependency (--blocks or --blocked-by, supports TNNN and ENNN)')
     .option('--blocks <ids...>', 'This entity blocks these entities')
     .option('--blocked-by <ids...>', 'This entity is blocked by these entities')
-    .action((entityId, options) => {
+    .action((entityId: string, options: AddOptions) => {
       const id = normalizeId(entityId);
       const isEpic = isEpicId(id);
 
@@ -866,7 +941,7 @@ export function registerDepsCommands(program) {
 
         if (options.blockedBy) {
           // Add blockers to this epic
-          const epic = epics.get(id);
+          const epic = epics.get(id) as EpicDependency;
           const file = loadFile(epic.file);
           if (!Array.isArray(file.data.blocked_by)) file.data.blocked_by = [];
 
@@ -957,7 +1032,7 @@ export function registerDepsCommands(program) {
     .description('Show dependencies (TNNN for task, ENNN for epic with blockers)')
     .option('--role <role>', 'Role context: agent blocked, skill/coordinator allowed')
     .option('--json', 'JSON output')
-    .action((id, options) => {
+    .action((id: string, options: ShowOptions) => {
       // Role enforcement: agents don't query dependencies
       if (options.role === 'agent') {
         console.error('ERROR: deps:show cannot be called with --role agent');
@@ -988,7 +1063,7 @@ export function registerDepsCommands(program) {
         const epicBlockers = epic.blockedBy.map(bid => {
           const b = epics.get(bid);
           return b ? { id: bid, status: b.status, done: isStatusDone(b.status) } : null;
-        }).filter(Boolean);
+        }).filter((b): b is { id: string; status: string; done: boolean } => b !== null);
 
         const epicBlocks = [...epics.values()]
           .filter(e => e.blockedBy.includes(epicId))

@@ -7,6 +7,7 @@
 import fs from 'fs';
 import path from 'path';
 import yaml from 'js-yaml';
+import { Command } from 'commander';
 import { jsonOut, getMemoryDir, loadFile, saveFile, loadPathsConfig, getRunsDir, getAssignmentsDir, ensureDir, computeProjectHash } from '../managers/core-manager.js';
 import { normalizeId } from '../lib/normalize.js';
 import { getTask, getEpic, getPrd } from '../managers/artefacts-manager.js';
@@ -18,29 +19,29 @@ import { composeAgentContext } from '../managers/compose-manager.js';
 /**
  * Find task file by ID (via index.ts)
  */
-function findTaskFile(taskId) {
+function findTaskFile(taskId: string): string | null {
   return getTask(taskId)?.file || null;
 }
 
 /**
  * Find epic file by ID (via index.ts)
  */
-function findEpicFile(epicId) {
+function findEpicFile(epicId: string): string | null {
   return getEpic(epicId)?.file || null;
 }
 
 /**
  * Find PRD file by ID (via index.ts)
  */
-function findPrdFile(prdId) {
+function findPrdFile(prdId: string): string | null {
   return getPrd(prdId)?.file || null;
 }
 
 /**
  * Detect entity type from ID
- * @returns {{ type: 'task'|'epic'|'prd', id: string }}
+ * @returns {{ type: 'task'|'epic'|'prd'|'unknown', id: string }}
  */
-function detectEntityType(id) {
+function detectEntityType(id: string): { type: 'task' | 'epic' | 'prd' | 'unknown'; id: string } {
   const normalized = normalizeId(id);
   if (normalized.startsWith('T')) {
     return { type: 'task', id: normalized };
@@ -55,7 +56,7 @@ function detectEntityType(id) {
 /**
  * Get PRD details for prompt
  */
-function getPrdDetails(prdId) {
+function getPrdDetails(prdId: string): string | null {
   const prdFile = findPrdFile(prdId);
   if (!prdFile) return null;
 
@@ -66,7 +67,7 @@ function getPrdDetails(prdId) {
 /**
  * Get epic details for prompt (full file)
  */
-function getEpicDetails(epicId) {
+function getEpicDetails(epicId: string): string | null {
   const epicFile = findEpicFile(epicId);
   if (!epicFile) return null;
 
@@ -80,7 +81,7 @@ function getEpicDetails(epicId) {
 /**
  * Get run file path for a task
  */
-function runFilePath(taskId) {
+function runFilePath(taskId: string): string {
   const dir = getRunsDir();
   return path.join(dir, `${taskId}.run`);
 }
@@ -88,17 +89,22 @@ function runFilePath(taskId) {
 /**
  * Check if run file exists (agent is running)
  */
-function isRunning(taskId) {
+function isRunning(taskId: string): boolean {
   return fs.existsSync(runFilePath(taskId));
 }
 
 /**
  * Create run file (mark agent as running)
  */
-function createRunFile(taskId, operation) {
+function createRunFile(taskId: string, operation: string) {
   const filePath = runFilePath(taskId);
   ensureDir(path.dirname(filePath));
-  const data = {
+  const data: {
+    taskId: string;
+    operation: string;
+    started_at: string;
+    pid: number;
+  } = {
     taskId,
     operation,
     started_at: new Date().toISOString(),
@@ -111,7 +117,7 @@ function createRunFile(taskId, operation) {
 /**
  * Remove run file (agent finished)
  */
-function removeRunFile(taskId) {
+function removeRunFile(taskId: string): boolean {
   const filePath = runFilePath(taskId);
   if (fs.existsSync(filePath)) {
     fs.unlinkSync(filePath);
@@ -123,7 +129,7 @@ function removeRunFile(taskId) {
 /**
  * Check if a process is still running
  */
-function isPidAlive(pid) {
+function isPidAlive(pid: number | undefined): boolean {
   if (!pid) return false;
   try {
     process.kill(pid, 0);  // Signal 0 = check if process exists
@@ -137,15 +143,23 @@ function isPidAlive(pid) {
  * List orphan run files (runs where the agent process is dead)
  * Active agents (PID alive) are NOT orphans
  */
-function findOrphanRuns() {
+interface RunFileData {
+  taskId: string;
+  operation: string;
+  started_at: string;
+  pid?: number;
+  file: string;
+}
+
+function findOrphanRuns(): RunFileData[] {
   const dir = getRunsDir();
   if (!fs.existsSync(dir)) return [];
 
   return fs.readdirSync(dir)
     .filter(f => f.endsWith('.run'))
     .map(f => {
-      const content = yaml.load(fs.readFileSync(path.join(dir, f), 'utf8'));
-      return { taskId: content.taskId, file: f, ...content };
+      const content = yaml.load(fs.readFileSync(path.join(dir, f), 'utf8')) as { taskId: string; operation: string; started_at: string; pid?: number };
+      return { taskId: content.taskId, file: f, operation: content.operation, started_at: content.started_at, pid: content.pid } as RunFileData;
     })
     .filter(run => !isPidAlive(run.pid));  // Only orphans = dead PIDs
 }
@@ -155,7 +169,7 @@ function findOrphanRuns() {
 /**
  * Add log entry to task file
  */
-function logToTask(taskId, message, level = 'INFO') {
+function logToTask(taskId: string, message: string, level = 'INFO'): boolean {
   const taskFile = findTaskFile(taskId);
   if (!taskFile) return false;
 
@@ -174,7 +188,7 @@ function logToTask(taskId, message, level = 'INFO') {
 /**
  * Get assignment file path for a task
  */
-function assignmentPath(taskId) {
+function assignmentPath(taskId: string): string {
   const normalized = normalizeId(taskId);
   const dir = getAssignmentsDir();
   return path.join(dir, `${normalized}.yaml`);
@@ -186,14 +200,14 @@ function assignmentPath(taskId) {
 /**
  * Get memory content for a task (Agent Context only)
  */
-function getTaskMemory(taskId) {
+function getTaskMemory(taskId: string): { found: boolean; epicId: string | null; content: string } {
   const taskFile = findTaskFile(taskId);
   if (!taskFile) {
     return { found: false, epicId: null, content: '' };
   }
 
   const file = loadFile(taskFile);
-  const parent = file.data?.parent || '';
+  const parent = (file.data?.parent as string | undefined) || '';
 
   // Extract epic ID from parent (e.g., "PRD-006 / E043" → "E043")
   const epicMatch = parent.match(/E(\d+)/i);
@@ -221,10 +235,19 @@ function getTaskMemory(taskId) {
   return { found: true, epicId, content: context };
 }
 
+interface EpicSummary {
+  id: string;
+  title: string;
+  parent: string;
+  description: string;
+  techNotes: string;
+  filePath: string;
+}
+
 /**
  * Get epic summary for prompt
  */
-function getEpicSummary(epicId) {
+function getEpicSummary(epicId: string): EpicSummary | null {
   const epicFile = findEpicFile(epicId);
   if (!epicFile) {
     return null;
@@ -243,8 +266,8 @@ function getEpicSummary(epicId) {
 
   return {
     id: epicId,
-    title: data.title || '',
-    parent: data.parent || '',
+    title: (data.title as string | undefined) || '',
+    parent: (data.parent as string | undefined) || '',
     description,
     techNotes,
     filePath: epicFile
@@ -254,7 +277,7 @@ function getEpicSummary(epicId) {
 /**
  * Get task details for prompt
  */
-function getTaskDetails(taskId) {
+function getTaskDetails(taskId: string): string | null {
   const taskFile = findTaskFile(taskId);
   if (!taskFile) {
     return null;
@@ -264,10 +287,28 @@ function getTaskDetails(taskId) {
   return raw;
 }
 
+interface AssignmentData {
+  taskId: string;
+  epicId: string | null;
+  operation: string;
+  status?: string;
+  claimed_at?: string;
+  completed_at?: string;
+}
+
+interface TaskClaimOptions {
+  operation?: string;
+  approach?: string;
+  force?: boolean;
+  sources?: boolean;
+  debug?: boolean;
+  json?: boolean;
+}
+
 /**
  * Handle task claim (original behavior)
  */
-function handleTaskClaim(taskId, options) {
+function handleTaskClaim(taskId: string, options: TaskClaimOptions) {
   const filePath = assignmentPath(taskId);
   const operation = options.operation || 'task-start';
 
@@ -280,12 +321,12 @@ function handleTaskClaim(taskId, options) {
     }
   }
 
-  let assignment;
+  let assignment: AssignmentData;
   let tracked = false;
-  let epicId = null;
+  let epicId: string | null = null;
 
   if (fs.existsSync(filePath)) {
-    assignment = yaml.load(fs.readFileSync(filePath, 'utf8'));
+    assignment = yaml.load(fs.readFileSync(filePath, 'utf8')) as AssignmentData;
     tracked = true;
     epicId = assignment.epicId;
 
@@ -305,7 +346,7 @@ function handleTaskClaim(taskId, options) {
     }
 
     const file = loadFile(taskFile);
-    const parent = file.data?.parent || '';
+    const parent = (file.data?.parent as string | undefined) || '';
     const epicMatch = parent.match(/E(\d+)/i);
     epicId = epicMatch ? normalizeId(`E${epicMatch[1]}`) : null;
 
@@ -341,7 +382,7 @@ function handleTaskClaim(taskId, options) {
   // 2. Memory (from epic)
   const memory = getTaskMemory(taskId);
   if (memory.content) {
-    const config = loadPathsConfig();
+    const config = loadPathsConfig() as { paths: { memory: string } };
     const memoryPath = `${config.paths.memory}/${memory.epicId}.md`;
     const header = debug
       ? `<!-- section: Memory, source: ${memoryPath} -->\n# Memory: ${memory.epicId}`
@@ -391,7 +432,7 @@ function handleTaskClaim(taskId, options) {
       entityType: 'task',
       entityId: taskId,
       operation,
-      sources: agentContext.sources,
+      sources: agentContext.sources as string[],
       memoryEpic: memory.epicId,
       tracked,
       prompt: compiledPrompt
@@ -410,10 +451,17 @@ function handleTaskClaim(taskId, options) {
   console.log(compiledPrompt);
 }
 
+interface EpicClaimOptions {
+  operation?: string;
+  sources?: boolean;
+  debug?: boolean;
+  json?: boolean;
+}
+
 /**
  * Handle epic claim
  */
-function handleEpicClaim(epicId, options) {
+function handleEpicClaim(epicId: string, options: EpicClaimOptions) {
   const epicFile = findEpicFile(epicId);
   if (!epicFile) {
     console.error(`Epic not found: ${epicId}`);
@@ -421,7 +469,7 @@ function handleEpicClaim(epicId, options) {
   }
 
   const file = loadFile(epicFile);
-  const parent = file.data?.parent || '';
+  const parent = (file.data?.parent as string | undefined) || '';
   const prdMatch = parent.match(/PRD-\d+/i);
   const prdId = prdMatch ? prdMatch[0] : null;
 
@@ -481,7 +529,7 @@ function handleEpicClaim(epicId, options) {
       entityType: 'epic',
       entityId: epicId,
       operation,
-      sources: agentContext.sources,
+      sources: agentContext.sources as string[],
       prdId,
       prompt: compiledPrompt
     });
@@ -499,10 +547,17 @@ function handleEpicClaim(epicId, options) {
   console.log(compiledPrompt);
 }
 
+interface PrdClaimOptions {
+  operation?: string;
+  sources?: boolean;
+  debug?: boolean;
+  json?: boolean;
+}
+
 /**
  * Handle PRD claim
  */
-function handlePrdClaim(prdId, options) {
+function handlePrdClaim(prdId: string, options: PrdClaimOptions) {
   const prdFile = findPrdFile(prdId);
   if (!prdFile) {
     console.error(`PRD not found: ${prdId}`);
@@ -540,7 +595,7 @@ function handlePrdClaim(prdId, options) {
       entityType: 'prd',
       entityId: prdId,
       operation,
-      sources: agentContext.sources,
+      sources: agentContext.sources as string[],
       prompt: compiledPrompt
     });
     return;
@@ -559,7 +614,7 @@ function handlePrdClaim(prdId, options) {
 /**
  * Register assignment commands
  */
-export function registerAssignCommands(program) {
+export function registerAssignCommands(program: Command) {
   const assign = program.command('assign')
     .description('Assignment operations (skill → agent prompt)');
 
@@ -580,7 +635,7 @@ export function registerAssignCommands(program) {
       }
 
       const file = loadFile(taskFile);
-      const parent = file.data?.parent || '';
+      const parent = (file.data?.parent as string | undefined) || '';
       const epicMatch = parent.match(/E(\d+)/i);
       const epicId = epicMatch ? normalizeId(`E${epicMatch[1]}`) : null;
 
@@ -588,7 +643,7 @@ export function registerAssignCommands(program) {
 
       // Check if assignment already exists
       if (fs.existsSync(filePath)) {
-        const existing = yaml.load(fs.readFileSync(filePath, 'utf8'));
+        const existing = yaml.load(fs.readFileSync(filePath, 'utf8')) as AssignmentData;
         if (existing.status !== 'complete') {
           console.error(`Assignment already exists for ${normalized} (status: ${existing.status})`);
           process.exit(1);
@@ -712,7 +767,7 @@ export function registerAssignCommands(program) {
       // Update assignment file if tracked
       const assignPath = assignmentPath(normalized);
       if (fs.existsSync(assignPath)) {
-        const assignment = yaml.load(fs.readFileSync(assignPath, 'utf8'));
+        const assignment = yaml.load(fs.readFileSync(assignPath, 'utf8')) as AssignmentData & { success?: boolean };
         assignment.status = 'complete';
         assignment.completed_at = new Date().toISOString();
         assignment.success = options.status !== 'Blocked';
@@ -748,7 +803,7 @@ export function registerAssignCommands(program) {
         process.exit(1);
       }
 
-      const assignment = yaml.load(fs.readFileSync(filePath, 'utf8'));
+      const assignment = yaml.load(fs.readFileSync(filePath, 'utf8')) as AssignmentData;
 
       if (options.json) {
         jsonOut(assignment);
@@ -778,10 +833,10 @@ export function registerAssignCommands(program) {
       const files = fs.readdirSync(dir).filter(f => f.endsWith('.yaml'));
 
       const projectHash = computeProjectHash();
-      const assignments = [];
+      const assignments: (AssignmentData & { projectHash?: string; created_at: string })[] = [];
 
       for (const file of files) {
-        const content = yaml.load(fs.readFileSync(path.join(dir, file), 'utf8'));
+        const content = yaml.load(fs.readFileSync(path.join(dir, file), 'utf8')) as AssignmentData & { projectHash?: string; created_at: string };
 
         // Only show assignments for current project
         if (content.projectHash && content.projectHash !== projectHash) {
@@ -830,7 +885,7 @@ export function registerAssignCommands(program) {
         process.exit(1);
       }
 
-      const assignment = yaml.load(fs.readFileSync(filePath, 'utf8'));
+      const assignment = yaml.load(fs.readFileSync(filePath, 'utf8')) as AssignmentData & { success?: boolean };
 
       if (assignment.status === 'complete') {
         console.error(`Assignment already complete at ${assignment.completed_at}`);
@@ -866,7 +921,7 @@ export function registerAssignCommands(program) {
         process.exit(1);
       }
 
-      const assignment = yaml.load(fs.readFileSync(filePath, 'utf8'));
+      const assignment = yaml.load(fs.readFileSync(filePath, 'utf8')) as AssignmentData;
 
       if (assignment.status === 'claimed' && !options.force) {
         console.error(`Assignment is claimed. Use --force to delete.`);

@@ -3,6 +3,7 @@
  */
 import fs from 'fs';
 import path from 'path';
+import { Command } from 'commander';
 import { findPrdDirs, loadFile, saveFile, toKebab, loadTemplate, jsonOut, stripComments } from '../managers/core-manager.js';
 import { normalizeId, matchesPrdDir } from '../lib/normalize.js';
 import { getAllEpics, getAllTasks, getEpic, getTask, getStory, getAllStories as getStoriesFromIndex, getPrd } from '../managers/artefacts-manager.js';
@@ -13,6 +14,102 @@ import { parseSearchReplace, editArtifact, parseMultiSectionContent, processMult
 import { Story } from '../lib/types/entities.js';
 
 const STORY_TYPES = ['user', 'technical', 'api'];
+
+interface StoryListOptions {
+  type?: string;
+  limit?: number;
+  prd?: string;
+  path?: boolean;
+  json?: boolean;
+}
+
+interface StoryShowOptions {
+  raw?: boolean;
+  comments?: boolean;
+  path?: boolean;
+  json?: boolean;
+}
+
+interface StoryCreateOptions {
+  type: string;
+  parentStory?: string;
+  path?: boolean;
+  json?: boolean;
+}
+
+interface StoryUpdateOptions {
+  type?: string;
+  parentStory?: string;
+  clearParent?: boolean;
+  title?: string;
+  set?: string[];
+  json?: boolean;
+}
+
+interface StoryTreeOptions {
+  prd?: string;
+}
+
+interface StoryRootsOptions {
+  prd?: string;
+  path?: boolean;
+  json?: boolean;
+}
+
+interface StoryLeavesOptions {
+  prd?: string;
+  path?: boolean;
+  json?: boolean;
+}
+
+interface StoryChildrenOptions {
+  json?: boolean;
+}
+
+interface StoryAncestorsOptions {
+  json?: boolean;
+}
+
+interface StoryOrphansOptions {
+  prd?: string;
+  path?: boolean;
+  json?: boolean;
+}
+
+interface StoryValidateOptions {
+  prd?: string;
+  json?: boolean;
+}
+
+interface StoryBookOptions {
+  prd?: string;
+  epic?: string;
+  task?: string;
+  json?: boolean;
+}
+
+interface StoryPatchOptions {
+  file?: string;
+  dryRun?: boolean;
+  json?: boolean;
+}
+
+interface StoryEditOptions {
+  section?: string;
+  content?: string;
+  append?: boolean;
+  prepend?: boolean;
+  json?: boolean;
+}
+
+interface StoryReference {
+  [key: string]: string[];
+}
+
+interface StoryReferences {
+  epics: StoryReference;
+  tasks: StoryReference;
+}
 
 /**
  * Find a story file by ID (uses artefacts.ts contract)
@@ -61,8 +158,8 @@ function getAllStories(prdFilter = null, includePath = false): (Story & { prd: s
 /**
  * Get all epics and tasks with their story references
  */
-function getStoryReferences() {
-  const refs = { epics: {}, tasks: {} };
+function getStoryReferences(): StoryReferences {
+  const refs: StoryReferences = { epics: {}, tasks: {} };
 
   // Use artefacts.ts contract for epics
   for (const epicEntry of getAllEpics()) {
@@ -94,10 +191,10 @@ function getStoryReferences() {
 /**
  * Build story tree structure
  */
-function buildStoryTree(stories) {
-  const byId = new Map();
-  const roots = [];
-  const children = new Map();
+function buildStoryTree(stories: (Story & { prd: string; file?: string })[]) {
+  const byId = new Map<string, Story & { prd: string; file?: string }>();
+  const roots: (Story & { prd: string; file?: string })[] = [];
+  const children = new Map<string, (Story & { prd: string; file?: string })[]>();
 
   // Index by ID
   stories.forEach(s => {
@@ -110,7 +207,7 @@ function buildStoryTree(stories) {
     if (s.parent_story) {
       const parentId = normalizeId(s.parent_story);
       if (children.has(parentId)) {
-        children.get(parentId).push(s);
+        children.get(parentId)!.push(s);
       }
     } else {
       roots.push(s);
@@ -123,7 +220,7 @@ function buildStoryTree(stories) {
 /**
  * Register story commands
  */
-export function registerStoryCommands(program) {
+export function registerStoryCommands(program: Command) {
   const story = program.command('story').description('Story operations (narrative context for features)');
 
   addDynamicHelp(story, { entityType: 'story' });
@@ -136,7 +233,7 @@ export function registerStoryCommands(program) {
     .option('--prd <id>', 'Filter by PRD (alias for positional arg)')
     .option('--path', 'Include file path (discouraged)')
     .option('--json', 'JSON output')
-    .action((prdArg, options) => {
+    .action((prdArg: string | undefined, options: StoryListOptions) => {
       const prd = prdArg || options.prd;
       let stories = getAllStories(prd, options.path);
 
@@ -180,7 +277,7 @@ export function registerStoryCommands(program) {
     .option('--comments', 'Include template comments (stripped by default)')
     .option('--path', 'Include file path (discouraged)')
     .option('--json', 'JSON output')
-    .action((id, options) => {
+    .action((id: string, options: StoryShowOptions) => {
       const result = findStoryFile(id);
       if (!result) {
         console.error(`Story not found: ${id}`);
@@ -201,11 +298,11 @@ export function registerStoryCommands(program) {
       const stories = getAllStories();
       const { children } = buildStoryTree(stories);
 
-      const childrenList = children.get(storyId) || [];
-      const epicRefs = refs.epics[storyId] || [];
-      const taskRefs = refs.tasks[storyId] || [];
+      const childrenList: (Story & { prd: string; file?: string })[] = children.get(storyId) || [];
+      const epicRefs: string[] = refs.epics[storyId] || [];
+      const taskRefs: string[] = refs.tasks[storyId] || [];
 
-      const output: any = {
+      const output: Record<string, unknown> = {
         ...file.data,
         prd: path.basename(result.prdDir),
         children: childrenList.map(c => c.id),
@@ -250,7 +347,7 @@ export function registerStoryCommands(program) {
     .option('--parent-story <id>', 'Parent story ID')
     .option('--path', 'Show file path')
     .option('--json', 'JSON output')
-    .action((prd, title, options) => {
+    .action((prd: string, title: string, options: StoryCreateOptions) => {
       if (!STORY_TYPES.includes(options.type)) {
         console.error(`Invalid type: ${options.type}. Use: ${STORY_TYPES.join(', ')}`);
         process.exit(1);
@@ -278,7 +375,7 @@ export function registerStoryCommands(program) {
         status: 'Draft',
         parent: path.basename(prdDir).split('-').slice(0, 2).join('-'),
         parent_story: options.parentStory ? normalizeId(options.parentStory) : null,
-        type: options.type
+        type: options.type as 'user' | 'technical' | 'api'
       };
 
       // Load template or use minimal body
@@ -293,7 +390,7 @@ export function registerStoryCommands(program) {
       saveFile(storyPath, data, body);
 
       if (options.json) {
-        const output: any = { id, title, parent: data.parent, type: data.type };
+        const output: Record<string, unknown> = { id, title, parent: data.parent, type: data.type };
         if (options.path) output.file = storyPath;
         jsonOut(output);
       } else {
@@ -313,7 +410,7 @@ export function registerStoryCommands(program) {
     .option('--title <title>', 'Set title')
     .option('--set <key=value>', 'Set any frontmatter field (repeatable)', (v, arr) => arr.concat(v), [])
     .option('--json', 'JSON output')
-    .action((id, options) => {
+    .action((id: string, options: StoryUpdateOptions) => {
       const result = findStoryFile(id);
       if (!result) {
         console.error(`Story not found: ${id}`);
@@ -328,7 +425,7 @@ export function registerStoryCommands(program) {
           console.error(`Invalid type: ${options.type}. Use: ${STORY_TYPES.join(', ')}`);
           process.exit(1);
         }
-        file.data.type = options.type;
+        file.data.type = options.type as 'user' | 'technical' | 'api';
         updated = true;
       }
 
@@ -351,7 +448,7 @@ export function registerStoryCommands(program) {
       if (options.set?.length) {
         options.set.forEach(kv => {
           const [key, ...valueParts] = kv.split('=');
-          let value = valueParts.join('=');
+          let value: string | number | boolean | null = valueParts.join('=');
 
           // Parse value types
           if (value === 'null') value = null;
@@ -359,7 +456,7 @@ export function registerStoryCommands(program) {
           else if (value === 'false') value = false;
           else if (/^\d+$/.test(value)) value = parseInt(value);
 
-          file.data[key] = value;
+          (file.data as Record<string, unknown>)[key] = value;
           updated = true;
         });
       }
@@ -380,7 +477,7 @@ export function registerStoryCommands(program) {
   story.command('tree [prd]')
     .description('Show story tree structure')
     .option('--prd <id>', 'Filter by PRD')
-    .action((prdArg, options) => {
+    .action((prdArg: string | undefined, options: StoryTreeOptions) => {
       const prd = prdArg || options.prd;
       const stories = getAllStories(prd);
       const { roots, children } = buildStoryTree(stories);
@@ -390,10 +487,10 @@ export function registerStoryCommands(program) {
         return;
       }
 
-      function printTree(story, indent = '') {
+      function printTree(story: Story & { prd: string; file?: string }, indent = '') {
         const typeIcon = story.type === 'user' ? '👤' : story.type === 'technical' ? '⚙️' : '🔌';
         console.log(`${indent}${typeIcon} ${story.id}: ${story.title}`);
-        const childList = children.get(normalizeId(story.id)) || [];
+        const childList: (Story & { prd: string; file?: string })[] = children.get(normalizeId(story.id)) || [];
         childList.forEach((child, i) => {
           const isLast = i === childList.length - 1;
           const prefix = isLast ? '└── ' : '├── ';
@@ -411,7 +508,7 @@ export function registerStoryCommands(program) {
     .option('--prd <id>', 'Filter by PRD')
     .option('--path', 'Include file path (discouraged)')
     .option('--json', 'JSON output')
-    .action((prdArg, options) => {
+    .action((prdArg: string | undefined, options: StoryRootsOptions) => {
       const prd = prdArg || options.prd;
       const stories = getAllStories(prd, options.path);
       const roots = stories.filter(s => !s.parent_story);
@@ -436,13 +533,13 @@ export function registerStoryCommands(program) {
     .option('--prd <id>', 'Filter by PRD')
     .option('--path', 'Include file path (discouraged)')
     .option('--json', 'JSON output')
-    .action((prdArg, options) => {
+    .action((prdArg: string | undefined, options: StoryLeavesOptions) => {
       const prd = prdArg || options.prd;
       const stories = getAllStories(prd, options.path);
       const { children } = buildStoryTree(stories);
 
       const leaves = stories.filter(s => {
-        const childList = children.get(normalizeId(s.id)) || [];
+        const childList: (Story & { prd: string; file?: string })[] = children.get(normalizeId(s.id)) || [];
         return childList.length === 0;
       });
 
@@ -464,12 +561,12 @@ export function registerStoryCommands(program) {
   story.command('children <id>')
     .description('List direct children of a story')
     .option('--json', 'JSON output')
-    .action((id, options) => {
+    .action((id: string, options: StoryChildrenOptions) => {
       const stories = getAllStories();
       const { children } = buildStoryTree(stories);
       const storyId = normalizeId(id);
 
-      const childList = children.get(storyId) || [];
+      const childList: (Story & { prd: string; file?: string })[] = children.get(storyId) || [];
 
       if (options.json) {
         jsonOut(childList);
@@ -489,20 +586,20 @@ export function registerStoryCommands(program) {
   story.command('ancestors <id>')
     .description('Show path from story to root')
     .option('--json', 'JSON output')
-    .action((id, options) => {
+    .action((id: string, options: StoryAncestorsOptions) => {
       const stories = getAllStories();
       const { byId } = buildStoryTree(stories);
       const storyId = normalizeId(id);
 
-      const ancestors = [];
-      let current = byId.get(storyId);
+      const ancestors: (Story & { prd: string; file?: string })[] = [];
+      let current: (Story & { prd: string; file?: string }) | undefined = byId.get(storyId);
 
       while (current) {
         ancestors.push(current);
         if (current.parent_story) {
           current = byId.get(normalizeId(current.parent_story));
         } else {
-          current = null;
+          current = undefined;
         }
       }
 
@@ -527,14 +624,14 @@ export function registerStoryCommands(program) {
     .option('--prd <id>', 'Filter by PRD')
     .option('--path', 'Include file path (discouraged)')
     .option('--json', 'JSON output')
-    .action((prdArg, options) => {
+    .action((prdArg: string | undefined, options: StoryOrphansOptions) => {
       const prd = prdArg || options.prd;
       const stories = getAllStories(prd, options.path);
       const refs = getStoryReferences();
 
       const orphans = stories.filter(s => {
         const storyId = normalizeId(s.id);
-        const taskRefs = refs.tasks[storyId] || [];
+        const taskRefs: string[] = refs.tasks[storyId] || [];
         return taskRefs.length === 0;
       });
 
@@ -559,7 +656,7 @@ export function registerStoryCommands(program) {
     .option('--prd <id>', 'Filter by PRD')
     .option('--path', 'Include file path (discouraged)')
     .option('--json', 'JSON output')
-    .action((prdArg, options) => {
+    .action((prdArg: string | undefined, options: StoryOrphansOptions) => {
       // Same as orphans
       const prd = prdArg || options.prd;
       const stories = getAllStories(prd, options.path);
@@ -589,17 +686,17 @@ export function registerStoryCommands(program) {
     .description('Validate stories (check for orphans)')
     .option('--prd <id>', 'Filter by PRD')
     .option('--json', 'JSON output')
-    .action((prdArg, options) => {
+    .action((prdArg: string | undefined, options: StoryValidateOptions) => {
       const prd = prdArg || options.prd;
       const stories = getAllStories(prd);
       const refs = getStoryReferences();
 
-      const issues = [];
+      const issues: Array<{ type: string; story: string; message: string }> = [];
 
       // Check for orphan stories
       stories.forEach(s => {
         const storyId = normalizeId(s.id);
-        const taskRefs = refs.tasks[storyId] || [];
+        const taskRefs: string[] = refs.tasks[storyId] || [];
         if (taskRefs.length === 0) {
           issues.push({
             type: 'orphan',
@@ -644,8 +741,8 @@ export function registerStoryCommands(program) {
     .option('--epic <id>', 'Show stories referenced by epic')
     .option('--task <id>', 'Show stories referenced by task')
     .option('--json', 'JSON output')
-    .action((prdArg, options) => {
-      let stories = [];
+    .action((prdArg: string | undefined, options: StoryBookOptions) => {
+      let stories: Array<{ id: string; title: string; type?: string; file?: string; prd?: string }> = [];
 
       if (options.epic) {
         // Find epic and get its stories (artefacts.ts contract)
@@ -656,9 +753,9 @@ export function registerStoryCommands(program) {
             if (storyResult) {
               const storyFile = loadFile(storyResult.file);
               stories.push({
-                id: storyFile.data.id,
-                title: storyFile.data.title,
-                type: storyFile.data.type,
+                id: storyFile.data.id as string,
+                title: storyFile.data.title as string,
+                type: storyFile.data.type as string,
                 file: storyResult.file
               });
             }
@@ -673,9 +770,9 @@ export function registerStoryCommands(program) {
             if (storyResult) {
               const storyFile = loadFile(storyResult.file);
               stories.push({
-                id: storyFile.data.id,
-                title: storyFile.data.title,
-                type: storyFile.data.type,
+                id: storyFile.data.id as string,
+                title: storyFile.data.title as string,
+                type: storyFile.data.type as string,
                 file: storyResult.file
               });
             }
@@ -708,7 +805,7 @@ export function registerStoryCommands(program) {
     .option('-f, --file <path>', 'Read patch from file instead of stdin')
     .option('--dry-run', 'Show what would be changed without applying')
     .option('--json', 'JSON output')
-    .action(async (id, options) => {
+    .action(async (id: string, options: StoryPatchOptions) => {
       const result = findStoryFile(id);
 
       if (!result) {
@@ -718,7 +815,7 @@ export function registerStoryCommands(program) {
 
       const storyPath = result.file;
 
-      let patchContent;
+      let patchContent: string;
       if (options.file) {
         if (!fs.existsSync(options.file)) {
           console.error(`Patch file not found: ${options.file}`);
@@ -726,12 +823,16 @@ export function registerStoryCommands(program) {
         }
         patchContent = fs.readFileSync(options.file, 'utf8');
       } else {
-        patchContent = await new Promise((resolve) => {
+        patchContent = await new Promise<string>((resolve) => {
           let data = '';
           if (process.stdin.isTTY) { resolve(''); return; }
           process.stdin.setEncoding('utf8');
           process.stdin.on('readable', () => {
-            let chunk; while ((chunk = process.stdin.read()) !== null) data += chunk;
+            let chunk: Buffer | string | null = process.stdin.read() as Buffer | string | null;
+            while (chunk !== null) {
+              data += chunk;
+              chunk = process.stdin.read() as Buffer | string | null;
+            }
           });
           process.stdin.on('end', () => resolve(data));
         });
@@ -783,7 +884,7 @@ Multi-section format: use ## headers with optional [op]
 Operations: [replace], [append], [prepend], [delete], [sed], [check], [uncheck], [toggle], [patch]
 See: bin/rudder artifact edit --help for full documentation
 `)
-    .action(async (id, options) => {
+    .action(async (id: string, options: StoryEditOptions) => {
       const result = findStoryFile(id);
       if (!result) {
         console.error(`Story not found: ${id}`);
@@ -794,12 +895,16 @@ See: bin/rudder artifact edit --help for full documentation
 
       let content = options.content;
       if (!content) {
-        content = await new Promise((resolve) => {
+        content = await new Promise<string>((resolve) => {
           let data = '';
           if (process.stdin.isTTY) { resolve(''); return; }
           process.stdin.setEncoding('utf8');
           process.stdin.on('readable', () => {
-            let chunk; while ((chunk = process.stdin.read()) !== null) data += chunk;
+            let chunk: Buffer | string | null = process.stdin.read() as Buffer | string | null;
+            while (chunk !== null) {
+              data += chunk;
+              chunk = process.stdin.read() as Buffer | string | null;
+            }
           });
           process.stdin.on('end', () => resolve(data));
         });
@@ -824,7 +929,7 @@ See: bin/rudder artifact edit --help for full documentation
         process.exit(1);
       }
 
-      const originalOps = ops.map(o => ({ op: o.op, section: o.section }));
+      const originalOps: Array<{ op: string; section: string }> = ops.map(o => ({ op: o.op, section: o.section }));
       const { expandedOps, errors: processErrors } = processMultiSectionOps(storyPath, ops);
       if (processErrors.length > 0) {
         processErrors.forEach(e => console.error(e));
@@ -839,7 +944,7 @@ See: bin/rudder artifact edit --help for full documentation
         if (originalOps.length === 1) {
           console.log(`✓ ${originalOps[0].op} on ${originalOps[0].section} in ${normalizeId(id)}`);
         } else {
-          const byOp = {};
+          const byOp: Record<string, number> = {};
           originalOps.forEach(o => { byOp[o.op] = (byOp[o.op] || 0) + 1; });
           const summary = Object.entries(byOp).map(([op, n]) => `${op}:${n}`).join(', ');
           console.log(`✓ ${originalOps.length} sections in ${normalizeId(id)} (${summary})`);

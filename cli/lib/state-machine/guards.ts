@@ -8,13 +8,37 @@ import { execSync } from 'child_process';
 import fs from 'fs';
 
 /**
+ * Guard result type
+ */
+interface GuardResult {
+  ok: boolean;
+  error?: string;
+}
+
+/**
+ * Guard context type
+ */
+export interface GuardContext {
+  projectRoot: string;
+  worktreePath: string;
+  branch: string;
+  baseBranch?: string;
+  conflictsWith?: string[];
+}
+
+/**
+ * Guard function type
+ */
+type GuardFunction = (ctx: GuardContext) => GuardResult;
+
+/**
  * Guard registry
  */
-export const guards = {
+export const guards: Record<string, GuardFunction> = {
   /**
    * Check git is installed
    */
-  hasGit: (ctx) => {
+  hasGit: (_ctx) => {
     try {
       execSync('git --version', { stdio: 'pipe' });
       return { ok: true };
@@ -88,7 +112,7 @@ export const guards = {
       }
       return { ok: true };
     } catch (e) {
-      return { ok: false, error: e.message };
+      return { ok: false, error: e instanceof Error ? e.message : String(e) };
     }
   },
 
@@ -128,7 +152,7 @@ export const guards = {
       }
       return { ok: true };
     } catch (e) {
-      return { ok: false, error: e.message };
+      return { ok: false, error: e instanceof Error ? e.message : String(e) };
     }
   },
 
@@ -144,13 +168,21 @@ export const guards = {
 };
 
 /**
- * Run a list of guards
- * @param {string[]} guardNames - Names of guards to run
- * @param {object} ctx - Context object
- * @returns {{ ok: boolean, errors: string[] }}
+ * Run guards result type
  */
-export function runGuards(guardNames, ctx) {
-  const errors = [];
+interface RunGuardsResult {
+  ok: boolean;
+  errors: string[];
+}
+
+/**
+ * Run a list of guards
+ * @param guardNames - Names of guards to run
+ * @param ctx - Context object
+ * @returns Result with ok status and any errors
+ */
+export function runGuards(guardNames: string[], ctx: GuardContext): RunGuardsResult {
+  const errors: string[] = [];
 
   for (const name of guardNames) {
     const guard = guards[name];
@@ -159,7 +191,7 @@ export function runGuards(guardNames, ctx) {
       continue;
     }
 
-    const result = guard(ctx);
+    const result: GuardResult = guard(ctx);
     if (!result.ok) {
       errors.push(result.error || `Guard failed: ${name}`);
     }

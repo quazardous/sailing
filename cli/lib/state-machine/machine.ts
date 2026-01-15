@@ -5,7 +5,7 @@
  */
 import { AgentState, WorktreeState, isTerminalState } from './states.js';
 import { getTransition, getValidEvents } from './transitions.js';
-import { runGuards } from './guards.js';
+import { runGuards, type GuardContext } from './guards.js';
 
 /**
  * State Machine Engine
@@ -17,12 +17,30 @@ interface HistoryItem {
   timestamp: string;
 }
 
+interface TransitionDefinition {
+  next: string;
+  guards?: string[];
+  actions?: string[];
+  worktree?: {
+    from: string;
+    to: string;
+  };
+}
+
+interface StateMachineData {
+  taskId: string;
+  state: string;
+  worktreeState: string;
+  history: HistoryItem[];
+  context: Record<string, unknown>;
+}
+
 export class AgentStateMachine {
   taskId: string;
   state: string;
   worktreeState: string;
   history: HistoryItem[];
-  context: Record<string, any>;
+  context: Record<string, unknown>;
 
   constructor(taskId: string, initialState = AgentState.IDLE) {
     this.taskId = taskId;
@@ -36,7 +54,7 @@ export class AgentStateMachine {
    * Check if a transition is valid
    * @returns {{ valid: boolean, errors: string[] }}
    */
-  canTransition(event) {
+  canTransition(event: string) {
     const transition = getTransition(this.state, event);
 
     if (!transition) {
@@ -54,7 +72,7 @@ export class AgentStateMachine {
 
     // Check guards
     if (transition.guards) {
-      const result = runGuards(transition.guards, this.context);
+      const result = runGuards(transition.guards, this.context as GuardContext);
       if (!result.ok) {
         return { valid: false, errors: result.errors };
       }
@@ -67,7 +85,7 @@ export class AgentStateMachine {
    * Execute a transition
    * @returns {{ success: boolean, state: string, errors?: string[], actions?: string[] }}
    */
-  transition(event, context = {}) {
+  transition(event: string, context: Record<string, unknown> = {}) {
     // Update context
     this.context = { ...this.context, ...context };
 
@@ -76,7 +94,7 @@ export class AgentStateMachine {
       return { success: false, state: this.state, errors: check.errors };
     }
 
-    const transition = getTransition(this.state, event);
+    const transition = getTransition(this.state, event) as TransitionDefinition;
     const previousState = this.state;
 
     // Record history
@@ -147,7 +165,7 @@ export class AgentStateMachine {
   /**
    * Restore from persisted state
    */
-  static fromJSON(data) {
+  static fromJSON(data: StateMachineData) {
     const machine = new AgentStateMachine(data.taskId, data.state);
     machine.worktreeState = data.worktreeState || WorktreeState.NONE;
     machine.history = data.history || [];

@@ -12,6 +12,55 @@ import fs from 'fs';
 import path from 'path';
 import { AgentState, WorktreeState } from './states.js';
 
+interface WorktreeDetails {
+  path: string;
+  exists: boolean;
+  isGitWorktree: boolean;
+  branch: string | null;
+  baseBranch: string;
+  clean: boolean | null;
+  hasCommits: boolean | null;
+  ahead: number;
+  behind: number;
+  uncommittedFiles: string[];
+  stagedFiles: string[];
+  conflictFiles: string[];
+  mergeInProgress: boolean;
+  rebaseInProgress: boolean;
+  errors: string[];
+}
+
+interface AgentInfo {
+  status: string;
+  worktree?: string;
+  pid?: number;
+  [key: string]: unknown;
+}
+
+interface StateData {
+  agents?: Record<string, AgentInfo>;
+  [key: string]: unknown;
+}
+
+interface DiagnosticPaths {
+  projectRoot: string;
+  worktreePath: string;
+  branch?: string;
+  baseBranch?: string;
+}
+
+interface DiagnosisResult {
+  agentState: string;
+  worktreeState: string;
+  details: {
+    agent: AgentInfo | null;
+    worktree: WorktreeDetails;
+    recordedState?: string;
+    actualWorktreeState?: string;
+  };
+  issues: string[];
+}
+
 /**
  * Diagnose worktree state from filesystem/git
  * @param {string} worktreePath - Path to worktree
@@ -19,8 +68,8 @@ import { AgentState, WorktreeState } from './states.js';
  * @param {string} baseBranch - Base branch name (default: 'main')
  * @returns {{ state: string, details: object }}
  */
-export function diagnoseWorktreeState(worktreePath, projectRoot, baseBranch = 'main') {
-  const details = {
+export function diagnoseWorktreeState(worktreePath: string, projectRoot: string, baseBranch = 'main'): { state: string; details: WorktreeDetails } {
+  const details: WorktreeDetails = {
     path: worktreePath,
     exists: false,
     isGitWorktree: false,
@@ -60,19 +109,22 @@ export function diagnoseWorktreeState(worktreePath, projectRoot, baseBranch = 'm
     }
     details.isGitWorktree = true;
   } catch (e) {
-    details.errors.push(`Cannot read .git file: ${e.message}`);
+    const message = e instanceof Error ? e.message : String(e);
+    details.errors.push(`Cannot read .git file: ${message}`);
     return { state: WorktreeState.NONE, details };
   }
 
   // Get current branch
   try {
-    details.branch = execSync('git branch --show-current', {
+    const branchOutput = execSync('git branch --show-current', {
       cwd: worktreePath,
       encoding: 'utf8',
       stdio: ['pipe', 'pipe', 'pipe']
-    }).trim();
+    });
+    details.branch = branchOutput.trim();
   } catch (e) {
-    details.errors.push(`Cannot get branch: ${e.message}`);
+    const message = e instanceof Error ? e.message : String(e);
+    details.errors.push(`Cannot get branch: ${message}`);
   }
 
   // Check for merge/rebase in progress
@@ -97,11 +149,12 @@ export function diagnoseWorktreeState(worktreePath, projectRoot, baseBranch = 'm
 
   // Get status (staged, unstaged, conflicts)
   try {
-    const status = execSync('git status --porcelain', {
+    const statusOutput = execSync('git status --porcelain', {
       cwd: worktreePath,
       encoding: 'utf8',
       stdio: ['pipe', 'pipe', 'pipe']
-    }).trim();
+    });
+    const status = statusOutput.trim();
 
     if (status) {
       for (const line of status.split('\n')) {
@@ -130,16 +183,18 @@ export function diagnoseWorktreeState(worktreePath, projectRoot, baseBranch = 'm
     details.clean = details.uncommittedFiles.length === 0 &&
                     details.stagedFiles.length === 0;
   } catch (e) {
-    details.errors.push(`Cannot get status: ${e.message}`);
+    const message = e instanceof Error ? e.message : String(e);
+    details.errors.push(`Cannot get status: ${message}`);
   }
 
   // Check commits ahead/behind
   try {
-    const counts = execSync(`git rev-list --left-right --count ${baseBranch}...HEAD`, {
+    const countsOutput = execSync(`git rev-list --left-right --count ${baseBranch}...HEAD`, {
       cwd: worktreePath,
       encoding: 'utf8',
       stdio: ['pipe', 'pipe', 'pipe']
-    }).trim().split('\t');
+    });
+    const counts = countsOutput.trim().split('\t');
 
     details.behind = parseInt(counts[0], 10) || 0;
     details.ahead = parseInt(counts[1], 10) || 0;
@@ -150,7 +205,7 @@ export function diagnoseWorktreeState(worktreePath, projectRoot, baseBranch = 'm
   }
 
   // Determine state
-  let state;
+  let state: string;
 
   if (details.conflictFiles.length > 0) {
     state = WorktreeState.CONFLICT;
@@ -174,9 +229,9 @@ export function diagnoseWorktreeState(worktreePath, projectRoot, baseBranch = 'm
  * @param {object} paths - { projectRoot, worktreePath, branch, baseBranch }
  * @returns {{ agentState: string, worktreeState: string, details: object, issues: string[] }}
  */
-export function diagnoseAgentState(taskId, stateData, paths) {
-  const issues = [];
-  const agentInfo = stateData.agents?.[taskId];
+export function diagnoseAgentState(taskId: string, stateData: StateData, paths: DiagnosticPaths): DiagnosisResult {
+  const issues: string[] = [];
+  const agentInfo: AgentInfo | undefined = stateData.agents?.[taskId];
   const baseBranch = paths.baseBranch || 'main';
 
   // No agent in state
@@ -195,13 +250,13 @@ export function diagnoseAgentState(taskId, stateData, paths) {
   }
 
   // Get recorded state
-  const recordedState = agentInfo.status;
+  const recordedState: string = agentInfo.status;
 
   // Diagnose actual worktree state
   const wt = diagnoseWorktreeState(paths.worktreePath, paths.projectRoot, baseBranch);
 
   // Cross-validate state vs reality
-  const details = {
+  const details: DiagnosisResult['details'] = {
     agent: agentInfo,
     worktree: wt.details,
     recordedState,
@@ -251,8 +306,8 @@ export function diagnoseAgentState(taskId, stateData, paths) {
  * @param {object} diagnosis - Result from diagnoseAgentState
  * @returns {string[]} List of recommended actions
  */
-export function getRecommendedActions(diagnosis) {
-  const actions = [];
+export function getRecommendedActions(diagnosis: DiagnosisResult): string[] {
+  const actions: string[] = [];
   const { agentState, worktreeState, issues } = diagnosis;
 
   // Handle issues first

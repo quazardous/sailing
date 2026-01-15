@@ -8,16 +8,115 @@
  */
 import { execSync } from 'child_process';
 import path from 'path';
+import type { Command } from 'commander';
 import { findProjectRoot, jsonOut } from '../managers/core-manager.js';
 import { normalizeId, parentContainsEpic } from '../lib/normalize.js';
 import { getAllEpics, getAllTasks, getAllPrds, getAllStories, getPrd } from '../managers/artefacts-manager.js';
+
+// ============================================================================
+// TYPES
+// ============================================================================
+
+interface FindFilters {
+  prd?: string;
+  epic?: string;
+  status?: string;
+  assignee?: string;
+  tag?: string;
+  blocked?: boolean;
+  unblocked?: boolean;
+  hasStory?: boolean;
+  noStory?: boolean;
+  type?: string;
+  milestone?: string;
+  targetVersion?: string;
+}
+
+interface PrdResult {
+  id: string;
+  title?: string;
+  status?: string;
+  file: string;
+}
+
+interface EpicResult {
+  id: string;
+  title?: string;
+  status?: string;
+  parent?: string;
+  stories: string[];
+  file: string;
+}
+
+interface TaskResult {
+  id: string;
+  title?: string;
+  status?: string;
+  parent?: string;
+  assignee?: string;
+  blocked_by: string[];
+  stories: string[];
+  file: string;
+}
+
+interface StoryResult {
+  id: string;
+  title?: string;
+  type?: string;
+  parent_story?: string;
+  file: string;
+}
+
+interface ExecuteOptions {
+  dryRun?: boolean;
+  quiet?: boolean;
+  verbose?: boolean;
+}
+
+interface ExecuteSuccess {
+  id: string;
+  output?: string;
+  cmd?: string;
+}
+
+interface ExecuteError {
+  id: string;
+  error: string;
+}
+
+interface ExecuteResult {
+  successes: ExecuteSuccess[];
+  errors: ExecuteError[];
+}
+
+interface CommandOptions {
+  status?: string;
+  tag?: string;
+  milestone?: string;
+  prd?: string;
+  epic?: string;
+  assignee?: string;
+  blocked?: boolean;
+  unblocked?: boolean;
+  hasStory?: boolean;
+  story?: boolean;
+  targetVersion?: string;
+  type?: string;
+  exec?: string;
+  dryRun?: boolean;
+  quiet?: boolean;
+  verbose?: boolean;
+  json?: boolean;
+  count?: boolean;
+  ids?: boolean;
+}
 
 /**
  * Find PRDs matching filters
  * Uses artefacts.ts contract
  */
-function findPrds(filters) {
-  const results = [];
+function findPrds(filters: FindFilters): PrdResult[] {
+  const results: PrdResult[] = [];
 
   for (const prdEntry of getAllPrds()) {
     const data = prdEntry.data || {};
@@ -39,8 +138,8 @@ function findPrds(filters) {
  * Find epics matching filters
  * Uses artefacts.ts contract
  */
-function findEpics(filters) {
-  const results = [];
+function findEpics(filters: FindFilters): EpicResult[] {
+  const results: EpicResult[] = [];
 
   for (const epicEntry of getAllEpics()) {
     // Filter by PRD if specified
@@ -71,8 +170,8 @@ function findEpics(filters) {
  * Find tasks matching filters
  * Uses artefacts.ts contract
  */
-function findTasks(filters) {
-  const results = [];
+function findTasks(filters: FindFilters): TaskResult[] {
+  const results: TaskResult[] = [];
 
   for (const taskEntry of getAllTasks()) {
     // Filter by PRD if specified
@@ -110,8 +209,8 @@ function findTasks(filters) {
  * Find stories matching filters
  * Uses artefacts.ts contract
  */
-function findStories(filters) {
-  const results = [];
+function findStories(filters: FindFilters): StoryResult[] {
+  const results: StoryResult[] = [];
 
   // Get stories, optionally filtered by PRD
   let storyEntries = getAllStories();
@@ -148,65 +247,65 @@ function findStories(filters) {
 /**
  * Check if entity matches all filters
  */
-function matchesFilters(data, filters, entityType) {
+function matchesFilters(data: Record<string, unknown>, filters: FindFilters, entityType: string): boolean {
   // Status filter
   if (filters.status) {
-    const status = (data.status || '').toLowerCase();
+    const status = String(data.status || '').toLowerCase();
     const target = filters.status.toLowerCase();
     if (!status.includes(target)) return false;
   }
 
   // Tag filter
   if (filters.tag) {
-    const tags = data.tags || [];
-    if (!tags.some(t => t.toLowerCase() === filters.tag.toLowerCase())) return false;
+    const tags = (data.tags || []) as string[];
+    if (!tags.some(t => t.toLowerCase() === filters.tag!.toLowerCase())) return false;
   }
 
   // Assignee filter
   if (filters.assignee) {
-    const assignee = (data.assignee || '').toLowerCase();
+    const assignee = String(data.assignee || '').toLowerCase();
     if (!assignee.includes(filters.assignee.toLowerCase())) return false;
   }
 
   // Blocked filter (has blockers)
   if (filters.blocked) {
-    const blockers = data.blocked_by || [];
+    const blockers = (data.blocked_by || []) as string[];
     if (blockers.length === 0) return false;
   }
 
   // Unblocked filter (no blockers)
   if (filters.unblocked) {
-    const blockers = data.blocked_by || [];
+    const blockers = (data.blocked_by || []) as string[];
     if (blockers.length > 0) return false;
   }
 
   // Has story filter
   if (filters.hasStory) {
-    const stories = data.stories || [];
+    const stories = (data.stories || []) as string[];
     if (stories.length === 0) return false;
   }
 
   // No story filter
   if (filters.noStory) {
-    const stories = data.stories || [];
+    const stories = (data.stories || []) as string[];
     if (stories.length > 0) return false;
   }
 
   // Type filter (for stories)
   if (filters.type) {
-    const type = (data.type || '').toLowerCase();
+    const type = String(data.type || '').toLowerCase();
     if (type !== filters.type.toLowerCase()) return false;
   }
 
   // Milestone filter
   if (filters.milestone) {
-    const milestone = data.milestone || '';
+    const milestone = String(data.milestone || '');
     if (!milestone.includes(filters.milestone)) return false;
   }
 
   // Target version filter
   if (filters.targetVersion) {
-    const versions = data.target_versions || {};
+    const versions = (data.target_versions || {}) as Record<string, string>;
     const [comp, ver] = filters.targetVersion.split(':');
     if (ver) {
       if (versions[comp] !== ver) return false;
@@ -221,10 +320,14 @@ function matchesFilters(data, filters, entityType) {
 /**
  * Execute command for each result
  */
-function executeForEach(results, cmdTemplate, options) {
+function executeForEach(
+  results: Array<{ id: string }>,
+  cmdTemplate: string,
+  options: ExecuteOptions
+): ExecuteResult {
   const projectRoot = findProjectRoot();
-  const errors = [];
-  const successes = [];
+  const errors: ExecuteError[] = [];
+  const successes: ExecuteSuccess[] = [];
 
   for (const result of results) {
     // Replace {} with entity ID
@@ -252,7 +355,10 @@ function executeForEach(results, cmdTemplate, options) {
       }
       successes.push({ id: result.id, output: output.trim() });
     } catch (e) {
-      const error = e.stderr?.trim() || e.message;
+      const errorObj = e as { stderr?: Buffer | string; message?: string };
+      const stderr = errorObj.stderr ? String(errorObj.stderr).trim() : '';
+      const message = errorObj.message || '';
+      const error = stderr || message;
       if (!options.quiet) {
         console.error(`${result.id}: FAILED - ${error}`);
       }
@@ -263,7 +369,7 @@ function executeForEach(results, cmdTemplate, options) {
   return { successes, errors };
 }
 
-export function registerFindCommands(program) {
+export function registerFindCommands(program: Command): Command {
   const find = program.command('find')
     .description('Find entities with filters, optionally execute commands');
 
@@ -280,8 +386,8 @@ export function registerFindCommands(program) {
     .option('--json', 'JSON output')
     .option('--count', 'Only show count')
     .option('--ids', 'Only output IDs (one per line)')
-    .action((options) => {
-      const filters = {
+    .action((options: CommandOptions) => {
+      const filters: FindFilters = {
         status: options.status,
         tag: options.tag,
         milestone: options.milestone
@@ -342,8 +448,8 @@ export function registerFindCommands(program) {
     .option('--json', 'JSON output')
     .option('--count', 'Only show count')
     .option('--ids', 'Only output IDs (one per line)')
-    .action((options) => {
-      const filters = {
+    .action((options: CommandOptions) => {
+      const filters: FindFilters = {
         prd: options.prd,
         status: options.status,
         tag: options.tag,
@@ -412,8 +518,8 @@ export function registerFindCommands(program) {
     .option('--json', 'JSON output')
     .option('--count', 'Only show count')
     .option('--ids', 'Only output IDs (one per line)')
-    .action((options) => {
-      const filters = {
+    .action((options: CommandOptions) => {
+      const filters: FindFilters = {
         prd: options.prd,
         epic: options.epic,
         status: options.status,
@@ -478,8 +584,8 @@ export function registerFindCommands(program) {
     .option('--json', 'JSON output')
     .option('--count', 'Only show count')
     .option('--ids', 'Only output IDs (one per line)')
-    .action((options) => {
-      const filters = {
+    .action((options: CommandOptions) => {
+      const filters: FindFilters = {
         prd: options.prd,
         type: options.type
       };

@@ -78,14 +78,21 @@ export interface Placeholders {
   [key: string]: string; // Allow custom placeholders
 }
 
+type MergeStrategy = 'squash' | 'merge' | 'rebase';
+type SquashLevel = 'task' | 'epic' | 'prd';
+type ClaudeModel = 'sonnet' | 'opus' | 'haiku';
+type PRProvider = 'auto' | 'github' | 'gitlab';
+type MCPMode = 'socket' | 'port';
+type LogLevel = 'debug' | 'info' | 'warn' | 'error';
+
 export interface SailingConfig {
   git: {
     main_branch: string;
     sync_before_spawn: boolean;
-    merge_to_main: 'squash' | 'merge' | 'rebase';
-    merge_to_prd: 'squash' | 'merge' | 'rebase';
-    merge_to_epic: 'squash' | 'merge' | 'rebase';
-    squash_level: 'task' | 'epic' | 'prd';
+    merge_to_main: MergeStrategy;
+    merge_to_prd: MergeStrategy;
+    merge_to_epic: MergeStrategy;
+    squash_level: SquashLevel;
   };
   agent: {
     use_subprocess: boolean;
@@ -93,14 +100,14 @@ export interface SailingConfig {
     risky_mode: boolean;
     sandbox: boolean;
     timeout: number;
-    merge_strategy: 'merge' | 'squash' | 'rebase';
-    model: 'sonnet' | 'opus' | 'haiku';
+    merge_strategy: MergeStrategy;
+    model: ClaudeModel;
     max_parallel: number;
     auto_merge: boolean;
     auto_pr: boolean;
     pr_draft: boolean;
-    pr_provider: 'auto' | 'github' | 'gitlab';
-    mcp_mode: 'socket' | 'port';
+    pr_provider: PRProvider;
+    mcp_mode: MCPMode;
     mcp_port_range: string;
     max_budget_usd: number;
     watchdog_timeout: number;
@@ -111,7 +118,7 @@ export interface SailingConfig {
     verbose: number;
   };
   logging: {
-    level: 'debug' | 'info' | 'warn' | 'error';
+    level: LogLevel;
   };
   ids: {
     prd_digits: number;

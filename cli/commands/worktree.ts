@@ -4,6 +4,7 @@
  */
 import fs from 'fs';
 import { execSync } from 'child_process';
+import { Command } from 'commander';
 import { findProjectRoot, jsonOut } from '../managers/core-manager.js';
 import { loadState, saveState } from '../managers/state-manager.js';
 import { getAgentConfig, getGitConfig } from '../managers/core-manager.js';
@@ -56,11 +57,65 @@ interface AgentInfo {
   prd_id?: string;
 }
 
+interface StatusOptions {
+  json?: boolean;
+}
+
+interface PreflightOptions {
+  json?: boolean;
+}
+
+interface PrOptions {
+  draft?: boolean;
+  json?: boolean;
+}
+
+interface CleanupOptions {
+  force?: boolean;
+  json?: boolean;
+}
+
+interface SyncOptions {
+  dryRun?: boolean;
+  json?: boolean;
+}
+
+interface MergeOptions {
+  strategy?: string;
+  cleanup?: boolean;
+  dryRun?: boolean;
+  json?: boolean;
+}
+
+interface PromoteOptions {
+  prd?: string;
+  strategy?: string;
+  dryRun?: boolean;
+  json?: boolean;
+}
+
+interface ReconcileOptions {
+  prd?: string;
+  epic?: string;
+  sync?: boolean;
+  prune?: boolean;
+  force?: boolean;
+  dryRun?: boolean;
+  json?: boolean;
+}
+
+interface PrStatus {
+  state?: string;
+  mergeable?: boolean;
+  url?: string;
+  number?: number;
+}
+
 
 /**
  * Get main branch status
  */
-async function getMainBranchStatus(projectRoot) {
+async function getMainBranchStatus(projectRoot: string) {
   const git = getGit(projectRoot);
   const mainBranch = getConfiguredMainBranch();
   const gitStatus = await git.status();
@@ -98,7 +153,7 @@ async function getMainBranchStatus(projectRoot) {
 /**
  * Get PR status for a branch (wrapper for pr.js)
  */
-async function getPrStatus(taskId, projectRoot, provider) {
+async function getPrStatus(taskId: string, projectRoot: string, provider: string) {
   const branch = getBranchName(taskId);
   return getPrStatusFromLib(branch, projectRoot, provider);
 }
@@ -106,9 +161,9 @@ async function getPrStatus(taskId, projectRoot, provider) {
 /**
  * Create PR for a task (wrapper for pr.js)
  */
-async function createPr(taskId, options, projectRoot) {
+async function createPr(taskId: string, options: PrOptions, projectRoot: string) {
   const state = loadState();
-  const agentInfo = state.agents?.[taskId];
+  const agentInfo = state.agents?.[taskId] as AgentInfo | undefined;
 
   // Get task info for PR title/body
   let title = `${taskId}: Agent work`;
@@ -128,8 +183,8 @@ async function createPr(taskId, options, projectRoot) {
 /**
  * Register worktree commands
  */
-export function registerWorktreeCommands(program: any) {
-  const worktree = program.command('worktree')
+export function registerWorktreeCommands(program: Command) {
+  const worktree: Command = program.command('worktree')
     .description('Manage git worktrees for parallel agent execution');
 
   addDynamicHelp(worktree);
@@ -138,7 +193,7 @@ export function registerWorktreeCommands(program: any) {
   worktree.command('status')
     .description('Show status of all agent worktrees and PRs')
     .option('--json', 'JSON output')
-    .action(async (options) => {
+    .action(async (options: StatusOptions) => {
       const projectRoot = findProjectRoot();
       const state = loadState();
       const agents = state.agents || {};
@@ -174,11 +229,15 @@ export function registerWorktreeCommands(program: any) {
 
         // Check PR status if provider available
         if (provider && info.pr_url) {
-          entry.pr = { url: info.pr_url };
-          const prStatus = await getPrStatus(taskId, projectRoot, provider);
+          entry.pr = { url: info.pr_url } as { url: string; state?: string; mergeable?: boolean };
+          const prStatus = (await getPrStatus(taskId, projectRoot, provider)) as PrStatus | null;
           if (prStatus) {
-            entry.pr.state = prStatus.state;
-            entry.pr.mergeable = prStatus.mergeable;
+            if (entry.pr && prStatus.state !== undefined) {
+              (entry.pr as { state?: string }).state = prStatus.state;
+            }
+            if (entry.pr && prStatus.mergeable !== undefined) {
+              (entry.pr as { mergeable?: boolean }).mergeable = prStatus.mergeable;
+            }
           }
         }
 
@@ -222,13 +281,14 @@ export function registerWorktreeCommands(program: any) {
           console.log('  No active worktrees');
         } else {
           for (const wt of worktrees) {
-            const statusIcon = {
+            const statusIconMap: Record<string, string> = {
               'running': '●',
               'completed': '✓',
               'failed': '✗',
               'merged': '✓✓',
               'conflict': '⚠'
-            }[wt.status] || '○';
+            };
+            const statusIcon: string = statusIconMap[wt.status] || '○';
 
             let line = `  ${statusIcon} ${wt.taskId}  ${wt.status}`;
             if (wt.worktree.ahead > 0) {
@@ -259,7 +319,7 @@ export function registerWorktreeCommands(program: any) {
   worktree.command('preflight')
     .description('Check if agent spawn is possible, report blockers')
     .option('--json', 'JSON output')
-    .action(async (options) => {
+    .action(async (options: PreflightOptions) => {
       const projectRoot = findProjectRoot();
       const state = loadState();
       const agents = state.agents || {};
@@ -311,7 +371,7 @@ export function registerWorktreeCommands(program: any) {
       const canSpawn = blockers.length === 0;
 
       // Recommended action
-      let recommendedAction = null;
+      let recommendedAction: string | null = null;
       if (!canSpawn) {
         if (blockers.some(b => b.includes('uncommitted'))) {
           recommendedAction = 'Escalate: uncommitted changes';
@@ -323,13 +383,15 @@ export function registerWorktreeCommands(program: any) {
         recommendedAction = `Consider merging: ${mergeOrder[0] || pendingMerges[0].taskId}`;
       }
 
+      const mergeOrderResult = suggestMergeOrder(conflictMatrix);
+
       const result = {
         can_spawn: canSpawn,
         blockers,
         warnings,
         pending_merges: pendingMerges,
         running_agents: runningAgents,
-        merge_order: suggestMergeOrder(conflictMatrix),
+        merge_order: mergeOrderResult,
         recommended_action: recommendedAction,
         provider
       };
@@ -376,13 +438,13 @@ export function registerWorktreeCommands(program: any) {
     .description('Push branch and create PR/MR for agent work')
     .option('--draft', 'Create as draft PR')
     .option('--json', 'JSON output')
-    .action(async (taskId, options) => {
-      taskId = taskId.toUpperCase();
+    .action(async (taskIdParam: string, options: PrOptions) => {
+      let taskId: string = taskIdParam.toUpperCase();
       if (!taskId.startsWith('T')) taskId = 'T' + taskId;
 
       const projectRoot = findProjectRoot();
       const state = loadState();
-      const agentInfo = state.agents?.[taskId];
+      const agentInfo = state.agents?.[taskId] as AgentInfo | undefined;
 
       if (!agentInfo) {
         console.error(`No agent found for task: ${taskId}`);
@@ -432,7 +494,8 @@ export function registerWorktreeCommands(program: any) {
           process.exit(1);
         }
       } catch (e) {
-        console.error(`Cannot check commits: ${e.message}`);
+        const errorMessage = e instanceof Error ? e.message : String(e);
+        console.error(`Cannot check commits: ${errorMessage}`);
         process.exit(1);
       }
 
@@ -441,8 +504,8 @@ export function registerWorktreeCommands(program: any) {
         const pr = await createPr(taskId, options, projectRoot);
 
         // Update state with PR URL
-        state.agents[taskId].pr_url = pr.url;
-        state.agents[taskId].pr_created_at = new Date().toISOString();
+        (state.agents[taskId] as AgentInfo).pr_url = pr.url;
+        (state.agents[taskId] as AgentInfo).pr_created_at = new Date().toISOString();
         saveState(state);
 
         if (options.json) {
@@ -451,7 +514,8 @@ export function registerWorktreeCommands(program: any) {
           console.log(`PR created: ${pr.url}`);
         }
       } catch (e) {
-        console.error(e.message);
+        const errorMessage = e instanceof Error ? e.message : String(e);
+        console.error(errorMessage);
         process.exit(1);
       }
     });
@@ -461,13 +525,13 @@ export function registerWorktreeCommands(program: any) {
     .description('Remove worktree and branch after PR is merged')
     .option('--force', 'Force cleanup even if PR not merged')
     .option('--json', 'JSON output')
-    .action(async (taskId, options) => {
-      taskId = taskId.toUpperCase();
+    .action(async (taskIdParam: string, options: CleanupOptions) => {
+      let taskId: string = taskIdParam.toUpperCase();
       if (!taskId.startsWith('T')) taskId = 'T' + taskId;
 
       const projectRoot = findProjectRoot();
       const state = loadState();
-      const agentInfo = state.agents?.[taskId];
+      const agentInfo = state.agents?.[taskId] as AgentInfo | undefined;
 
       if (!agentInfo) {
         console.error(`No agent found for task: ${taskId}`);
@@ -480,7 +544,7 @@ export function registerWorktreeCommands(program: any) {
         const provider = config.pr_provider === 'auto' ? await detectProvider(projectRoot) : config.pr_provider;
 
         if (provider) {
-          const prStatus = await getPrStatus(taskId, projectRoot, provider);
+          const prStatus = (await getPrStatus(taskId, projectRoot, provider)) as PrStatus | null;
           if (prStatus && prStatus.state !== 'MERGED' && prStatus.state !== 'merged') {
             console.error(`PR is not merged (state: ${prStatus.state}). Use --force to cleanup anyway.`);
             process.exit(1);
@@ -497,8 +561,8 @@ export function registerWorktreeCommands(program: any) {
       }
 
       // Update state
-      state.agents[taskId].status = 'merged';
-      state.agents[taskId].cleaned_at = new Date().toISOString();
+      (state.agents[taskId] as AgentInfo).status = 'merged';
+      (state.agents[taskId] as AgentInfo).cleaned_at = new Date().toISOString();
       saveState(state);
 
       if (options.json) {
@@ -513,7 +577,7 @@ export function registerWorktreeCommands(program: any) {
     .description('Check PR status, cleanup merged worktrees, update state')
     .option('--dry-run', 'Show what would be done without doing it')
     .option('--json', 'JSON output')
-    .action(async (options) => {
+    .action(async (options: SyncOptions) => {
       const projectRoot = findProjectRoot();
       const state = loadState();
       const agents = state.agents || {};
@@ -528,7 +592,7 @@ export function registerWorktreeCommands(program: any) {
 
         // Check if has PR
         if (info.pr_url && provider) {
-          const prStatus = await getPrStatus(taskId, projectRoot, provider);
+          const prStatus = (await getPrStatus(taskId, projectRoot, provider)) as PrStatus | null;
           if (prStatus && (prStatus.state === 'MERGED' || prStatus.state === 'merged')) {
             actions.push({
               action: 'cleanup',
@@ -552,7 +616,7 @@ export function registerWorktreeCommands(program: any) {
       }
 
       if (options.json) {
-        jsonOut({ actions, dry_run: options.dryRun });
+        jsonOut({ actions, dry_run: options.dryRun || false });
       } else if (actions.length === 0) {
         console.log('✓ All worktrees in sync');
       } else {
@@ -588,13 +652,13 @@ export function registerWorktreeCommands(program: any) {
     .option('--no-cleanup', 'Keep worktree after merge')
     .option('--dry-run', 'Show what would be done without doing it')
     .option('--json', 'JSON output')
-    .action((taskId, options) => {
-      taskId = taskId.toUpperCase();
+    .action((taskIdParam: string, options: MergeOptions) => {
+      let taskId: string = taskIdParam.toUpperCase();
       if (!taskId.startsWith('T')) taskId = 'T' + taskId;
 
       const projectRoot = findProjectRoot();
       const state = loadState();
-      const agentInfo = state.agents?.[taskId];
+      const agentInfo = state.agents?.[taskId] as AgentInfo | undefined;
 
       if (!agentInfo) {
         console.error(`No agent found for task: ${taskId}`);
@@ -624,7 +688,7 @@ export function registerWorktreeCommands(program: any) {
 
       // Get merge strategy from options or config
       const gitConfig = getGitConfig();
-      let strategy = options.strategy;
+      let strategy: string = options.strategy || '';
       if (!strategy) {
         // Select strategy based on level
         if (branching === 'flat') {
@@ -667,7 +731,8 @@ export function registerWorktreeCommands(program: any) {
           process.exit(1);
         }
       } catch (e) {
-        console.error(`Cannot check worktree status: ${e.message}`);
+        const errorMessage = e instanceof Error ? e.message : String(e);
+        console.error(`Cannot check worktree status: ${errorMessage}`);
         process.exit(1);
       }
 
@@ -706,7 +771,8 @@ export function registerWorktreeCommands(program: any) {
           stdio: ['pipe', 'pipe', 'pipe']
         });
       } catch (e) {
-        console.error(`Failed to checkout ${parentBranch}: ${e.message}`);
+        const errorMessage = e instanceof Error ? e.message : String(e);
+        console.error(`Failed to checkout ${parentBranch}: ${errorMessage}`);
         process.exit(1);
       }
 
@@ -743,7 +809,8 @@ export function registerWorktreeCommands(program: any) {
           mergeSuccess = true;
         }
       } catch (e) {
-        console.error(`Merge failed: ${e.message}`);
+        const errorMessage = e instanceof Error ? e.message : String(e);
+        console.error(`Merge failed: ${errorMessage}`);
         console.error('\nResolve conflicts manually or use /dev:merge skill.');
         // Try to abort
         try {
@@ -764,12 +831,12 @@ export function registerWorktreeCommands(program: any) {
       }
 
       // Update state
-      state.agents[taskId].status = 'merged';
-      state.agents[taskId].merge_strategy = strategy;
-      state.agents[taskId].merged_to = parentBranch;
-      state.agents[taskId].merged_at = new Date().toISOString();
+      (state.agents[taskId] as AgentInfo).status = 'merged';
+      (state.agents[taskId] as AgentInfo).merge_strategy = strategy;
+      (state.agents[taskId] as AgentInfo).merged_to = parentBranch;
+      (state.agents[taskId] as AgentInfo).merged_at = new Date().toISOString();
       if (cleaned) {
-        state.agents[taskId].cleaned_at = new Date().toISOString();
+        (state.agents[taskId] as AgentInfo).cleaned_at = new Date().toISOString();
       }
       saveState(state);
 
@@ -811,9 +878,9 @@ export function registerWorktreeCommands(program: any) {
     .option('--strategy <type>', 'Merge strategy: merge|squash|rebase (default from config)')
     .option('--dry-run', 'Show what would be done without doing it')
     .option('--json', 'JSON output')
-    .action((level, id, options) => {
-      level = level.toLowerCase();
-      id = id.toUpperCase();
+    .action((levelParam: string, idParam: string, options: PromoteOptions) => {
+      const level: string = levelParam.toLowerCase();
+      const id: string = idParam.toUpperCase();
 
       if (!['epic', 'prd'].includes(level)) {
         console.error(`Invalid level: ${level}. Use 'epic' or 'prd'.`);
@@ -824,7 +891,9 @@ export function registerWorktreeCommands(program: any) {
       const gitConfig = getGitConfig();
       const mainBranch = getConfiguredMainBranch();
 
-      let sourceBranch, targetBranch, strategy;
+      let sourceBranch: string;
+      let targetBranch: string;
+      let strategy: string;
 
       if (level === 'epic') {
         // epic → prd
@@ -896,7 +965,8 @@ export function registerWorktreeCommands(program: any) {
           stdio: ['pipe', 'pipe', 'pipe']
         });
       } catch (e) {
-        console.error(`Failed to checkout ${targetBranch}: ${e.message}`);
+        const errorMessage = e instanceof Error ? e.message : String(e);
+        console.error(`Failed to checkout ${targetBranch}: ${errorMessage}`);
         process.exit(1);
       }
 
@@ -934,7 +1004,8 @@ export function registerWorktreeCommands(program: any) {
           mergeSuccess = true;
         }
       } catch (e) {
-        console.error(`Merge failed: ${e.message}`);
+        const errorMessage = e instanceof Error ? e.message : String(e);
+        console.error(`Merge failed: ${errorMessage}`);
         console.error('\nResolve conflicts manually or use /dev:merge skill.');
         try {
           if (strategy === 'rebase') {
@@ -981,12 +1052,12 @@ export function registerWorktreeCommands(program: any) {
     .option('--force', 'Force prune even if not fully merged')
     .option('--dry-run', 'Show what would be done without doing it')
     .option('--json', 'JSON output')
-    .action((options) => {
+    .action((options: ReconcileOptions) => {
       const projectRoot = findProjectRoot();
       const gitConfig = getGitConfig();
 
       // Build context
-      const context = {
+      const context: { prdId?: string; epicId?: string; branching: string } = {
         prdId: options.prd,
         epicId: options.epic,
         branching: 'flat' // Default to flat, or should be looked up from PRD if provided
@@ -1026,20 +1097,20 @@ export function registerWorktreeCommands(program: any) {
       if (options.sync) {
         for (const h of diag.hierarchy) {
           if (typeof h !== 'object' || !('branch' in h)) continue;
-          const branchInfo = h;
+          const branchInfo = h as { branch: string; parent?: string; state: BranchState };
           if (branchInfo.state === BranchState.BEHIND || branchInfo.state === BranchState.DIVERGED) {
             const agentConfig = getAgentConfig();
             const result = reconcileBranch(branchInfo.branch, branchInfo.parent, {
               strategy: agentConfig?.merge_strategy || 'merge',
-              dryRun: options.dryRun
+              dryRun: options.dryRun || false
             });
 
             if (result.success && result.action === 'synced') {
-              results.synced.push(`${h.branch} ← ${h.parent}`);
+              results.synced.push(`${branchInfo.branch} ← ${branchInfo.parent}`);
             } else if (result.action === 'would_sync') {
-              results.synced.push(`[dry-run] ${h.branch} ← ${h.parent}`);
+              results.synced.push(`[dry-run] ${branchInfo.branch} ← ${branchInfo.parent}`);
             } else if (!result.success) {
-              results.errors.push(`${h.branch}: ${result.error}`);
+              results.errors.push(`${branchInfo.branch}: ${result.error}`);
             }
           }
         }
@@ -1048,8 +1119,8 @@ export function registerWorktreeCommands(program: any) {
       // Prune orphans
       if (options.prune) {
         const pruneResult = pruneOrphans({
-          dryRun: options.dryRun,
-          force: options.force
+          dryRun: options.dryRun || false,
+          force: options.force || false
         });
 
         results.pruned = pruneResult.pruned.map(b =>
