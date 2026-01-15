@@ -130,6 +130,19 @@ export function findLogFiles(): LogFileEntry[] {
 }
 
 /**
+ * Check if there are pending epic logs (need consolidation into memory)
+ * Used by task:next to warn about pending memory work
+ */
+export function hasPendingMemoryLogs(): boolean {
+  const epicLogs = findLogFiles().filter(f => f.type === 'epic');
+  for (const { id: epicId } of epicLogs) {
+    const content = readLogFile(epicId);
+    if (content) return true;
+  }
+  return false;
+}
+
+/**
  * Find parent epic for a task
  * Uses index library for format-agnostic lookup (T039, T0039, T00039 all work)
  */

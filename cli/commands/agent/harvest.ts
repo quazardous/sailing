@@ -5,15 +5,16 @@ import fs from 'fs';
 import path from 'path';
 import yaml from 'js-yaml';
 import { execSync } from 'child_process';
-import { findProjectRoot, jsonOut } from '../../lib/core.js';
+import { findProjectRoot, jsonOut, loadFile, saveFile } from '../../lib/core.js';
 import { execRudderSafe } from '../../lib/invoke.js';
+import { parseUpdateOptions } from '../../lib/update.js';
 import { getGit } from '../../lib/git.js';
 import { validateResult } from '../../lib/agent-schema.js';
 import { loadState, saveState } from '../../lib/state.js';
 import { withModifies } from '../../lib/help.js';
 import { getAgentConfig } from '../../lib/config.js';
 import { removeWorktree } from '../../lib/worktree.js';
-import { getTaskEpic } from '../../lib/index.js';
+import { getTask, getTaskEpic } from '../../lib/index.js';
 import { normalizeId } from '../../lib/normalize.js';
 import { getAgentDir, checkAgentCompletion } from '../../lib/agent-utils.js';
 import { analyzeLog, printDiagnoseResult } from '../../lib/diagnose.js';
@@ -185,11 +186,16 @@ export function registerHarvestCommands(agent) {
       }
 
       const taskStatus = resultStatus === 'completed' ? 'Done' : 'Blocked';
-      const { stderr, exitCode } = execRudderSafe(`task:update ${taskId} --status "${taskStatus}"`, { cwd: projectRoot });
-      if (exitCode === 0) {
-        if (!options.json) console.log(`✓ Task ${taskId} → ${taskStatus}`);
+      const taskFile = getTask(taskId)?.file;
+      if (taskFile) {
+        const file = loadFile(taskFile);
+        const { updated, data } = parseUpdateOptions({ status: taskStatus }, file.data, 'task');
+        if (updated) {
+          saveFile(taskFile, data, file.body);
+          if (!options.json) console.log(`✓ Task ${taskId} → ${taskStatus}`);
+        }
       } else {
-        if (!options.json) console.error(`Warning: Could not update task status: ${stderr}`);
+        if (!options.json) console.error(`Warning: Could not find task file for ${taskId}`);
       }
 
       state.agents[taskId] = {

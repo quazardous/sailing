@@ -768,3 +768,56 @@ export function getWorktreeStatus(taskId) {
     };
   }
 }
+
+/**
+ * Full cleanup: remove worktree + local branch + remote branch
+ * @param {string} taskId - Task ID
+ * @param {object} options - Options
+ * @param {boolean} options.force - Force removal
+ * @returns {{ success: boolean, removed: string[], errors: string[] }}
+ */
+export function cleanupWorktree(taskId: string, options: { force?: boolean } = {}) {
+  const projectRoot = findProjectRoot();
+  const worktreePath = getWorktreePath(taskId);
+  const branch = getBranchName(taskId);
+  const removed: string[] = [];
+  const errors: string[] = [];
+
+  // Remove worktree
+  if (fs.existsSync(worktreePath)) {
+    const result = removeWorktree(taskId, { force: options.force });
+    if (result.success) {
+      removed.push('worktree');
+    } else if (result.error) {
+      errors.push(`worktree: ${result.error}`);
+    }
+  }
+
+  // Delete local branch
+  try {
+    execSync(`git branch -D "${branch}"`, {
+      cwd: projectRoot,
+      stdio: ['pipe', 'pipe', 'pipe']
+    });
+    removed.push('local_branch');
+  } catch {
+    // Branch may not exist - not an error
+  }
+
+  // Delete remote branch
+  try {
+    execSync(`git push origin --delete "${branch}"`, {
+      cwd: projectRoot,
+      stdio: ['pipe', 'pipe', 'pipe']
+    });
+    removed.push('remote_branch');
+  } catch {
+    // Remote branch may not exist - not an error
+  }
+
+  return {
+    success: errors.length === 0,
+    removed,
+    errors
+  };
+}

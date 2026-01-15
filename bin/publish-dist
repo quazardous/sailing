@@ -30,11 +30,14 @@ trap "git worktree remove --force '$WORK_DIR' 2>/dev/null; rm -rf '$WORK_DIR'" E
 
 # Create dist branch if it doesn't exist (orphan)
 if ! git show-ref --verify --quiet "refs/heads/$DIST_BRANCH"; then
-  git branch --orphan "$DIST_BRANCH" 2>/dev/null || \
-    git checkout --orphan "$DIST_BRANCH" && git checkout - && git branch -D "$DIST_BRANCH" 2>/dev/null || true
-  # Create empty orphan branch
+  echo "Creating orphan dist branch..."
   git worktree add --detach "$WORK_DIR"
-  (cd "$WORK_DIR" && git checkout --orphan "$DIST_BRANCH" && git rm -rf . 2>/dev/null || true)
+  (
+    cd "$WORK_DIR"
+    git checkout --orphan "$DIST_BRANCH"
+    git rm -rf . 2>/dev/null || true
+    git commit --allow-empty -m "chore(dist): initial orphan branch"
+  )
 else
   git worktree add "$WORK_DIR" "$DIST_BRANCH"
 fi

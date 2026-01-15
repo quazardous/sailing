@@ -7,6 +7,8 @@ import yaml from 'js-yaml';
 import { findProjectRoot, loadFile, jsonOut } from '../../lib/core.js';
 import { execRudderSafe } from '../../lib/invoke.js';
 import { getGit } from '../../lib/git.js';
+import { create as createPr } from '../../lib/git-forge.js';
+import { claimTask, releaseTask } from '../../lib/agent-run.js';
 import { resolvePlaceholders } from '../../lib/paths.js';
 import { createMission } from '../../lib/agent-schema.js';
 import { loadState, saveState, updateStateAtomic } from '../../lib/state.js';
@@ -442,17 +444,17 @@ export function registerSpawnCommand(agent) {
 
       // Pre-claim task before spawning agent
       {
-        const { stderr, exitCode } = execRudderSafe(`assign:claim ${taskId} --role agent --json`, { cwd: projectRoot });
-        if (exitCode === 0) {
+        const claimResult = claimTask(taskId, 'task');
+        if (claimResult.success) {
           if (!options.json) {
-            console.log(`Task ${taskId} claimed`);
+            if (claimResult.alreadyClaimed) {
+              console.log(`Task ${taskId} resuming (already claimed)`);
+            } else {
+              console.log(`Task ${taskId} claimed`);
+            }
           }
-        } else if (stderr.includes('already claimed')) {
-          if (!options.json) {
-            console.log(`Task ${taskId} resuming (already claimed)`);
-          }
-        } else if (stderr) {
-          console.error(`Warning: Claim issue: ${stderr}`);
+        } else if (claimResult.error) {
+          console.error(`Warning: Claim issue: ${claimResult.error}`);
         }
       }
 
@@ -536,22 +538,31 @@ export function registerSpawnCommand(agent) {
 
         // Auto-release if agent exited successfully with work done
         if (code === 0 && (dirtyWorktree || commitsAhead > 0)) {
-          const { stdout, stderr, exitCode } = execRudderSafe(`assign:release ${taskId} --json`, { cwd: projectRoot });
-          if (exitCode === 0) {
+          const releaseResult = releaseTask(taskId);
+          if (releaseResult.success && !releaseResult.notClaimed) {
             console.log(`✓ Auto-released ${taskId} (agent didn't call assign:release)`);
-          } else if (!stderr.includes('not claimed') && !stdout.includes('not claimed')) {
-            console.error(`⚠ Auto-release failed for ${taskId}: ${stderr}`);
+          } else if (!releaseResult.success) {
+            console.error(`⚠ Auto-release failed for ${taskId}: ${releaseResult.error}`);
           }
         }
 
         // Auto-create PR if enabled and agent completed successfully
         if (code === 0 && agentConfig.auto_pr && updatedState.agents?.[taskId]?.worktree) {
-          const draftFlag = agentConfig.pr_draft ? '--draft' : '';
-          const { stderr, exitCode } = execRudderSafe(`worktree pr ${taskId} ${draftFlag} --json`, { cwd: projectRoot });
-          if (exitCode === 0) {
-            console.log(`Auto-PR created for ${taskId}`);
+          const agentInfo = updatedState.agents[taskId];
+          const prResult = await createPr(taskId, {
+            cwd: projectRoot,
+            title: agentInfo.task_title ? `${taskId}: ${agentInfo.task_title}` : undefined,
+            draft: agentConfig.pr_draft,
+            epicId: agentInfo.epic_id,
+            prdId: agentInfo.prd_id
+          });
+          if ('url' in prResult) {
+            updatedState.agents[taskId].pr_url = prResult.url;
+            updatedState.agents[taskId].pr_created_at = new Date().toISOString();
+            saveState(updatedState);
+            console.log(`Auto-PR created for ${taskId}: ${prResult.url}`);
           } else {
-            console.error(`Auto-PR failed for ${taskId}: ${stderr}`);
+            console.error(`Auto-PR failed for ${taskId}: ${prResult.error}`);
           }
         }
 

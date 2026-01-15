@@ -6,7 +6,6 @@ import fs from 'fs';
 import path from 'path';
 import { execSync } from 'child_process';
 import { findProjectRoot, jsonOut } from '../lib/core.js';
-import { execRudderSafe } from '../lib/invoke.js';
 import { loadState, saveState } from '../lib/state.js';
 import { getAgentConfig, getGitConfig } from '../lib/config.js';
 import { addDynamicHelp } from '../lib/help.js';
@@ -15,6 +14,7 @@ import {
   getWorktreePath,
   getBranchName,
   removeWorktree,
+  cleanupWorktree,
   getParentBranch,
   branchExists,
   getMainBranch as getConfiguredMainBranch
@@ -35,7 +35,7 @@ import {
   checkCli as checkPrCli,
   getStatus as getPrStatusFromLib,
   create as createPrFromLib
-} from '../lib/pr.js';
+} from '../lib/git-forge.js';
 
 
 import {
@@ -494,40 +494,12 @@ export function registerWorktreeCommands(program: any) {
         }
       }
 
-      const branch = getBranchName(taskId);
-      const worktreePath = getWorktreePath(taskId);
-      const results = { taskId, removed: [] };
+      const cleanupResult = cleanupWorktree(taskId, { force: options.force });
 
-      // Remove worktree
-      if (fs.existsSync(worktreePath)) {
-        try {
-          removeWorktree(taskId);
-          results.removed.push('worktree');
-        } catch (e) {
-          console.error(`Failed to remove worktree: ${e.message}`);
+      if (cleanupResult.errors.length > 0) {
+        for (const err of cleanupResult.errors) {
+          console.error(`Failed: ${err}`);
         }
-      }
-
-      // Delete local branch
-      try {
-        execSync(`git branch -D ${branch}`, {
-          cwd: projectRoot,
-          stdio: ['pipe', 'pipe', 'pipe']
-        });
-        results.removed.push('local_branch');
-      } catch {
-        // Branch may not exist
-      }
-
-      // Delete remote branch
-      try {
-        execSync(`git push origin --delete ${branch}`, {
-          cwd: projectRoot,
-          stdio: ['pipe', 'pipe', 'pipe']
-        });
-        results.removed.push('remote_branch');
-      } catch {
-        // Remote branch may not exist
       }
 
       // Update state
@@ -536,9 +508,9 @@ export function registerWorktreeCommands(program: any) {
       saveState(state);
 
       if (options.json) {
-        jsonOut(results);
+        jsonOut({ taskId, ...cleanupResult });
       } else {
-        console.log(`Cleaned up ${taskId}: ${results.removed.join(', ')}`);
+        console.log(`Cleaned up ${taskId}: ${cleanupResult.removed.join(', ')}`);
       }
     });
 
@@ -597,11 +569,18 @@ export function registerWorktreeCommands(program: any) {
 
           if (!options.dryRun && action.action === 'cleanup') {
             // Execute cleanup
-            const { stdout, stderr, exitCode } = execRudderSafe(`worktree cleanup ${action.taskId} --force`, { cwd: projectRoot });
-            if (exitCode === 0) {
-              if (stdout) console.log(stdout);
+            const cleanupResult = cleanupWorktree(action.taskId, { force: true });
+            if (cleanupResult.success) {
+              // Update state
+              const currentState = loadState();
+              if (currentState.agents?.[action.taskId]) {
+                currentState.agents[action.taskId].status = 'merged';
+                currentState.agents[action.taskId].cleaned_at = new Date().toISOString();
+                saveState(currentState);
+              }
+              console.log(`  Cleaned: ${cleanupResult.removed.join(', ')}`);
             } else {
-              console.error(`  Failed to cleanup ${action.taskId}: ${stderr}`);
+              console.error(`  Failed to cleanup ${action.taskId}: ${cleanupResult.errors.join(', ')}`);
             }
           }
         }
