@@ -19,13 +19,38 @@ import {
   parseCheckboxItems
 } from '../lib/artifact.js';
 import { getTask, getEpic, getPrd } from '../managers/artefacts-manager.js';
+import type { Command } from 'commander';
+
+// ============================================================================
+// Types
+// ============================================================================
+
+interface ArtifactInfo {
+  path: string;
+  type: 'task' | 'epic' | 'prd';
+}
+
+interface SectionOp {
+  op: string;
+  section: string;
+  content?: string;
+  sedCommands?: string[];
+  item?: string;
+}
+
+interface OriginalOp {
+  op: string;
+  section: string;
+}
+
+// ============================================================================
+// Helper Functions
+// ============================================================================
 
 /**
  * Resolve artifact ID to file path
- * @param {string} id - Artifact ID (T042, E001, PRD-001)
- * @returns {{ path: string, type: string } | null}
  */
-function resolveArtifact(id) {
+function resolveArtifact(id: string): ArtifactInfo | null {
   const normalized = id.toUpperCase();
 
   if (normalized.startsWith('T')) {
@@ -76,10 +101,14 @@ function readStdin(): Promise<string> {
   });
 }
 
+// ============================================================================
+// Command Registration
+// ============================================================================
+
 /**
  * Register artifact commands
  */
-export function registerArtifactCommands(program) {
+export function registerArtifactCommands(program: Command): void {
   const artifact = program.command('artifact')
     .description('Edit PRD/Epic/Task markdown artifacts');
 
@@ -137,7 +166,7 @@ export function registerArtifactCommands(program) {
       const parsed = parseMarkdownSections(raw);
 
       if (options.json) {
-        const sectionsObj = {};
+        const sectionsObj: Record<string, string> = {};
         for (const [k, v] of parsed.sections) {
           sectionsObj[k] = v;
         }
@@ -251,14 +280,14 @@ Examples:
       }
 
       // Track original ops for output (before transformation)
-      const originalOps = ops.map(o => ({ op: o.op, section: o.section }));
+      const originalOps: OriginalOp[] = (ops as SectionOp[]).map((o: SectionOp) => ({ op: o.op, section: o.section }));
 
       // Process special operations: sed, check, uncheck, toggle, patch
-      const expandedOps = [];
-      for (const op of ops) {
-        if (op.op === 'sed' && op.sedCommands?.length > 0) {
+      const expandedOps: SectionOp[] = [];
+      for (const op of ops as SectionOp[]) {
+        if (op.op === 'sed' && op.sedCommands && op.sedCommands.length > 0) {
           // Get current section content and apply sed commands
-          const sectionContent = getSection(resolved.path, op.section);
+          const sectionContent: string | null = getSection(resolved.path, op.section);
           if (sectionContent === null) {
             console.error(`Section not found for sed: ${op.section}`);
             process.exit(1);
@@ -270,12 +299,12 @@ Examples:
           });
         } else if (op.op === 'patch') {
           // Parse SEARCH/REPLACE blocks and apply to section
-          const patches = parseSearchReplace(op.content);
+          const patches = parseSearchReplace(op.content || '');
           if (patches.length === 0) {
             console.error(`No SEARCH/REPLACE blocks found for patch: ${op.section}`);
             process.exit(1);
           }
-          let sectionContent = getSection(resolved.path, op.section);
+          let sectionContent: string | null = getSection(resolved.path, op.section);
           if (sectionContent === null) {
             console.error(`Section not found for patch: ${op.section}`);
             process.exit(1);
@@ -286,7 +315,7 @@ Examples:
               console.error(`Patch failed on ${op.section}: ${result.error}`);
               process.exit(1);
             }
-            sectionContent = result.content;
+            sectionContent = result.content ?? '';
           }
           expandedOps.push({
             op: 'replace',
@@ -295,7 +324,7 @@ Examples:
           });
         } else if (['check', 'uncheck', 'toggle'].includes(op.op)) {
           // Create individual checkbox ops for each item
-          for (const item of parseCheckboxItems(op.content)) {
+          for (const item of parseCheckboxItems(op.content || '')) {
             expandedOps.push({
               op: op.op,
               section: op.section,

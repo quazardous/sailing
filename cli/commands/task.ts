@@ -16,25 +16,99 @@ import { formatId } from '../managers/core-manager.js';
 import { escalateOnTaskStart, cascadeTaskCompletion } from '../managers/status-manager.js';
 import { parseSearchReplace, editArtifact, parseMultiSectionContent, processMultiSectionOps } from '../lib/artifact.js';
 import { Task } from '../lib/types/entities.js';
+import type { Command } from 'commander';
+
+// ============================================================================
+// Types
+// ============================================================================
+
+interface TaskListOptions {
+  status?: string;
+  epic?: string;
+  assignee?: string;
+  tag?: string[];
+  ready?: boolean;
+  limit?: number;
+  prd?: string;
+  path?: boolean;
+  json?: boolean;
+}
+
+interface EpicParentInfo {
+  prdDir: string;
+  epicFile: string;
+  prdId: string;
+}
+
+interface TaskShowAgentResult {
+  id: string;
+  title: string;
+  status: string;
+  parent: string;
+  file?: string;
+}
+
+interface TaskShowFullResult {
+  id?: string;
+  title?: string;
+  status?: string;
+  parent?: string;
+  blockers: string[];
+  dependents: string[];
+  ready: boolean;
+  file?: string;
+  [key: string]: unknown;
+}
+
+interface TaskCreateOptions {
+  story?: string[];
+  tag?: string[];
+  targetVersion?: string[];
+  path?: boolean;
+  json?: boolean;
+}
+
+interface TaskUpdateOptions {
+  title?: string;
+  status?: string;
+  assignee?: string;
+  effort?: string;
+  priority?: string;
+  addBlocker?: string[];
+  blockedBy?: string;
+  removeBlocker?: string[];
+  clearBlockers?: boolean;
+  story?: string[];
+  addStory?: string[];
+  removeStory?: string[];
+  targetVersion?: string[];
+  removeTargetVersion?: string[];
+  set?: string[];
+  json?: boolean;
+}
+
+interface TaskNextOptions {
+  prd?: string;
+  epic?: string;
+  path?: boolean;
+  json?: boolean;
+}
+
+// ============================================================================
+// Helper Functions
+// ============================================================================
 
 /**
  * Find a task file by ID (format-agnostic via index.ts)
  */
-function findTaskFile(taskId) {
+function findTaskFile(taskId: string): string | null {
   return getTask(taskId)?.file || null;
-}
-
-/**
- * Find an epic file by ID (format-agnostic via index.ts)
- */
-function findEpicFile(epicId) {
-  return getEpic(epicId)?.file || null;
 }
 
 /**
  * Find PRD directory containing an epic (via index.ts)
  */
-function findEpicParent(epicId) {
+function findEpicParent(epicId: string): EpicParentInfo | null {
   const epic = getEpic(epicId);
   if (!epic) return null;
 
@@ -46,10 +120,14 @@ function findEpicParent(epicId) {
   };
 }
 
+// ============================================================================
+// Command Registration
+// ============================================================================
+
 /**
  * Register task commands
  */
-export function registerTaskCommands(program) {
+export function registerTaskCommands(program: Command): void {
   const task = program.command('task').description('Task operations');
 
   // Dynamic help generated from registered commands
@@ -63,14 +141,14 @@ export function registerTaskCommands(program) {
     .option('-s, --status <status>', `Filter by status (${statusHelp})`)
     .option('-e, --epic <id>', 'Filter by epic (e.g., E035)')
     .option('-a, --assignee <name>', 'Filter by assignee')
-    .option('-t, --tag <tag>', 'Filter by tag (repeatable, AND logic)', (v, arr) => arr.concat(v), [])
+    .option('-t, --tag <tag>', 'Filter by tag (repeatable, AND logic)', (v: string, arr: string[]) => arr.concat(v), [] as string[])
     .option('-r, --ready', 'Only show ready tasks (unblocked)')
     .option('-l, --limit <n>', 'Limit results', parseInt)
     .option('--prd <id>', 'Filter by PRD (alias for positional arg)')
     .option('--path', 'Include file path (discouraged)')
     .option('--json', 'JSON output')
-    .action((prdArg, options) => {
-      const prd = prdArg || options.prd;
+    .action((prdArg: string | undefined, options: TaskListOptions) => {
+      const prd: string | undefined = prdArg || options.prd;
       const tasks: (Task & { file?: string; prd: string })[] = [];
 
       // Use artefacts.ts contract - single entry point
@@ -89,37 +167,37 @@ export function registerTaskCommands(program) {
         // Status filter
         if (options.status) {
           const targetStatus = normalizeStatus(options.status, 'task');
-          const taskStatus = normalizeStatus(data.status, 'task');
+          const taskStatus = normalizeStatus(data.status as string, 'task');
           if (targetStatus !== taskStatus) continue;
         }
 
         // Epic filter (format-agnostic: E1 matches E001 in parent)
         if (options.epic) {
-          if (!parentContainsEpic(data.parent, options.epic)) continue;
+          if (!parentContainsEpic(data.parent as string, options.epic)) continue;
         }
 
         // Assignee filter
         if (options.assignee) {
-          const assignee = (data.assignee || '').toLowerCase();
+          const assignee = ((data.assignee as string) || '').toLowerCase();
           if (!assignee.includes(options.assignee.toLowerCase())) continue;
         }
 
         // Tag filter (AND logic - all specified tags must be present)
-        if (options.tag?.length > 0) {
-          const taskTags = data.tags || [];
-          const allTagsMatch = options.tag.every(t => taskTags.includes(t));
+        if (options.tag && options.tag.length > 0) {
+          const taskTags = (data.tags as string[]) || [];
+          const allTagsMatch = options.tag.every((t: string) => taskTags.includes(t));
           if (!allTagsMatch) continue;
         }
 
         const taskResult: Task & { file?: string; prd: string } = {
-          id: data.id || taskEntry.id,
-          title: data.title || '',
-          status: data.status || 'Unknown',
-          parent: data.parent || '',
-          assignee: data.assignee || 'unassigned',
-          effort: data.effort || null,
-          priority: data.priority || 'normal',
-          blocked_by: data.blocked_by || [],
+          id: (data.id as string) || taskEntry.id,
+          title: (data.title as string) || '',
+          status: (data.status as string) || 'Unknown',
+          parent: (data.parent as string) || '',
+          assignee: (data.assignee as string) || 'unassigned',
+          effort: (data.effort as string | null) || null,
+          priority: (data.priority as string) || 'normal',
+          blocked_by: (data.blocked_by as string[]) || [],
           prd: prdName
         };
         if (options.path) taskResult.file = taskEntry.file;
@@ -189,29 +267,30 @@ export function registerTaskCommands(program) {
       }
 
       const file = loadFile(taskFile);
+      const fileData = file?.data as Record<string, unknown> | undefined;
       const isAgentRole = options.role === 'agent';
 
       // Agent role: minimal output (just what's needed to execute)
       if (isAgentRole) {
-        const result: any = {
-          id: file.data.id,
-          title: file.data.title,
-          status: file.data.status,
-          parent: file.data.parent
+        const result: TaskShowAgentResult = {
+          id: (fileData?.id as string) || '',
+          title: (fileData?.title as string) || '',
+          status: (fileData?.status as string) || '',
+          parent: (fileData?.parent as string) || ''
         };
         if (options.path) result.file = taskFile;
 
         if (options.json) {
           jsonOut(result);
         } else {
-          console.log(`# ${file.data.id}: ${file.data.title}\n`);
-          console.log(`Status: ${file.data.status}`);
-          console.log(`Parent: ${file.data.parent || '-'}`);
-          console.log(`\n→ Use task:show-memory ${file.data.id} for Agent Context`);
+          console.log(`# ${result.id}: ${result.title}\n`);
+          console.log(`Status: ${result.status}`);
+          console.log(`Parent: ${result.parent || '-'}`);
+          console.log(`\n→ Use task:show-memory ${result.id} for Agent Context`);
           if (options.path) {
             console.log(`→ Use Read tool on ${taskFile} for full deliverables`);
           } else {
-            console.log(`→ Use task:show ${file.data.id} --raw for full deliverables`);
+            console.log(`→ Use task:show ${result.id} --raw for full deliverables`);
           }
         }
         return;
@@ -225,23 +304,23 @@ export function registerTaskCommands(program) {
       const dependents = blocks.get(normalizedId) || [];
       const isReady = task ? blockersResolved(task, tasks) : false;
 
-      const result: any = {
-        ...file.data,
+      const result: TaskShowFullResult = {
+        ...fileData,
         blockers: task?.blockedBy || [],
         dependents,
-        ready: isReady && !isStatusDone(file.data.status)
+        ready: isReady && !isStatusDone((fileData?.status as string) || '')
       };
       if (options.path) result.file = taskFile;
 
       if (options.json) {
         jsonOut(result);
       } else {
-        console.log(`# ${file.data.id}: ${file.data.title}\n`);
-        console.log(`Status: ${file.data.status}`);
-        console.log(`Assignee: ${file.data.assignee || 'unassigned'}`);
-        console.log(`Effort: ${file.data.effort || '-'}`);
-        console.log(`Priority: ${file.data.priority || 'normal'}`);
-        console.log(`Parent: ${file.data.parent || '-'}`);
+        console.log(`# ${fileData?.id}: ${fileData?.title}\n`);
+        console.log(`Status: ${fileData?.status}`);
+        console.log(`Assignee: ${(fileData?.assignee as string) || 'unassigned'}`);
+        console.log(`Effort: ${(fileData?.effort as string) || '-'}`);
+        console.log(`Priority: ${(fileData?.priority as string) || 'normal'}`);
+        console.log(`Parent: ${(fileData?.parent as string) || '-'}`);
 
         if (task?.blockedBy?.length > 0) {
           console.log(`\nBlocked by: ${task.blockedBy.join(', ')}`);
@@ -259,13 +338,15 @@ export function registerTaskCommands(program) {
   // task:create
   withModifies(task.command('create <parent> <title>'), ['task'])
     .description('Create task under epic (e.g., E035 or PRD-001/E035 "Title")')
-    .option('--story <id>', 'Link to story (repeatable)', (v, arr) => arr.concat(v), [])
-    .option('--tag <tag>', 'Add tag (repeatable, slugified to kebab-case)', (v, arr) => arr.concat(v), [])
-    .option('--target-version <comp:ver>', 'Target version (repeatable)', (v, arr) => arr.concat(v), [])
+    .option('--story <id>', 'Link to story (repeatable)', (v: string, arr: string[]) => arr.concat(v), [] as string[])
+    .option('--tag <tag>', 'Add tag (repeatable, slugified to kebab-case)', (v: string, arr: string[]) => arr.concat(v), [] as string[])
+    .option('--target-version <comp:ver>', 'Target version (repeatable)', (v: string, arr: string[]) => arr.concat(v), [] as string[])
     .option('--path', 'Show file path')
     .option('--json', 'JSON output')
-    .action((parent, title, options) => {
-      let prdDir, epicPart, prdId;
+    .action((parent: string, title: string, options: TaskCreateOptions) => {
+      let prdDir: string | undefined;
+      let epicPart: string | null;
+      let prdId: string;
 
       // Check if parent is just an epic ID (e.g., E0076)
       const epicOnlyMatch = parent.match(/^E\d+$/i);
@@ -349,7 +430,7 @@ export function registerTaskCommands(program) {
       saveFile(taskPath, data, body);
 
       if (options.json) {
-        const output: any = { id, title, parent: data.parent };
+        const output: { id: string; title: string; parent: string; file?: string } = { id, title, parent: data.parent };
         if (options.path) output.file = taskPath;
         jsonOut(output);
       } else {
@@ -368,18 +449,18 @@ export function registerTaskCommands(program) {
     .option('-t, --title <title>', 'Set title')
     .option('-e, --effort <duration>', 'Set effort/duration (e.g., 4h, 8h or legacy S|M|L|XL)')
     .option('-p, --priority <level>', 'Set priority (low|normal|high|critical)')
-    .option('--add-blocker <id>', 'Add blocker (repeatable)', (v, arr) => arr.concat(v), [])
+    .option('--add-blocker <id>', 'Add blocker (repeatable)', (v: string, arr: string[]) => arr.concat(v), [] as string[])
     .option('--blocked-by <ids>', 'Set blockers (comma-separated, e.g., T001,T002)')
-    .option('--remove-blocker <id>', 'Remove blocker (repeatable)', (v, arr) => arr.concat(v), [])
+    .option('--remove-blocker <id>', 'Remove blocker (repeatable)', (v: string, arr: string[]) => arr.concat(v), [] as string[])
     .option('--clear-blockers', 'Clear all blockers')
-    .option('--story <id>', 'Link to story (repeatable, replaces existing)', (v, arr) => arr.concat(v), [])
-    .option('--add-story <id>', 'Add story link (repeatable)', (v, arr) => arr.concat(v), [])
-    .option('--remove-story <id>', 'Remove story link (repeatable)', (v, arr) => arr.concat(v), [])
-    .option('--target-version <comp:ver>', 'Set target version (repeatable)', (v, arr) => arr.concat(v), [])
-    .option('--remove-target-version <comp>', 'Remove target version', (v, arr) => arr.concat(v), [])
-    .option('--set <key=value>', 'Set any frontmatter field (repeatable)', (v, arr) => arr.concat(v), [])
+    .option('--story <id>', 'Link to story (repeatable, replaces existing)', (v: string, arr: string[]) => arr.concat(v), [] as string[])
+    .option('--add-story <id>', 'Add story link (repeatable)', (v: string, arr: string[]) => arr.concat(v), [] as string[])
+    .option('--remove-story <id>', 'Remove story link (repeatable)', (v: string, arr: string[]) => arr.concat(v), [] as string[])
+    .option('--target-version <comp:ver>', 'Set target version (repeatable)', (v: string, arr: string[]) => arr.concat(v), [] as string[])
+    .option('--remove-target-version <comp>', 'Remove target version', (v: string, arr: string[]) => arr.concat(v), [] as string[])
+    .option('--set <key=value>', 'Set any frontmatter field (repeatable)', (v: string, arr: string[]) => arr.concat(v), [] as string[])
     .option('--json', 'JSON output')
-    .action((id, options) => {
+    .action((id: string, options: TaskUpdateOptions) => {
       const taskFile = findTaskFile(id);
       if (!taskFile) {
         console.error(`Task not found: ${id}`);
@@ -387,12 +468,13 @@ export function registerTaskCommands(program) {
       }
 
       const file = loadFile(taskFile);
+      const fileData = file?.data as Record<string, unknown>;
 
       // Convert Commander options format
       // Merge --blocked-by (comma-separated) with --add-blocker (repeatable)
-      let blockers = options.addBlocker || [];
+      let blockers: string[] = options.addBlocker || [];
       if (options.blockedBy) {
-        const parsed = options.blockedBy.split(',').map(s => s.trim()).filter(Boolean);
+        const parsed = options.blockedBy.split(',').map((s: string) => s.trim()).filter(Boolean);
         blockers = [...blockers, ...parsed];
       }
 
@@ -413,7 +495,7 @@ export function registerTaskCommands(program) {
         set: options.set?.length ? options.set : null
       };
 
-      const { updated, data } = parseUpdateOptions(opts, file.data, 'task');
+      const { updated, data } = parseUpdateOptions(opts, fileData, 'task');
 
       if (updated) {
         saveFile(taskFile, data, file.body);
@@ -434,11 +516,11 @@ export function registerTaskCommands(program) {
     .option('--epic <id>', 'Filter by epic (e.g., E035)')
     .option('--path', 'Include file path (discouraged)')
     .option('--json', 'JSON output')
-    .action((options) => {
+    .action((options: TaskNextOptions) => {
       const { tasks, blocks } = buildDependencyGraph();
 
       // Find ready tasks (not started, all blockers done, unassigned)
-      const ready = [];
+      const ready: Array<{ id: string; title: string; status: string; parent: string; assignee: string; prd?: string }> = [];
       for (const [id, task] of tasks) {
         // PRD filter
         if (options.prd) {
@@ -712,11 +794,11 @@ export function registerTaskCommands(program) {
           const memoryParts = [];
 
           // Extract agent-relevant sections
-          const extractSections = (content, level) => {
+          const extractSections = (content: string | undefined, level: string): Array<{ level: string; name: string; content: string }> => {
             if (!content) return [];
-            const sections = [];
+            const sections: Array<{ level: string; name: string; content: string }> = [];
             const regex = /^## ([^\n]+)\n([\s\S]*?)(?=\n## [A-Z]|$)/gm;
-            let match;
+            let match: RegExpExecArray | null;
             while ((match = regex.exec(content)) !== null) {
               const name = match[1].trim();
               const body = match[2].replace(/<!--[\s\S]*?-->/g, '').trim();
