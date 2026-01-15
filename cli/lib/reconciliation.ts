@@ -8,10 +8,9 @@
  */
 import { execSync } from 'child_process';
 import fs from 'fs';
-import { findProjectRoot } from './core.js';
-import { loadState } from './state.js';
+import { findProjectRoot } from '../managers/core-manager.js';
+import { loadState } from '../managers/state-manager.js';
 import {
-  getMainBranch,
   getBranchName,
   getPrdBranchName,
   getEpicBranchName,
@@ -19,8 +18,8 @@ import {
   getBranchDivergence,
   syncBranch,
   listAgentWorktrees
-} from './worktree.js';
-import { getGitConfig } from './config.js';
+} from '../managers/worktree-manager.js';
+import { getMainBranch } from '../managers/core-manager.js';
 import { AgentInfo } from './types/agent.js';
 
 export interface BranchHierarchyNode extends BranchStateInfo {

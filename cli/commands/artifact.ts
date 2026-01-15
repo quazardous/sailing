@@ -4,7 +4,7 @@
  */
 import fs from 'fs';
 import path from 'path';
-import { jsonOut, stripComments } from '../lib/core.js';
+import { jsonOut, stripComments } from '../managers/core-manager.js';
 import { addDynamicHelp, withModifies } from '../lib/help.js';
 import {
   parseMarkdownSections,
@@ -19,7 +19,7 @@ import {
   applySedCommands,
   parseCheckboxItems
 } from '../lib/artifact.js';
-import { getTask, getEpic, getPrd } from '../lib/index.js';
+import { getTask, getEpic, getPrd } from '../managers/artefacts-manager.js';
 
 /**
  * Resolve artifact ID to file path

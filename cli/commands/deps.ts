@@ -3,9 +3,9 @@
  */
 import fs from 'fs';
 import path from 'path';
-import { findPrdDirs, findFiles, loadFile, saveFile, jsonOut } from '../lib/core.js';
+import { findPrdDirs, loadFile, saveFile, jsonOut } from '../managers/core-manager.js';
 import { normalizeId, matchesId, extractTaskId, matchesPrdDir, parentContainsEpic } from '../lib/normalize.js';
-import { getEpic } from '../lib/index.js';
+import { getEpic, getAllEpics, getEpicsForPrd } from '../managers/artefacts-manager.js';
 import { STATUS, normalizeStatus, isStatusDone, isStatusNotStarted, isStatusInProgress, isStatusCancelled, statusSymbol } from '../lib/lexicon.js';
 import { buildDependencyGraph, detectCycles, findRoots, blockersResolved, longestPath, countTotalUnblocked, getAncestors, getDescendants } from '../lib/graph.js';
 import { addDynamicHelp, withModifies } from '../lib/help.js';
@@ -35,25 +35,21 @@ function findEpicFile(epicId) {
 function buildEpicDependencyMap() {
   const epics = new Map();
 
-  for (const prdDir of findPrdDirs()) {
-    const epicsDir = path.join(prdDir, 'epics');
-    const files = findFiles(epicsDir, /^E\d+.*\.md$/);
+  // Use artefacts.ts contract - single entry point for epic access
+  for (const epicEntry of getAllEpics()) {
+    const data = epicEntry.data;
+    if (!data?.id) continue;
 
-    for (const f of files) {
-      const file = loadFile(f);
-      if (!file?.data?.id) continue;
+    const id = normalizeId(data.id);
+    const blockedBy = (data.blocked_by || []).map(b => normalizeId(b));
 
-      const id = normalizeId(file.data.id);
-      const blockedBy = (file.data.blocked_by || []).map(b => normalizeId(b));
-
-      epics.set(id, {
-        id,
-        file: f,
-        status: file.data.status || 'Not Started',
-        blockedBy,
-        prdDir
-      });
-    }
+    epics.set(id, {
+      id,
+      file: epicEntry.file,
+      status: data.status || 'Not Started',
+      blockedBy,
+      prdDir: epicEntry.prdDir
+    });
   }
 
   return epics;
@@ -440,56 +436,52 @@ export function registerDepsCommands(program) {
         }
       }
 
-      for (const prdDir of findPrdDirs()) {
+      // Use artefacts.ts contract - single entry point for epic access
+      for (const epicEntry of getAllEpics()) {
         // Skip PRDs not matching filter
-        if (prdFilter && !matchesPrdDir(prdDir, options.prd)) continue;
-        const epicDir = path.join(prdDir, 'epics');
-        if (!fs.existsSync(epicDir)) continue;
+        if (prdFilter && !matchesPrdDir(epicEntry.prdDir, options.prd)) continue;
 
-        for (const ef of findFiles(epicDir, /^E\d+.*\.md$/)) {
-          const epicFile = loadFile(ef);
-          if (!epicFile?.data?.id) continue;
+        const epicId = normalizeId(epicEntry.data?.id);
+        if (!epicId) continue;
 
-          const epicId = normalizeId(epicFile.data.id);
-          const epicStatus = epicFile.data.status || 'Unknown';
-          const epicTasks = tasksByEpic.get(epicId) || [];
+        const epicStatus = epicEntry.data?.status || 'Unknown';
+        const epicTasks = tasksByEpic.get(epicId) || [];
 
-          if (epicTasks.length === 0) continue;
+        if (epicTasks.length === 0) continue;
 
-          const allDone = epicTasks.every(t => isStatusDone(t.status) || isStatusCancelled(t.status));
-          const anyInProgress = epicTasks.some(t => isStatusInProgress(t.status));
+        const allDone = epicTasks.every(t => isStatusDone(t.status) || isStatusCancelled(t.status));
+        const anyInProgress = epicTasks.some(t => isStatusInProgress(t.status));
 
-          if (isStatusNotStarted(epicStatus) && (anyInProgress || allDone)) {
-            warnings.push({
-              type: 'epic_status_mismatch',
-              epic: epicId,
-              message: `${epicId}: Status is "Not Started" but has tasks in progress or done`
-            });
-            if (options.fix) {
-              const newStatus = allDone ? 'Done' : 'In Progress';
-              fixes.push({ epic: epicId, file: ef, action: 'update_epic_status', newStatus });
-            }
+        if (isStatusNotStarted(epicStatus) && (anyInProgress || allDone)) {
+          warnings.push({
+            type: 'epic_status_mismatch',
+            epic: epicId,
+            message: `${epicId}: Status is "Not Started" but has tasks in progress or done`
+          });
+          if (options.fix) {
+            const newStatus = allDone ? 'Done' : 'In Progress';
+            fixes.push({ epic: epicId, file: epicEntry.file, action: 'update_epic_status', newStatus });
           }
+        }
 
-          if (isStatusInProgress(epicStatus) && allDone) {
-            warnings.push({
-              type: 'epic_not_done',
-              epic: epicId,
-              message: `${epicId}: All ${epicTasks.length} tasks done but epic still "In Progress"`
-            });
-            if (options.fix) {
-              fixes.push({ epic: epicId, file: ef, action: 'update_epic_status', newStatus: 'Done' });
-            }
+        if (isStatusInProgress(epicStatus) && allDone) {
+          warnings.push({
+            type: 'epic_not_done',
+            epic: epicId,
+            message: `${epicId}: All ${epicTasks.length} tasks done but epic still "In Progress"`
+          });
+          if (options.fix) {
+            fixes.push({ epic: epicId, file: epicEntry.file, action: 'update_epic_status', newStatus: 'Done' });
           }
+        }
 
-          if (isStatusDone(epicStatus) && !allDone) {
-            const notDone = epicTasks.filter(t => !isStatusDone(t.status) && !isStatusCancelled(t.status));
-            errors.push({
-              type: 'epic_done_prematurely',
-              epic: epicId,
-              message: `${epicId}: Marked "Done" but ${notDone.length} tasks incomplete`
-            });
-          }
+        if (isStatusDone(epicStatus) && !allDone) {
+          const notDone = epicTasks.filter(t => !isStatusDone(t.status) && !isStatusCancelled(t.status));
+          errors.push({
+            type: 'epic_done_prematurely',
+            epic: epicId,
+            message: `${epicId}: Marked "Done" but ${notDone.length} tasks incomplete`
+          });
         }
       }
 

@@ -15,15 +15,15 @@ import {
   findProjectRoot,
   getPathsInfo,
   getConfigFile
-} from '../lib/core.js';
-import { loadConfig, getConfigPath, configExists, getConfigDisplay, getConfigValue } from '../lib/config.js';
+} from '../managers/core-manager.js';
+import { loadConfig, getConfigPath, configExists, getConfigDisplay, getConfigValue } from '../managers/core-manager.js';
 import { getDuration } from '../lib/lexicon.js';
 import { calculateGanttMetrics, getTaskSchedules, calculateTheoreticalSchedule, calculateRealSchedule, getScheduleEnvelope, GanttMetrics, RealSchedulableTask } from '../lib/scheduling.js';
-import { getConfigInfo } from '../lib/core.js';
-import { getAllVersions, getMainVersion, getMainComponentName } from '../lib/version.js';
+import { getConfigInfo } from '../managers/core-manager.js';
+import { getAllVersions, getMainVersion, getMainComponentName } from '../managers/version-manager.js';
 import { buildDependencyGraph } from '../lib/graph.js';
-import { buildPrdIndex, buildEpicIndex, buildTaskIndex } from '../lib/index.js';
-import { extractPrdId, extractEpicId } from '../lib/entities.js';
+import { buildPrdIndex, buildEpicIndex, buildTaskIndex } from '../managers/artefacts-manager.js';
+import { extractPrdId, extractEpicId } from '../lib/normalize.js';
 import { marked } from 'marked';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));

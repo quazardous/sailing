@@ -5,16 +5,16 @@ import fs from 'fs';
 import path from 'path';
 import yaml from 'js-yaml';
 import { execSync } from 'child_process';
-import { findProjectRoot, jsonOut, loadFile, saveFile } from '../../lib/core.js';
-import { execRudderSafe } from '../../lib/invoke.js';
+import { findProjectRoot, jsonOut, loadFile, saveFile } from '../../managers/core-manager.js';
 import { parseUpdateOptions } from '../../lib/update.js';
+import { reapAgent } from '../../managers/agent-manager.js';
 import { getGit } from '../../lib/git.js';
 import { validateResult } from '../../lib/agent-schema.js';
-import { loadState, saveState } from '../../lib/state.js';
+import { loadState, saveState } from '../../managers/state-manager.js';
 import { withModifies } from '../../lib/help.js';
-import { getAgentConfig } from '../../lib/config.js';
-import { removeWorktree } from '../../lib/worktree.js';
-import { getTask, getTaskEpic } from '../../lib/index.js';
+import { getAgentConfig } from '../../managers/core-manager.js';
+import { removeWorktree } from '../../managers/worktree-manager.js';
+import { getTask, getTaskEpic } from '../../managers/artefacts-manager.js';
 import { normalizeId } from '../../lib/normalize.js';
 import { getAgentDir, checkAgentCompletion } from '../../lib/agent-utils.js';
 import { analyzeLog, printDiagnoseResult } from '../../lib/diagnose.js';
@@ -435,13 +435,14 @@ export function registerHarvestCommands(agent) {
 
       const results = [];
       for (const taskId of completed) {
-        const { stderr, exitCode } = execRudderSafe(`agent:reap ${taskId} --json`, { cwd: projectRoot });
-        if (exitCode === 0) {
-          results.push({ task_id: taskId, status: 'reaped' });
-          if (!options.json) console.log(`  ✓ ${taskId} reaped`);
+        const reapResult = await reapAgent(taskId);
+        if (reapResult.success) {
+          results.push({ task_id: taskId, status: 'reaped', task_status: reapResult.taskStatus });
+          if (!options.json) console.log(`  ✓ ${taskId} reaped → ${reapResult.taskStatus}`);
         } else {
-          results.push({ task_id: taskId, status: 'failed', error: stderr.slice(0, 100) });
-          if (!options.json) console.error(`  ✗ ${taskId} failed: ${stderr.slice(0, 50)}`);
+          const errorMsg = reapResult.escalate?.reason || 'unknown error';
+          results.push({ task_id: taskId, status: 'failed', error: errorMsg.slice(0, 100) });
+          if (!options.json) console.error(`  ✗ ${taskId} failed: ${errorMsg.slice(0, 50)}`);
         }
       }
 

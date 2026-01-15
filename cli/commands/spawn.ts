@@ -5,18 +5,16 @@
 import fs from 'fs';
 import path from 'path';
 import { execSync } from 'child_process';
-import { findProjectRoot, loadFile, jsonOut } from '../lib/core.js';
-import { loadState } from '../lib/state.js';
-import { getAgentConfig, getGitConfig } from '../lib/config.js';
+import { findProjectRoot, loadFile, jsonOut } from '../managers/core-manager.js';
+import { loadState } from '../managers/state-manager.js';
+import { getAgentConfig, getGitConfig } from '../managers/core-manager.js';
 import { addDynamicHelp } from '../lib/help.js';
 import {
   getWorktreePath, getBranchName, worktreeExists,
   getParentBranch, getBranchHierarchy, getMainBranch
-} from '../lib/worktree.js';
-import {
-  extractPrdId, extractEpicId, getPrdBranching
-} from '../lib/entities.js';
-import { getTask } from '../lib/index.js';
+} from '../managers/worktree-manager.js';
+import { extractPrdId, extractEpicId } from '../lib/normalize.js';
+import { getTask, getPrdBranching } from '../managers/artefacts-manager.js';
 import {
   diagnose as diagnoseReconciliation,
   getBranchState,

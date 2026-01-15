@@ -5,9 +5,9 @@
 import fs from 'fs';
 import path from 'path';
 import { execSync } from 'child_process';
-import { findProjectRoot, jsonOut } from '../lib/core.js';
-import { loadState, saveState } from '../lib/state.js';
-import { getAgentConfig, getGitConfig } from '../lib/config.js';
+import { findProjectRoot, jsonOut } from '../managers/core-manager.js';
+import { loadState, saveState } from '../managers/state-manager.js';
+import { getAgentConfig, getGitConfig } from '../managers/core-manager.js';
 import { addDynamicHelp } from '../lib/help.js';
 import {
   listAgentWorktrees,
@@ -15,10 +15,10 @@ import {
   getBranchName,
   removeWorktree,
   cleanupWorktree,
-  getParentBranch,
   branchExists,
+  getParentBranch,
   getMainBranch as getConfiguredMainBranch
-} from '../lib/worktree.js';
+} from '../managers/worktree-manager.js';
 import {
   buildConflictMatrix,
   suggestMergeOrder,
@@ -29,13 +29,13 @@ import {
   diagnoseAgentState,
   getRecommendedActions
 } from '../lib/state-machine/index.js';
-import { getGit, getMainBranch as getGitMainBranch } from '../lib/git.js';
+import { getGit } from '../lib/git.js';
 import {
   detectProvider,
   checkCli as checkPrCli,
   getStatus as getPrStatusFromLib,
   create as createPrFromLib
-} from '../lib/git-forge.js';
+} from '../managers/pr-manager.js';
 
 
 import {
@@ -68,7 +68,7 @@ interface AgentInfo {
  */
 async function getMainBranchStatus(projectRoot) {
   const git = getGit(projectRoot);
-  const mainBranch = getGitMainBranch();
+  const mainBranch = getConfiguredMainBranch();
   const gitStatus = await git.status();
   const allFiles = [...gitStatus.modified, ...gitStatus.created, ...gitStatus.deleted, ...gitStatus.not_added];
   const result = {
@@ -424,7 +424,7 @@ export function registerWorktreeCommands(program: any) {
 
       // Check worktree has commits
       const worktreePath = getWorktreePath(taskId);
-      const mainBranch = getGitMainBranch();
+      const mainBranch = getConfiguredMainBranch();
 
       try {
         const count = execSync(`git rev-list --count HEAD ^${mainBranch}`, {

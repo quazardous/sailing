@@ -6,8 +6,8 @@
  */
 import fs from 'fs';
 import path from 'path';
-import { getMemoryFile, getEpicPrd } from './index.js';
-import { getMemoryDir, getRepoRoot } from './core.js';
+import { getMemoryFile, getEpicPrd } from '../managers/artefacts-manager.js';
+import { getMemoryDir, getRepoRoot } from '../managers/core-manager.js';
 
 type Section = { name: string; content: string };
 type FoundSection = { header: string; content: string; match: RegExpMatchArray };

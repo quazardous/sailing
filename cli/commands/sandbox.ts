@@ -6,7 +6,7 @@ import fs from 'fs';
 import path from 'path';
 import os from 'os';
 import { execaSync } from 'execa';
-import { getPathsInfo, findProjectRoot } from '../lib/core.js';
+import { getPathsInfo, findProjectRoot } from '../managers/core-manager.js';
 import { spawnClaudeWithSrt, generateSrtConfig, loadBaseSrtConfig } from '../lib/srt.js';
 
 /**

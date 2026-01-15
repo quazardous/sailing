@@ -4,16 +4,17 @@
 import fs from 'fs';
 import path from 'path';
 import { execSync } from 'child_process';
-import { findPrdDirs, findFiles, loadFile, saveFile, toKebab, loadTemplate, jsonOut, getMemoryDir, stripComments } from '../lib/core.js';
+import { findPrdDirs, loadFile, saveFile, toKebab, loadTemplate, jsonOut, getMemoryDir, stripComments } from '../managers/core-manager.js';
 import { normalizeId, matchesId, matchesPrdDir, parentContainsEpic } from '../lib/normalize.js';
-import { getTask, getEpic, getEpicPrd } from '../lib/index.js';
-import { getHierarchicalMemory, ensureMemoryDir, hasPendingMemoryLogs } from '../lib/memory.js';
+import { getTask, getEpic, getEpicPrd, getAllTasks, getAllEpics } from '../managers/artefacts-manager.js';
+import { getHierarchicalMemory, ensureMemoryDir, hasPendingMemoryLogs } from '../managers/memory-manager.js';
 import { STATUS, normalizeStatus, isStatusDone, isStatusNotStarted, isStatusInProgress, isStatusCancelled, isStatusAutoDone, statusSymbol } from '../lib/lexicon.js';
 import { buildDependencyGraph, blockersResolved } from '../lib/graph.js';
-import { nextId } from '../lib/state.js';
+import { nextId } from '../managers/state-manager.js';
 import { parseUpdateOptions, addLogEntry } from '../lib/update.js';
 import { addDynamicHelp, withModifies } from '../lib/help.js';
-import { formatId } from '../lib/config.js';
+import { formatId } from '../managers/core-manager.js';
+import { escalateOnTaskStart, cascadeTaskCompletion } from '../managers/status-manager.js';
 import { parseSearchReplace, editArtifact, parseMultiSectionContent, processMultiSectionOps } from '../lib/artifact.js';
 import { Task } from '../lib/types/entities.js';
 
@@ -73,53 +74,57 @@ export function registerTaskCommands(program) {
       const prd = prdArg || options.prd;
       const tasks: (Task & { file?: string; prd: string })[] = [];
 
-      for (const prdDir of findPrdDirs()) {
+      // Use artefacts.ts contract - single entry point
+      for (const taskEntry of getAllTasks()) {
+        // Extract prdDir from task file path
+        const tasksDir = path.dirname(taskEntry.file);
+        const prdDir = path.dirname(tasksDir);
+        const prdName = path.basename(prdDir);
+
+        // PRD filter
         if (prd && !matchesPrdDir(prdDir, prd)) continue;
 
-        const prdName = path.basename(prdDir);
-        findFiles(path.join(prdDir, 'tasks'), /^T\d+.*\.md$/).forEach(f => {
-          const file = loadFile(f);
-          if (!file?.data) return;
+        const data = taskEntry.data;
+        if (!data) continue;
 
-          // Status filter
-          if (options.status) {
-            const targetStatus = normalizeStatus(options.status, 'task');
-            const taskStatus = normalizeStatus(file.data.status, 'task');
-            if (targetStatus !== taskStatus) return;
-          }
+        // Status filter
+        if (options.status) {
+          const targetStatus = normalizeStatus(options.status, 'task');
+          const taskStatus = normalizeStatus(data.status, 'task');
+          if (targetStatus !== taskStatus) continue;
+        }
 
-          // Epic filter (format-agnostic: E1 matches E001 in parent)
-          if (options.epic) {
-            if (!parentContainsEpic(file.data.parent, options.epic)) return;
-          }
+        // Epic filter (format-agnostic: E1 matches E001 in parent)
+        if (options.epic) {
+          if (!parentContainsEpic(data.parent, options.epic)) continue;
+        }
 
-          // Assignee filter
-          if (options.assignee) {
-            const assignee = (file.data.assignee || '').toLowerCase();
-            if (!assignee.includes(options.assignee.toLowerCase())) return;
-          }
+        // Assignee filter
+        if (options.assignee) {
+          const assignee = (data.assignee || '').toLowerCase();
+          if (!assignee.includes(options.assignee.toLowerCase())) continue;
+        }
 
-          // Tag filter (AND logic - all specified tags must be present)
-          if (options.tag?.length > 0) {
-            const taskTags = file.data.tags || [];
-            const allTagsMatch = options.tag.every(t => taskTags.includes(t));
-            if (!allTagsMatch) return;
-          }
+        // Tag filter (AND logic - all specified tags must be present)
+        if (options.tag?.length > 0) {
+          const taskTags = data.tags || [];
+          const allTagsMatch = options.tag.every(t => taskTags.includes(t));
+          if (!allTagsMatch) continue;
+        }
 
-          const taskEntry: Task & { file?: string; prd: string } = {
-            id: file.data.id || path.basename(f, '.md').match(/^T\d+/)?.[0],
-            title: file.data.title || '',
-            status: file.data.status || 'Unknown',
-            parent: file.data.parent || '',
-            assignee: file.data.assignee || 'unassigned',
-            effort: file.data.effort || null,
-            priority: file.data.priority || 'normal',
-            blocked_by: file.data.blocked_by || [],
-            prd: prdName
-          };
-          if (options.path) taskEntry.file = f;
-          tasks.push(taskEntry);
-        });
+        const taskResult: Task & { file?: string; prd: string } = {
+          id: data.id || taskEntry.id,
+          title: data.title || '',
+          status: data.status || 'Unknown',
+          parent: data.parent || '',
+          assignee: data.assignee || 'unassigned',
+          effort: data.effort || null,
+          priority: data.priority || 'normal',
+          blocked_by: data.blocked_by || [],
+          prd: prdName
+        };
+        if (options.path) taskResult.file = taskEntry.file;
+        tasks.push(taskResult);
       }
 
       // Ready filter (unblocked AND not done/cancelled)
@@ -537,34 +542,12 @@ export function registerTaskCommands(program) {
       saveFile(taskFile, data, file.body);
 
       // Auto-escalate: Epic and PRD to In Progress if not started
-      const epicMatch = data.parent?.match(/E(\d+)/i);
-      if (epicMatch) {
-        const epicId = normalizeId(`E${epicMatch[1]}`);
-        const epicFile = findEpicFile(epicId);
-        if (epicFile) {
-          const epicData = loadFile(epicFile);
-          if (epicData?.data && isStatusNotStarted(epicData.data.status)) {
-            epicData.data.status = 'In Progress';
-            saveFile(epicFile, epicData.data, epicData.body);
-            console.log(`● Epic ${epicId} → In Progress`);
-          }
-        }
-
-        // Check PRD
-        const prdMatch = data.parent?.match(/PRD-(\d+)/i);
-        if (prdMatch) {
-          const prdId = `PRD-${prdMatch[1].padStart(3, '0')}`;
-          const prdDir = findPrdDirs().find(d => matchesPrdDir(d, prdId));
-          if (prdDir) {
-            const prdFile = path.join(prdDir, 'prd.md');
-            const prdData = loadFile(prdFile);
-            if (prdData?.data && (prdData.data.status === 'Draft' || prdData.data.status === 'Approved' || isStatusNotStarted(prdData.data.status))) {
-              prdData.data.status = 'In Progress';
-              saveFile(prdFile, prdData.data, prdData.body);
-              console.log(`● PRD ${prdId} → In Progress`);
-            }
-          }
-        }
+      const escalation = escalateOnTaskStart(data);
+      if (escalation.epic?.updated) {
+        console.log(`● ${escalation.epic.message}`);
+      }
+      if (escalation.prd?.updated) {
+        console.log(`● ${escalation.prd.message}`);
       }
 
       if (options.json) {
@@ -602,66 +585,13 @@ export function registerTaskCommands(program) {
 
       saveFile(taskFile, data, body);
 
-      // Check if epic is now complete and auto-escalate to Auto-Done
-      const epicMatch = data.parent?.match(/E(\d+)/i);
-      if (epicMatch) {
-        const epicId = normalizeId(`E${epicMatch[1]}`);
-        const { tasks } = buildDependencyGraph();
-
-        // Find all tasks for this epic
-        const epicTasks = [...tasks.values()].filter(t =>
-          t.parent?.match(/E\d+/i)?.[0]?.toUpperCase() === epicId.toUpperCase()
-        );
-
-        const allTasksDone = epicTasks.every(t =>
-          isStatusDone(t.status) || isStatusCancelled(t.status) || t.id === normalizeId(id)
-        );
-
-        if (allTasksDone && epicTasks.length > 0) {
-          // Find and update epic to Auto-Done
-          const epicFile = findEpicFile(epicId);
-          if (epicFile) {
-            const epicData = loadFile(epicFile);
-            if (epicData?.data && !isStatusDone(epicData.data.status) && !isStatusAutoDone(epicData.data.status)) {
-              epicData.data.status = 'Auto-Done';
-              saveFile(epicFile, epicData.data, epicData.body);
-              console.log(`\n◉ Epic ${epicId} → Auto-Done (to be reviewed for completion)`);
-
-              // Check if PRD should be updated
-              const prdMatch = data.parent?.match(/PRD-(\d+)/i);
-              if (prdMatch) {
-                const prdId = `PRD-${prdMatch[1].padStart(3, '0')}`;
-                const prdDir = findPrdDirs().find(d => matchesPrdDir(d, prdId));
-                if (prdDir) {
-                  const prdFile = path.join(prdDir, 'prd.md');
-                  const prdData = loadFile(prdFile);
-                  if (prdData?.data) {
-                    // Get all epics for this PRD
-                    const epicsDir = path.join(prdDir, 'epics');
-                    const epicFiles = findFiles(epicsDir, /^E\d+.*\.md$/);
-                    const allEpicsDone = epicFiles.every(ef => {
-                      const ed = loadFile(ef);
-                      return ed?.data && (isStatusDone(ed.data.status) || isStatusCancelled(ed.data.status));
-                    });
-
-                    // PRD → Auto-Done only if ALL epics are Done (not Auto-Done)
-                    if (allEpicsDone && epicFiles.length > 0 && !isStatusDone(prdData.data.status) && !isStatusAutoDone(prdData.data.status)) {
-                      prdData.data.status = 'Auto-Done';
-                      saveFile(prdFile, prdData.data, prdData.body);
-                      console.log(`◉ PRD ${prdId} → Auto-Done (to be reviewed for completion)`);
-                    }
-                    // PRD → In Progress if still at Draft/Approved
-                    else if ((prdData.data.status === 'Draft' || prdData.data.status === 'Approved') && !allEpicsDone) {
-                      prdData.data.status = 'In Progress';
-                      saveFile(prdFile, prdData.data, prdData.body);
-                      console.log(`● PRD ${prdId} → In Progress`);
-                    }
-                  }
-                }
-              }
-            }
-          }
-        }
+      // Cascade completion: check if Epic/PRD should be Auto-Done
+      const cascade = cascadeTaskCompletion(id, data);
+      if (cascade.epic?.updated) {
+        console.log(`\n◉ ${cascade.epic.message}`);
+      }
+      if (cascade.prd?.updated) {
+        console.log(`◉ ${cascade.prd.message}`);
       }
 
       if (options.json) {
@@ -883,41 +813,34 @@ export function registerTaskCommands(program) {
     .action((component, options) => {
       const results: any[] = [];
 
-      for (const prdDir of findPrdDirs()) {
-        const tasksDir = path.join(prdDir, 'tasks');
-        const taskFiles = findFiles(tasksDir, /^T\d+.*\.md$/);
-
-        for (const taskFile of taskFiles) {
-          const file = loadFile(taskFile);
-          if (file.data.target_versions && file.data.target_versions[component]) {
-            const entry: any = {
-              id: file.data.id,
-              title: file.data.title,
-              status: file.data.status,
-              target_version: file.data.target_versions[component]
-            };
-            if (options.path) entry.file = taskFile;
-            results.push(entry);
-          }
+      // Use artefacts.ts contract - single entry point
+      for (const taskEntry of getAllTasks()) {
+        const data = taskEntry.data;
+        if (data?.target_versions && data.target_versions[component]) {
+          const entry: any = {
+            id: data.id,
+            title: data.title,
+            status: data.status,
+            target_version: data.target_versions[component]
+          };
+          if (options.path) entry.file = taskEntry.file;
+          results.push(entry);
         }
+      }
 
-        // Also check epics
-        const epicsDir = path.join(prdDir, 'epics');
-        const epicFiles = findFiles(epicsDir, /^E\d+.*\.md$/);
-
-        for (const epicFile of epicFiles) {
-          const file = loadFile(epicFile);
-          if (file.data.target_versions && file.data.target_versions[component]) {
-            const entry: any = {
-              id: file.data.id,
-              title: file.data.title,
-              status: file.data.status,
-              target_version: file.data.target_versions[component],
-              type: 'epic'
-            };
-            if (options.path) entry.file = epicFile;
-            results.push(entry);
-          }
+      // Also check epics (artefacts.ts contract)
+      for (const epicEntry of getAllEpics()) {
+        const data = epicEntry.data;
+        if (data?.target_versions && data.target_versions[component]) {
+          const entry: any = {
+            id: data.id,
+            title: data.title,
+            status: data.status,
+            target_version: data.target_versions[component],
+            type: 'epic'
+          };
+          if (options.path) entry.file = epicEntry.file;
+          results.push(entry);
         }
       }
 

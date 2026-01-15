@@ -1,9 +1,9 @@
 /**
  * Common error helpers for DRY validation
  */
-import { loadFile } from './core.js';
-import { getTask, getEpic, getPrd } from './index.js';
-import { loadState } from './state.js';
+import { loadFile } from '../managers/core-manager.js';
+import { getTask, getEpic, getPrd } from '../managers/artefacts-manager.js';
+import { loadState } from '../managers/state-manager.js';
 import { normalizeId } from './normalize.js';
 
 type JsonOption = { json?: boolean };

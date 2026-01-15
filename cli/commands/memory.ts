@@ -7,7 +7,8 @@
  */
 import fs from 'fs';
 import path from 'path';
-import { jsonOut, findPrdDirs, findFiles, getArchiveDir, findProjectRoot } from '../lib/core.js';
+import { jsonOut, findPrdDirs, getArchiveDir, findProjectRoot } from '../managers/core-manager.js';
+import { getEpicsForPrd } from '../managers/artefacts-manager.js';
 import { normalizeId } from '../lib/normalize.js';
 import { addDynamicHelp } from '../lib/help.js';
 import {
@@ -28,16 +29,14 @@ import {
   projectMemoryFilePath,
   projectMemoryExists,
   getHierarchicalMemory,
-  findEpicPrd
-} from '../lib/memory.js';
-import { getMemoryFile, getTask, getEpic } from '../lib/index.js';
-import { getGit } from '../lib/git.js';
-import {
+  findEpicPrd,
   extractAllSections as extractAllSectionsLib,
   findSection,
   editSection,
   parseMultiSectionInput
-} from '../lib/memory-section.js';
+} from '../managers/memory-manager.js';
+import { getMemoryFile, getTask, getEpic } from '../managers/artefacts-manager.js';
+import { getGit } from '../lib/git.js';
 
 /**
  * Check if role is allowed for memory write operations
@@ -527,22 +526,11 @@ export function registerMemoryCommands(program) {
         files = files.filter(f => f.replace('.md', '') === epicId);
       }
 
-      // Filter by PRD - need to check which epics belong to this PRD
+      // Filter by PRD - use artefacts.ts contract
       if (options.prd) {
-        const prdId = options.prd.toUpperCase();
-        const prdEpics = new Set();
-
-        for (const prdDir of findPrdDirs()) {
-          if (prdDir.includes(prdId)) {
-            const epicsDir = prdDir + '/epics';
-            const epicFiles = findFiles(epicsDir, /^E\d+.*\.md$/);
-            for (const ef of epicFiles) {
-              const match = ef.match(/E\d+/);
-              if (match) prdEpics.add(normalizeId(match[0]));
-            }
-          }
-        }
-
+        const prdEpics = new Set(
+          getEpicsForPrd(options.prd).map(e => e.id)
+        );
         files = files.filter(f => prdEpics.has(f.replace('.md', '')));
       }
       const results = [];

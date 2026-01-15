@@ -3,16 +3,16 @@
  */
 import fs from 'fs';
 import path from 'path';
-import { findProjectRoot, jsonOut } from '../../lib/core.js';
-import { execRudderSafe } from '../../lib/invoke.js';
-import { loadState } from '../../lib/state.js';
+import { findProjectRoot, jsonOut } from '../../managers/core-manager.js';
+import { loadState } from '../../managers/state-manager.js';
+import { reapAgent } from '../../managers/agent-manager.js';
 import { normalizeId } from '../../lib/normalize.js';
 import {
   getAgentsBaseDir, getAgentDir, getProcessStats, formatDuration,
   checkAgentCompletion, getLogFilePath
 } from '../../lib/agent-utils.js';
 import { AgentInfo } from '../../lib/types/agent.js';
-import { getTaskEpic } from '../../lib/index.js';
+import { getTaskEpic } from '../../managers/artefacts-manager.js';
 import {
   loadNoiseFilters, matchesNoiseFilter, parseJsonLog
 } from '../../lib/diagnose.js';
@@ -203,11 +203,11 @@ export function registerMonitorCommands(agent) {
           console.log(`${taskId} already completed`);
           if (options.reap !== false) {
             console.log(`\nReaping ${taskId}...`);
-            const { stdout, stderr, exitCode } = execRudderSafe(`agent:reap ${taskId}`, { cwd: projectRoot });
-            if (exitCode === 0) {
-              if (stdout) console.log(stdout);
-            } else {
-              console.error(`Reap failed: ${stderr}`);
+            const reapResult = await reapAgent(taskId);
+            if (reapResult.success) {
+              console.log(`✓ Task ${taskId} → ${reapResult.taskStatus}`);
+            } else if (reapResult.escalate) {
+              console.error(`Reap failed: ${reapResult.escalate.reason}`);
             }
           }
         }
@@ -348,11 +348,11 @@ export function registerMonitorCommands(agent) {
 
       if (exitCode === 0 && options.reap !== false) {
         console.log(`\nAuto-reaping ${taskId}...`);
-        const { stdout, stderr, exitCode: reapCode } = execRudderSafe(`agent:reap ${taskId}`, { cwd: projectRoot });
-        if (reapCode === 0) {
-          if (stdout) console.log(stdout);
-        } else {
-          console.error(`Reap failed: ${stderr}`);
+        const reapResult = await reapAgent(taskId);
+        if (reapResult.success) {
+          console.log(`✓ Task ${taskId} → ${reapResult.taskStatus}`);
+        } else if (reapResult.escalate) {
+          console.error(`Reap failed: ${reapResult.escalate.reason}`);
           console.error(`Manual: bin/rudder agent:reap ${taskId}`);
         }
       } else if (exitCode !== 0) {

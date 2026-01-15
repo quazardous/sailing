@@ -7,14 +7,13 @@
 import fs from 'fs';
 import path from 'path';
 import yaml from 'js-yaml';
-import { jsonOut, getPrompting, getMemoryDir, loadFile, getPrdsDir, saveFile, getPath, loadPathsConfig, getRunsDir, getAssignmentsDir } from '../lib/core.js';
-import { ensureDir, computeProjectHash } from '../lib/paths.js';
+import { jsonOut, getPrompting, getMemoryDir, loadFile, getPrdsDir, saveFile, getPath, loadPathsConfig, getRunsDir, getAssignmentsDir, ensureDir, computeProjectHash } from '../managers/core-manager.js';
 import { normalizeId } from '../lib/normalize.js';
-import { getTask, getEpic, getPrd } from '../lib/index.js';
+import { getTask, getEpic, getPrd } from '../managers/artefacts-manager.js';
 import { addDynamicHelp, withModifies } from '../lib/help.js';
-import { findLogFiles, mergeTaskLog, findTaskEpic, readLogFile } from '../lib/memory.js';
+import { findTaskEpic, readLogFile, checkPendingMemory, countTaskTips } from '../managers/memory-manager.js';
 import { addLogEntry } from '../lib/update.js';
-import { composeAgentContext } from '../lib/compose.js';
+import { composeAgentContext } from '../managers/compose-manager.js';
 
 /**
  * Find task file by ID (via index.ts)
@@ -151,51 +150,7 @@ function findOrphanRuns() {
     .filter(run => !isPidAlive(run.pid));  // Only orphans = dead PIDs
 }
 
-/**
- * Check for pending memory (logs not consolidated)
- * Returns { pending: boolean, epics: string[] }
- */
-function checkPendingMemory(epicId = null) {
-  // Merge task logs first
-  const taskLogs = findLogFiles().filter(f => f.type === 'task');
-  for (const { id: taskId } of taskLogs) {
-    if (epicId) {
-      const taskInfo = findTaskEpic(taskId);
-      if (!taskInfo || taskInfo.epicId !== epicId) continue;
-    }
-    mergeTaskLog(taskId);
-  }
-
-  // Check for epic logs
-  let epicLogs = findLogFiles().filter(f => f.type === 'epic');
-  if (epicId) {
-    epicLogs = epicLogs.filter(f => f.id === epicId);
-  }
-
-  const pendingEpics = epicLogs
-    .filter(({ id }) => readLogFile(id)) // Has content
-    .map(({ id }) => id);
-
-  return {
-    pending: pendingEpics.length > 0,
-    epics: pendingEpics
-  };
-}
-
-/**
- * Count TIP logs in task log file
- */
-function countTaskTips(taskId) {
-  const taskInfo = findTaskEpic(taskId);
-  if (!taskInfo) return 0;
-
-  // Check task's own log file
-  const taskLog = readLogFile(taskId);
-  if (!taskLog) return 0;
-
-  const matches = taskLog.match(/\[TIP\]/g);
-  return matches ? matches.length : 0;
-}
+// checkPendingMemory and countTaskTips moved to managers/memory-manager.ts
 
 /**
  * Add log entry to task file

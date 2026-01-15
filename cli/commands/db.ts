@@ -4,12 +4,11 @@
  */
 import fs from 'fs';
 import path from 'path';
-import { jsonOut } from '../lib/core.js';
+import { jsonOut, resolvePlaceholders } from '../managers/core-manager.js';
 import {
   getAgentsDb, getRunsDb, getAgent, getAllAgents, deleteAgent, clearAllAgents,
   upsertAgent, getRunsForTask, migrateFromStateJson
 } from '../lib/db.js';
-import { resolvePlaceholders } from '../lib/paths.js';
 import { addDynamicHelp, withModifies } from '../lib/help.js';
 import { AgentInfo } from '../lib/types/agent.js';
 

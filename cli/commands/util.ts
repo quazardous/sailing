@@ -7,7 +7,6 @@ import { execSync } from 'child_process';
 import yaml from 'js-yaml';
 import {
   findPrdDirs,
-  findFiles,
   loadFile,
   saveFile,
   jsonOut,
@@ -27,16 +26,24 @@ import {
   getAgentsDir,
   getRunsDir,
   getAssignmentsDir,
-  getPathType
-} from '../lib/core.js';
-import { getPlaceholders, resolvePlaceholders, computeProjectHash, clearCache } from '../lib/paths.js';
+  getPathType,
+  getPlaceholders,
+  resolvePlaceholders,
+  computeProjectHash,
+  clearPlaceholderCache,
+  loadConfig as loadAgentConfig,
+  getConfigDisplay,
+  getConfigSchema,
+  getConfigPath,
+  getAgentConfig
+} from '../managers/core-manager.js';
 import { PATHS_SCHEMA, CATEGORIES, getPathDefault, getPathKeys, generatePathsYaml } from '../lib/paths-schema.js';
 import { addDynamicHelp } from '../lib/help.js';
-import { loadState, saveState } from '../lib/state.js';
-import { getAllVersions, getMainVersion, getMainComponentName, bumpComponentVersion, findComponent, loadComponents } from '../lib/version.js';
+import { loadState, saveState } from '../managers/state-manager.js';
+import { getAllVersions, getMainVersion, getMainComponentName, bumpComponentVersion, findComponent, loadComponents } from '../managers/version-manager.js';
 import { buildDependencyGraph } from '../lib/graph.js';
+import { getAllEpics, getAllTasks } from '../managers/artefacts-manager.js';
 import { isStatusDone, isStatusInProgress, isStatusNotStarted, statusSymbol } from '../lib/lexicon.js';
-import { loadConfig as loadAgentConfig, getConfigDisplay, getSchema, getConfigPath, getAgentConfig } from '../lib/config.js';
 import { ConfigDisplayItem, PathInfo, ConfigSchema, PathsInfo, CheckResults, CheckEntry, ConfigSchemaEntry } from '../lib/types/config.js';
 
 type PathSchemaEntry = (typeof PATHS_SCHEMA)[keyof typeof PATHS_SCHEMA];
@@ -119,7 +126,7 @@ export function registerUtilCommands(program) {
         process.exit(1);
       }
 
-      const schema: ConfigSchema = getSchema();
+      const schema: ConfigSchema = getConfigSchema();
       const lines = ['# Sailing configuration', '# Generated from schema - edit as needed', ''];
 
       // Group by section
@@ -153,7 +160,7 @@ export function registerUtilCommands(program) {
   config.command('get <key>')
     .description('Get a config value (e.g., agent.mcp_mode)')
     .action((key: string) => {
-      const schema: ConfigSchema = getSchema();
+      const schema: ConfigSchema = getConfigSchema();
 
       // Validate key exists in schema
       if (!schema[key]) {
@@ -196,7 +203,7 @@ export function registerUtilCommands(program) {
   config.command('set <key> <value>')
     .description('Set a config value (e.g., agent.mcp_mode socket)')
     .action((key: string, value: string) => {
-      const schema: ConfigSchema = getSchema();
+      const schema: ConfigSchema = getConfigSchema();
 
       // Validate key exists in schema
       if (!schema[key]) {
@@ -519,7 +526,7 @@ export function registerUtilCommands(program) {
 
       // Generator function for config.yaml from schema
       const generateConfigYaml = () => {
-        const schema: ConfigSchema = getSchema();
+        const schema: ConfigSchema = getConfigSchema();
         const lines = ['# Sailing configuration', '# Generated from schema - edit as needed', ''];
         const sections: Record<string, Array<ConfigSchemaEntry & { key: string }>> = {};
         for (const [key, def] of Object.entries(schema)) {
@@ -1009,7 +1016,7 @@ export function registerUtilCommands(program) {
       }
 
       fs.writeFileSync(pathsFile, lines.join('\n') + '\n');
-      clearCache(); // Clear path cache
+      clearPlaceholderCache(); // Clear path cache
 
       console.log(`Set: ${key} = ${value}`);
     });
@@ -1401,7 +1408,7 @@ export function registerUtilCommands(program) {
       copyDist('components.yaml-dist', path.join(sailingDir, 'components.yaml'), 'components.yaml');
 
       // Generate config.yaml from schema
-      const schema: ConfigSchema = getSchema();
+      const schema: ConfigSchema = getConfigSchema();
       const configLines = ['# Sailing configuration', '# Generated from schema', ''];
       const sections: Record<string, Array<ConfigSchemaEntry & { key: string }>> = {};
       for (const [key, def] of Object.entries(schema)) {
@@ -1455,54 +1462,57 @@ export function registerUtilCommands(program) {
           }
         }
 
-        // Check epics
-        findFiles(path.join(prdDir, 'epics'), /^E\d+.*\.md$/).forEach(f => {
-          const file = loadFile(f);
-          if (file) {
-            let needsFix = false;
-            const fm = file.data;
+      }
 
-            // Ensure required fields
-            if (!fm.id) {
-              fm.id = path.basename(f, '.md').match(/^E\d+/)?.[0];
-              needsFix = true;
-            }
-            if (!fm.parent) {
-              fm.parent = path.basename(prdDir).split('-').slice(0, 2).join('-');
-              needsFix = true;
-            }
+      // Check epics (artefacts.ts contract)
+      for (const epicEntry of getAllEpics()) {
+        const file = loadFile(epicEntry.file);
+        if (file) {
+          let needsFix = false;
+          const fm = file.data;
+          const prdDir = epicEntry.prdDir;
 
-            if (needsFix) {
-              saveFile(f, fm, file.body);
-              console.log(`Fixed: ${f}`);
-              fixed++;
-            }
+          // Ensure required fields
+          if (!fm.id) {
+            fm.id = epicEntry.id;
+            needsFix = true;
           }
-        });
-
-        // Check tasks
-        findFiles(path.join(prdDir, 'tasks'), /^T\d+.*\.md$/).forEach(f => {
-          const file = loadFile(f);
-          if (file) {
-            let needsFix = false;
-            const fm = file.data;
-
-            if (!fm.id) {
-              fm.id = path.basename(f, '.md').match(/^T\d+/)?.[0];
-              needsFix = true;
-            }
-            if (!fm.parent) {
-              fm.parent = path.basename(prdDir).split('-').slice(0, 2).join('-');
-              needsFix = true;
-            }
-
-            if (needsFix) {
-              saveFile(f, fm, file.body);
-              console.log(`Fixed: ${f}`);
-              fixed++;
-            }
+          if (!fm.parent) {
+            fm.parent = path.basename(prdDir).split('-').slice(0, 2).join('-');
+            needsFix = true;
           }
-        });
+
+          if (needsFix) {
+            saveFile(epicEntry.file, fm, file.body);
+            console.log(`Fixed: ${epicEntry.file}`);
+            fixed++;
+          }
+        }
+      }
+
+      // Check tasks (artefacts.ts contract)
+      for (const taskEntry of getAllTasks()) {
+        const file = loadFile(taskEntry.file);
+        if (file) {
+          let needsFix = false;
+          const fm = file.data;
+          const prdDir = path.dirname(path.dirname(taskEntry.file));
+
+          if (!fm.id) {
+            fm.id = taskEntry.id;
+            needsFix = true;
+          }
+          if (!fm.parent) {
+            fm.parent = path.basename(prdDir).split('-').slice(0, 2).join('-');
+            needsFix = true;
+          }
+
+          if (needsFix) {
+            saveFile(taskEntry.file, fm, file.body);
+            console.log(`Fixed: ${taskEntry.file}`);
+            fixed++;
+          }
+        }
       }
 
       console.log(`\nFixed ${fixed} file(s)`);

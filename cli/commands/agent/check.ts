@@ -4,8 +4,7 @@
 import fs from 'fs';
 import path from 'path';
 import { execSync } from 'child_process';
-import { findProjectRoot } from '../../lib/core.js';
-import { resolvePlaceholders, ensureDir } from '../../lib/paths.js';
+import { findProjectRoot, resolvePlaceholders, ensureDir } from '../../managers/core-manager.js';
 import { withModifies } from '../../lib/help.js';
 import { getAgentsBaseDir } from '../../lib/agent-utils.js';
 

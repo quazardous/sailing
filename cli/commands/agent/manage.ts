@@ -3,12 +3,10 @@
  */
 import fs from 'fs';
 import path from 'path';
-import { jsonOut } from '../../lib/core.js';
+import { jsonOut, resolvePlaceholders, getAgentConfig } from '../../managers/core-manager.js';
 import { getGit } from '../../lib/git.js';
-import { resolvePlaceholders } from '../../lib/paths.js';
-import { loadState, saveState } from '../../lib/state.js';
+import { loadState, saveState } from '../../managers/state-manager.js';
 import { withModifies } from '../../lib/help.js';
-import { getAgentConfig } from '../../lib/config.js';
 import { buildConflictMatrix, suggestMergeOrder } from '../../lib/conflicts.js';
 import { normalizeId } from '../../lib/normalize.js';
 import { AgentInfo } from '../../lib/types/agent.js';

@@ -9,7 +9,7 @@ import fs from 'fs';
 import path from 'path';
 import os from 'os';
 import { fileURLToPath } from 'url';
-import { ensureDir } from './paths.js';
+import { ensureDir } from './fs-utils.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 

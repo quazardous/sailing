@@ -4,7 +4,7 @@
  */
 import fs from 'fs';
 import path from 'path';
-import { findProjectRoot, getSailingDir, loadPathsConfig, jsonOut } from '../lib/core.js';
+import { findProjectRoot, getSailingDir, loadPathsConfig, jsonOut } from '../managers/core-manager.js';
 import { addDynamicHelp } from '../lib/help.js';
 
 // Base sailing permissions (path-independent)

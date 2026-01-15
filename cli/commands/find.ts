@@ -8,31 +8,28 @@
  */
 import { Command } from 'commander';
 import { execSync } from 'child_process';
-import { findProjectRoot, jsonOut, findPrdDirs, findFiles, loadFile } from '../lib/core.js';
+import path from 'path';
+import { findProjectRoot, jsonOut } from '../managers/core-manager.js';
 import { normalizeId, parentContainsEpic } from '../lib/normalize.js';
+import { getAllEpics, getAllTasks, getAllPrds, getAllStories, getPrd } from '../managers/artefacts-manager.js';
 
 /**
  * Find PRDs matching filters
+ * Uses artefacts.ts contract
  */
 function findPrds(filters) {
-  const prdDirs = findPrdDirs();
   const results = [];
 
-  for (const dir of prdDirs) {
-    const prdFile = findFiles(dir, 'prd.md')[0];
-    if (!prdFile) continue;
-
-    const file = loadFile(prdFile);
-    const data = file.data || {};
-    const id = data.id || dir.match(/PRD-\d+/i)?.[0];
+  for (const prdEntry of getAllPrds()) {
+    const data = prdEntry.data || {};
 
     if (!matchesFilters(data, filters, 'prd')) continue;
 
     results.push({
-      id: normalizeId(id),
+      id: normalizeId(prdEntry.id),
       title: data.title,
       status: data.status,
-      file: prdFile
+      file: prdEntry.file
     });
   }
 
@@ -41,36 +38,31 @@ function findPrds(filters) {
 
 /**
  * Find epics matching filters
+ * Uses artefacts.ts contract
  */
 function findEpics(filters) {
-  const prdDirs = findPrdDirs();
   const results = [];
 
-  // Filter by PRD if specified
-  const targetPrds = filters.prd
-    ? prdDirs.filter(d => d.toLowerCase().includes(normalizeId(filters.prd).toLowerCase()))
-    : prdDirs;
-
-  for (const prdDir of targetPrds) {
-    const epicsDir = `${prdDir}/epics`;
-    const epicFiles = findFiles(epicsDir, /^E\d+.*\.md$/);
-
-    for (const epicFile of epicFiles) {
-      const file = loadFile(epicFile);
-      if (!file?.data) continue;
-      const data = file.data;
-
-      if (!matchesFilters(data, filters, 'epic')) continue;
-
-      results.push({
-        id: normalizeId(data.id),
-        title: data.title,
-        status: data.status,
-        parent: data.parent,
-        stories: data.stories || [],
-        file: epicFile
-      });
+  for (const epicEntry of getAllEpics()) {
+    // Filter by PRD if specified
+    if (filters.prd) {
+      const prdDir = epicEntry.prdDir.toLowerCase();
+      if (!prdDir.includes(normalizeId(filters.prd).toLowerCase())) continue;
     }
+
+    const data = epicEntry.data;
+    if (!data) continue;
+
+    if (!matchesFilters(data, filters, 'epic')) continue;
+
+    results.push({
+      id: normalizeId(data.id),
+      title: data.title,
+      status: data.status,
+      parent: data.parent,
+      stories: data.stories || [],
+      file: epicEntry.file
+    });
   }
 
   return results;
@@ -78,43 +70,38 @@ function findEpics(filters) {
 
 /**
  * Find tasks matching filters
+ * Uses artefacts.ts contract
  */
 function findTasks(filters) {
-  const prdDirs = findPrdDirs();
   const results = [];
 
-  // Filter by PRD if specified
-  const targetPrds = filters.prd
-    ? prdDirs.filter(d => d.toLowerCase().includes(normalizeId(filters.prd).toLowerCase()))
-    : prdDirs;
-
-  for (const prdDir of targetPrds) {
-    const tasksDir = `${prdDir}/tasks`;
-    const taskFiles = findFiles(tasksDir, /^T\d+.*\.md$/);
-
-    for (const taskFile of taskFiles) {
-      const file = loadFile(taskFile);
-      if (!file?.data) continue;
-      const data = file.data;
-
-      // Filter by epic (format-agnostic: E1 matches E001 in parent)
-      if (filters.epic) {
-        if (!parentContainsEpic(data.parent, filters.epic)) continue;
-      }
-
-      if (!matchesFilters(data, filters, 'task')) continue;
-
-      results.push({
-        id: normalizeId(data.id),
-        title: data.title,
-        status: data.status,
-        parent: data.parent,
-        assignee: data.assignee,
-        blocked_by: data.blocked_by || [],
-        stories: data.stories || [],
-        file: taskFile
-      });
+  for (const taskEntry of getAllTasks()) {
+    // Filter by PRD if specified
+    if (filters.prd) {
+      const prdDir = path.dirname(path.dirname(taskEntry.file)).toLowerCase();
+      if (!prdDir.includes(normalizeId(filters.prd).toLowerCase())) continue;
     }
+
+    const data = taskEntry.data;
+    if (!data) continue;
+
+    // Filter by epic (format-agnostic: E1 matches E001 in parent)
+    if (filters.epic) {
+      if (!parentContainsEpic(data.parent, filters.epic)) continue;
+    }
+
+    if (!matchesFilters(data, filters, 'task')) continue;
+
+    results.push({
+      id: normalizeId(data.id),
+      title: data.title,
+      status: data.status,
+      parent: data.parent,
+      assignee: data.assignee,
+      blocked_by: data.blocked_by || [],
+      stories: data.stories || [],
+      file: taskEntry.file
+    });
   }
 
   return results;
@@ -122,35 +109,38 @@ function findTasks(filters) {
 
 /**
  * Find stories matching filters
+ * Uses artefacts.ts contract
  */
 function findStories(filters) {
-  const prdDirs = findPrdDirs();
   const results = [];
 
-  // Filter by PRD if specified
-  const targetPrds = filters.prd
-    ? prdDirs.filter(d => d.toLowerCase().includes(normalizeId(filters.prd).toLowerCase()))
-    : prdDirs;
+  // Get stories, optionally filtered by PRD
+  let storyEntries = getAllStories();
 
-  for (const prdDir of targetPrds) {
-    const storiesDir = `${prdDir}/stories`;
-    const storyFiles = findFiles(storiesDir, /^S\d+.*\.md$/);
-
-    for (const storyFile of storyFiles) {
-      const file = loadFile(storyFile);
-      if (!file?.data) continue;
-      const data = file.data;
-
-      if (!matchesFilters(data, filters, 'story')) continue;
-
-      results.push({
-        id: normalizeId(data.id),
-        title: data.title,
-        type: data.type,
-        parent_story: data.parent_story,
-        file: storyFile
-      });
+  if (filters.prd) {
+    const prd = getPrd(filters.prd);
+    if (prd) {
+      storyEntries = storyEntries.filter(s => s.prdDir === prd.dir);
+    } else {
+      // Fallback: filter by prdDir path containing prd filter
+      storyEntries = storyEntries.filter(s =>
+        s.prdDir.toLowerCase().includes(normalizeId(filters.prd).toLowerCase())
+      );
     }
+  }
+
+  for (const storyEntry of storyEntries) {
+    const data = storyEntry.data || {};
+
+    if (!matchesFilters(data, filters, 'story')) continue;
+
+    results.push({
+      id: normalizeId(data.id || storyEntry.id),
+      title: data.title,
+      type: data.type,
+      parent_story: data.parent_story,
+      file: storyEntry.file
+    });
   }
 
   return results;

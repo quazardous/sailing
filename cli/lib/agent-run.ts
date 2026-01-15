@@ -12,8 +12,8 @@
 import fs from 'fs';
 import path from 'path';
 import yaml from 'js-yaml';
-import { ensureDir } from './paths.js';
 import { getAgentDir } from './agent-utils.js';
+import { ensureDir } from './fs-utils.js';
 
 /**
  * Get path to run file for a task

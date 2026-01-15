@@ -3,10 +3,10 @@
  */
 import fs from 'fs';
 import path from 'path';
-import { jsonOut } from '../../lib/core.js';
+import { jsonOut } from '../../managers/core-manager.js';
 import { getAgentDir } from '../../lib/agent-utils.js';
 import { normalizeId } from '../../lib/normalize.js';
-import { getTaskEpic } from '../../lib/index.js';
+import { getTaskEpic } from '../../managers/artefacts-manager.js';
 import {
   NoiseFilter, LogEvent,
   loadNoiseFilters, saveNoiseFilters,

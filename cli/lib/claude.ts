@@ -1,13 +1,12 @@
 /**
  * Claude Subprocess Management
  *
- * Spawns Claude Code as subprocess with appropriate flags based on config.
- * Uses srt.js for actual spawning.
+ * Pure technical operations for spawning Claude Code.
+ * Config values should be passed as parameters.
  */
 import path from 'path';
 import fs from 'fs';
-import { getAgentConfig } from './config.js';
-import { getAgentsDir, getPathsInfo } from './core.js';
+import { getAgentsDir, getPathsInfo } from '../managers/core-manager.js';
 import { spawnClaudeWithSrt, generateSrtConfig, generateAgentMcpConfig, checkMcpServer, startSocatBridge } from './srt.js';
 import type { ChildProcess } from 'child_process';
 
@@ -123,29 +122,33 @@ function getHavenDir(agentDir) {
   return path.dirname(path.dirname(agentDir));
 }
 
+export interface SpawnClaudeOptions {
+  prompt: string;
+  cwd: string;
+  logFile: string;
+  agentDir?: string;
+  taskId?: string;
+  projectRoot?: string;
+  timeout?: number;
+  riskyMode?: boolean;
+  sandbox?: boolean;
+  stderrToFile?: boolean | string;
+  quietMode?: boolean;
+  maxBudgetUsd?: number;
+  watchdogTimeout?: number;
+}
+
 /**
  * Spawn Claude subprocess
- * @param {object} options - Spawn options
- * @param {string} options.prompt - The prompt to send to Claude
- * @param {string} options.cwd - Working directory (worktree path)
- * @param {string} options.logFile - Path to log file for stdout/stderr
- * @param {string} [options.agentDir] - Agent directory (for srt config generation)
- * @param {string} [options.taskId] - Task ID (for logging, not MCP restriction)
- * @param {string} [options.projectRoot] - Project root for MCP server
- * @param {number} [options.timeout] - Timeout in seconds
- * @param {boolean} [options.riskyMode] - Override risky_mode config
- * @param {boolean} [options.sandbox] - Override sandbox config
- * @param {boolean|string} [options.stderrToFile] - Redirect stderr to file only (true=logFile, string=custom path)
- * @param {boolean} [options.quietMode] - Suppress all console output (stdout+stderr to file only)
- * @returns {Promise<SpawnClaudeResult>}
+ * Config values (riskyMode, sandbox, maxBudgetUsd, watchdogTimeout) should be passed explicitly.
  */
-export async function spawnClaude(options): Promise<SpawnClaudeResult> {
+export async function spawnClaude(options: SpawnClaudeOptions): Promise<SpawnClaudeResult> {
   const { prompt, cwd, logFile, timeout, agentDir, taskId, projectRoot, stderrToFile, quietMode } = options;
-  const config = getAgentConfig();
   const paths = getPathsInfo();
 
-  const riskyMode = options.riskyMode ?? config.risky_mode;
-  const sandbox = options.sandbox ?? config.sandbox;
+  // Config values must be passed explicitly (no defaults from config)
+  const riskyMode = options.riskyMode ?? false;
+  const sandbox = options.sandbox ?? false;
 
   // When sandbox is enabled with agent context, use external MCP
   // MCP server runs OUTSIDE sandbox at haven level, agent connects via Unix socket
@@ -270,9 +273,9 @@ export async function spawnClaude(options): Promise<SpawnClaudeResult> {
   // Required to prevent race conditions when spawning multiple agents in parallel
   const sandboxHome = sandbox && agentDir ? path.join(agentDir, 'home') : null;
 
-  // Get budget and watchdog from config
-  const maxBudgetUsd = config.max_budget_usd;
-  const watchdogTimeout = config.watchdog_timeout;
+  // Budget and watchdog from options
+  const maxBudgetUsd = options.maxBudgetUsd;
+  const watchdogTimeout = options.watchdogTimeout;
 
   const result = spawnClaudeWithSrt({
     prompt,

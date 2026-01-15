@@ -5,7 +5,7 @@
 import fs from 'fs';
 import path from 'path';
 import { execaSync } from 'execa';
-import { loadComponents as loadComponentsConfig, getComponentsFile, findProjectRoot } from './core.js';
+import { loadComponents as loadComponentsConfig, getComponentsFile, findProjectRoot } from './core-manager.js';
 
 type SemverParts = { major: number; minor: number; patch: number };
 

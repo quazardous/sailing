@@ -4,8 +4,8 @@
  */
 import fs from 'fs';
 import path from 'path';
-import { resolvePlaceholders, resolvePath } from './paths.js';
-import { loadState } from './state.js';
+import { resolvePlaceholders, resolvePath } from '../managers/core-manager.js';
+import { loadState } from '../managers/state-manager.js';
 import { normalizeId } from './normalize.js';
 
 interface AgentUtilsOptions {

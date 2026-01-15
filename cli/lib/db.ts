@@ -9,7 +9,7 @@
  * state.json remains for simple counters (prd, epic, task, story)
  */
 import path from 'path';
-import { resolvePlaceholders, resolvePath } from './paths.js';
+import { resolvePlaceholders, resolvePath } from '../managers/core-manager.js';
 import { Collection } from './jsondb.js';
 
 interface DbOptions {

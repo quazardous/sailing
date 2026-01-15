@@ -11,10 +11,10 @@
  */
 import fs from 'fs';
 import path from 'path';
-import { findPrdDirs, findFiles, loadFile, getMemoryDir } from './core.js';
-import { resolvePlaceholders, resolvePath } from './paths.js';
+import { findPrdDirs, findFiles, loadFile, getMemoryDir } from '../managers/core-manager.js';
+import { resolvePlaceholders, resolvePath } from '../managers/core-manager.js';
 import { normalizeId } from './normalize.js';
-import { getTaskEpic as indexGetTaskEpic, getEpicPrd as indexGetEpicPrd } from './index.js';
+import { getTaskEpic as indexGetTaskEpic, getEpicPrd as indexGetEpicPrd } from '../managers/artefacts-manager.js';
 import { LogFileEntry, LogLevelCounts, MemoryEntry } from './types/memory.js';
 
 /**

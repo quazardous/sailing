@@ -3,10 +3,10 @@
  * Build, analyze, and traverse task dependency graphs
  */
 import path from 'path';
-import { findPrdDirs, findFiles, loadFile } from './core.js';
 import { normalizeId, extractTaskId } from './normalize.js';
-import { extractEpicId } from './entities.js';
+import { extractEpicId } from './normalize.js';
 import { isStatusDone, isStatusCancelled } from './lexicon.js';
+import { getAllTasks } from '../managers/artefacts-manager.js';
 
 type TaskNode = {
   id: string;
@@ -53,36 +53,36 @@ export function buildDependencyGraph(): { tasks: TasksMap; blocks: BlocksMap } {
   const tasks: TasksMap = new Map(); // id -> { id, title, status, assignee, blockedBy: [], file, prd, parent }
   const blocks: BlocksMap = new Map(); // id -> [ids that this task blocks]
 
-  for (const prdDir of findPrdDirs()) {
+  // Use artefacts.ts contract - single entry point for task access
+  for (const taskEntry of getAllTasks()) {
+    const id = taskEntry.id;
+    const data = taskEntry.data as TaskFrontmatter | undefined;
+
+    // Extract PRD name from file path (e.g., /path/PRD-001-name/tasks/T001.md)
+    const tasksDir = path.dirname(taskEntry.file);
+    const prdDir = path.dirname(tasksDir);
     const prdName = path.basename(prdDir);
-    findFiles(path.join(prdDir, 'tasks'), /^T\d+.*\.md$/).forEach(f => {
-      const file = loadFile<TaskFrontmatter>(f);
-      const rawId = file?.data?.id || path.basename(f, '.md').match(/^T\d+/)?.[0];
-      if (!rawId) return;
-      const id = normalizeId(rawId);
-      if (!id) return;
 
-      const blockedByRaw = file?.data?.blocked_by || [];
-      const blockedBy = blockedByRaw.map(extractTaskId).filter((b): b is string => Boolean(b));
+    const blockedByRaw = data?.blocked_by || [];
+    const blockedBy = blockedByRaw.map(b => extractTaskId(b)).filter((b): b is string => Boolean(b));
 
-      tasks.set(id, {
-        id,
-        title: file?.data?.title || '',
-        status: file?.data?.status || 'Unknown',
-        assignee: file?.data?.assignee || 'unassigned',
-        effort: file?.data?.effort || '',
-        priority: file?.data?.priority || 'normal',
-        tags: file?.data?.tags || [],
-        blockedBy,
-        blockedByRaw,
-        file: f,
-        prd: prdName,
-        parent: file?.data?.parent || '',
-        epic: extractEpicId(file?.data?.parent || '') || undefined,
-        started_at: file?.data?.started_at,
-        done_at: file?.data?.done_at,
-        blocked_at: file?.data?.blocked_at
-      });
+    tasks.set(id, {
+      id,
+      title: data?.title || '',
+      status: data?.status || 'Unknown',
+      assignee: data?.assignee || 'unassigned',
+      effort: data?.effort || '',
+      priority: data?.priority || 'normal',
+      tags: data?.tags || [],
+      blockedBy,
+      blockedByRaw,
+      file: taskEntry.file,
+      prd: prdName,
+      parent: data?.parent || '',
+      epic: extractEpicId(data?.parent || '') || undefined,
+      started_at: data?.started_at,
+      done_at: data?.done_at,
+      blocked_at: data?.blocked_at
     });
   }
 

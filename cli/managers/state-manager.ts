@@ -6,8 +6,9 @@
  */
 import fs from 'fs';
 import path from 'path';
-import { getStateFile, findPrdDirs, findFiles, getSailingDir } from './core.js';
-import { State } from './types/state.js';
+import { getStateFile, findPrdDirs, findFiles, getSailingDir } from './core-manager.js';
+import { State } from '../lib/types/state.js';
+import { buildTaskIndex, buildEpicIndex, buildPrdIndex } from './artefacts-manager.js';
 
 /**
  * Acquire exclusive lock on state file
@@ -77,23 +78,30 @@ export function loadState(): State {
   if (fs.existsSync(stateFile)) {
     return JSON.parse(fs.readFileSync(stateFile, 'utf8'));
   }
-  // Auto-init: scan existing files to find max IDs
+  // Auto-init: scan existing files to find max IDs using artefacts index
   let maxPrd = 0, maxEpic = 0, maxTask = 0, maxStory = 0;
 
+  // Use artefacts.ts indexes for PRD, Epic, Task
+  const prdIndex = buildPrdIndex();
+  for (const [num] of prdIndex) {
+    if (num > maxPrd) maxPrd = num;
+  }
+
+  const epicIndex = buildEpicIndex();
+  for (const [key] of epicIndex) {
+    const num = parseInt(key.replace(/[a-z]/i, ''), 10);
+    if (num > maxEpic) maxEpic = num;
+  }
+
+  const taskIndex = buildTaskIndex();
+  for (const [key] of taskIndex) {
+    const num = parseInt(key.replace(/[a-z]/i, ''), 10);
+    if (num > maxTask) maxTask = num;
+  }
+
+  // Stories still need direct scan (not yet in artefacts.ts)
+  // TODO: Add story index to artefacts.ts
   findPrdDirs().forEach(prdDir => {
-    const prdNum = parseInt(path.basename(prdDir).match(/PRD-(\d+)/)?.[1] || '0');
-    if (prdNum > maxPrd) maxPrd = prdNum;
-
-    findFiles(path.join(prdDir, 'epics'), /^E\d+.*\.md$/).forEach(f => {
-      const num = parseInt(path.basename(f).match(/E(\d+)/)?.[1] || '0');
-      if (num > maxEpic) maxEpic = num;
-    });
-
-    findFiles(path.join(prdDir, 'tasks'), /^T\d+.*\.md$/).forEach(f => {
-      const num = parseInt(path.basename(f).match(/T(\d+)/)?.[1] || '0');
-      if (num > maxTask) maxTask = num;
-    });
-
     findFiles(path.join(prdDir, 'stories'), /^S\d+.*\.md$/).forEach(f => {
       const num = parseInt(path.basename(f).match(/S(\d+)/)?.[1] || '0');
       if (num > maxStory) maxStory = num;

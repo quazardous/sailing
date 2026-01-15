@@ -4,7 +4,7 @@
 import fs from 'fs';
 import path from 'path';
 import yaml from 'js-yaml';
-import { getPath } from './core.js';
+import { getPath } from '../managers/core-manager.js';
 
 export interface NoiseFilter {
   id: string;

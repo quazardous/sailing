@@ -10,11 +10,9 @@
 import fs from 'fs';
 import path from 'path';
 import { execSync } from 'child_process';
-import { findProjectRoot, getWorktreesDir as _getWorktreesDir } from './core.js';
-import { ensureDir } from './paths.js';
-import { getGitConfig, getConfigValue } from './config.js';
+import { ensureDir } from './fs-utils.js';
 
-interface WorktreeContext {
+export interface WorktreeContext {
   prdId?: string;
   epicId?: string;
   branching?: string;
@@ -37,28 +35,13 @@ interface WorktreeInfo {
 }
 
 /**
- * Get configured main branch name
- * @returns {string} Main branch name (from config or default 'main')
- */
-export function getMainBranch() {
-  try {
-    const gitConfig = getGitConfig();
-    return gitConfig?.main_branch || 'main';
-  } catch {
-    return 'main';
-  }
-}
-
-// Re-export from core.js for backward compatibility
-export const getWorktreesDir = _getWorktreesDir;
-
-/**
  * Get worktree path for a task
+ * @param {string} worktreesDir - Base directory for worktrees
  * @param {string} taskId - Task ID (e.g., T042)
  * @returns {string} Absolute path to worktree
  */
-export function getWorktreePath(taskId) {
-  return path.join(getWorktreesDir(), taskId);
+export function getWorktreePath(worktreesDir: string, taskId: string): string {
+  return path.join(worktreesDir, taskId);
 }
 
 /**
@@ -140,11 +123,11 @@ export function isReconcileBranch(branchName) {
 
 /**
  * Check if a branch exists
+ * @param {string} projectRoot - Project root directory
  * @param {string} branchName - Full branch name
  * @returns {boolean}
  */
-export function branchExists(branchName) {
-  const projectRoot = findProjectRoot();
+export function branchExists(projectRoot: string, branchName: string): boolean {
   try {
     execSync(`git rev-parse --verify "${branchName}"`, {
       cwd: projectRoot,
@@ -158,15 +141,13 @@ export function branchExists(branchName) {
 
 /**
  * Create a branch if it doesn't exist
+ * @param {string} projectRoot - Project root directory
  * @param {string} branchName - Branch name to create
- * @param {string} baseBranch - Base branch to create from (default: configured main branch)
+ * @param {string} baseBranch - Base branch to create from
  * @returns {{ created: boolean, branch: string, error?: string }}
  */
-export function ensureBranch(branchName, baseBranch = null) {
-  baseBranch = baseBranch || getMainBranch();
-  const projectRoot = findProjectRoot();
-
-  if (branchExists(branchName)) {
+export function ensureBranch(projectRoot: string, branchName: string, baseBranch: string) {
+  if (branchExists(projectRoot, branchName)) {
     return { created: false, branch: branchName, existed: true };
   }
 
@@ -185,12 +166,11 @@ export function ensureBranch(branchName, baseBranch = null) {
 /**
  * Get parent branch for a task based on branching strategy
  * @param {string} taskId - Task ID
- * @param {WorktreeContext} context - Context with prdId, epicId, branching strategy
+ * @param {WorktreeContext} context - Context with prdId, epicId, branching strategy, mainBranch
  * @returns {string} Parent branch name
  */
-export function getParentBranch(taskId: string, context: WorktreeContext = {}) {
-  const { prdId, epicId, branching = 'flat' } = context;
-  const mainBranch = getMainBranch();
+export function getParentBranch(taskId: string, context: WorktreeContext) {
+  const { prdId, epicId, branching = 'flat', mainBranch = 'main' } = context;
 
   switch (branching) {
     case 'epic':
@@ -208,15 +188,15 @@ export function getParentBranch(taskId: string, context: WorktreeContext = {}) {
 
 /**
  * Ensure branch hierarchy exists for a task
+ * @param {string} projectRoot - Project root directory
  * @param {WorktreeContext} context - { prdId, epicId, branching, mainBranch }
  * @returns {{ branches: string[], created: string[], errors: string[] }}
  */
-export function ensureBranchHierarchy(context: WorktreeContext) {
-  const { prdId, epicId, branching = 'flat' } = context;
-  const mainBranch = context.mainBranch || getMainBranch();
-  const branches = [];
-  const created = [];
-  const errors = [];
+export function ensureBranchHierarchy(projectRoot: string, context: WorktreeContext) {
+  const { prdId, epicId, branching = 'flat', mainBranch = 'main' } = context;
+  const branches: string[] = [];
+  const created: string[] = [];
+  const errors: string[] = [];
 
   if (branching === 'flat') {
     return { branches: [mainBranch], created: [], errors: [] };
@@ -227,7 +207,7 @@ export function ensureBranchHierarchy(context: WorktreeContext) {
     const prdBranch = getPrdBranchName(prdId);
     branches.push(prdBranch);
 
-    const result = ensureBranch(prdBranch, mainBranch);
+    const result = ensureBranch(projectRoot, prdBranch, mainBranch);
     if (result.created) created.push(prdBranch);
     if (result.error) errors.push(`${prdBranch}: ${result.error}`);
   }
@@ -238,7 +218,7 @@ export function ensureBranchHierarchy(context: WorktreeContext) {
     const parentBranch = prdId ? getPrdBranchName(prdId) : mainBranch;
     branches.push(epicBranch);
 
-    const result = ensureBranch(epicBranch, parentBranch);
+    const result = ensureBranch(projectRoot, epicBranch, parentBranch);
     if (result.created) created.push(epicBranch);
     if (result.error) errors.push(`${epicBranch}: ${result.error}`);
   }
@@ -249,12 +229,11 @@ export function ensureBranchHierarchy(context: WorktreeContext) {
 /**
  * Get the branch hierarchy chain for sync propagation
  * Returns array from main → ... → task parent (order: top to bottom)
- * @param {WorktreeContext} context - { prdId, epicId, branching }
+ * @param {WorktreeContext} context - { prdId, epicId, branching, mainBranch }
  * @returns {string[]} Branch chain (e.g., ['main', 'prd/PRD-001', 'epic/E001'])
  */
-export function getBranchHierarchy(context: WorktreeContext) {
-  const { prdId, epicId, branching = 'flat' } = context;
-  const mainBranch = getMainBranch();
+export function getBranchHierarchy(context: WorktreeContext): string[] {
+  const { prdId, epicId, branching = 'flat', mainBranch = 'main' } = context;
   const chain = [mainBranch];
 
   if (branching === 'flat') {
@@ -274,13 +253,12 @@ export function getBranchHierarchy(context: WorktreeContext) {
 
 /**
  * Check if a branch is behind another
+ * @param {string} projectRoot - Project root directory
  * @param {string} branch - Branch to check
  * @param {string} upstream - Upstream branch
  * @returns {{ behind: number, ahead: number }}
  */
-export function getBranchDivergence(branch, upstream) {
-  const projectRoot = findProjectRoot();
-
+export function getBranchDivergence(projectRoot: string, branch: string, upstream: string) {
   try {
     const output = execSync(
       `git rev-list --left-right --count "${upstream}...${branch}"`,
@@ -296,16 +274,15 @@ export function getBranchDivergence(branch, upstream) {
 
 /**
  * Sync (merge/rebase) a branch from its upstream
+ * @param {string} projectRoot - Project root directory
  * @param {string} branch - Branch to sync
  * @param {string} upstream - Upstream branch to sync from
  * @param {string} strategy - 'merge' or 'rebase' (default: merge)
  * @returns {{ success: boolean, synced: boolean, error?: string }}
  */
-export function syncBranch(branch, upstream, strategy = 'merge') {
-  const projectRoot = findProjectRoot();
-
+export function syncBranch(projectRoot: string, branch: string, upstream: string, strategy = 'merge') {
   // Check divergence first
-  const div = getBranchDivergence(branch, upstream);
+  const div = getBranchDivergence(projectRoot, branch, upstream);
   if (div.behind === 0) {
     return { success: true, synced: false, message: 'Already up to date' };
   }
@@ -337,7 +314,7 @@ export function syncBranch(branch, upstream, strategy = 'merge') {
       });
 
       return { success: true, synced: true, behind: div.behind };
-    } catch (e) {
+    } catch (e: any) {
       // Abort and return to original
       try {
         if (strategy === 'rebase') {
@@ -353,70 +330,31 @@ export function syncBranch(branch, upstream, strategy = 'merge') {
 
       return { success: false, synced: false, error: `Conflict during ${strategy}: ${e.message}` };
     }
-  } catch (e) {
+  } catch (e: any) {
     return { success: false, synced: false, error: e.message };
   }
 }
 
 /**
- * Sync parent branch from its upstream (one level only)
- * Called before spawning task - syncs only the immediate parent
- * @param {WorktreeContext} context - { prdId, epicId, branching }
- * @returns {{ success: boolean, synced?: string, skipped?: string, error?: string, disabled?: boolean }}
- */
-export function syncParentBranch(context: WorktreeContext) {
-  const syncEnabled = getConfigValue('git.sync_before_spawn');
-  if (!syncEnabled) {
-    return { success: true, disabled: true };
-  }
-
-  const chain = getBranchHierarchy(context);
-  if (chain.length < 2) {
-    // flat mode: no parent to sync
-    return { success: true, skipped: 'flat mode' };
-  }
-
-  // Get the last branch in the hierarchy (task's parent) and its upstream
-  const branch = chain[chain.length - 1];      // e.g., epic/E001
-  const upstream = chain[chain.length - 2];    // e.g., prd/PRD-001 or main
-
-  // Skip if branch doesn't exist yet
-  if (!branchExists(branch)) {
-    return { success: true, skipped: `${branch} (not created yet)` };
-  }
-
-  const result = syncBranch(branch, upstream, 'merge');
-  if (!result.success) {
-    return { success: false, error: `${branch}: ${result.error}` };
-  }
-
-  if (result.synced) {
-    return { success: true, synced: `${branch} ← ${upstream} (${result.behind} commits)` };
-  }
-
-  return { success: true, skipped: `${branch} (up to date)` };
-}
-
-/**
  * Sync branch hierarchy upward (for epic/PRD completion)
  * Called when finishing an epic or PRD - syncs upward to main
+ * @param {string} projectRoot - Project root directory
  * @param {string} level - 'epic' | 'prd' - which level completed
- * @param {WorktreeContext} context - { prdId, epicId, branching }
+ * @param {WorktreeContext} context - { prdId, epicId, branching, mainBranch }
  * @returns {{ success: boolean, synced: string[], errors: string[], skipped: string[] }}
  */
-export function syncUpwardHierarchy(level: string, context: WorktreeContext) {
-  const { prdId, epicId, branching = 'flat' } = context;
-  const mainBranch = getMainBranch();
-  const synced = [];
-  const errors = [];
-  const skipped = [];
+export function syncUpwardHierarchy(projectRoot: string, level: string, context: WorktreeContext) {
+  const { prdId, epicId, branching = 'flat', mainBranch = 'main' } = context;
+  const synced: string[] = [];
+  const errors: string[] = [];
+  const skipped: string[] = [];
 
   if (branching === 'flat') {
     return { success: true, synced: [], errors: [], skipped: ['flat mode'] };
   }
 
   // Determine which syncs to perform based on completion level
-  const syncPairs = [];
+  const syncPairs: { branch: string; upstream: string }[] = [];
 
   if (level === 'epic' && branching === 'epic') {
     // Epic completed: sync epic → prd
@@ -434,12 +372,12 @@ export function syncUpwardHierarchy(level: string, context: WorktreeContext) {
   }
 
   for (const { branch, upstream } of syncPairs) {
-    if (!branchExists(branch)) {
+    if (!branchExists(projectRoot, branch)) {
       skipped.push(`${branch} (not found)`);
       continue;
     }
 
-    const result = syncBranch(branch, upstream, 'merge');
+    const result = syncBranch(projectRoot, branch, upstream, 'merge');
     if (!result.success) {
       errors.push(`${branch}: ${result.error}`);
     } else if (result.synced) {
@@ -454,24 +392,26 @@ export function syncUpwardHierarchy(level: string, context: WorktreeContext) {
 
 /**
  * Check if a worktree exists
+ * @param {string} worktreesDir - Base directory for worktrees
  * @param {string} taskId - Task ID
  * @returns {boolean}
  */
-export function worktreeExists(taskId) {
-  const worktreePath = getWorktreePath(taskId);
+export function worktreeExists(worktreesDir: string, taskId: string): boolean {
+  const worktreePath = getWorktreePath(worktreesDir, taskId);
   return fs.existsSync(worktreePath);
 }
 
 /**
  * Create a worktree for a task
+ * @param {string} projectRoot - Project root directory
+ * @param {string} worktreesDir - Base directory for worktrees
  * @param {string} taskId - Task ID
  * @param {WorktreeOptions} options - Options
  * @param {string} options.baseBranch - Base branch to create from (default: current branch)
  * @returns {{ success: boolean, path: string, branch: string, error?: string }}
  */
-export function createWorktree(taskId: string, options: WorktreeOptions = {}) {
-  const projectRoot = findProjectRoot();
-  const worktreePath = getWorktreePath(taskId);
+export function createWorktree(projectRoot: string, worktreesDir: string, taskId: string, options: WorktreeOptions = {}) {
+  const worktreePath = getWorktreePath(worktreesDir, taskId);
   const branch = getBranchName(taskId);
 
   // Check if worktree path already exists
@@ -499,7 +439,7 @@ export function createWorktree(taskId: string, options: WorktreeOptions = {}) {
     }
 
     // Check if branch already exists (orphaned from previous run)
-    const branchAlreadyExists = branchExists(branch);
+    const branchAlreadyExists = branchExists(projectRoot, branch);
 
     if (branchAlreadyExists) {
       // Check if the branch has commits ahead of base
@@ -575,15 +515,16 @@ export function createWorktree(taskId: string, options: WorktreeOptions = {}) {
 
 /**
  * Remove a worktree and its branch
+ * @param {string} projectRoot - Project root directory
+ * @param {string} worktreesDir - Base directory for worktrees
  * @param {string} taskId - Task ID
  * @param {WorktreeOptions} options - Options
  * @param {boolean} options.force - Force removal even if dirty
  * @param {boolean} options.keepBranch - Don't delete the branch
  * @returns {{ success: boolean, path: string, branch: string, error?: string }}
  */
-export function removeWorktree(taskId: string, options: WorktreeOptions = {}) {
-  const projectRoot = findProjectRoot();
-  const worktreePath = getWorktreePath(taskId);
+export function removeWorktree(projectRoot: string, worktreesDir: string, taskId: string, options: WorktreeOptions = {}) {
+  const worktreePath = getWorktreePath(worktreesDir, taskId);
   const branch = getBranchName(taskId);
 
   // Check if worktree exists
@@ -636,11 +577,10 @@ export function removeWorktree(taskId: string, options: WorktreeOptions = {}) {
 
 /**
  * List all worktrees
+ * @param {string} projectRoot - Project root directory
  * @returns {Array<WorktreeInfo>}
  */
-export function listWorktrees() {
-  const projectRoot = findProjectRoot();
-
+export function listWorktrees(projectRoot: string): WorktreeInfo[] {
   try {
     const output = execSync('git worktree list --porcelain', {
       cwd: projectRoot,
@@ -685,19 +625,19 @@ export function listWorktrees() {
 
 /**
  * List agent worktrees (only those matching agent/TNNN pattern)
+ * @param {string} projectRoot - Project root directory
  * @returns {Array<{ path: string, branch: string, head: string, taskId: string }>}
  */
-export function listAgentWorktrees() {
-  return listWorktrees().filter(w => w.taskId);
+export function listAgentWorktrees(projectRoot: string) {
+  return listWorktrees(projectRoot).filter(w => w.taskId);
 }
 
 /**
  * Prune orphaned worktrees
- * @returns {{ pruned: number }}
+ * @param {string} projectRoot - Project root directory
+ * @returns {{ pruned: boolean }}
  */
-export function pruneWorktrees() {
-  const projectRoot = findProjectRoot();
-
+export function pruneWorktrees(projectRoot: string) {
   try {
     execSync('git worktree prune', {
       cwd: projectRoot,
@@ -712,11 +652,12 @@ export function pruneWorktrees() {
 
 /**
  * Get worktree status
+ * @param {string} worktreesDir - Base directory for worktrees
  * @param {string} taskId - Task ID
  * @returns {{ exists: boolean, path: string, branch: string, clean?: boolean, ahead?: number, behind?: number }}
  */
-export function getWorktreeStatus(taskId) {
-  const worktreePath = getWorktreePath(taskId);
+export function getWorktreeStatus(worktreesDir: string, taskId: string) {
+  const worktreePath = getWorktreePath(worktreesDir, taskId);
   const branch = getBranchName(taskId);
 
   if (!fs.existsSync(worktreePath)) {
@@ -759,7 +700,7 @@ export function getWorktreeStatus(taskId) {
       ahead,
       behind
     };
-  } catch (e) {
+  } catch (e: any) {
     return {
       exists: true,
       path: worktreePath,
@@ -771,21 +712,22 @@ export function getWorktreeStatus(taskId) {
 
 /**
  * Full cleanup: remove worktree + local branch + remote branch
+ * @param {string} projectRoot - Project root directory
+ * @param {string} worktreesDir - Base directory for worktrees
  * @param {string} taskId - Task ID
  * @param {object} options - Options
  * @param {boolean} options.force - Force removal
  * @returns {{ success: boolean, removed: string[], errors: string[] }}
  */
-export function cleanupWorktree(taskId: string, options: { force?: boolean } = {}) {
-  const projectRoot = findProjectRoot();
-  const worktreePath = getWorktreePath(taskId);
+export function cleanupWorktree(projectRoot: string, worktreesDir: string, taskId: string, options: { force?: boolean } = {}) {
+  const worktreePath = getWorktreePath(worktreesDir, taskId);
   const branch = getBranchName(taskId);
   const removed: string[] = [];
   const errors: string[] = [];
 
   // Remove worktree
   if (fs.existsSync(worktreePath)) {
-    const result = removeWorktree(taskId, { force: options.force });
+    const result = removeWorktree(projectRoot, worktreesDir, taskId, { force: options.force });
     if (result.success) {
       removed.push('worktree');
     } else if (result.error) {

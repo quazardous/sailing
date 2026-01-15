@@ -4,28 +4,25 @@
 import fs from 'fs';
 import path from 'path';
 import yaml from 'js-yaml';
-import { findProjectRoot, loadFile, jsonOut } from '../../lib/core.js';
-import { execRudderSafe } from '../../lib/invoke.js';
+import { findProjectRoot, loadFile, jsonOut, resolvePlaceholders, getAgentConfig, ensureDir } from '../../managers/core-manager.js';
 import { getGit } from '../../lib/git.js';
-import { create as createPr } from '../../lib/git-forge.js';
+import { create as createPr } from '../../managers/pr-manager.js';
 import { claimTask, releaseTask } from '../../lib/agent-run.js';
-import { resolvePlaceholders } from '../../lib/paths.js';
+import { reapAgent } from '../../managers/agent-manager.js';
 import { createMission } from '../../lib/agent-schema.js';
-import { loadState, saveState, updateStateAtomic } from '../../lib/state.js';
+import { loadState, saveState, updateStateAtomic } from '../../managers/state-manager.js';
 import { withModifies } from '../../lib/help.js';
-import { getAgentConfig } from '../../lib/config.js';
-import { buildAgentSpawnPrompt } from '../../lib/compose.js';
+import { buildAgentSpawnPrompt } from '../../managers/compose-manager.js';
 import {
   createWorktree, getWorktreePath, getBranchName, worktreeExists, removeWorktree,
   ensureBranchHierarchy, syncParentBranch, getParentBranch, getMainBranch
-} from '../../lib/worktree.js';
+} from '../../managers/worktree-manager.js';
 import { spawnClaude, getLogFilePath } from '../../lib/claude.js';
 import { checkMcpServer } from '../../lib/srt.js';
-import { extractPrdId, extractEpicId, getPrdBranching, findDevMd, findToolset } from '../../lib/entities.js';
-import { getTask, getEpic, getMemoryFile } from '../../lib/index.js';
-import { normalizeId } from '../../lib/normalize.js';
+import { extractPrdId, extractEpicId, normalizeId } from '../../lib/normalize.js';
+import { findDevMd, findToolset } from '../../managers/core-manager.js';
+import { getTask, getEpic, getMemoryFile, getPrdBranching } from '../../managers/artefacts-manager.js';
 import { getAgentDir, getProcessStats, formatDuration } from '../../lib/agent-utils.js';
-import { ensureDir } from '../../lib/paths.js';
 import { AgentInfo } from '../../lib/types/agent.js';
 import { analyzeLog, printDiagnoseResult } from '../../lib/diagnose.js';
 
@@ -477,7 +474,12 @@ export function registerSpawnCommand(agent) {
         agentDir,
         taskId,
         projectRoot,
-        quietMode: !shouldLog
+        quietMode: !shouldLog,
+        // Pass config values explicitly
+        riskyMode: agentConfig.risky_mode,
+        sandbox: agentConfig.sandbox,
+        maxBudgetUsd: agentConfig.max_budget_usd,
+        watchdogTimeout: agentConfig.watchdog_timeout
       });
 
       // Update state atomically
@@ -754,15 +756,15 @@ export function registerSpawnCommand(agent) {
       // Auto-reap if successful
       if (exitCode === 0) {
         if (!isQuiet) console.log(`\nAuto-reaping ${taskId}...`);
-        const { stdout, stderr, exitCode: reapCode } = execRudderSafe(
-          `agent:reap ${taskId}${!isQuiet ? ' --verbose' : ''}`,
-          { cwd: projectRoot }
-        );
-        if (reapCode === 0) {
-          if (!isQuiet && stdout) console.log(stdout);
+        const reapResult = await reapAgent(taskId, { verbose: !isQuiet });
+        if (reapResult.success) {
+          if (!isQuiet) {
+            console.log(`✓ Merged ${taskId}${reapResult.cleanedUp ? ' (cleaned up)' : ''}`);
+            console.log(`✓ Task ${taskId} → ${reapResult.taskStatus}`);
+          }
           if (isQuiet) console.log(`${taskId}: ✓ reaped`);
-        } else {
-          console.error(`Reap failed: ${stderr}`);
+        } else if (reapResult.escalate) {
+          console.error(`Reap failed: ${reapResult.escalate.reason}`);
           console.error(`Manual: bin/rudder agent:reap ${taskId}`);
         }
       } else {

@@ -3,16 +3,16 @@
  */
 import fs from 'fs';
 import path from 'path';
-import { findPrdDirs, findFiles, loadFile, saveFile, toKebab, jsonOut, getPrdsDir, stripComments } from '../lib/core.js';
+import { findPrdDirs, loadFile, saveFile, toKebab, jsonOut, getPrdsDir, stripComments } from '../managers/core-manager.js';
 import { matchesPrdDir } from '../lib/normalize.js';
 import { STATUS, normalizeStatus, statusSymbol } from '../lib/lexicon.js';
-import { nextId } from '../lib/state.js';
+import { nextId } from '../managers/state-manager.js';
 import { parseUpdateOptions } from '../lib/update.js';
 import { addDynamicHelp, withModifies } from '../lib/help.js';
-import { formatId } from '../lib/config.js';
+import { formatId } from '../managers/core-manager.js';
 import { parseSearchReplace, editArtifact, parseMultiSectionContent, processMultiSectionOps } from '../lib/artifact.js';
-import { getPrd } from '../lib/index.js';
-import { createPrdMemoryFile } from '../lib/memory.js';
+import { getPrd, getEpicsForPrd, getTasksForPrd, getAllPrds } from '../managers/artefacts-manager.js';
+import { createPrdMemoryFile } from '../managers/memory-manager.js';
 import { Prd } from '../lib/types/entities.js';
 
 /**
@@ -37,41 +37,37 @@ export function registerPrdCommands(program) {
     .action((options) => {
       const prds: (Prd & { dir?: string; epics: number; tasks: number })[] = [];
 
-      for (const prdDir of findPrdDirs()) {
-        const prdFile = path.join(prdDir, 'prd.md');
-        const file = loadFile(prdFile);
-        if (!file?.data) continue;
+      for (const prdEntry of getAllPrds()) {
+        const data = prdEntry.data;
 
         // Status filter
         if (options.status) {
           const targetStatus = normalizeStatus(options.status, 'prd');
-          const prdStatus = normalizeStatus(file.data.status, 'prd');
+          const prdStatus = normalizeStatus(data.status, 'prd');
           if (targetStatus !== prdStatus) continue;
         }
 
         // Tag filter (AND logic)
         if (options.tag?.length > 0) {
-          const prdTags = file.data.tags || [];
+          const prdTags = data.tags || [];
           const allTagsMatch = options.tag.every(t => prdTags.includes(t));
           if (!allTagsMatch) continue;
         }
 
-        // Count epics and tasks
-        const epicsDir = path.join(prdDir, 'epics');
-        const tasksDir = path.join(prdDir, 'tasks');
-        const epicCount = findFiles(epicsDir, /^E\d+.*\.md$/).length;
-        const taskCount = findFiles(tasksDir, /^T\d+.*\.md$/).length;
+        // Count epics and tasks (artefacts.ts contract)
+        const epicCount = getEpicsForPrd(prdEntry.num).length;
+        const taskCount = getTasksForPrd(prdEntry.num).length;
 
-        const prdEntry: Prd & { dir?: string; epics: number; tasks: number } = {
-          id: file.data.id || path.basename(prdDir).match(/PRD-\d+/)?.[0],
-          title: file.data.title || '',
-          status: file.data.status || 'Unknown',
-          parent: file.data.parent || '',
+        const result: Prd & { dir?: string; epics: number; tasks: number } = {
+          id: data.id || prdEntry.id,
+          title: data.title || '',
+          status: data.status || 'Unknown',
+          parent: data.parent || '',
           epics: epicCount,
           tasks: taskCount
         };
-        if (options.path) prdEntry.dir = prdDir;
-        prds.push(prdEntry);
+        if (options.path) result.dir = prdEntry.dir;
+        prds.push(result);
       }
 
       // Sort by ID
@@ -131,19 +127,17 @@ export function registerPrdCommands(program) {
         process.exit(1);
       }
 
-      // Count epics and tasks
-      const epicsDir = path.join(prdDir, 'epics');
-      const tasksDir = path.join(prdDir, 'tasks');
+      // Get epics and tasks (artefacts.ts contract)
+      const epics = getEpicsForPrd(id).map(e => ({
+        id: e.data?.id,
+        title: e.data?.title,
+        status: e.data?.status
+      }));
 
-      const epics = findFiles(epicsDir, /^E\d+.*\.md$/).map(f => {
-        const ef = loadFile(f);
-        return { id: ef?.data?.id, title: ef?.data?.title, status: ef?.data?.status };
-      });
-
-      const tasks = findFiles(tasksDir, /^T\d+.*\.md$/).map(f => {
-        const tf = loadFile(f);
-        return { id: tf?.data?.id, status: tf?.data?.status };
-      });
+      const tasks = getTasksForPrd(id).map(t => ({
+        id: t.data?.id,
+        status: t.data?.status
+      }));
 
       const tasksByStatus = {};
       tasks.forEach(t => {

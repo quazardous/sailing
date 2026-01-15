@@ -1,9 +1,13 @@
 /**
  * Update utilities for parsing flags and updating entity data
+ * Pure functions - no manager imports
  */
 import { normalizeStatus, STATUS, PRIORITY, validateEffort, LEGACY_EFFORT } from './lexicon.js';
-import { formatId } from './config.js';
+import { formatIdFrom, DigitConfig } from './normalize.js';
 import { Task, Epic, Prd } from './types/entities.js';
+
+// Default digit config if not provided
+const DEFAULT_DIGITS: DigitConfig = { prd: 3, epic: 3, task: 3, story: 3 };
 
 interface UpdateOptions {
   status?: string;
@@ -25,15 +29,17 @@ interface UpdateOptions {
 
 /**
  * Parse update flags from command options and apply to frontmatter data
- * @param {Object} options - Commander options object
- * @param {Object} data - Current frontmatter data
- * @param {string} entityType - 'task', 'epic', or 'prd'
- * @returns {{ updated: boolean, data: Object }}
+ * @param options - Commander options object
+ * @param data - Current frontmatter data
+ * @param entityType - 'task', 'epic', or 'prd'
+ * @param digitConfig - Optional digit config for ID formatting
+ * @returns { updated: boolean, data: Object }
  */
 export function parseUpdateOptions(
-  options: UpdateOptions, 
+  options: UpdateOptions,
   data: Partial<Task & Epic & Prd & Record<string, any>>,
-  entityType: 'task' | 'epic' | 'prd'
+  entityType: 'task' | 'epic' | 'prd',
+  digitConfig: DigitConfig = DEFAULT_DIGITS
 ): { updated: boolean; data: any } {
   let updated = false;
 
@@ -147,7 +153,7 @@ export function parseUpdateOptions(
       const stories = Array.isArray(options.story) ? options.story : [options.story];
       data.stories = stories.map(s => {
         const num = s.match(/\d+/)?.[0];
-        return num ? formatId('S', parseInt(num, 10)) : s;
+        return num ? formatIdFrom('S', parseInt(num, 10), digitConfig) : s;
       });
       updated = true;
     }
@@ -158,7 +164,7 @@ export function parseUpdateOptions(
       if (!Array.isArray(data.stories)) data.stories = [];
       stories.forEach(s => {
         const num = s.match(/\d+/)?.[0];
-        const normalized = num ? formatId('S', parseInt(num, 10)) : s;
+        const normalized = num ? formatIdFrom('S', parseInt(num, 10), digitConfig) : s;
         if (!data.stories!.includes(normalized)) {
           data.stories!.push(normalized);
         }
@@ -172,7 +178,7 @@ export function parseUpdateOptions(
       if (Array.isArray(data.stories)) {
         const toRemove = stories.map(s => {
           const num = s.match(/\d+/)?.[0];
-          return num ? formatId('S', parseInt(num, 10)) : s;
+          return num ? formatIdFrom('S', parseInt(num, 10), digitConfig) : s;
         });
         data.stories = data.stories.filter(s => !toRemove.includes(s));
       }

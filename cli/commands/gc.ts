@@ -6,10 +6,9 @@ import fs from 'fs';
 import path from 'path';
 import os from 'os';
 import { execSync } from 'child_process';
-import { findProjectRoot, jsonOut } from '../lib/core.js';
-import { resolvePlaceholders, computeProjectHash } from '../lib/paths.js';
-import { loadState, saveState } from '../lib/state.js';
-import { removeWorktree, listAgentWorktrees, pruneWorktrees } from '../lib/worktree.js';
+import { findProjectRoot, jsonOut, resolvePlaceholders, computeProjectHash } from '../managers/core-manager.js';
+import { loadState, saveState } from '../managers/state-manager.js';
+import { removeWorktree, listAgentWorktrees, pruneWorktrees } from '../managers/worktree-manager.js';
 import { AgentInfo } from '../lib/types/agent.js';
 
 /**

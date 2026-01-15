@@ -2,9 +2,9 @@
  * Dashboard Debug commands - Inspect scheduling data for a project
  * Commands: debug-prd, debug-epic, debug-task, debug-gantt
  */
-import { getFullPrd, getEpic, getTask } from '../lib/index.js';
-import { loadFile } from '../lib/core.js';
-import { getConfigValue } from '../lib/config.js';
+import { getFullPrd, getEpic, getTask } from '../managers/artefacts-manager.js';
+import { loadFile } from '../managers/core-manager.js';
+import { getConfigValue } from '../managers/core-manager.js';
 import {
   calculateGanttMetrics,
   getTaskSchedules,

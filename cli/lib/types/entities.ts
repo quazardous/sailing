@@ -60,6 +60,14 @@ export interface PrdIndexEntry {
   data: Partial<Prd>;
 }
 
+export interface StoryIndexEntry {
+  key: string;
+  id: string;
+  file: string;
+  prdDir: string;
+  data: Partial<Story>;
+}
+
 /**
  * Full task with all metadata for display/scheduling
  */
