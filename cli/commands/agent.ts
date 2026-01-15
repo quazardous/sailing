@@ -26,6 +26,7 @@ import {
   ensureBranchHierarchy, syncParentBranch, getParentBranch, getMainBranch
 } from '../lib/worktree.js';
 import { spawnClaude, buildPromptFromMission, getLogFilePath } from '../lib/claude.js';
+import { checkMcpServer } from '../lib/srt.js';
 import { buildConflictMatrix, suggestMergeOrder } from '../lib/conflicts.js';
 import {
   extractPrdId, extractEpicId, getPrdBranching,
@@ -144,6 +145,16 @@ export function registerAgentCommands(program) {
         }
         process.exit(1);
       };
+
+      // Check MCP server is running (required for sandbox agents)
+      const havenDir = resolvePlaceholders('${haven}');
+      const mcpStatus = checkMcpServer(havenDir);
+      if (!mcpStatus.running) {
+        escalate('MCP server not running', [
+          `bin/rudder-mcp start     # Start the MCP server`,
+          `bin/rudder-mcp status    # Check server status`
+        ]);
+      }
 
       if (state.agents[taskId]) {
         const agentInfo = state.agents[taskId];
