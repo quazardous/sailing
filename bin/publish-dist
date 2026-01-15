@@ -1,6 +1,7 @@
 #!/bin/bash
 # Publish dist files to dist branch
 # Called automatically after build
+# Only includes files needed by install.sh
 
 set -e
 
@@ -17,24 +18,41 @@ echo "Publishing dist (ref: $LAST_SHA)..."
 TEMP_DIR=$(mktemp -d)
 trap "rm -rf $TEMP_DIR" EXIT
 
-# Core files for install.sh
-cp -r dist/ "$TEMP_DIR/"
-cp -r bin/ "$TEMP_DIR/"
-cp -r prompting/ "$TEMP_DIR/"
-cp -r templates/ "$TEMP_DIR/" 2>/dev/null || true
-cp -r skill/ "$TEMP_DIR/" 2>/dev/null || true
-cp -r commands/ "$TEMP_DIR/" 2>/dev/null || true
+# === Essential files only ===
+
+# Compiled CLI
+mkdir -p "$TEMP_DIR/dist"
+cp -r dist/cli "$TEMP_DIR/dist/"
+
+# Distribution templates (*.yaml-dist, *.md-dist)
+cp dist/*.yaml-dist dist/*.md-dist "$TEMP_DIR/dist/" 2>/dev/null || true
+
+# CLI wrappers
+mkdir -p "$TEMP_DIR/bin"
+cp bin/rudder bin/rudder-mcp "$TEMP_DIR/bin/"
+
+# Prompting fragments
+cp -r prompting "$TEMP_DIR/"
+
+# Templates
+cp -r templates "$TEMP_DIR/" 2>/dev/null || true
+
+# Skill (source + build script)
+mkdir -p "$TEMP_DIR/skill"
+cp skill/build.sh "$TEMP_DIR/skill/"
+cp skill/*.md "$TEMP_DIR/skill/" 2>/dev/null || true
+
+# Commands
+cp -r commands "$TEMP_DIR/" 2>/dev/null || true
 
 # Package files (cli/package.json has runtime deps)
-cp package.json "$TEMP_DIR/"
-cp package-lock.json "$TEMP_DIR/" 2>/dev/null || true
 mkdir -p "$TEMP_DIR/cli"
 cp cli/package.json "$TEMP_DIR/cli/"
 
-# Save current branch
+# === Commit to dist branch ===
+
 CURRENT_BRANCH=$(git branch --show-current)
 
-# Switch to dist branch
 if git show-ref --verify --quiet "refs/heads/$DIST_BRANCH"; then
   git checkout -q "$DIST_BRANCH"
 else
@@ -55,7 +73,6 @@ else
   echo "✓ Committed: chore(dist): $LAST_MSG"
 fi
 
-# Back to original branch
 git checkout -q "$CURRENT_BRANCH"
 
 echo "✓ dist branch updated (use 'git push origin dist' to publish)"
