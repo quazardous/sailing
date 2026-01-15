@@ -9,8 +9,7 @@ import { normalizeId } from '../../lib/normalize.js';
 import { getTaskEpic } from '../../managers/artefacts-manager.js';
 import {
   NoiseFilter, LogEvent,
-  loadNoiseFilters, saveNoiseFilters,
-  analyzeLog, printDiagnoseResult
+  getDiagnoseOps, printDiagnoseResult
 } from '../../managers/diagnose-manager.js';
 
 /**
@@ -95,7 +94,7 @@ export function registerDiagnoseCommands(agent) {
 
       const taskEpic = getTaskEpic(normalized);
       const epicId = taskEpic?.epicId || null;
-      const result = analyzeLog(logFile, epicId, maxLineLen);
+      const result = getDiagnoseOps().analyzeLog(logFile, epicId, maxLineLen);
 
       if (options.json) {
         jsonOut({
@@ -126,7 +125,8 @@ export function registerDiagnoseCommands(agent) {
         process.exit(1);
       }
 
-      const filters = loadNoiseFilters(epicId);
+      const ops = getDiagnoseOps();
+      const filters = ops.loadNoiseFilters(epicId);
 
       if (filters.find(f => f.id === id)) {
         console.error(`Filter "${id}" already exists`);
@@ -145,7 +145,7 @@ export function registerDiagnoseCommands(agent) {
       newFilter.learned_at = new Date().toISOString();
 
       filters.push(newFilter);
-      saveNoiseFilters(epicId, filters);
+      ops.saveNoiseFilters(epicId, filters);
 
       console.log(`Added filter "${id}" to ${epicId || 'global'}`);
     });
@@ -156,7 +156,7 @@ export function registerDiagnoseCommands(agent) {
     .option('--json', 'JSON output')
     .action(async (taskOrEpic: string | undefined, options: any) => {
       const epicId = resolveEpicId(taskOrEpic);
-      const filters = loadNoiseFilters(epicId);
+      const filters = getDiagnoseOps().loadNoiseFilters(epicId);
 
       if (options.json) {
         jsonOut({ epic_id: epicId || 'global', filters });
@@ -180,7 +180,8 @@ export function registerDiagnoseCommands(agent) {
     .description('Remove noise filter (task ID, epic ID, or "global")')
     .action(async (id: string, taskOrEpic: string | undefined) => {
       const epicId = resolveEpicId(taskOrEpic);
-      const filters = loadNoiseFilters(epicId);
+      const ops = getDiagnoseOps();
+      const filters = ops.loadNoiseFilters(epicId);
 
       const idx = filters.findIndex(f => f.id === id);
       if (idx === -1) {
@@ -189,7 +190,7 @@ export function registerDiagnoseCommands(agent) {
       }
 
       filters.splice(idx, 1);
-      saveNoiseFilters(epicId, filters);
+      ops.saveNoiseFilters(epicId, filters);
 
       console.log(`Removed filter "${id}" from ${epicId || 'global'}`);
     });

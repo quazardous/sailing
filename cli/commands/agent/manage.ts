@@ -250,7 +250,7 @@ export function registerManageCommands(agent) {
 
       console.log('Modified files by agent:');
       for (const [taskId, files] of Object.entries(conflictData.filesByAgent)) {
-        const fileList = files as string[];
+        const fileList = files;
         console.log(`\n  ${taskId}:`);
         if (fileList.length === 0) {
           console.log('    (no changes)');

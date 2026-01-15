@@ -5,9 +5,7 @@
 import fs from 'fs';
 import path from 'path';
 import { jsonOut, resolvePlaceholders } from '../managers/core-manager.js';
-import {
-  getAgentsDb, getRunsDb, getAgent, getAllAgents, deleteAgent, clearAllAgents, getRunsForTask, migrateFromStateJson
-} from '../managers/db-manager.js';
+import { getDbOps } from '../managers/db-manager.js';
 import { addDynamicHelp, withModifies } from '../lib/help.js';
 import { AgentInfo } from '../lib/types/agent.js';
 
@@ -25,10 +23,9 @@ export function registerDbCommands(program) {
     .description('Show database status and collection counts')
     .option('--json', 'JSON output')
     .action(async (options: { json?: boolean }) => {
-      const agents = await getAllAgents();
-      const agentsDb = getAgentsDb();
-      const runsDb = getRunsDb();
-      const runs = await runsDb.find({});
+      const db = getDbOps();
+      const agents = await db.getAllAgents();
+      const runs = await db.getRunsDb().find({});
 
       const statusCounts = {};
       agents.forEach(a => {
@@ -57,7 +54,7 @@ export function registerDbCommands(program) {
     .description('List all agents')
     .option('--status <status>', 'Filter by status')
     .action(async (options: { status?: string; json?: boolean }) => {
-      const agents = await getAllAgents({ status: options.status });
+      const agents = await getDbOps().getAllAgents({ status: options.status });
 
       if (options.json) {
         jsonOut(agents);
@@ -82,7 +79,7 @@ export function registerDbCommands(program) {
       taskId = taskId.toUpperCase();
       if (!taskId.startsWith('T')) taskId = 'T' + taskId;
 
-      const agent = await getAgent(taskId);
+      const agent = await getDbOps().getAgent(taskId);
 
       if (!agent) {
         console.error(`Agent not found: ${taskId}`);
@@ -118,13 +115,14 @@ export function registerDbCommands(program) {
       taskId = taskId.toUpperCase();
       if (!taskId.startsWith('T')) taskId = 'T' + taskId;
 
-      const agent = await getAgent(taskId);
+      const db = getDbOps();
+      const agent = await db.getAgent(taskId);
       if (!agent) {
         console.error(`Agent not found: ${taskId}`);
         process.exit(1);
       }
 
-      await deleteAgent(taskId);
+      await db.deleteAgent(taskId);
       console.log(`Deleted: ${taskId}`);
     });
 
@@ -138,7 +136,7 @@ export function registerDbCommands(program) {
         process.exit(1);
       }
 
-      const count = await clearAllAgents();
+      const count = await getDbOps().clearAllAgents();
       console.log(`Cleared ${count} agent(s)`);
     });
 
@@ -150,7 +148,7 @@ export function registerDbCommands(program) {
       taskId = taskId.toUpperCase();
       if (!taskId.startsWith('T')) taskId = 'T' + taskId;
 
-      const runs = await getRunsForTask(taskId);
+      const runs = await getDbOps().getRunsForTask(taskId);
 
       if (options.json) {
         jsonOut(runs);
@@ -200,7 +198,7 @@ export function registerDbCommands(program) {
         return;
       }
 
-      const migrated = await migrateFromStateJson(state.agents);
+      const migrated = await getDbOps().migrateFromStateJson(state.agents);
       console.log(`Migrated ${migrated} agent(s) to jsondb`);
 
       // Remove agents from state.json (keep counters)
@@ -213,10 +211,11 @@ export function registerDbCommands(program) {
   withModifies(db.command('compact'), ['state'])
     .description('Compact database files (remove deleted entries)')
     .action(async () => {
+      const db = getDbOps();
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const agentsDb = getAgentsDb() as any;
+      const agentsDb = db.getAgentsDb() as any;
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const runsDb = getRunsDb() as any;
+      const runsDb = db.getRunsDb() as any;
 
       await agentsDb.compactDatafile?.();
       await runsDb.compactDatafile?.();

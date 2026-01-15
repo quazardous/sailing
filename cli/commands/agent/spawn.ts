@@ -8,7 +8,7 @@ import { findProjectRoot, loadFile, jsonOut, resolvePlaceholders, getAgentConfig
 import { getGit } from '../../lib/git.js';
 import { create as createPr } from '../../managers/pr-manager.js';
 import { AgentRunManager } from '../../lib/agent-run.js';
-import { reapAgent } from '../../managers/agent-manager.js';
+import { getAgentLifecycle } from '../../managers/agent-manager.js';
 import { createMission } from '../../lib/agent-schema.js';
 import { loadState, saveState, updateStateAtomic } from '../../managers/state-manager.js';
 import { withModifies } from '../../lib/help.js';
@@ -24,7 +24,7 @@ import { findDevMd, findToolset } from '../../managers/core-manager.js';
 import { getTask, getEpic, getMemoryFile, getPrdBranching } from '../../managers/artefacts-manager.js';
 import { AgentUtils, getProcessStats, formatDuration } from '../../lib/agent-utils.js';
 import { AgentInfo } from '../../lib/types/agent.js';
-import { analyzeLog, printDiagnoseResult } from '../../managers/diagnose-manager.js';
+import { getDiagnoseOps, printDiagnoseResult } from '../../managers/diagnose-manager.js';
 
 export function registerSpawnCommand(agent) {
   withModifies(agent.command('spawn <task-id>'), ['task', 'git', 'state'])
@@ -577,7 +577,7 @@ export function registerSpawnCommand(agent) {
         if (agentConfig.auto_diagnose !== false) {
           const diagLogFile = path.join(agentUtils.getAgentDir(taskId), 'run.jsonlog');
           if (fs.existsSync(diagLogFile)) {
-            const result = analyzeLog(diagLogFile, epicId);
+            const result = getDiagnoseOps().analyzeLog(diagLogFile, epicId);
             if (result.errors.length > 0) {
               console.log(`\n--- Diagnostic Report ---`);
               printDiagnoseResult(taskId, result);
@@ -761,7 +761,7 @@ export function registerSpawnCommand(agent) {
       // Auto-reap if successful
       if (exitCode === 0) {
         if (!isQuiet) console.log(`\nAuto-reaping ${taskId}...`);
-        const reapResult = await reapAgent(taskId, { verbose: !isQuiet });
+        const reapResult = await getAgentLifecycle(taskId).reap({ verbose: !isQuiet });
         if (reapResult.success) {
           if (!isQuiet) {
             console.log(`✓ Merged ${taskId}${reapResult.cleanedUp ? ' (cleaned up)' : ''}`);

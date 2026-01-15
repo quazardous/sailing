@@ -14,13 +14,11 @@ import { addDynamicHelp } from '../lib/help.js';
 import {
   getMemoryDirPath,
   ensureMemoryDir,
-  memoryFilePath,
-  memoryFileExists,
+  getEpicMemory,
   readLogFile,
   findLogFiles,
   findTaskEpic,
   parseLogLevels,
-  createMemoryFile,
   mergeTaskLog,
   prdMemoryFilePath,
   prdMemoryExists,
@@ -282,11 +280,12 @@ export function registerMemoryCommands(program) {
           continue;
         }
 
-        const mdExists = memoryFileExists(epicId);
+        const epicMem = getEpicMemory(epicId);
+        const mdExists = epicMem.memoryExists();
 
         // Create epic .md if missing (unless --no-create)
         if (!mdExists && options.create !== false) {
-          createMemoryFile(epicId);
+          epicMem.createMemory();
           createdMd++;
         }
 
@@ -321,7 +320,8 @@ export function registerMemoryCommands(program) {
         .filter(f => f.startsWith('E'))
         .map(f => {
           const epicId = f.replace('.md', '');
-          const filePath = memoryFilePath(epicId);
+          const epicMem = getEpicMemory(epicId);
+          const filePath = epicMem.getMemoryPath();
           // Handle missing files gracefully (may have been deleted or referenced but not created)
           const content = fs.existsSync(filePath) ? fs.readFileSync(filePath, 'utf8') : '';
           const prdId = findEpicPrd(epicId);
@@ -534,7 +534,8 @@ export function registerMemoryCommands(program) {
 
       for (const file of files) {
         const epicId = file.replace('.md', '');
-        const filePath = memoryFilePath(epicId);
+        const epicMem = getEpicMemory(epicId);
+        const filePath = epicMem.getMemoryPath();
         if (!fs.existsSync(filePath)) continue;
         const content = fs.readFileSync(filePath, 'utf8');
 
@@ -585,7 +586,7 @@ export function registerMemoryCommands(program) {
 
     // Fallback to constructed path (for new files)
     if (id.match(/^E\d+/i)) {
-      return memoryFilePath(id);
+      return getEpicMemory(id).getMemoryPath();
     } else if (id.match(/^PRD-?\d+/i)) {
       return prdMemoryFilePath(id);
     }

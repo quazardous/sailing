@@ -2,77 +2,550 @@
  * Memory Manager
  *
  * Business logic for memory and log operations.
- * Internal implementation in lib/memory.ts and lib/memory-section.ts.
+ * Manager layer: has access to config and state.
  *
- * - Task log merging into epic logs
- * - Pending memory detection
- * - Memory file lifecycle
- * - Section editing (extract, find, edit)
+ * Hierarchy: Task → Epic → PRD → Project
+ * - Task logs: temporary, merged into epic
+ * - Epic memory: curated tips/issues for epic scope
+ * - PRD memory: cross-epic patterns, escalated by skill
+ * - Project memory: architectural decisions, universal patterns
  */
 import fs from 'fs';
 import path from 'path';
-import {
-  findLogFiles,
-  readLogFile,
-  mergeTaskLog,
-  findTaskEpic,
-  ensureMemoryDir,
-  getMemoryDirPath,
-  logFilePath,
-  memoryFilePath,
-  memoryFileExists,
-  parseLogLevels,
-  createMemoryFile,
-  prdMemoryFilePath,
-  prdMemoryExists,
-  createPrdMemoryFile,
-  projectMemoryFilePath,
-  projectMemoryExists,
-  getHierarchicalMemory,
-  findEpicPrd,
-  hasPendingMemoryLogs
-} from '../lib/memory.js';
-import {
-  extractAllSections,
-  findSection,
-  editSection,
-  parseMultiSectionInput,
-  AGENT_RELEVANT_SECTIONS,
-  getAgentMemory
-} from '../lib/memory-section.js';
+import { getMemoryDir, resolvePlaceholders, resolvePath, getRepoRoot } from './core-manager.js';
+import { getTaskEpic as artefactsGetTaskEpic, getEpicPrd as artefactsGetEpicPrd, getTasksForEpic as artefactsGetTasksForEpic, getMemoryFile } from './artefacts-manager.js';
 import { normalizeId } from '../lib/normalize.js';
-import { getTasksForEpic as artefactsGetTasksForEpic } from './artefacts-manager.js';
-
-// Re-export memory functions for external use
-export {
-  // From lib/memory.js
-  getMemoryDirPath,
-  ensureMemoryDir,
-  logFilePath,
-  memoryFilePath,
-  memoryFileExists,
-  readLogFile,
-  findLogFiles,
-  findTaskEpic,
-  parseLogLevels,
-  createMemoryFile,
-  mergeTaskLog,
-  prdMemoryFilePath,
-  prdMemoryExists,
-  createPrdMemoryFile,
-  projectMemoryFilePath,
-  projectMemoryExists,
-  getHierarchicalMemory,
-  findEpicPrd,
-  hasPendingMemoryLogs,
-  // From lib/memory-section.js
+import { LogFileEntry, MemoryEntry } from '../lib/types/memory.js';
+import {
   extractAllSections,
   findSection,
   editSection,
   parseMultiSectionInput,
-  AGENT_RELEVANT_SECTIONS,
-  getAgentMemory
+  parseLogLevels,
+  AGENT_RELEVANT_SECTIONS
+} from '../lib/memory-section.js';
+
+// Re-export section functions
+export {
+  extractAllSections,
+  findSection,
+  editSection,
+  parseMultiSectionInput,
+  parseLogLevels,
+  AGENT_RELEVANT_SECTIONS
 };
+
+// ============================================================================
+// Template Helpers (internal)
+// ============================================================================
+
+function getTemplatesDir(): string {
+  const custom = resolvePath('templates');
+  if (custom) return custom;
+  const sailingRoot = resolvePlaceholders('^/');
+  return path.join(sailingRoot, 'templates');
+}
+
+function loadTemplate(templateName: string): string | null {
+  const templatePath = path.join(getTemplatesDir(), templateName);
+  if (fs.existsSync(templatePath)) {
+    return fs.readFileSync(templatePath, 'utf8');
+  }
+  return null;
+}
+
+// ============================================================================
+// Path Functions
+// ============================================================================
+
+export function getMemoryDirPath(): string {
+  return getMemoryDir();
+}
+
+export function ensureMemoryDir(): void {
+  const memDir = getMemoryDirPath();
+  if (!fs.existsSync(memDir)) {
+    fs.mkdirSync(memDir, { recursive: true });
+  }
+}
+
+export function logFilePath(id: string): string {
+  return path.join(getMemoryDirPath(), `${normalizeId(id)}.log`);
+}
+
+export function prdMemoryFilePath(prdId: string): string {
+  return path.join(getMemoryDirPath(), `${normalizeId(prdId)}.md`);
+}
+
+export function projectMemoryFilePath(): string {
+  const artefactsPath = resolvePath('artefacts') || resolvePlaceholders('${haven}/artefacts');
+  return path.join(artefactsPath, 'MEMORY.md');
+}
+
+// ============================================================================
+// EpicMemoryManager Class (POO Encapsulation)
+// ============================================================================
+
+/**
+ * Epic-scoped memory operations.
+ * Encapsulates epicId to avoid parameter repetition.
+ *
+ * @example
+ * const epicMem = getEpicMemory('E001');
+ * if (!epicMem.memoryExists()) epicMem.createMemory();
+ * const content = epicMem.getLogContent();
+ */
+export class EpicMemoryManager {
+  public readonly epicId: string;
+  private readonly memoryDir: string;
+
+  constructor(epicId: string) {
+    this.epicId = normalizeId(epicId);
+    this.memoryDir = getMemoryDir();
+  }
+
+  // --- Path accessors ---
+
+  getMemoryPath(): string {
+    return path.join(this.memoryDir, `${this.epicId}.md`);
+  }
+
+  getLogPath(): string {
+    return path.join(this.memoryDir, `${this.epicId}.log`);
+  }
+
+  // --- Existence checks ---
+
+  memoryExists(): boolean {
+    return fs.existsSync(this.getMemoryPath());
+  }
+
+  logExists(): boolean {
+    return fs.existsSync(this.getLogPath());
+  }
+
+  // --- Log operations ---
+
+  getLogContent(): string | null {
+    const logPath = this.getLogPath();
+    if (!fs.existsSync(logPath)) return null;
+    return fs.readFileSync(logPath, 'utf8').trim();
+  }
+
+  deleteLog(): boolean {
+    const logPath = this.getLogPath();
+    if (fs.existsSync(logPath)) {
+      fs.unlinkSync(logPath);
+      return true;
+    }
+    return false;
+  }
+
+  // --- Memory file creation ---
+
+  createMemory(): string {
+    ensureMemoryDir();
+    const mdPath = this.getMemoryPath();
+    const now = new Date().toISOString();
+
+    let content = loadTemplate('memory-epic.md');
+    if (content) {
+      content = content
+        .replace(/E0000/g, this.epicId)
+        .replace(/created: ''/g, `created: '${now}'`)
+        .replace(/updated: ''/g, `updated: '${now}'`);
+    } else {
+      content = `---
+epic: ${this.epicId}
+created: '${now}'
+updated: '${now}'
+---
+
+# Memory: ${this.epicId}
+
+## Agent Context
+
+## Escalation
+
+## Changelog
+`;
+    }
+
+    fs.writeFileSync(mdPath, content);
+    return mdPath;
+  }
+
+  // --- Task log merging ---
+
+  mergeTaskLogs(options: { keep?: boolean } = {}): MergeLogsResult {
+    const tasksForEpic = findTasksForEpic(this.epicId);
+
+    const result: MergeLogsResult = {
+      flushedCount: 0,
+      totalEntries: 0,
+      deletedEmpty: 0,
+      epicLogFile: ''
+    };
+
+    if (tasksForEpic.length === 0) {
+      return result;
+    }
+
+    ensureMemoryDir();
+    result.epicLogFile = this.getLogPath();
+
+    for (const task of tasksForEpic) {
+      const taskLogFile = logFilePath(task.id);
+      if (!fs.existsSync(taskLogFile)) continue;
+
+      const content = fs.readFileSync(taskLogFile, 'utf8').trim();
+
+      if (!content) {
+        if (!options.keep) {
+          fs.unlinkSync(taskLogFile);
+          result.deletedEmpty++;
+        }
+        continue;
+      }
+
+      const entries = content.split('\n').length;
+      result.totalEntries += entries;
+
+      const header = `\n### ${task.id}: ${task.title}\n`;
+      fs.appendFileSync(result.epicLogFile, header + content + '\n');
+      result.flushedCount++;
+
+      if (!options.keep) {
+        fs.unlinkSync(taskLogFile);
+      }
+    }
+
+    return result;
+  }
+
+  // --- Agent memory (filtered for agents) ---
+
+  getAgentMemory(): string | null {
+    const parts: string[] = [];
+
+    // 1. Epic memory
+    const epicMemory = getMemoryFile(this.epicId);
+    if (epicMemory && fs.existsSync(epicMemory.file)) {
+      const content = fs.readFileSync(epicMemory.file, 'utf8');
+      const sections = extractAllSections(content);
+      const relevant = sections.filter(s => AGENT_RELEVANT_SECTIONS.includes(s.name));
+      if (relevant.length > 0) {
+        parts.push(`### Epic ${this.epicId}\n`);
+        for (const sec of relevant) {
+          parts.push(`**${sec.name}**\n${sec.content}\n`);
+        }
+      }
+    }
+
+    // 2. PRD memory (if exists)
+    const prd = artefactsGetEpicPrd(this.epicId);
+    if (prd) {
+      const prdMemoryPath = path.join(this.memoryDir, `${prd.prdId}.md`);
+      if (fs.existsSync(prdMemoryPath)) {
+        const content = fs.readFileSync(prdMemoryPath, 'utf8');
+        const sections = extractAllSections(content);
+        const relevant = sections.filter(s => AGENT_RELEVANT_SECTIONS.includes(s.name));
+        if (relevant.length > 0) {
+          parts.push(`### PRD ${prd.prdId}\n`);
+          for (const sec of relevant) {
+            parts.push(`**${sec.name}**\n${sec.content}\n`);
+          }
+        }
+      }
+    }
+
+    // 3. Project memory (if exists)
+    const repoRoot = getRepoRoot();
+    const projectMemoryPath = repoRoot ? path.join(repoRoot, '.sailing', 'memory', 'PROJECT.md') : null;
+    if (projectMemoryPath && fs.existsSync(projectMemoryPath)) {
+      const content = fs.readFileSync(projectMemoryPath, 'utf8');
+      const sections = extractAllSections(content);
+      const relevant = sections.filter(s => AGENT_RELEVANT_SECTIONS.includes(s.name));
+      if (relevant.length > 0) {
+        parts.push(`### Project\n`);
+        for (const sec of relevant) {
+          parts.push(`**${sec.name}**\n${sec.content}\n`);
+        }
+      }
+    }
+
+    return parts.length > 0 ? parts.join('\n') : null;
+  }
+}
+
+// ============================================================================
+// Factory Function
+// ============================================================================
+
+/**
+ * Create an EpicMemoryManager for an epic
+ */
+export function getEpicMemory(epicId: string): EpicMemoryManager {
+  return new EpicMemoryManager(epicId);
+}
+
+// ============================================================================
+// Helper for EpicMemoryManager (internal)
+// ============================================================================
+
+function findTasksForEpic(epicId: string): Array<{ id: string; title: string }> {
+  const tasks = artefactsGetTasksForEpic(epicId);
+  return tasks.map(t => ({
+    id: normalizeId(t.data?.id || t.id),
+    title: t.data?.title || 'Untitled'
+  }));
+}
+
+// ============================================================================
+// Existence Checks
+// ============================================================================
+
+export function logFileExists(id: string): boolean {
+  return fs.existsSync(logFilePath(id));
+}
+
+export function prdMemoryExists(prdId: string): boolean {
+  return fs.existsSync(prdMemoryFilePath(prdId));
+}
+
+export function projectMemoryExists(): boolean {
+  return fs.existsSync(projectMemoryFilePath());
+}
+
+// ============================================================================
+// Log File Operations
+// ============================================================================
+
+export function readLogFile(id: string): string | null {
+  const filePath = logFilePath(id);
+  if (!fs.existsSync(filePath)) return null;
+  return fs.readFileSync(filePath, 'utf8').trim();
+}
+
+export function appendLogFile(id: string, content: string): void {
+  ensureMemoryDir();
+  fs.appendFileSync(logFilePath(id), content);
+}
+
+export function deleteLogFile(id: string): boolean {
+  const filePath = logFilePath(id);
+  if (fs.existsSync(filePath)) {
+    fs.unlinkSync(filePath);
+    return true;
+  }
+  return false;
+}
+
+export function findLogFiles(): LogFileEntry[] {
+  ensureMemoryDir();
+  const memDir = getMemoryDirPath();
+  return fs.readdirSync(memDir)
+    .filter(f => f.endsWith('.log'))
+    .map(f => {
+      const id = f.replace('.log', '');
+      return {
+        id,
+        type: id.startsWith('E') ? 'epic' : id.startsWith('T') ? 'task' : 'other',
+        path: path.join(memDir, f)
+      };
+    });
+}
+
+export function hasPendingMemoryLogs(): boolean {
+  const epicLogs = findLogFiles().filter(f => f.type === 'epic');
+  for (const { id: epicId } of epicLogs) {
+    const content = readLogFile(epicId);
+    if (content) return true;
+  }
+  return false;
+}
+
+// ============================================================================
+// Hierarchy Lookups
+// ============================================================================
+
+export function findTaskEpic(taskId: string | number): { epicId: string; title: string } | null {
+  const result = artefactsGetTaskEpic(taskId);
+  if (!result) return null;
+  return {
+    epicId: normalizeId(result.epicId),
+    title: result.title
+  };
+}
+
+export function findEpicPrd(epicId: string | number): string | null {
+  const result = artefactsGetEpicPrd(epicId);
+  if (!result) return null;
+  return normalizeId(result.prdId);
+}
+
+// ============================================================================
+// Memory File Creation
+// ============================================================================
+
+export function createPrdMemoryFile(prdId: string): string {
+  ensureMemoryDir();
+  const mdPath = prdMemoryFilePath(prdId);
+  const now = new Date().toISOString();
+
+  let content = loadTemplate('memory-prd.md');
+  if (content) {
+    content = content
+      .replace(/PRD-000/g, prdId)
+      .replace(/created: ''/g, `created: '${now}'`)
+      .replace(/updated: ''/g, `updated: '${now}'`);
+  } else {
+    content = `---
+prd: ${prdId}
+created: '${now}'
+updated: '${now}'
+---
+
+# Memory: ${prdId}
+
+## Cross-Epic Patterns
+
+## Decisions
+
+## Escalation
+`;
+  }
+
+  fs.writeFileSync(mdPath, content);
+  return mdPath;
+}
+
+export function createProjectMemoryFile(projectName = ''): string {
+  const mdPath = projectMemoryFilePath();
+  const dir = path.dirname(mdPath);
+  if (!fs.existsSync(dir)) {
+    fs.mkdirSync(dir, { recursive: true });
+  }
+
+  const now = new Date().toISOString();
+
+  let content = loadTemplate('memory-dist.md');
+  if (content) {
+    content = content
+      .replace(/project: ''/g, `project: '${projectName}'`)
+      .replace(/updated: ''/g, `updated: '${now}'`);
+  } else {
+    content = `---
+project: '${projectName}'
+updated: '${now}'
+---
+
+# Project Memory
+
+## Architecture Decisions
+
+## Patterns & Conventions
+
+## Lessons Learned
+`;
+  }
+
+  fs.writeFileSync(mdPath, content);
+  return mdPath;
+}
+
+// ============================================================================
+// Hierarchical Memory
+// ============================================================================
+
+export function getHierarchicalMemory(id: string): { project: MemoryEntry | null; prd: MemoryEntry | null; epic: MemoryEntry | null } {
+  const result: { project: MemoryEntry | null; prd: MemoryEntry | null; epic: MemoryEntry | null } = { project: null, prd: null, epic: null };
+
+  let epicId: string | null = null;
+  if (id.startsWith('T')) {
+    const taskInfo = findTaskEpic(id);
+    if (taskInfo) epicId = taskInfo.epicId;
+  } else if (id.startsWith('E')) {
+    epicId = normalizeId(id);
+  }
+
+  if (epicId) {
+    const epicMem = new EpicMemoryManager(epicId);
+    if (epicMem.memoryExists()) {
+      result.epic = {
+        id: epicId,
+        path: epicMem.getMemoryPath(),
+        content: fs.readFileSync(epicMem.getMemoryPath(), 'utf8')
+      };
+    }
+  }
+
+  if (epicId) {
+    const prdId = findEpicPrd(epicId);
+    if (prdId && prdMemoryExists(prdId)) {
+      result.prd = {
+        id: prdId,
+        path: prdMemoryFilePath(prdId),
+        content: fs.readFileSync(prdMemoryFilePath(prdId), 'utf8')
+      };
+    }
+  }
+
+  if (projectMemoryExists()) {
+    result.project = {
+      id: 'PROJECT',
+      path: projectMemoryFilePath(),
+      content: fs.readFileSync(projectMemoryFilePath(), 'utf8')
+    };
+  }
+
+  return result;
+}
+
+// ============================================================================
+// Log Merging
+// ============================================================================
+
+export function mergeTaskLog(taskId: string, actualPath: string | null = null): { merged: boolean; epicId: string | null; deleted: boolean } {
+  const taskLogPath = actualPath || logFilePath(taskId);
+  if (!fs.existsSync(taskLogPath)) {
+    return { merged: false, epicId: null, deleted: false };
+  }
+
+  const content = fs.readFileSync(taskLogPath, 'utf8').trim();
+
+  if (!content) {
+    fs.unlinkSync(taskLogPath);
+    return { merged: false, epicId: null, deleted: true };
+  }
+
+  const taskNumMatch = taskId.match(/^T0*(\d+)$/i);
+  const taskNum = taskNumMatch ? parseInt(taskNumMatch[1], 10) : null;
+
+  let taskInfo = findTaskEpic(taskId);
+  if (!taskInfo && taskNum !== null) {
+    taskInfo = findTaskEpic(`T${taskNum}`);
+  }
+
+  if (!taskInfo) {
+    return { merged: false, epicId: null, deleted: false };
+  }
+
+  const prefixedLines = content.split('\n').map(line => {
+    return line.replace(/^(\d{4}-\d{2}-\d{2}T[\d:.]+Z) /, `$1 [${taskId}] `);
+  }).join('\n');
+
+  const epicLogPath = logFilePath(taskInfo.epicId);
+  fs.appendFileSync(epicLogPath, prefixedLines + '\n');
+
+  fs.unlinkSync(taskLogPath);
+
+  return { merged: true, epicId: taskInfo.epicId, deleted: false };
+}
+
+// ============================================================================
+// Business Logic (Manager-specific)
+// ============================================================================
 
 export interface PendingMemoryResult {
   pending: boolean;
@@ -87,14 +560,7 @@ export interface MergeLogsResult {
   epicLogFile: string;
 }
 
-/**
- * Check for pending memory (logs not consolidated)
- * Automatically merges task logs first, then checks for epic logs
- *
- * @param epicId - Optional: filter to specific epic
- */
 export function checkPendingMemory(epicId: string | null = null): PendingMemoryResult {
-  // Merge task logs first
   const taskLogs = findLogFiles().filter(f => f.type === 'task');
   let tasksMerged = 0;
 
@@ -107,14 +573,13 @@ export function checkPendingMemory(epicId: string | null = null): PendingMemoryR
     if (result.merged) tasksMerged++;
   }
 
-  // Check for epic logs
   let epicLogs = findLogFiles().filter(f => f.type === 'epic');
   if (epicId) {
     epicLogs = epicLogs.filter(f => f.id === normalizeId(epicId));
   }
 
   const pendingEpics = epicLogs
-    .filter(({ id }) => readLogFile(id)) // Has content
+    .filter(({ id }) => readLogFile(id))
     .map(({ id }) => id);
 
   return {
@@ -124,84 +589,6 @@ export function checkPendingMemory(epicId: string | null = null): PendingMemoryR
   };
 }
 
-/**
- * Find all tasks belonging to an epic
- * Uses artefacts.ts for lookup (contract compliance)
- */
-function findTasksForEpic(epicId: string): Array<{ id: string; title: string }> {
-  const tasks = artefactsGetTasksForEpic(epicId);
-  return tasks.map(t => ({
-    id: normalizeId(t.data?.id || t.id),
-    title: t.data?.title || 'Untitled'
-  }));
-}
-
-/**
- * Merge all task logs into epic log with headers
- * This is the orchestration function for epic:merge-logs
- *
- * @param epicId - Epic ID
- * @param options - { keep: boolean } - keep task logs after merge
- */
-export function mergeEpicTaskLogs(
-  epicId: string,
-  options: { keep?: boolean } = {}
-): MergeLogsResult {
-  const normalizedEpicId = normalizeId(epicId);
-  const tasksForEpic = findTasksForEpic(normalizedEpicId);
-
-  const result: MergeLogsResult = {
-    flushedCount: 0,
-    totalEntries: 0,
-    deletedEmpty: 0,
-    epicLogFile: ''
-  };
-
-  if (tasksForEpic.length === 0) {
-    return result;
-  }
-
-  // Ensure memory directory exists
-  ensureMemoryDir();
-  const memDir = getMemoryDirPath();
-  result.epicLogFile = path.join(memDir, `${normalizedEpicId}.log`);
-
-  // Process each task log
-  for (const task of tasksForEpic) {
-    const taskLogFile = logFilePath(task.id);
-    if (!fs.existsSync(taskLogFile)) continue;
-
-    const content = fs.readFileSync(taskLogFile, 'utf8').trim();
-
-    // Delete empty logs
-    if (!content) {
-      if (!options.keep) {
-        fs.unlinkSync(taskLogFile);
-        result.deletedEmpty++;
-      }
-      continue;
-    }
-
-    const entries = content.split('\n').length;
-    result.totalEntries += entries;
-
-    // Append to epic log with task header
-    const header = `\n### ${task.id}: ${task.title}\n`;
-    fs.appendFileSync(result.epicLogFile, header + content + '\n');
-    result.flushedCount++;
-
-    // Clear task log unless --keep
-    if (!options.keep) {
-      fs.unlinkSync(taskLogFile);
-    }
-  }
-
-  return result;
-}
-
-/**
- * Count TIP log entries in a task's log file
- */
 export function countTaskTips(taskId: string): number {
   const taskLog = readLogFile(taskId);
   if (!taskLog) return 0;
@@ -210,9 +597,6 @@ export function countTaskTips(taskId: string): number {
   return matches ? matches.length : 0;
 }
 
-/**
- * Get log statistics for an entity
- */
 export function getLogStats(id: string): {
   exists: boolean;
   lines: number;
@@ -234,21 +618,3 @@ export function getLogStats(id: string): {
   };
 }
 
-/**
- * Delete epic log file
- */
-export function deleteEpicLog(epicId: string): boolean {
-  const epicLogFile = logFilePath(normalizeId(epicId));
-  if (fs.existsSync(epicLogFile)) {
-    fs.unlinkSync(epicLogFile);
-    return true;
-  }
-  return false;
-}
-
-/**
- * Get epic log content
- */
-export function getEpicLogContent(epicId: string): string | null {
-  return readLogFile(normalizeId(epicId));
-}

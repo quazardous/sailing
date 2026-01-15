@@ -2,29 +2,14 @@
  * Worktree Manager
  *
  * Business logic for git worktree operations.
- * Handles config access and orchestrates lib/worktree.ts functions.
+ * Handles config access and delegates to WorktreeOps class.
  */
 import { findProjectRoot, getWorktreesDir, getConfigValue, getMainBranch } from './core-manager.js';
 import {
-  getWorktreePath as getWorktreePathCore,
+  WorktreeOps,
+  WorktreeContext,
+  // Pure functions (re-exported)
   getBranchName,
-  createWorktree as createWorktreeCore,
-  removeWorktree as removeWorktreeCore,
-  cleanupWorktree as cleanupWorktreeCore,
-  listWorktrees as listWorktreesCore,
-  listAgentWorktrees as listAgentWorktreesCore,
-  pruneWorktrees as pruneWorktreesCore,
-  getWorktreeStatus as getWorktreeStatusCore,
-  worktreeExists as worktreeExistsCore,
-  branchExists as branchExistsCore,
-  ensureBranch as ensureBranchCore,
-  ensureBranchHierarchy as ensureBranchHierarchyCore,
-  getParentBranch as getParentBranchCore,
-  getBranchHierarchy as getBranchHierarchyCore,
-  syncBranch as syncBranchCore,
-  getBranchDivergence as getBranchDivergenceCore,
-  syncUpwardHierarchy as syncUpwardHierarchyCore,
-  // Branch name helpers (pure)
   getPrdBranchName,
   getEpicBranchName,
   getMergeBranchName,
@@ -32,7 +17,8 @@ import {
   parseMergeBranchName,
   isMergeBranch,
   isReconcileBranch,
-  WorktreeContext
+  getParentBranch as getParentBranchCore,
+  getBranchHierarchy as getBranchHierarchyCore
 } from '../lib/worktree.js';
 
 // Re-export pure functions (those that don't need config)
@@ -55,6 +41,26 @@ export type { WorktreeContext };
 export { getMainBranch } from './core-manager.js';
 
 // ============================================================================
+// WorktreeOps Instance (lazy-initialized)
+// ============================================================================
+
+let _ops: WorktreeOps | null = null;
+
+function getOps(): WorktreeOps {
+  if (!_ops) {
+    _ops = new WorktreeOps(findProjectRoot(), getWorktreesDir());
+  }
+  return _ops;
+}
+
+/**
+ * Reset ops instance (for testing or when config changes)
+ */
+export function resetWorktreeOps(): void {
+  _ops = null;
+}
+
+// ============================================================================
 // Public API (config-aware wrappers)
 // ============================================================================
 
@@ -62,91 +68,91 @@ export { getMainBranch } from './core-manager.js';
  * Get worktree path for a task
  */
 export function getWorktreePath(taskId: string) {
-  return getWorktreePathCore(getWorktreesDir(), taskId);
+  return getOps().getWorktreePath(taskId);
 }
 
 /**
  * Check if a worktree exists
  */
 export function worktreeExists(taskId: string) {
-  return worktreeExistsCore(getWorktreesDir(), taskId);
+  return getOps().worktreeExists(taskId);
 }
 
 /**
  * Check if a branch exists
  */
 export function branchExists(branchName: string) {
-  return branchExistsCore(findProjectRoot(), branchName);
+  return getOps().branchExists(branchName);
 }
 
 /**
  * Create a branch if it doesn't exist
  */
 export function ensureBranch(branchName: string, baseBranch?: string) {
-  return ensureBranchCore(findProjectRoot(), branchName, baseBranch || getMainBranch());
+  return getOps().ensureBranch(branchName, baseBranch || getMainBranch());
 }
 
 /**
  * Get branch divergence
  */
 export function getBranchDivergence(branch: string, upstream: string) {
-  return getBranchDivergenceCore(findProjectRoot(), branch, upstream);
+  return getOps().getBranchDivergence(branch, upstream);
 }
 
 /**
  * Sync a branch from its upstream
  */
 export function syncBranch(branch: string, upstream: string, strategy = 'merge') {
-  return syncBranchCore(findProjectRoot(), branch, upstream, strategy);
+  return getOps().syncBranch(branch, upstream, strategy);
 }
 
 /**
  * List all worktrees
  */
 export function listWorktrees() {
-  return listWorktreesCore(findProjectRoot());
+  return getOps().listWorktrees();
 }
 
 /**
  * List agent worktrees
  */
 export function listAgentWorktrees() {
-  return listAgentWorktreesCore(findProjectRoot());
+  return getOps().listAgentWorktrees();
 }
 
 /**
  * Prune orphaned worktrees
  */
 export function pruneWorktrees() {
-  return pruneWorktreesCore(findProjectRoot());
+  return getOps().pruneWorktrees();
 }
 
 /**
  * Get worktree status
  */
 export function getWorktreeStatus(taskId: string) {
-  return getWorktreeStatusCore(getWorktreesDir(), taskId);
+  return getOps().getWorktreeStatus(taskId);
 }
 
 /**
  * Create worktree for a task
  */
 export function createWorktree(taskId: string, options: { baseBranch?: string; force?: boolean } = {}) {
-  return createWorktreeCore(findProjectRoot(), getWorktreesDir(), taskId, options);
+  return getOps().createWorktree(taskId, options);
 }
 
 /**
  * Remove worktree for a task
  */
 export function removeWorktree(taskId: string, options: { force?: boolean; keepBranch?: boolean } = {}) {
-  return removeWorktreeCore(findProjectRoot(), getWorktreesDir(), taskId, options);
+  return getOps().removeWorktree(taskId, options);
 }
 
 /**
  * Full cleanup: worktree + local branch + remote branch
  */
 export function cleanupWorktree(taskId: string, options: { force?: boolean } = {}) {
-  return cleanupWorktreeCore(findProjectRoot(), getWorktreesDir(), taskId, options);
+  return getOps().cleanupWorktree(taskId, options);
 }
 
 /**
@@ -161,9 +167,8 @@ export function getParentBranch(taskId: string, context: WorktreeContext = {}) {
  * Ensure branch hierarchy exists for a task
  */
 export function ensureBranchHierarchy(context: WorktreeContext) {
-  const projectRoot = findProjectRoot();
   const mainBranch = getMainBranch();
-  return ensureBranchHierarchyCore(projectRoot, { ...context, mainBranch });
+  return getOps().ensureBranchHierarchy({ ...context, mainBranch });
 }
 
 /**
@@ -184,7 +189,6 @@ export function syncParentBranch(context: WorktreeContext) {
     return { success: true, disabled: true };
   }
 
-  const projectRoot = findProjectRoot();
   const mainBranch = getMainBranch();
   const chain = getBranchHierarchyCore({ ...context, mainBranch });
 
@@ -195,11 +199,12 @@ export function syncParentBranch(context: WorktreeContext) {
   const branch = chain[chain.length - 1];
   const upstream = chain[chain.length - 2];
 
-  if (!branchExistsCore(projectRoot, branch)) {
+  const ops = getOps();
+  if (!ops.branchExists(branch)) {
     return { success: true, skipped: `${branch} (not created yet)` };
   }
 
-  const result = syncBranchCore(projectRoot, branch, upstream, 'merge');
+  const result = ops.syncBranch(branch, upstream, 'merge');
   if (!result.success) {
     return { success: false, error: `${branch}: ${result.error}` };
   }
@@ -215,7 +220,6 @@ export function syncParentBranch(context: WorktreeContext) {
  * Sync branch hierarchy upward (for epic/PRD completion)
  */
 export function syncUpwardHierarchy(level: string, context: WorktreeContext) {
-  const projectRoot = findProjectRoot();
   const mainBranch = getMainBranch();
-  return syncUpwardHierarchyCore(projectRoot, level, { ...context, mainBranch });
+  return getOps().syncUpwardHierarchy(level, { ...context, mainBranch });
 }

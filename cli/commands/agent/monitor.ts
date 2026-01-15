@@ -5,7 +5,7 @@ import fs from 'fs';
 import path from 'path';
 import { findProjectRoot, jsonOut, getAgentsDir } from '../../managers/core-manager.js';
 import { loadState } from '../../managers/state-manager.js';
-import { reapAgent } from '../../managers/agent-manager.js';
+import { getAgentLifecycle } from '../../managers/agent-manager.js';
 import { normalizeId } from '../../lib/normalize.js';
 import {
   AgentUtils, getProcessStats, formatDuration,
@@ -14,7 +14,7 @@ import {
 import { AgentInfo } from '../../lib/types/agent.js';
 import { getTaskEpic } from '../../managers/artefacts-manager.js';
 import {
-  loadNoiseFilters, matchesNoiseFilter, parseJsonLog
+  getDiagnoseOps, matchesNoiseFilter, parseJsonLog
 } from '../../managers/diagnose-manager.js';
 import { summarizeEvent } from './diagnose.js';
 
@@ -110,7 +110,7 @@ export function registerMonitorCommands(agent) {
       const agentUtils = new AgentUtils(getAgentsDir());
 
       let agentList = Object.entries(agents).map(([id, info]) => {
-        const agentData = info as AgentInfo;
+        const agentData = info;
         const completion = agentUtils.checkCompletion(id, agentData as AgentCompletionInfo);
         const liveComplete = completion.complete;
 
@@ -206,7 +206,7 @@ export function registerMonitorCommands(agent) {
           console.log(`${taskId} already completed`);
           if (options.reap !== false) {
             console.log(`\nReaping ${taskId}...`);
-            const reapResult = await reapAgent(taskId);
+            const reapResult = await getAgentLifecycle(taskId).reap();
             if (reapResult.success) {
               console.log(`✓ Task ${taskId} → ${reapResult.taskStatus}`);
             } else if (reapResult.escalate) {
@@ -352,7 +352,7 @@ export function registerMonitorCommands(agent) {
 
       if (exitCode === 0 && options.reap !== false) {
         console.log(`\nAuto-reaping ${taskId}...`);
-        const reapResult = await reapAgent(taskId);
+        const reapResult = await getAgentLifecycle(taskId).reap();
         if (reapResult.success) {
           console.log(`✓ Task ${taskId} → ${reapResult.taskStatus}`);
         } else if (reapResult.escalate) {
@@ -382,10 +382,10 @@ export function registerMonitorCommands(agent) {
       const state = loadState();
       const agents = state.agents || {};
 
-      let waitFor = taskIds.length > 0
+      const waitFor = taskIds.length > 0
         ? taskIds.map(id => normalizeId(id))
         : Object.entries(agents)
-            .filter(([_, info]) => ['spawned', 'dispatched', 'running'].includes((info as AgentInfo).status))
+            .filter(([_, info]) => ['spawned', 'dispatched', 'running'].includes((info).status))
             .map(([id]) => id);
 
       if (waitFor.length === 0) {
@@ -532,7 +532,7 @@ export function registerMonitorCommands(agent) {
 
         const taskEpic = getTaskEpic(normalizedId);
         const epicId = taskEpic?.epicId || null;
-        const noiseFilters = options.raw ? [] : loadNoiseFilters(epicId);
+        const noiseFilters = options.raw ? [] : getDiagnoseOps().loadNoiseFilters(epicId);
         const { events, lines } = parseJsonLog(jsonLogFile);
 
         const limit = options.lines ?? 50;

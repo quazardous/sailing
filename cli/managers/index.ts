@@ -97,10 +97,9 @@ export type { StatusTransitionResult, CascadeResult } from './status-manager.js'
 // Memory and log operations
 export {
   checkPendingMemory,
-  mergeEpicTaskLogs,
   countTaskTips,
   getLogStats,
-  deleteEpicLog,
-  getEpicLogContent
+  getEpicMemory,
+  EpicMemoryManager
 } from './memory-manager.js';
 export type { PendingMemoryResult, MergeLogsResult } from './memory-manager.js';

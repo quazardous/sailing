@@ -3,9 +3,9 @@
  *
  * Provides isolated execution environments for agents using git worktrees.
  * Each agent gets its own worktree with a dedicated branch.
- * TODO[P1]: Type inputs/outputs (branch names, git status) to remove implicit any when strict is enabled.
- * TODO[P2]: Wrap git exec results in typed helpers for divergence/status to avoid repeated casting.
- * TODO[P3]: Split CLI-facing helpers vs low-level git operations to ease progressive TS adoption.
+ *
+ * PURE LIB: No config access, no manager imports.
+ * WorktreeOps class encapsulates operations needing projectRoot/worktreesDir.
  */
 import fs from 'fs';
 import path from 'path';
@@ -34,70 +34,49 @@ interface WorktreeInfo {
   bare?: boolean;
 }
 
-/**
- * Get worktree path for a task
- * @param {string} worktreesDir - Base directory for worktrees
- * @param {string} taskId - Task ID (e.g., T042)
- * @returns {string} Absolute path to worktree
- */
-export function getWorktreePath(worktreesDir: string, taskId: string): string {
-  return path.join(worktreesDir, taskId);
-}
+// ============================================================================
+// Pure Functions (no context needed)
+// ============================================================================
 
 /**
  * Get branch name for a task
- * @param {string} taskId - Task ID
- * @returns {string} Branch name (e.g., task/T042)
  */
-export function getBranchName(taskId) {
+export function getBranchName(taskId: string): string {
   return `task/${taskId}`;
 }
 
 /**
  * Get branch name for a PRD
- * @param {string} prdId - PRD ID (e.g., PRD-001)
- * @returns {string} Branch name (e.g., prd/PRD-001)
  */
-export function getPrdBranchName(prdId) {
+export function getPrdBranchName(prdId: string): string {
   return `prd/${prdId}`;
 }
 
 /**
  * Get branch name for an Epic
- * @param {string} epicId - Epic ID (e.g., E001)
- * @returns {string} Branch name (e.g., epic/E001)
  */
-export function getEpicBranchName(epicId) {
+export function getEpicBranchName(epicId: string): string {
   return `epic/${epicId}`;
 }
 
 /**
  * Get branch name for a merge operation
- * Used when merging source into target with potential conflicts
- * @param {string} sourceId - Source entity ID (e.g., T042, E001)
- * @param {string} targetId - Target entity ID (e.g., E001, PRD-001, or 'main')
- * @returns {string} Branch name (e.g., merge/T042-to-E001)
  */
-export function getMergeBranchName(sourceId, targetId) {
+export function getMergeBranchName(sourceId: string, targetId: string): string {
   return `merge/${sourceId}-to-${targetId}`;
 }
 
 /**
  * Get branch name for reconciliation (sync from parent)
- * Used when pulling changes from parent branch
- * @param {string} branchId - Entity ID being reconciled (e.g., E001, T042)
- * @returns {string} Branch name (e.g., reconcile/E001)
  */
-export function getReconcileBranchName(branchId) {
+export function getReconcileBranchName(branchId: string): string {
   return `reconcile/${branchId}`;
 }
 
 /**
  * Parse a merge branch name to extract source and target
- * @param {string} branchName - Branch name (e.g., merge/T042-to-E001)
- * @returns {{ source: string, target: string }|null}
  */
-export function parseMergeBranchName(branchName) {
+export function parseMergeBranchName(branchName: string): { source: string; target: string } | null {
   const match = branchName.match(/^merge\/([^-]+)-to-(.+)$/);
   if (!match) return null;
   return { source: match[1], target: match[2] };
@@ -105,71 +84,22 @@ export function parseMergeBranchName(branchName) {
 
 /**
  * Check if a branch is a merge branch
- * @param {string} branchName - Branch name
- * @returns {boolean}
  */
-export function isMergeBranch(branchName) {
+export function isMergeBranch(branchName: string): boolean {
   return branchName.startsWith('merge/');
 }
 
 /**
  * Check if a branch is a reconcile branch
- * @param {string} branchName - Branch name
- * @returns {boolean}
  */
-export function isReconcileBranch(branchName) {
+export function isReconcileBranch(branchName: string): boolean {
   return branchName.startsWith('reconcile/');
 }
 
 /**
- * Check if a branch exists
- * @param {string} projectRoot - Project root directory
- * @param {string} branchName - Full branch name
- * @returns {boolean}
- */
-export function branchExists(projectRoot: string, branchName: string): boolean {
-  try {
-    execSync(`git rev-parse --verify "${branchName}"`, {
-      cwd: projectRoot,
-      stdio: ['pipe', 'pipe', 'pipe']
-    });
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-/**
- * Create a branch if it doesn't exist
- * @param {string} projectRoot - Project root directory
- * @param {string} branchName - Branch name to create
- * @param {string} baseBranch - Base branch to create from
- * @returns {{ created: boolean, branch: string, error?: string }}
- */
-export function ensureBranch(projectRoot: string, branchName: string, baseBranch: string) {
-  if (branchExists(projectRoot, branchName)) {
-    return { created: false, branch: branchName, existed: true };
-  }
-
-  try {
-    execSync(`git branch "${branchName}" "${baseBranch}"`, {
-      cwd: projectRoot,
-      encoding: 'utf8',
-      stdio: ['pipe', 'pipe', 'pipe']
-    });
-    return { created: true, branch: branchName };
-  } catch (e) {
-    return { created: false, branch: branchName, error: e.message };
-  }
-}
-
-/**
  * Get parent branch for a task based on branching strategy
- * @param {string} taskId - Task ID
- * @param {WorktreeContext} context - Context with prdId, epicId, branching strategy, mainBranch
- * @returns {string} Parent branch name
  */
-export function getParentBranch(taskId: string, context: WorktreeContext) {
+export function getParentBranch(taskId: string, context: WorktreeContext): string {
   const { prdId, epicId, branching = 'flat', mainBranch = 'main' } = context;
 
   switch (branching) {
@@ -187,50 +117,8 @@ export function getParentBranch(taskId: string, context: WorktreeContext) {
 }
 
 /**
- * Ensure branch hierarchy exists for a task
- * @param {string} projectRoot - Project root directory
- * @param {WorktreeContext} context - { prdId, epicId, branching, mainBranch }
- * @returns {{ branches: string[], created: string[], errors: string[] }}
- */
-export function ensureBranchHierarchy(projectRoot: string, context: WorktreeContext) {
-  const { prdId, epicId, branching = 'flat', mainBranch = 'main' } = context;
-  const branches: string[] = [];
-  const created: string[] = [];
-  const errors: string[] = [];
-
-  if (branching === 'flat') {
-    return { branches: [mainBranch], created: [], errors: [] };
-  }
-
-  // PRD branch (for 'prd' and 'epic' strategies)
-  if (prdId && (branching === 'prd' || branching === 'epic')) {
-    const prdBranch = getPrdBranchName(prdId);
-    branches.push(prdBranch);
-
-    const result = ensureBranch(projectRoot, prdBranch, mainBranch);
-    if (result.created) created.push(prdBranch);
-    if (result.error) errors.push(`${prdBranch}: ${result.error}`);
-  }
-
-  // Epic branch (for 'epic' strategy only)
-  if (epicId && branching === 'epic') {
-    const epicBranch = getEpicBranchName(epicId);
-    const parentBranch = prdId ? getPrdBranchName(prdId) : mainBranch;
-    branches.push(epicBranch);
-
-    const result = ensureBranch(projectRoot, epicBranch, parentBranch);
-    if (result.created) created.push(epicBranch);
-    if (result.error) errors.push(`${epicBranch}: ${result.error}`);
-  }
-
-  return { branches, created, errors };
-}
-
-/**
  * Get the branch hierarchy chain for sync propagation
  * Returns array from main → ... → task parent (order: top to bottom)
- * @param {WorktreeContext} context - { prdId, epicId, branching, mainBranch }
- * @returns {string[]} Branch chain (e.g., ['main', 'prd/PRD-001', 'epic/E001'])
  */
 export function getBranchHierarchy(context: WorktreeContext): string[] {
   const { prdId, epicId, branching = 'flat', mainBranch = 'main' } = context;
@@ -251,515 +139,582 @@ export function getBranchHierarchy(context: WorktreeContext): string[] {
   return chain;
 }
 
-/**
- * Check if a branch is behind another
- * @param {string} projectRoot - Project root directory
- * @param {string} branch - Branch to check
- * @param {string} upstream - Upstream branch
- * @returns {{ behind: number, ahead: number }}
- */
-export function getBranchDivergence(projectRoot: string, branch: string, upstream: string) {
-  try {
-    const output = execSync(
-      `git rev-list --left-right --count "${upstream}...${branch}"`,
-      { cwd: projectRoot, encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'] }
-    ).trim();
-
-    const [aheadUpstream, behindUpstream] = output.split('\t').map(n => parseInt(n, 10) || 0);
-    return { behind: aheadUpstream, ahead: behindUpstream };
-  } catch {
-    return { behind: 0, ahead: 0 };
-  }
-}
+// ============================================================================
+// WorktreeOps Class - POO Encapsulation
+// ============================================================================
 
 /**
- * Sync (merge/rebase) a branch from its upstream
- * @param {string} projectRoot - Project root directory
- * @param {string} branch - Branch to sync
- * @param {string} upstream - Upstream branch to sync from
- * @param {string} strategy - 'merge' or 'rebase' (default: merge)
- * @returns {{ success: boolean, synced: boolean, error?: string }}
+ * Worktree operations class with injected projectRoot and worktreesDir.
+ * Encapsulates all git/worktree operations that need context.
  */
-export function syncBranch(projectRoot: string, branch: string, upstream: string, strategy = 'merge') {
-  // Check divergence first
-  const div = getBranchDivergence(projectRoot, branch, upstream);
-  if (div.behind === 0) {
-    return { success: true, synced: false, message: 'Already up to date' };
+export class WorktreeOps {
+  constructor(
+    private projectRoot: string,
+    private worktreesDir: string
+  ) {}
+
+  // --------------------------------------------------------------------------
+  // Path Operations
+  // --------------------------------------------------------------------------
+
+  /**
+   * Get worktree path for a task
+   */
+  getWorktreePath(taskId: string): string {
+    return path.join(this.worktreesDir, taskId);
   }
 
-  try {
-    // Checkout branch, sync, then return to previous
-    const currentBranch = execSync('git rev-parse --abbrev-ref HEAD', {
-      cwd: projectRoot, encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe']
-    }).trim();
+  /**
+   * Check if a worktree exists
+   */
+  worktreeExists(taskId: string): boolean {
+    const worktreePath = this.getWorktreePath(taskId);
+    return fs.existsSync(worktreePath);
+  }
 
-    execSync(`git checkout "${branch}"`, {
-      cwd: projectRoot, encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe']
-    });
+  // --------------------------------------------------------------------------
+  // Branch Operations
+  // --------------------------------------------------------------------------
+
+  /**
+   * Check if a branch exists
+   */
+  branchExists(branchName: string): boolean {
+    try {
+      execSync(`git rev-parse --verify "${branchName}"`, {
+        cwd: this.projectRoot,
+        stdio: ['pipe', 'pipe', 'pipe']
+      });
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  /**
+   * Create a branch if it doesn't exist
+   */
+  ensureBranch(branchName: string, baseBranch: string) {
+    if (this.branchExists(branchName)) {
+      return { created: false, branch: branchName, existed: true };
+    }
 
     try {
-      if (strategy === 'rebase') {
-        execSync(`git rebase "${upstream}"`, {
-          cwd: projectRoot, encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe']
-        });
-      } else {
-        execSync(`git merge "${upstream}" --no-edit`, {
-          cwd: projectRoot, encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe']
-        });
-      }
+      execSync(`git branch "${branchName}" "${baseBranch}"`, {
+        cwd: this.projectRoot,
+        encoding: 'utf8',
+        stdio: ['pipe', 'pipe', 'pipe']
+      });
+      return { created: true, branch: branchName };
+    } catch (e: any) {
+      return { created: false, branch: branchName, error: e.message };
+    }
+  }
 
-      // Return to original branch
-      execSync(`git checkout "${currentBranch}"`, {
-        cwd: projectRoot, encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe']
+  /**
+   * Ensure branch hierarchy exists for a task
+   */
+  ensureBranchHierarchy(context: WorktreeContext) {
+    const { prdId, epicId, branching = 'flat', mainBranch = 'main' } = context;
+    const branches: string[] = [];
+    const created: string[] = [];
+    const errors: string[] = [];
+
+    if (branching === 'flat') {
+      return { branches: [mainBranch], created: [], errors: [] };
+    }
+
+    // PRD branch (for 'prd' and 'epic' strategies)
+    if (prdId && (branching === 'prd' || branching === 'epic')) {
+      const prdBranch = getPrdBranchName(prdId);
+      branches.push(prdBranch);
+
+      const result = this.ensureBranch(prdBranch, mainBranch);
+      if (result.created) created.push(prdBranch);
+      if (result.error) errors.push(`${prdBranch}: ${result.error}`);
+    }
+
+    // Epic branch (for 'epic' strategy only)
+    if (epicId && branching === 'epic') {
+      const epicBranch = getEpicBranchName(epicId);
+      const parentBranch = prdId ? getPrdBranchName(prdId) : mainBranch;
+      branches.push(epicBranch);
+
+      const result = this.ensureBranch(epicBranch, parentBranch);
+      if (result.created) created.push(epicBranch);
+      if (result.error) errors.push(`${epicBranch}: ${result.error}`);
+    }
+
+    return { branches, created, errors };
+  }
+
+  /**
+   * Get branch divergence (ahead/behind counts)
+   */
+  getBranchDivergence(branch: string, upstream: string) {
+    try {
+      const output = execSync(
+        `git rev-list --left-right --count "${upstream}...${branch}"`,
+        { cwd: this.projectRoot, encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'] }
+      ).trim();
+
+      const [aheadUpstream, behindUpstream] = output.split('\t').map(n => parseInt(n, 10) || 0);
+      return { behind: aheadUpstream, ahead: behindUpstream };
+    } catch {
+      return { behind: 0, ahead: 0 };
+    }
+  }
+
+  /**
+   * Sync (merge/rebase) a branch from its upstream
+   */
+  syncBranch(branch: string, upstream: string, strategy = 'merge') {
+    // Check divergence first
+    const div = this.getBranchDivergence(branch, upstream);
+    if (div.behind === 0) {
+      return { success: true, synced: false, message: 'Already up to date' };
+    }
+
+    try {
+      // Checkout branch, sync, then return to previous
+      const currentBranch = execSync('git rev-parse --abbrev-ref HEAD', {
+        cwd: this.projectRoot, encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe']
+      }).trim();
+
+      execSync(`git checkout "${branch}"`, {
+        cwd: this.projectRoot, encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe']
       });
 
-      return { success: true, synced: true, behind: div.behind };
-    } catch (e: any) {
-      // Abort and return to original
       try {
         if (strategy === 'rebase') {
-          execSync('git rebase --abort', { cwd: projectRoot, stdio: ['pipe', 'pipe', 'pipe'] });
+          execSync(`git rebase "${upstream}"`, {
+            cwd: this.projectRoot, encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe']
+          });
         } else {
-          execSync('git merge --abort', { cwd: projectRoot, stdio: ['pipe', 'pipe', 'pipe'] });
+          execSync(`git merge "${upstream}" --no-edit`, {
+            cwd: this.projectRoot, encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe']
+          });
         }
-      } catch { /* ignore */ }
 
-      execSync(`git checkout "${currentBranch}"`, {
-        cwd: projectRoot, encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe']
-      });
-
-      return { success: false, synced: false, error: `Conflict during ${strategy}: ${e.message}` };
-    }
-  } catch (e: any) {
-    return { success: false, synced: false, error: e.message };
-  }
-}
-
-/**
- * Sync branch hierarchy upward (for epic/PRD completion)
- * Called when finishing an epic or PRD - syncs upward to main
- * @param {string} projectRoot - Project root directory
- * @param {string} level - 'epic' | 'prd' - which level completed
- * @param {WorktreeContext} context - { prdId, epicId, branching, mainBranch }
- * @returns {{ success: boolean, synced: string[], errors: string[], skipped: string[] }}
- */
-export function syncUpwardHierarchy(projectRoot: string, level: string, context: WorktreeContext) {
-  const { prdId, epicId, branching = 'flat', mainBranch = 'main' } = context;
-  const synced: string[] = [];
-  const errors: string[] = [];
-  const skipped: string[] = [];
-
-  if (branching === 'flat') {
-    return { success: true, synced: [], errors: [], skipped: ['flat mode'] };
-  }
-
-  // Determine which syncs to perform based on completion level
-  const syncPairs: { branch: string; upstream: string }[] = [];
-
-  if (level === 'epic' && branching === 'epic') {
-    // Epic completed: sync epic → prd
-    if (epicId && prdId) {
-      syncPairs.push({ branch: getEpicBranchName(epicId), upstream: getPrdBranchName(prdId) });
-    }
-  } else if (level === 'prd') {
-    // PRD completed: sync prd → main (and epic → prd if epic mode)
-    if (branching === 'epic' && epicId && prdId) {
-      syncPairs.push({ branch: getEpicBranchName(epicId), upstream: getPrdBranchName(prdId) });
-    }
-    if (prdId) {
-      syncPairs.push({ branch: getPrdBranchName(prdId), upstream: mainBranch });
-    }
-  }
-
-  for (const { branch, upstream } of syncPairs) {
-    if (!branchExists(projectRoot, branch)) {
-      skipped.push(`${branch} (not found)`);
-      continue;
-    }
-
-    const result = syncBranch(projectRoot, branch, upstream, 'merge');
-    if (!result.success) {
-      errors.push(`${branch}: ${result.error}`);
-    } else if (result.synced) {
-      synced.push(`${branch} ← ${upstream} (${result.behind} commits)`);
-    } else {
-      skipped.push(`${branch} (up to date)`);
-    }
-  }
-
-  return { success: errors.length === 0, synced, errors, skipped };
-}
-
-/**
- * Check if a worktree exists
- * @param {string} worktreesDir - Base directory for worktrees
- * @param {string} taskId - Task ID
- * @returns {boolean}
- */
-export function worktreeExists(worktreesDir: string, taskId: string): boolean {
-  const worktreePath = getWorktreePath(worktreesDir, taskId);
-  return fs.existsSync(worktreePath);
-}
-
-/**
- * Create a worktree for a task
- * @param {string} projectRoot - Project root directory
- * @param {string} worktreesDir - Base directory for worktrees
- * @param {string} taskId - Task ID
- * @param {WorktreeOptions} options - Options
- * @param {string} options.baseBranch - Base branch to create from (default: current branch)
- * @returns {{ success: boolean, path: string, branch: string, error?: string }}
- */
-export function createWorktree(projectRoot: string, worktreesDir: string, taskId: string, options: WorktreeOptions = {}) {
-  const worktreePath = getWorktreePath(worktreesDir, taskId);
-  const branch = getBranchName(taskId);
-
-  // Check if worktree path already exists
-  if (fs.existsSync(worktreePath)) {
-    return {
-      success: false,
-      path: worktreePath,
-      branch,
-      error: `Worktree already exists: ${worktreePath}`
-    };
-  }
-
-  // Ensure parent directory exists
-  ensureDir(path.dirname(worktreePath));
-
-  try {
-    // Get base branch
-    let baseBranch = options.baseBranch;
-    if (!baseBranch) {
-      baseBranch = execSync('git rev-parse --abbrev-ref HEAD', {
-        cwd: projectRoot,
-        encoding: 'utf8',
-        stdio: ['pipe', 'pipe', 'pipe']
-      }).trim();
-    }
-
-    // Check if branch already exists (orphaned from previous run)
-    const branchAlreadyExists = branchExists(projectRoot, branch);
-
-    if (branchAlreadyExists) {
-      // Check if the branch has commits ahead of base
-      // If yes, there's work that might be lost - escalate
-      try {
-        const aheadCount = execSync(
-          `git rev-list --count "${baseBranch}..${branch}"`,
-          { cwd: projectRoot, encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'] }
-        ).trim();
-
-        if (parseInt(aheadCount, 10) > 0) {
-          return {
-            success: false,
-            path: worktreePath,
-            branch,
-            baseBranch,
-            error: `Branch '${branch}' exists with ${aheadCount} commit(s) ahead of ${baseBranch}. ` +
-                   `Use 'git branch -D ${branch}' to delete it, or investigate the existing work.`
-          };
-        }
-      } catch {
-        // If we can't check, assume safe to reuse
-      }
-
-      // Branch exists but no worktree, and no commits ahead → delete and recreate
-      // This ensures the new worktree starts from the latest baseBranch
-      // (baseBranch may have advanced since the orphaned branch was created)
-      execSync(`git branch -D "${branch}"`, {
-        cwd: projectRoot,
-        encoding: 'utf8',
-        stdio: ['pipe', 'pipe', 'pipe']
-      });
-
-      // Now create fresh worktree with new branch from current baseBranch
-      execSync(`git worktree add "${worktreePath}" -b "${branch}" "${baseBranch}"`, {
-        cwd: projectRoot,
-        encoding: 'utf8',
-        stdio: ['pipe', 'pipe', 'pipe']
-      });
-
-      return {
-        success: true,
-        path: worktreePath,
-        branch,
-        baseBranch,
-        recreated: true  // Indicates orphaned branch was deleted and recreated
-      };
-    } else {
-      // Create worktree with new branch
-      execSync(`git worktree add "${worktreePath}" -b "${branch}"`, {
-        cwd: projectRoot,
-        encoding: 'utf8',
-        stdio: ['pipe', 'pipe', 'pipe']
-      });
-
-      return {
-        success: true,
-        path: worktreePath,
-        branch,
-        baseBranch,
-        reused: false
-      };
-    }
-  } catch (e: any) {
-    return {
-      success: false,
-      path: worktreePath,
-      branch,
-      error: e.message || String(e)
-    };
-  }
-}
-
-/**
- * Remove a worktree and its branch
- * @param {string} projectRoot - Project root directory
- * @param {string} worktreesDir - Base directory for worktrees
- * @param {string} taskId - Task ID
- * @param {WorktreeOptions} options - Options
- * @param {boolean} options.force - Force removal even if dirty
- * @param {boolean} options.keepBranch - Don't delete the branch
- * @returns {{ success: boolean, path: string, branch: string, error?: string }}
- */
-export function removeWorktree(projectRoot: string, worktreesDir: string, taskId: string, options: WorktreeOptions = {}) {
-  const worktreePath = getWorktreePath(worktreesDir, taskId);
-  const branch = getBranchName(taskId);
-
-  // Check if worktree exists
-  if (!fs.existsSync(worktreePath)) {
-    return {
-      success: false,
-      path: worktreePath,
-      branch,
-      error: `Worktree not found: ${worktreePath}`
-    };
-  }
-
-  try {
-    // Remove worktree
-    const forceFlag = options.force ? ' --force' : '';
-    execSync(`git worktree remove "${worktreePath}"${forceFlag}`, {
-      cwd: projectRoot,
-      encoding: 'utf8',
-      stdio: ['pipe', 'pipe', 'pipe']
-    });
-
-    // Delete branch unless keepBranch is set
-    if (!options.keepBranch) {
-      try {
-        const deleteFlag = options.force ? '-D' : '-d';
-        execSync(`git branch ${deleteFlag} "${branch}"`, {
-          cwd: projectRoot,
-          encoding: 'utf8',
-          stdio: ['pipe', 'pipe', 'pipe']
+        // Return to original branch
+        execSync(`git checkout "${currentBranch}"`, {
+          cwd: this.projectRoot, encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe']
         });
-      } catch {
-        // Branch might not exist or have unmerged changes, ignore
+
+        return { success: true, synced: true, behind: div.behind };
+      } catch (e: any) {
+        // Abort and return to original
+        try {
+          if (strategy === 'rebase') {
+            execSync('git rebase --abort', { cwd: this.projectRoot, stdio: ['pipe', 'pipe', 'pipe'] });
+          } else {
+            execSync('git merge --abort', { cwd: this.projectRoot, stdio: ['pipe', 'pipe', 'pipe'] });
+          }
+        } catch { /* ignore */ }
+
+        execSync(`git checkout "${currentBranch}"`, {
+          cwd: this.projectRoot, encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe']
+        });
+
+        return { success: false, synced: false, error: `Conflict during ${strategy}: ${e.message}` };
+      }
+    } catch (e: any) {
+      return { success: false, synced: false, error: e.message };
+    }
+  }
+
+  /**
+   * Sync branch hierarchy upward (for epic/PRD completion)
+   */
+  syncUpwardHierarchy(level: string, context: WorktreeContext) {
+    const { prdId, epicId, branching = 'flat', mainBranch = 'main' } = context;
+    const synced: string[] = [];
+    const errors: string[] = [];
+    const skipped: string[] = [];
+
+    if (branching === 'flat') {
+      return { success: true, synced: [], errors: [], skipped: ['flat mode'] };
+    }
+
+    // Determine which syncs to perform based on completion level
+    const syncPairs: { branch: string; upstream: string }[] = [];
+
+    if (level === 'epic' && branching === 'epic') {
+      // Epic completed: sync epic → prd
+      if (epicId && prdId) {
+        syncPairs.push({ branch: getEpicBranchName(epicId), upstream: getPrdBranchName(prdId) });
+      }
+    } else if (level === 'prd') {
+      // PRD completed: sync prd → main (and epic → prd if epic mode)
+      if (branching === 'epic' && epicId && prdId) {
+        syncPairs.push({ branch: getEpicBranchName(epicId), upstream: getPrdBranchName(prdId) });
+      }
+      if (prdId) {
+        syncPairs.push({ branch: getPrdBranchName(prdId), upstream: mainBranch });
       }
     }
 
-    return {
-      success: true,
-      path: worktreePath,
-      branch
-    };
-  } catch (e: any) {
-    return {
-      success: false,
-      path: worktreePath,
-      branch,
-      error: e.message || String(e)
-    };
-  }
-}
+    for (const { branch, upstream } of syncPairs) {
+      if (!this.branchExists(branch)) {
+        skipped.push(`${branch} (not found)`);
+        continue;
+      }
 
-/**
- * List all worktrees
- * @param {string} projectRoot - Project root directory
- * @returns {Array<WorktreeInfo>}
- */
-export function listWorktrees(projectRoot: string): WorktreeInfo[] {
-  try {
-    const output = execSync('git worktree list --porcelain', {
-      cwd: projectRoot,
-      encoding: 'utf8',
-      stdio: ['pipe', 'pipe', 'pipe']
-    });
-
-    const worktrees: WorktreeInfo[] = [];
-    let current: Partial<WorktreeInfo> = {};
-
-    for (const line of output.split('\n')) {
-      if (line.startsWith('worktree ')) {
-        if (current.path) {
-          worktrees.push(current as WorktreeInfo);
-        }
-        current = { path: line.substring(9) };
-      } else if (line.startsWith('HEAD ')) {
-        current.head = line.substring(5);
-      } else if (line.startsWith('branch ')) {
-        current.branch = line.substring(7);
-        // Extract task ID from task/TNNN pattern
-        const match = current.branch.match(/refs\/heads\/task\/(T\d+)$/);
-        if (match) {
-          current.taskId = match[1];
-        }
-      } else if (line === 'detached') {
-        current.detached = true;
-      } else if (line === 'bare') {
-        current.bare = true;
+      const result = this.syncBranch(branch, upstream, 'merge');
+      if (!result.success) {
+        errors.push(`${branch}: ${result.error}`);
+      } else if (result.synced) {
+        synced.push(`${branch} ← ${upstream} (${result.behind} commits)`);
+      } else {
+        skipped.push(`${branch} (up to date)`);
       }
     }
 
-    if (current.path) {
-      worktrees.push(current as WorktreeInfo);
-    }
-
-    return worktrees;
-  } catch (e) {
-    return [];
-  }
-}
-
-/**
- * List agent worktrees (only those matching agent/TNNN pattern)
- * @param {string} projectRoot - Project root directory
- * @returns {Array<{ path: string, branch: string, head: string, taskId: string }>}
- */
-export function listAgentWorktrees(projectRoot: string) {
-  return listWorktrees(projectRoot).filter(w => w.taskId);
-}
-
-/**
- * Prune orphaned worktrees
- * @param {string} projectRoot - Project root directory
- * @returns {{ pruned: boolean }}
- */
-export function pruneWorktrees(projectRoot: string) {
-  try {
-    execSync('git worktree prune', {
-      cwd: projectRoot,
-      encoding: 'utf8',
-      stdio: ['pipe', 'pipe', 'pipe']
-    });
-    return { pruned: true };
-  } catch {
-    return { pruned: false };
-  }
-}
-
-/**
- * Get worktree status
- * @param {string} worktreesDir - Base directory for worktrees
- * @param {string} taskId - Task ID
- * @returns {{ exists: boolean, path: string, branch: string, clean?: boolean, ahead?: number, behind?: number }}
- */
-export function getWorktreeStatus(worktreesDir: string, taskId: string) {
-  const worktreePath = getWorktreePath(worktreesDir, taskId);
-  const branch = getBranchName(taskId);
-
-  if (!fs.existsSync(worktreePath)) {
-    return {
-      exists: false,
-      path: worktreePath,
-      branch
-    };
+    return { success: errors.length === 0, synced, errors, skipped };
   }
 
-  try {
-    // Check if clean
-    const status = execSync('git status --porcelain', {
-      cwd: worktreePath,
-      encoding: 'utf8',
-      stdio: ['pipe', 'pipe', 'pipe']
-    });
-    const clean = status.trim() === '';
+  // --------------------------------------------------------------------------
+  // Worktree List Operations
+  // --------------------------------------------------------------------------
 
-    // Get ahead/behind count
-    let ahead = 0;
-    let behind = 0;
+  /**
+   * List all worktrees
+   */
+  listWorktrees(): WorktreeInfo[] {
     try {
-      const counts = execSync('git rev-list --left-right --count HEAD...@{upstream}', {
+      const output = execSync('git worktree list --porcelain', {
+        cwd: this.projectRoot,
+        encoding: 'utf8',
+        stdio: ['pipe', 'pipe', 'pipe']
+      });
+
+      const worktrees: WorktreeInfo[] = [];
+      let current: Partial<WorktreeInfo> = {};
+
+      for (const line of output.split('\n')) {
+        if (line.startsWith('worktree ')) {
+          if (current.path) {
+            worktrees.push(current as WorktreeInfo);
+          }
+          current = { path: line.substring(9) };
+        } else if (line.startsWith('HEAD ')) {
+          current.head = line.substring(5);
+        } else if (line.startsWith('branch ')) {
+          current.branch = line.substring(7);
+          // Extract task ID from task/TNNN pattern
+          const match = current.branch.match(/refs\/heads\/task\/(T\d+)$/);
+          if (match) {
+            current.taskId = match[1];
+          }
+        } else if (line === 'detached') {
+          current.detached = true;
+        } else if (line === 'bare') {
+          current.bare = true;
+        }
+      }
+
+      if (current.path) {
+        worktrees.push(current as WorktreeInfo);
+      }
+
+      return worktrees;
+    } catch {
+      return [];
+    }
+  }
+
+  /**
+   * List agent worktrees (only those matching agent/TNNN pattern)
+   */
+  listAgentWorktrees() {
+    return this.listWorktrees().filter(w => w.taskId);
+  }
+
+  /**
+   * Prune orphaned worktrees
+   */
+  pruneWorktrees() {
+    try {
+      execSync('git worktree prune', {
+        cwd: this.projectRoot,
+        encoding: 'utf8',
+        stdio: ['pipe', 'pipe', 'pipe']
+      });
+      return { pruned: true };
+    } catch {
+      return { pruned: false };
+    }
+  }
+
+  // --------------------------------------------------------------------------
+  // Worktree Status
+  // --------------------------------------------------------------------------
+
+  /**
+   * Get worktree status
+   */
+  getWorktreeStatus(taskId: string) {
+    const worktreePath = this.getWorktreePath(taskId);
+    const branch = getBranchName(taskId);
+
+    if (!fs.existsSync(worktreePath)) {
+      return {
+        exists: false,
+        path: worktreePath,
+        branch
+      };
+    }
+
+    try {
+      // Check if clean
+      const status = execSync('git status --porcelain', {
         cwd: worktreePath,
         encoding: 'utf8',
         stdio: ['pipe', 'pipe', 'pipe']
-      }).trim().split('\t');
-      ahead = parseInt(counts[0], 10) || 0;
-      behind = parseInt(counts[1], 10) || 0;
+      });
+      const clean = status.trim() === '';
+
+      // Get ahead/behind count
+      let ahead = 0;
+      let behind = 0;
+      try {
+        const counts = execSync('git rev-list --left-right --count HEAD...@{upstream}', {
+          cwd: worktreePath,
+          encoding: 'utf8',
+          stdio: ['pipe', 'pipe', 'pipe']
+        }).trim().split('\t');
+        ahead = parseInt(counts[0], 10) || 0;
+        behind = parseInt(counts[1], 10) || 0;
+      } catch {
+        // No upstream tracking
+      }
+
+      return {
+        exists: true,
+        path: worktreePath,
+        branch,
+        clean,
+        ahead,
+        behind
+      };
+    } catch (e: any) {
+      return {
+        exists: true,
+        path: worktreePath,
+        branch,
+        error: e.message
+      };
+    }
+  }
+
+  // --------------------------------------------------------------------------
+  // Worktree Management
+  // --------------------------------------------------------------------------
+
+  /**
+   * Create a worktree for a task
+   */
+  createWorktree(taskId: string, options: WorktreeOptions = {}) {
+    const worktreePath = this.getWorktreePath(taskId);
+    const branch = getBranchName(taskId);
+
+    // Check if worktree path already exists
+    if (fs.existsSync(worktreePath)) {
+      return {
+        success: false,
+        path: worktreePath,
+        branch,
+        error: `Worktree already exists: ${worktreePath}`
+      };
+    }
+
+    // Ensure parent directory exists
+    ensureDir(path.dirname(worktreePath));
+
+    try {
+      // Get base branch
+      let baseBranch = options.baseBranch;
+      if (!baseBranch) {
+        baseBranch = execSync('git rev-parse --abbrev-ref HEAD', {
+          cwd: this.projectRoot,
+          encoding: 'utf8',
+          stdio: ['pipe', 'pipe', 'pipe']
+        }).trim();
+      }
+
+      // Check if branch already exists (orphaned from previous run)
+      const branchAlreadyExists = this.branchExists(branch);
+
+      if (branchAlreadyExists) {
+        // Check if the branch has commits ahead of base
+        // If yes, there's work that might be lost - escalate
+        try {
+          const aheadCount = execSync(
+            `git rev-list --count "${baseBranch}..${branch}"`,
+            { cwd: this.projectRoot, encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'] }
+          ).trim();
+
+          if (parseInt(aheadCount, 10) > 0) {
+            return {
+              success: false,
+              path: worktreePath,
+              branch,
+              baseBranch,
+              error: `Branch '${branch}' exists with ${aheadCount} commit(s) ahead of ${baseBranch}. ` +
+                     `Use 'git branch -D ${branch}' to delete it, or investigate the existing work.`
+            };
+          }
+        } catch {
+          // If we can't check, assume safe to reuse
+        }
+
+        // Branch exists but no worktree, and no commits ahead → delete and recreate
+        execSync(`git branch -D "${branch}"`, {
+          cwd: this.projectRoot,
+          encoding: 'utf8',
+          stdio: ['pipe', 'pipe', 'pipe']
+        });
+
+        // Now create fresh worktree with new branch from current baseBranch
+        execSync(`git worktree add "${worktreePath}" -b "${branch}" "${baseBranch}"`, {
+          cwd: this.projectRoot,
+          encoding: 'utf8',
+          stdio: ['pipe', 'pipe', 'pipe']
+        });
+
+        return {
+          success: true,
+          path: worktreePath,
+          branch,
+          baseBranch,
+          recreated: true
+        };
+      } else {
+        // Create worktree with new branch
+        execSync(`git worktree add "${worktreePath}" -b "${branch}"`, {
+          cwd: this.projectRoot,
+          encoding: 'utf8',
+          stdio: ['pipe', 'pipe', 'pipe']
+        });
+
+        return {
+          success: true,
+          path: worktreePath,
+          branch,
+          baseBranch,
+          reused: false
+        };
+      }
+    } catch (e: any) {
+      return {
+        success: false,
+        path: worktreePath,
+        branch,
+        error: e.message || String(e)
+      };
+    }
+  }
+
+  /**
+   * Remove a worktree and its branch
+   */
+  removeWorktree(taskId: string, options: WorktreeOptions = {}) {
+    const worktreePath = this.getWorktreePath(taskId);
+    const branch = getBranchName(taskId);
+
+    // Check if worktree exists
+    if (!fs.existsSync(worktreePath)) {
+      return {
+        success: false,
+        path: worktreePath,
+        branch,
+        error: `Worktree not found: ${worktreePath}`
+      };
+    }
+
+    try {
+      // Remove worktree
+      const forceFlag = options.force ? ' --force' : '';
+      execSync(`git worktree remove "${worktreePath}"${forceFlag}`, {
+        cwd: this.projectRoot,
+        encoding: 'utf8',
+        stdio: ['pipe', 'pipe', 'pipe']
+      });
+
+      // Delete branch unless keepBranch is set
+      if (!options.keepBranch) {
+        try {
+          const deleteFlag = options.force ? '-D' : '-d';
+          execSync(`git branch ${deleteFlag} "${branch}"`, {
+            cwd: this.projectRoot,
+            encoding: 'utf8',
+            stdio: ['pipe', 'pipe', 'pipe']
+          });
+        } catch {
+          // Branch might not exist or have unmerged changes, ignore
+        }
+      }
+
+      return {
+        success: true,
+        path: worktreePath,
+        branch
+      };
+    } catch (e: any) {
+      return {
+        success: false,
+        path: worktreePath,
+        branch,
+        error: e.message || String(e)
+      };
+    }
+  }
+
+  /**
+   * Full cleanup: remove worktree + local branch + remote branch
+   */
+  cleanupWorktree(taskId: string, options: { force?: boolean } = {}) {
+    const worktreePath = this.getWorktreePath(taskId);
+    const branch = getBranchName(taskId);
+    const removed: string[] = [];
+    const errors: string[] = [];
+
+    // Remove worktree
+    if (fs.existsSync(worktreePath)) {
+      const result = this.removeWorktree(taskId, { force: options.force });
+      if (result.success) {
+        removed.push('worktree');
+      } else if (result.error) {
+        errors.push(`worktree: ${result.error}`);
+      }
+    }
+
+    // Delete local branch
+    try {
+      execSync(`git branch -D "${branch}"`, {
+        cwd: this.projectRoot,
+        stdio: ['pipe', 'pipe', 'pipe']
+      });
+      removed.push('local_branch');
     } catch {
-      // No upstream tracking
+      // Branch may not exist - not an error
+    }
+
+    // Delete remote branch
+    try {
+      execSync(`git push origin --delete "${branch}"`, {
+        cwd: this.projectRoot,
+        stdio: ['pipe', 'pipe', 'pipe']
+      });
+      removed.push('remote_branch');
+    } catch {
+      // Remote branch may not exist - not an error
     }
 
     return {
-      exists: true,
-      path: worktreePath,
-      branch,
-      clean,
-      ahead,
-      behind
-    };
-  } catch (e: any) {
-    return {
-      exists: true,
-      path: worktreePath,
-      branch,
-      error: e.message
+      success: errors.length === 0,
+      removed,
+      errors
     };
   }
-}
-
-/**
- * Full cleanup: remove worktree + local branch + remote branch
- * @param {string} projectRoot - Project root directory
- * @param {string} worktreesDir - Base directory for worktrees
- * @param {string} taskId - Task ID
- * @param {object} options - Options
- * @param {boolean} options.force - Force removal
- * @returns {{ success: boolean, removed: string[], errors: string[] }}
- */
-export function cleanupWorktree(projectRoot: string, worktreesDir: string, taskId: string, options: { force?: boolean } = {}) {
-  const worktreePath = getWorktreePath(worktreesDir, taskId);
-  const branch = getBranchName(taskId);
-  const removed: string[] = [];
-  const errors: string[] = [];
-
-  // Remove worktree
-  if (fs.existsSync(worktreePath)) {
-    const result = removeWorktree(projectRoot, worktreesDir, taskId, { force: options.force });
-    if (result.success) {
-      removed.push('worktree');
-    } else if (result.error) {
-      errors.push(`worktree: ${result.error}`);
-    }
-  }
-
-  // Delete local branch
-  try {
-    execSync(`git branch -D "${branch}"`, {
-      cwd: projectRoot,
-      stdio: ['pipe', 'pipe', 'pipe']
-    });
-    removed.push('local_branch');
-  } catch {
-    // Branch may not exist - not an error
-  }
-
-  // Delete remote branch
-  try {
-    execSync(`git push origin --delete "${branch}"`, {
-      cwd: projectRoot,
-      stdio: ['pipe', 'pipe', 'pipe']
-    });
-    removed.push('remote_branch');
-  } catch {
-    // Remote branch may not exist - not an error
-  }
-
-  return {
-    success: errors.length === 0,
-    removed,
-    errors
-  };
 }

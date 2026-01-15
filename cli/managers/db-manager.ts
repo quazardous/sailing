@@ -1,28 +1,21 @@
 /**
  * Database Manager
- * Provides database operations with config/path access.
+ * Provides config-aware factory for DbOps.
  *
- * MANAGER: Orchestrates libs with config/data access.
+ * MANAGER: Creates configured lib instances.
  */
 import { resolvePlaceholders, resolvePath } from './core-manager.js';
-import {
-  getAgentsDb as getAgentsDbPure,
-  getRunsDb as getRunsDbPure,
-  upsertAgent as upsertAgentPure,
-  getAgent as getAgentPure,
-  getAllAgents as getAllAgentsPure,
-  deleteAgent as deleteAgentPure,
-  clearAllAgents as clearAllAgentsPure,
-  updateAgentStatus as updateAgentStatusPure,
-  createRun as createRunPure,
-  completeRun as completeRunPure,
-  getRunsForTask as getRunsForTaskPure,
-  migrateFromStateJson as migrateFromStateJsonPure,
-  type DbOptions,
-} from '../lib/db.js';
+import { DbOps } from '../lib/db.js';
 
-// Re-export types
-export type { DbOptions };
+// Re-export types and class for direct usage
+export { DbOps };
+export type { DbOptions } from '../lib/db.js';
+
+// ============================================================================
+// DbOps Factory (lazy-initialized)
+// ============================================================================
+
+let _ops: DbOps | null = null;
 
 /**
  * Get database directory from config
@@ -32,61 +25,20 @@ function getDbDir(): string {
   return custom || resolvePlaceholders('${haven}/db');
 }
 
-// ============ Collection Access ============
-
-export function getAgentsDb() {
-  return getAgentsDbPure(getDbDir());
+/**
+ * Get configured DbOps instance (lazy-initialized)
+ * Commands should use: getDbOps().someMethod()
+ */
+export function getDbOps(): DbOps {
+  if (!_ops) {
+    _ops = new DbOps(getDbDir());
+  }
+  return _ops;
 }
 
-export function getRunsDb() {
-  return getRunsDbPure(getDbDir());
-}
-
-// ============ Agent Operations ============
-
-export async function upsertAgent(taskId: string, data: object): Promise<void> {
-  return upsertAgentPure(getDbDir(), taskId, data);
-}
-
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-export async function getAgent(taskId: string): Promise<any> {
-  return getAgentPure(getDbDir(), taskId);
-}
-
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-export async function getAllAgents(options: DbOptions = {}): Promise<any[]> {
-  return getAllAgentsPure(getDbDir(), options);
-}
-
-export async function deleteAgent(taskId: string): Promise<void> {
-  return deleteAgentPure(getDbDir(), taskId);
-}
-
-export async function clearAllAgents(): Promise<number> {
-  return clearAllAgentsPure(getDbDir());
-}
-
-export async function updateAgentStatus(taskId: string, status: string, extraData: object = {}): Promise<void> {
-  return updateAgentStatusPure(getDbDir(), taskId, status, extraData);
-}
-
-// ============ Run Operations ============
-
-export async function createRun(taskId: string, logFile: string): Promise<string> {
-  return createRunPure(getDbDir(), taskId, logFile);
-}
-
-export async function completeRun(runId: string, exitCode: number): Promise<void> {
-  return completeRunPure(getDbDir(), runId, exitCode);
-}
-
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-export async function getRunsForTask(taskId: string): Promise<any[]> {
-  return getRunsForTaskPure(getDbDir(), taskId);
-}
-
-// ============ Migration ============
-
-export async function migrateFromStateJson(stateAgents: Record<string, object>): Promise<number> {
-  return migrateFromStateJsonPure(getDbDir(), stateAgents);
+/**
+ * Reset ops instance (for testing or when config changes)
+ */
+export function resetDbOps(): void {
+  _ops = null;
 }

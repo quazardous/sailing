@@ -9,7 +9,7 @@ import { getAgentConfig, getPrompting, getPathsInfo, loadFile } from './core-man
 // Note: fs is still used in buildPromptLegacy
 import { getTask, getTaskEpic, getEpicPrd, getEpic, getPrd, getMemoryFile } from './artefacts-manager.js';
 import { renderTemplate } from './template-manager.js';
-import { getAgentMemory } from '../lib/memory-section.js';
+import { getEpicMemory } from './memory-manager.js';
 import {
   resolveInject,
   getSetFragments,
@@ -252,7 +252,7 @@ function buildPromptCore(taskId: string, options: BuildPromptOptions): SpawnProm
   const prdTitle = prdId !== 'unknown' ? getPrd(prdId)?.data?.title || null : null;
 
   // Load agent-relevant memory (filtered sections only)
-  const memory = getAgentMemory(epicId);
+  const memory = getEpicMemory(epicId).getAgentMemory();
 
   // Filter task body: remove Log section and HTML comment lines
   const taskBody = taskFile.body
@@ -309,6 +309,8 @@ function buildPromptLegacy(taskId: string, useWorktree: boolean): SpawnPromptRes
     memoryContent = fs.readFileSync(memoryEntry.file, 'utf8').trim();
   }
 
+  const memorySection = memoryContent ? `# Epic Memory\n\n${memoryContent}\n\n---\n\n` : '';
+
   const prompt = `# Agent Mission: ${taskId}
 
 You are an autonomous agent assigned to task ${taskId}.
@@ -324,7 +326,7 @@ ${taskFile.body.trim()}
 
 ---
 
-${memoryContent ? `# Epic Memory\n\n${memoryContent}\n\n---\n\n` : ''}`;
+${memorySection}`;
 
   return { prompt, taskId, epicId, prdId };
 }

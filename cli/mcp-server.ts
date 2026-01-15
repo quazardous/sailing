@@ -241,7 +241,7 @@ function stopServer(): boolean {
   }
 
   try {
-    process.kill(status.pid!, 'SIGTERM');
+    process.kill(status.pid, 'SIGTERM');
     console.log(`Stopped MCP server (pid: ${status.pid})`);
 
     // Clean up files synchronously
@@ -253,7 +253,7 @@ function stopServer(): boolean {
     const start = Date.now();
     while (Date.now() - start < 2000) {
       try {
-        process.kill(status.pid!, 0);
+        process.kill(status.pid, 0);
         // Still running, wait
         spawnSync('sleep', ['0.1'], { stdio: 'ignore' });
       } catch {
@@ -264,7 +264,7 @@ function stopServer(): boolean {
 
     // Still running after timeout, try SIGKILL
     try {
-      process.kill(status.pid!, 'SIGKILL');
+      process.kill(status.pid, 'SIGKILL');
       spawnSync('sleep', ['0.5'], { stdio: 'ignore' });
     } catch {
       // Already dead

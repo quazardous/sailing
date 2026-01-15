@@ -16,7 +16,7 @@ import { getTask, getPrdBranching } from '../managers/artefacts-manager.js';
 import {
   diagnose as diagnoseReconciliation,
   BranchState
-} from '../lib/reconciliation.js';
+} from '../managers/reconciliation-manager.js';
 import { getGit } from '../lib/git.js';
 import { buildConflictMatrix } from '../managers/conflict-manager.js';
 

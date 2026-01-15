@@ -2,7 +2,7 @@
  * Diagnose library - Filter and analyze agent run logs
  *
  * PURE LIB: No config access, no manager imports.
- * All paths must be passed as parameters.
+ * DiagnoseOps class encapsulates operations needing baseDiagnosticsDir.
  */
 import fs from 'fs';
 import path from 'path';
@@ -35,52 +35,9 @@ export interface DiagnoseResult {
   errors: string[];
 }
 
-/**
- * Get diagnostics directory for an epic
- * @param baseDiagnosticsDir - Base diagnostics directory path
- * @param epicId - Epic ID or null for global
- */
-export function getDiagnosticsDir(baseDiagnosticsDir: string, epicId: string | null): string {
-  if (epicId) {
-    return path.join(baseDiagnosticsDir, epicId);
-  }
-  return path.join(baseDiagnosticsDir, 'global');
-}
-
-/**
- * Load noise filters for an epic
- * @param baseDiagnosticsDir - Base diagnostics directory path
- * @param epicId - Epic ID or null for global
- */
-export function loadNoiseFilters(baseDiagnosticsDir: string, epicId: string | null): NoiseFilter[] {
-  const dir = getDiagnosticsDir(baseDiagnosticsDir, epicId);
-  const filtersFile = path.join(dir, 'noise-filters.yaml');
-
-  if (!fs.existsSync(filtersFile)) {
-    return [];
-  }
-
-  try {
-    const content = fs.readFileSync(filtersFile, 'utf8');
-    const data = yaml.load(content) as { filters?: NoiseFilter[] };
-    return data?.filters || [];
-  } catch {
-    return [];
-  }
-}
-
-/**
- * Save noise filters for an epic
- * @param baseDiagnosticsDir - Base diagnostics directory path
- * @param epicId - Epic ID or null for global
- * @param filters - Filters to save
- */
-export function saveNoiseFilters(baseDiagnosticsDir: string, epicId: string | null, filters: NoiseFilter[]): void {
-  const dir = getDiagnosticsDir(baseDiagnosticsDir, epicId);
-  fs.mkdirSync(dir, { recursive: true });
-  const filtersFile = path.join(dir, 'noise-filters.yaml');
-  fs.writeFileSync(filtersFile, yaml.dump({ filters }));
-}
+// ============================================================================
+// Pure Functions (no context needed)
+// ============================================================================
 
 /**
  * Check if an event matches a noise filter
@@ -146,82 +103,6 @@ export function truncateError(msg: string, maxLen = 500): string {
 }
 
 /**
- * Analyze log file and return errors (main function for post-run analysis)
- * @param logFile - Path to the JSON log file
- * @param baseDiagnosticsDir - Base diagnostics directory path for noise filters
- * @param epicId - Epic ID or null for global filters
- * @param maxLineLen - Maximum error line length (default 500)
- */
-export function analyzeLog(logFile: string, baseDiagnosticsDir: string, epicId: string | null, maxLineLen = 500): DiagnoseResult {
-  if (!fs.existsSync(logFile)) {
-    return {
-      task_id: '',
-      epic_id: epicId,
-      total_events: 0,
-      filtered_noise: 0,
-      errors: []
-    };
-  }
-
-  const noiseFilters = loadNoiseFilters(baseDiagnosticsDir, epicId);
-  const { events, lines } = parseJsonLog(logFile);
-
-  const errors: string[] = [];
-  let filtered = 0;
-
-  for (let i = 0; i < events.length; i++) {
-    const event = events[i];
-    const line = lines[i];
-
-    // Check noise filters
-    let isNoise = false;
-    for (const filter of noiseFilters) {
-      if (matchesNoiseFilter(line, event, filter)) {
-        isNoise = true;
-        filtered++;
-        break;
-      }
-    }
-
-    if (isNoise) continue;
-
-    // Detect potential errors in tool results
-    if (event.tool_use_result) {
-      const result = event.tool_use_result;
-      const stderr = result.stderr || '';
-      const stdout = result.stdout || '';
-
-      if (stderr && stderr.length > 10) {
-        errors.push(`L${i + 1}: ${truncateError(stderr, maxLineLen)}`);
-      } else if (stdout.includes('Exception') || stdout.includes('Error:') || stdout.includes('error:')) {
-        errors.push(`L${i + 1}: ${truncateError(stdout, maxLineLen)}`);
-      }
-    }
-
-    // Check is_error in tool results
-    if (event.type === 'user' && event.message?.content) {
-      const content = event.message.content;
-      if (Array.isArray(content)) {
-        for (const c of content) {
-          if (c.is_error === true) {
-            const msg = typeof c.content === 'string' ? c.content : JSON.stringify(c.content);
-            errors.push(`L${i + 1}: ${truncateError(msg, maxLineLen)}`);
-          }
-        }
-      }
-    }
-  }
-
-  return {
-    task_id: '',
-    epic_id: epicId,
-    total_events: events.length,
-    filtered_noise: filtered,
-    errors
-  };
-}
-
-/**
  * Print diagnose result to console
  */
 export function printDiagnoseResult(taskId: string, result: DiagnoseResult, maxErrors = 10): void {
@@ -235,5 +116,129 @@ export function printDiagnoseResult(taskId: string, result: DiagnoseResult, maxE
     if (result.errors.length > maxErrors) {
       console.log(`  ... and ${result.errors.length - maxErrors} more`);
     }
+  }
+}
+
+// ============================================================================
+// DiagnoseOps Class - POO Encapsulation
+// ============================================================================
+
+/**
+ * Diagnose operations class with injected baseDiagnosticsDir.
+ * Manages noise filters and log analysis.
+ */
+export class DiagnoseOps {
+  constructor(private baseDiagnosticsDir: string) {}
+
+  /**
+   * Get diagnostics directory for an epic
+   */
+  getDiagnosticsDir(epicId: string | null): string {
+    if (epicId) {
+      return path.join(this.baseDiagnosticsDir, epicId);
+    }
+    return path.join(this.baseDiagnosticsDir, 'global');
+  }
+
+  /**
+   * Load noise filters for an epic
+   */
+  loadNoiseFilters(epicId: string | null): NoiseFilter[] {
+    const dir = this.getDiagnosticsDir(epicId);
+    const filtersFile = path.join(dir, 'noise-filters.yaml');
+
+    if (!fs.existsSync(filtersFile)) {
+      return [];
+    }
+
+    try {
+      const content = fs.readFileSync(filtersFile, 'utf8');
+      const data = yaml.load(content) as { filters?: NoiseFilter[] };
+      return data?.filters || [];
+    } catch {
+      return [];
+    }
+  }
+
+  /**
+   * Save noise filters for an epic
+   */
+  saveNoiseFilters(epicId: string | null, filters: NoiseFilter[]): void {
+    const dir = this.getDiagnosticsDir(epicId);
+    fs.mkdirSync(dir, { recursive: true });
+    const filtersFile = path.join(dir, 'noise-filters.yaml');
+    fs.writeFileSync(filtersFile, yaml.dump({ filters }));
+  }
+
+  /**
+   * Analyze log file and return errors (main function for post-run analysis)
+   */
+  analyzeLog(logFile: string, epicId: string | null, maxLineLen = 500): DiagnoseResult {
+    if (!fs.existsSync(logFile)) {
+      return {
+        task_id: '',
+        epic_id: epicId,
+        total_events: 0,
+        filtered_noise: 0,
+        errors: []
+      };
+    }
+
+    const noiseFilters = this.loadNoiseFilters(epicId);
+    const { events, lines } = parseJsonLog(logFile);
+
+    const errors: string[] = [];
+    let filtered = 0;
+
+    for (let i = 0; i < events.length; i++) {
+      const event = events[i];
+      const line = lines[i];
+
+      // Check noise filters
+      let isNoise = false;
+      for (const filter of noiseFilters) {
+        if (matchesNoiseFilter(line, event, filter)) {
+          isNoise = true;
+          filtered++;
+          break;
+        }
+      }
+
+      if (isNoise) continue;
+
+      // Detect potential errors in tool results
+      if (event.tool_use_result) {
+        const result = event.tool_use_result;
+        const stderr = result.stderr || '';
+        const stdout = result.stdout || '';
+
+        if (stderr && stderr.length > 10) {
+          errors.push(`L${i + 1}: ${truncateError(stderr, maxLineLen)}`);
+        } else if (stdout.includes('Exception') || stdout.includes('Error:') || stdout.includes('error:')) {
+          errors.push(`L${i + 1}: ${truncateError(stdout, maxLineLen)}`);
+        }
+      }
+
+      // Check is_error in tool results
+      if (event.type === 'user' && event.message?.content) {
+        const content = event.message.content;
+        if (Array.isArray(content)) {
+          for (const c of content) {
+            if (c.is_error === true) {
+              const msg = typeof c.content === 'string' ? c.content : JSON.stringify(c.content);
+              errors.push(`L${i + 1}: ${truncateError(msg, maxLineLen)}`);
+            }
+          }
+        }
+      }
+    }
+
+    return {
+      task_id: '',
+      epic_id: epicId,
+      total_events: events.length,
+      filtered_noise: filtered,
+      errors
+    };
   }
 }

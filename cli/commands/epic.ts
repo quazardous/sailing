@@ -13,7 +13,7 @@ import { formatId } from '../managers/core-manager.js';
 import { parseSearchReplace, editArtifact, parseMultiSectionContent, processMultiSectionOps } from '../lib/artifact.js';
 import { getEpic, getAllEpics, getTasksForEpic } from '../managers/artefacts-manager.js';
 import { Epic } from '../lib/types/entities.js';
-import { mergeEpicTaskLogs, deleteEpicLog, getEpicLogContent } from '../managers/memory-manager.js';
+import { getEpicMemory } from '../managers/memory-manager.js';
 
 /**
  * Find an epic file by ID (format-agnostic via index library)
@@ -349,7 +349,7 @@ updated: '${new Date().toISOString()}'
     .description('Show epic log content')
     .action((id) => {
       const epicId = normalizeId(id);
-      const content = getEpicLogContent(epicId);
+      const content = getEpicMemory(epicId).getLogContent();
 
       if (!content) {
         console.log(`No logs for ${epicId}`);
@@ -364,7 +364,7 @@ updated: '${new Date().toISOString()}'
     .description('Delete epic log file')
     .action((id) => {
       const epicId = normalizeId(id);
-      const deleted = deleteEpicLog(epicId);
+      const deleted = getEpicMemory(epicId).deleteLog();
 
       if (!deleted) {
         console.log(`No logs for ${epicId}`);
@@ -380,7 +380,7 @@ updated: '${new Date().toISOString()}'
     .option('--keep', 'Keep task logs after merge (don\'t delete)')
     .action((id, options) => {
       const epicId = normalizeId(id);
-      const result = mergeEpicTaskLogs(epicId, { keep: options.keep });
+      const result = getEpicMemory(epicId).mergeTaskLogs({ keep: options.keep });
 
       if (result.flushedCount === 0 && result.deletedEmpty === 0) {
         console.log(`No task logs to flush for ${epicId}`);

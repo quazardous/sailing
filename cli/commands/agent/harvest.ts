@@ -7,7 +7,7 @@ import yaml from 'js-yaml';
 import { execSync } from 'child_process';
 import { findProjectRoot, jsonOut, loadFile, saveFile, getAgentsDir } from '../../managers/core-manager.js';
 import { parseUpdateOptions } from '../../lib/update.js';
-import { reapAgent } from '../../managers/agent-manager.js';
+import { getAgentLifecycle } from '../../managers/agent-manager.js';
 import { getGit } from '../../lib/git.js';
 import { validateResult } from '../../lib/agent-schema.js';
 import { loadState, saveState } from '../../managers/state-manager.js';
@@ -17,7 +17,7 @@ import { removeWorktree } from '../../managers/worktree-manager.js';
 import { getTask, getTaskEpic } from '../../managers/artefacts-manager.js';
 import { normalizeId } from '../../lib/normalize.js';
 import { AgentUtils, type AgentCompletionInfo } from '../../lib/agent-utils.js';
-import { analyzeLog, printDiagnoseResult } from '../../managers/diagnose-manager.js';
+import { getDiagnoseOps, printDiagnoseResult } from '../../managers/diagnose-manager.js';
 
 export function registerHarvestCommands(agent) {
   // agent:reap
@@ -222,7 +222,7 @@ export function registerHarvestCommands(agent) {
         if (fs.existsSync(logFile)) {
           const taskEpic = getTaskEpic(taskId);
           const epicIdForLog = taskEpic?.epicId || null;
-          const logResult = analyzeLog(logFile, epicIdForLog);
+          const logResult = getDiagnoseOps().analyzeLog(logFile, epicIdForLog);
           console.log('\n--- Agent Run Analysis ---');
           printDiagnoseResult(taskId, logResult);
         }
@@ -421,7 +421,7 @@ export function registerHarvestCommands(agent) {
       const projectRoot = findProjectRoot();
       const agentUtilsReapAll = new AgentUtils(getAgentsDir());
 
-      let toReap = taskIds.length > 0 ? taskIds.map(id => normalizeId(id)) : Object.keys(agents);
+      const toReap = taskIds.length > 0 ? taskIds.map(id => normalizeId(id)) : Object.keys(agents);
       const completed = toReap.filter(taskId => {
         const agentInfo = agents[taskId];
         const completion = agentUtilsReapAll.checkCompletion(taskId, agentInfo as AgentCompletionInfo);
@@ -441,7 +441,7 @@ export function registerHarvestCommands(agent) {
 
       const results = [];
       for (const taskId of completed) {
-        const reapResult = await reapAgent(taskId);
+        const reapResult = await getAgentLifecycle(taskId).reap();
         if (reapResult.success) {
           results.push({ task_id: taskId, status: 'reaped', task_status: reapResult.taskStatus });
           if (!options.json) console.log(`  ✓ ${taskId} reaped → ${reapResult.taskStatus}`);

@@ -1,14 +1,13 @@
 /**
- * Branch Reconciliation Service
+ * Branch Reconciliation Manager
  *
  * Detects state drift between state.json and git reality.
  * Provides reconciliation strategies for branch hierarchies.
- * TODO[P2]: Add guards when reading branching config to avoid undefined parent branches.
- * TODO[P3]: Separate reporting/diagnostics from mutation to ease gradual TS migration.
+ * Manager layer: has access to config and state.
  */
 import { execSync } from 'child_process';
-import { findProjectRoot } from '../managers/core-manager.js';
-import { loadState } from '../managers/state-manager.js';
+import { findProjectRoot, getMainBranch } from './core-manager.js';
+import { loadState } from './state-manager.js';
 import {
   getBranchName,
   getPrdBranchName,
@@ -17,8 +16,7 @@ import {
   getBranchDivergence,
   syncBranch,
   listAgentWorktrees
-} from '../managers/worktree-manager.js';
-import { getMainBranch } from '../managers/core-manager.js';
+} from './worktree-manager.js';
 
 export interface BranchHierarchyNode extends BranchStateInfo {
   branch: string;
@@ -64,10 +62,6 @@ export const BranchState = {
 
 /**
  * Get branch state relative to its parent
- * @param {string} branch - Branch name
- * @param {string} parent - Parent branch name
- * @param {string} cwd - Working directory
- * @returns {{ state: string, ahead: number, behind: number }}
  */
 export function getBranchState(branch: string, parent: string, cwd?: string): BranchStateInfo {
   const projectRoot = cwd || findProjectRoot();
@@ -95,7 +89,6 @@ export function getBranchState(branch: string, parent: string, cwd?: string): Br
 
 /**
  * List all sailing-related branches (prd/*, epic/*, task/*)
- * @returns {string[]} Branch names
  */
 export function listSailingBranches() {
   const projectRoot = findProjectRoot();
@@ -109,7 +102,7 @@ export function listSailingBranches() {
 
     if (!output) return [];
     return output.split('\n')
-      .map(b => b.trim().replace(/^[\*\+]\s*/, ''))  // Strip both * (current) and + (worktree) prefixes
+      .map(b => b.trim().replace(/^[\*\+]\s*/, ''))
       .filter(b => b);
   } catch {
     return [];
@@ -118,13 +111,12 @@ export function listSailingBranches() {
 
 /**
  * Get tracked branches from state.json
- * @returns {{ tasks: string[], epics: Set<string>, prds: Set<string> }}
  */
 export function getTrackedBranches() {
   const state = loadState();
   const agents = state.agents || {};
 
-  const tasks = [];
+  const tasks: string[] = [];
   const epics = new Set<string>();
   const prds = new Set<string>();
 
@@ -145,7 +137,6 @@ export function getTrackedBranches() {
 
 /**
  * Find orphaned branches (exist in git but not tracked in state)
- * @returns {{ orphaned: string[], tracked: string[] }}
  */
 export function findOrphanedBranches() {
   const allBranches = listSailingBranches();
@@ -158,11 +149,8 @@ export function findOrphanedBranches() {
 
 /**
  * Diagnose full branch hierarchy state
- * @param {Context} context - { prdId, epicId, branching }
- * @returns {Diagnosis} Full diagnosis
  */
 export function diagnose(context: Context = {}): Diagnosis {
-  const projectRoot = findProjectRoot();
   const mainBranch = getMainBranch();
   const { prdId, epicId, branching = 'flat' } = context;
 
@@ -246,7 +234,6 @@ interface WorktreeDiagnosis {
 
 /**
  * Diagnose all active worktrees and their branches
- * @returns {object} Worktree diagnosis
  */
 export function diagnoseWorktrees() {
   const state = loadState();
@@ -303,12 +290,8 @@ export function diagnoseWorktrees() {
 
 /**
  * Reconcile a branch with its parent
- * @param {string} branch - Branch to sync
- * @param {string} parent - Parent branch
- * @param {object} options - { strategy: 'merge'|'rebase', dryRun: boolean }
- * @returns {{ success: boolean, action?: string, error?: string }}
  */
-export function reconcileBranch(branch: string, parent: string, options: any = {}) {
+export function reconcileBranch(branch: string, parent: string, options: { strategy?: string; dryRun?: boolean } = {}) {
   const strategy = options.strategy || 'merge';
   const dryRun = options.dryRun || false;
 
@@ -354,47 +337,38 @@ export function reconcileBranch(branch: string, parent: string, options: any = {
 
 /**
  * Cascade reconciliation up the hierarchy
- * Used when finishing an epic or PRD
- * @param {string} level - 'task' | 'epic' | 'prd'
- * @param {string} id - Entity ID
- * @param {Context} context - { prdId, epicId, branching }
- * @param {object} options - { strategy, dryRun }
- * @returns {{ success: boolean, synced: string[], errors: string[] }}
  */
-export function cascadeUp(level: string, id: string, context: Context, options: any = {}) {
+export function cascadeUp(level: string, id: string, context: Context, options: { strategy?: string; dryRun?: boolean } = {}) {
   const mainBranch = getMainBranch();
   const { prdId, epicId, branching = 'flat' } = context;
-  const synced = [];
-  const errors = [];
+  const synced: string[] = [];
+  const errors: string[] = [];
 
   if (branching === 'flat') {
     return { success: true, synced: [], errors: [], message: 'Flat mode, no cascade needed' };
   }
 
   // Build sync pairs based on level
-  const syncPairs = [];
+  const syncPairs: Array<{ branch: string; parent: string; merge: boolean }> = [];
 
   if (level === 'task' && branching === 'epic' && epicId) {
-    // Task done: sync task → epic
     const taskBranch = getBranchName(id);
     const epicBranch = getEpicBranchName(epicId);
     syncPairs.push({ branch: epicBranch, parent: taskBranch, merge: true });
   }
 
   if (level === 'epic') {
-    // Epic done: merge epic → prd (or main if no prd)
     const epicBranch = getEpicBranchName(id);
     const parentBranch = prdId ? getPrdBranchName(prdId) : mainBranch;
     syncPairs.push({ branch: parentBranch, parent: epicBranch, merge: true });
   }
 
   if (level === 'prd') {
-    // PRD done: merge prd → main
     const prdBranch = getPrdBranchName(id);
     syncPairs.push({ branch: mainBranch, parent: prdBranch, merge: true });
   }
 
-  for (const { branch, parent, merge } of syncPairs) {
+  for (const { branch, parent } of syncPairs) {
     if (!branchExists(branch) || !branchExists(parent)) {
       continue;
     }
@@ -421,15 +395,13 @@ export function cascadeUp(level: string, id: string, context: Context, options: 
 
 /**
  * Prune orphaned branches
- * @param {object} options - { dryRun: boolean, force: boolean }
- * @returns {{ pruned: string[], kept: string[], errors: string[] }}
  */
-export function pruneOrphans(options: any = {}) {
+export function pruneOrphans(options: { dryRun?: boolean; force?: boolean } = {}) {
   const { orphaned } = findOrphanedBranches();
   const projectRoot = findProjectRoot();
-  const pruned = [];
-  const kept = [];
-  const errors = [];
+  const pruned: string[] = [];
+  const kept: string[] = [];
+  const errors: string[] = [];
 
   for (const branch of orphaned) {
     if (options.dryRun) {
@@ -460,13 +432,11 @@ export function pruneOrphans(options: any = {}) {
 
 /**
  * Generate human-readable report
- * @param {Context} context - { prdId, epicId, branching }
- * @returns {string} Formatted report
  */
 export function report(context: Context = {}) {
   const diag = diagnose(context);
   const wtDiag = diagnoseWorktrees();
-  const lines = [];
+  const lines: string[] = [];
 
   lines.push('# Branch Reconciliation Report\n');
 
@@ -479,7 +449,7 @@ export function report(context: Context = {}) {
   }
   lines.push('');
 
-  // Hierarchy (only show if there are actual branch objects, not just main)
+  // Hierarchy
   const branchHierarchy = diag.hierarchy.filter(
     (h): h is BranchHierarchyNode => typeof h === 'object' && h !== null && !!h.branch
   );

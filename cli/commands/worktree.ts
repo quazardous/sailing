@@ -40,7 +40,7 @@ import {
   pruneOrphans,
   report as reconciliationReport,
   BranchState
-} from '../lib/reconciliation.js';
+} from '../managers/reconciliation-manager.js';
 
 interface AgentInfo {
   status: string;
