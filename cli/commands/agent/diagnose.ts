@@ -1,23 +1,22 @@
 /**
- * Diagnose command - Filter and simplify agent run logs
+ * Agent diagnose commands: analyze-log, log-noise-* management
  */
 import fs from 'fs';
 import path from 'path';
-import { jsonOut } from '../lib/core.js';
-import { getAgentDir } from '../lib/agent-utils.js';
-import { normalizeId } from '../lib/normalize.js';
-import { addDynamicHelp } from '../lib/help.js';
-import { getTaskEpic } from '../lib/index.js';
+import { jsonOut } from '../../lib/core.js';
+import { getAgentDir } from '../../lib/agent-utils.js';
+import { normalizeId } from '../../lib/normalize.js';
+import { getTaskEpic } from '../../lib/index.js';
 import {
   NoiseFilter, LogEvent,
-  loadNoiseFilters, saveNoiseFilters, matchesNoiseFilter,
-  parseJsonLog, truncateError, analyzeLog, printDiagnoseResult
-} from '../lib/diagnose.js';
+  loadNoiseFilters, saveNoiseFilters,
+  analyzeLog, printDiagnoseResult
+} from '../../lib/diagnose.js';
 
 /**
- * Summarize an event for display
+ * Summarize an event for display (exported for use in monitor.ts)
  */
-function summarizeEvent(event: LogEvent, line: string): string {
+export function summarizeEvent(event: LogEvent, line: string): string {
   const type = event.type;
 
   if (event.tool_use_result) {
@@ -72,84 +71,10 @@ function resolveEpicId(taskOrEpic: string | undefined): string | null {
   return null;
 }
 
-export function registerDiagnoseCommands(program: any): void {
-  const diagnose = program
-    .command('diagnose')
-    .description('Analyze agent run logs');
-
-  addDynamicHelp(diagnose);
-
-  // diagnose:run - Show filtered log
-  diagnose.command('run <task-id>')
-    .description('Show filtered log for agent run')
-    .option('--json', 'JSON output')
-    .option('--raw', 'Show raw events (no filtering)')
-    .option('--limit <n>', 'Limit output lines', '50')
-    .action(async (taskId: string, options: any) => {
-      const normalized = normalizeId(taskId);
-      const agentDir = getAgentDir(normalized);
-      const logFile = path.join(agentDir, 'run.jsonlog');
-
-      if (!fs.existsSync(logFile)) {
-        console.error(`Log file not found: ${logFile}`);
-        process.exit(1);
-      }
-
-      const taskEpic = getTaskEpic(normalized);
-      const epicId = taskEpic?.epicId || null;
-      const noiseFilters = options.raw ? [] : loadNoiseFilters(epicId);
-      const { events, lines } = parseJsonLog(logFile);
-
-      const limit = parseInt(options.limit) || 50;
-      const output: any[] = [];
-      let filtered = 0;
-
-      for (let i = 0; i < events.length; i++) {
-        const event = events[i];
-        const line = lines[i];
-
-        let isNoise = false;
-        for (const filter of noiseFilters) {
-          if (matchesNoiseFilter(line, event, filter)) {
-            isNoise = true;
-            filtered++;
-            break;
-          }
-        }
-
-        if (isNoise) continue;
-
-        if (output.length < limit) {
-          if (options.json) {
-            output.push({ line: i + 1, type: event.type, event });
-          } else {
-            output.push({ line: i + 1, summary: summarizeEvent(event, line) });
-          }
-        }
-      }
-
-      if (options.json) {
-        jsonOut({
-          task_id: normalized,
-          epic_id: epicId,
-          total: events.length,
-          filtered,
-          shown: output.length,
-          events: output
-        });
-      } else {
-        console.log(`Task: ${normalized} | Epic: ${epicId || 'unknown'}`);
-        console.log(`Events: ${events.length} total, ${filtered} filtered, showing ${output.length}`);
-        console.log('---');
-        for (const o of output) {
-          console.log(`${o.line}: ${o.summary}`);
-        }
-      }
-    });
-
-  // diagnose:post-run - Simplified output for agent analysis
-  diagnose.command('post-run <task-id>')
-    .description('Output filtered log for post-run analysis')
+export function registerDiagnoseCommands(agent) {
+  // agent:analyze-log - Analyze agent run for errors/issues
+  agent.command('analyze-log <task-id>')
+    .description('Analyze agent run log for errors and issues')
     .option('--json', 'JSON output')
     .option('--max-line-len <n>', 'Max error line length', '500')
     .action(async (taskId: string, options: any) => {
@@ -161,8 +86,10 @@ export function registerDiagnoseCommands(program: any): void {
       if (!fs.existsSync(logFile)) {
         if (options.json) {
           jsonOut({ error: 'Log file not found', task_id: normalized });
+        } else {
+          console.error(`Log file not found: ${logFile}`);
         }
-        return;
+        process.exit(1);
       }
 
       const taskEpic = getTaskEpic(normalized);
@@ -183,8 +110,8 @@ export function registerDiagnoseCommands(program: any): void {
       }
     });
 
-  // diagnose:add-filter - Add noise filter
-  diagnose.command('add-filter <id> [task-or-epic]')
+  // agent:log-noise-add-filter - Add noise filter
+  agent.command('log-noise-add-filter <id> [task-or-epic]')
     .description('Add noise filter (task ID, epic ID, or "global")')
     .option('--description <text>', 'Filter description')
     .option('--type <type>', 'Event type to match')
@@ -222,8 +149,8 @@ export function registerDiagnoseCommands(program: any): void {
       console.log(`Added filter "${id}" to ${epicId || 'global'}`);
     });
 
-  // diagnose:filters - List noise filters
-  diagnose.command('filters [task-or-epic]')
+  // agent:log-noise-list-filters - List noise filters
+  agent.command('log-noise-list-filters [task-or-epic]')
     .description('List noise filters (accepts task ID, epic ID, or "global")')
     .option('--json', 'JSON output')
     .action(async (taskOrEpic: string | undefined, options: any) => {
@@ -247,8 +174,8 @@ export function registerDiagnoseCommands(program: any): void {
       }
     });
 
-  // diagnose:rm-filter - Remove noise filter
-  diagnose.command('rm-filter <id> [task-or-epic]')
+  // agent:log-noise-rm-filter - Remove noise filter
+  agent.command('log-noise-rm-filter <id> [task-or-epic]')
     .description('Remove noise filter (task ID, epic ID, or "global")')
     .action(async (id: string, taskOrEpic: string | undefined) => {
       const epicId = resolveEpicId(taskOrEpic);

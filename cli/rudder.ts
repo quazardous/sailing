@@ -138,7 +138,7 @@ import { registerUtilCommands } from './commands/util.js';
 import { registerPermissionsCommands } from './commands/permissions.js';
 import { registerContextCommands } from './commands/context.js';
 import { registerTagCommands } from './commands/tag.js';
-import { registerAgentCommands } from './commands/agent.js';
+import { registerAgentCommands } from './commands/agent/index.js';
 import { registerGcCommands } from './commands/gc.js';
 import { registerAssignCommands } from './commands/assign.js';
 import { registerSandboxCommands } from './commands/sandbox.js';
@@ -153,7 +153,6 @@ import { registerArchiveCommands } from './commands/archive.js';
 import { registerDashboardCommands } from './commands/dashboard.js';
 import { registerDashboardDebugCommands } from './commands/dashboard-debug.js';
 import { registerAuditCommands } from './commands/audit.js';
-import { registerDiagnoseCommands } from './commands/diagnose.js';
 
 // Expand colon syntax: task:list → task list (first arg only, if it looks like group:command)
 let commandExpanded = false;
@@ -212,7 +211,6 @@ registerArchiveCommands(program);
 registerDashboardCommands(program);
 registerDashboardDebugCommands(program);
 registerAuditCommands(program);
-registerDiagnoseCommands(program);
 registerUtilCommands(program);
 registerPermissionsCommands(program);
 

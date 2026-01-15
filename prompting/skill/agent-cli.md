@@ -28,14 +28,17 @@ rudder agent:list --active
 # Check specific agent status
 rudder agent:status T001
 
-# Follow log in real-time (Ctrl+C to stop)
-rudder agent:tail T001
-
 # Show full log
 rudder agent:log T001
 
 # Last N lines
 rudder agent:log T001 -n 50
+
+# Follow log in real-time (Ctrl+C to stop)
+rudder agent:log T001 --tail
+
+# Show filtered JSON events
+rudder agent:log T001 --events
 ```
 
 ## Waiting
