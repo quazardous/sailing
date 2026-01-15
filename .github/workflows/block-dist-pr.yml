@@ -13,15 +13,15 @@ jobs:
     steps:
       - name: Check if PR is from dist branch
         if: github.head_ref == 'dist'
-        run: |
-          echo "::error::Pull requests from the 'dist' branch to \
-          'main' are not allowed."
-          echo "The 'dist' branch is reserved for distribution \
-          purposes only."
+        run: >
+          echo "::error::Pull requests from the 'dist' branch
+          to 'main' are not allowed.";
+          echo "The 'dist' branch is reserved for distribution
+          purposes only.";
           exit 1
 
       - name: PR source branch is allowed
         if: github.head_ref != 'dist'
-        run: |
-          echo "✓ PR source branch '${{ github.head_ref }}' \
+        run: >
+          echo "✓ PR source branch '${{ github.head_ref }}'
           is allowed."
