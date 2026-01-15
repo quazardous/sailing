@@ -1,13 +1,14 @@
 /**
- * Conflict Detection Module
+ * Conflict Detection Manager
  *
  * Detects file conflicts between agent worktrees to support parallel execution.
+ * Manager layer: has access to config and state.
  */
 import fs from 'fs';
-import { findProjectRoot } from '../managers/core-manager.js';
-import { getGit } from './git.js';
-import { getWorktreePath, getBranchName } from '../managers/worktree-manager.js';
-import { loadState } from '../managers/state-manager.js';
+import { findProjectRoot } from './core-manager.js';
+import { getGit } from '../lib/git.js';
+import { getWorktreePath, getBranchName } from './worktree-manager.js';
+import { loadState } from './state-manager.js';
 
 /**
  * Get modified files for an agent worktree
@@ -143,7 +144,7 @@ export async function buildConflictMatrix() {
  * @param {object} conflictData - Result from buildConflictMatrix()
  * @returns {string[]} Ordered list of task IDs
  */
-export function suggestMergeOrder(conflictData) {
+export function suggestMergeOrder(conflictData: { agents: string[]; filesByAgent?: Record<string, string[]>; conflicts: unknown[] }): string[] {
   const { agents, filesByAgent, conflicts } = conflictData;
 
   if (agents.length === 0) return [];
@@ -155,8 +156,8 @@ export function suggestMergeOrder(conflictData) {
   // Simple heuristic: sort by number of files modified (fewer first)
   // This reduces the chance of conflicts blocking later merges
   return [...agents].sort((a, b) => {
-    const filesA = filesByAgent[a]?.length || 0;
-    const filesB = filesByAgent[b]?.length || 0;
+    const filesA = filesByAgent?.[a]?.length || 0;
+    const filesB = filesByAgent?.[b]?.length || 0;
     return filesA - filesB;
   });
 }

@@ -18,7 +18,7 @@ import {
   BranchState
 } from '../lib/reconciliation.js';
 import { getGit } from '../lib/git.js';
-import { buildConflictMatrix } from '../lib/conflicts.js';
+import { buildConflictMatrix } from '../managers/conflict-manager.js';
 
 interface CheckBranchStateOptions {
   forMerge?: boolean;

@@ -20,7 +20,7 @@ import {
 import {
   buildConflictMatrix,
   suggestMergeOrder
-} from '../lib/conflicts.js';
+} from '../managers/conflict-manager.js';
 import {
   diagnoseWorktreeState
 } from '../lib/state-machine/index.js';

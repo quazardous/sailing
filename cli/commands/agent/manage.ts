@@ -7,7 +7,7 @@ import { jsonOut, resolvePlaceholders, getAgentConfig } from '../../managers/cor
 import { getGit } from '../../lib/git.js';
 import { loadState, saveState } from '../../managers/state-manager.js';
 import { withModifies } from '../../lib/help.js';
-import { buildConflictMatrix, suggestMergeOrder } from '../../lib/conflicts.js';
+import { buildConflictMatrix, suggestMergeOrder } from '../../managers/conflict-manager.js';
 import { normalizeId } from '../../lib/normalize.js';
 
 export function registerManageCommands(agent) {

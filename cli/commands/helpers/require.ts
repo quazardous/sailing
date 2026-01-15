@@ -1,10 +1,16 @@
 /**
- * Common error helpers for DRY validation
+ * CLI validation helpers
+ *
+ * Command-layer utilities for validating artifacts exist before proceeding.
+ * Uses process.exit() for CLI-appropriate error handling.
+ *
+ * COMMAND HELPERS: Contains CLI concerns (console, process.exit).
+ * This is the appropriate layer for CLI-specific error handling.
  */
-import { loadFile } from '../managers/core-manager.js';
-import { getTask, getEpic, getPrd } from '../managers/artefacts-manager.js';
-import { loadState } from '../managers/state-manager.js';
-import { normalizeId } from './normalize.js';
+import { loadFile } from '../../managers/core-manager.js';
+import { getTask, getEpic, getPrd } from '../../managers/artefacts-manager.js';
+import { loadState } from '../../managers/state-manager.js';
+import { normalizeId } from '../../lib/normalize.js';
 
 type JsonOption = { json?: boolean };
 
