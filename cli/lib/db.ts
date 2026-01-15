@@ -2,64 +2,60 @@
  * Database layer for sailing runtime state
  * Uses custom jsondb for concurrent-safe JSON storage
  *
- * Files stored in ${haven}/db/:
+ * PURE LIB: No config access, no manager imports.
+ * dbDir must be passed as parameter.
+ *
+ * Files stored in dbDir/:
  *   - agents.json: Agent tracking
  *   - runs.json: Run history
- *
- * state.json remains for simple counters (prd, epic, task, story)
  */
 import path from 'path';
-import { resolvePlaceholders, resolvePath } from '../managers/core-manager.js';
 import { Collection } from './jsondb.js';
 
-interface DbOptions {
+export interface DbOptions {
   status?: string;
 }
 
-let agentsDb = null;
-let runsDb = null;
+// Singleton caches indexed by dbDir
+const agentsDbCache = new Map<string, Collection>();
+const runsDbCache = new Map<string, Collection>();
 
 /**
- * Get database directory (configurable via paths.yaml: db)
+ * Get agents collection for a specific dbDir
+ * @param dbDir - Database directory path
  */
-function getDbDir() {
-  const custom = resolvePath('db');
-  return custom || resolvePlaceholders('${haven}/db');
+export function getAgentsDb(dbDir: string): Collection {
+  if (!agentsDbCache.has(dbDir)) {
+    const db = new Collection(path.join(dbDir, 'agents.json'));
+    db.ensureIndex({ fieldName: 'taskId', unique: true });
+    agentsDbCache.set(dbDir, db);
+  }
+  return agentsDbCache.get(dbDir)!;
 }
 
 /**
- * Get agents collection
- * @returns {Collection}
+ * Get runs collection for a specific dbDir
+ * @param dbDir - Database directory path
  */
-export function getAgentsDb() {
-  if (!agentsDb) {
-    agentsDb = new Collection(path.join(getDbDir(), 'agents.json'));
-    agentsDb.ensureIndex({ fieldName: 'taskId', unique: true });
+export function getRunsDb(dbDir: string): Collection {
+  if (!runsDbCache.has(dbDir)) {
+    const db = new Collection(path.join(dbDir, 'runs.json'));
+    db.ensureIndex({ fieldName: 'taskId' });
+    runsDbCache.set(dbDir, db);
   }
-  return agentsDb;
-}
-
-/**
- * Get runs collection
- * @returns {Collection}
- */
-export function getRunsDb() {
-  if (!runsDb) {
-    runsDb = new Collection(path.join(getDbDir(), 'runs.json'));
-    runsDb.ensureIndex({ fieldName: 'taskId' });
-  }
-  return runsDb;
+  return runsDbCache.get(dbDir)!;
 }
 
 // ============ Agent Operations ============
 
 /**
  * Create or update agent entry
- * @param {string} taskId - Task ID (e.g., T005)
- * @param {object} data - Agent data
+ * @param dbDir - Database directory path
+ * @param taskId - Task ID (e.g., T005)
+ * @param data - Agent data
  */
-export async function upsertAgent(taskId, data) {
-  const db = getAgentsDb();
+export async function upsertAgent(dbDir: string, taskId: string, data: object): Promise<void> {
+  const db = getAgentsDb(dbDir);
   await db.update(
     { taskId },
     { $set: { taskId, ...data } },
@@ -69,21 +65,24 @@ export async function upsertAgent(taskId, data) {
 
 /**
  * Get agent by task ID
- * @param {string} taskId - Task ID
- * @returns {Promise<object|null>} Agent data or null
+ * @param dbDir - Database directory path
+ * @param taskId - Task ID
  */
-export async function getAgent(taskId) {
-  const db = getAgentsDb();
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export async function getAgent(dbDir: string, taskId: string): Promise<any> {
+  const db = getAgentsDb(dbDir);
   return await db.findOne({ taskId });
 }
 
 /**
  * Get all agents
- * @param {DbOptions} options - Filter options
- * @returns {Promise<object[]>} Array of agents
+ * @param dbDir - Database directory path
+ * @param options - Filter options
  */
-export async function getAllAgents(options: DbOptions = {}) {
-  const db = getAgentsDb();
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export async function getAllAgents(dbDir: string, options: DbOptions = {}): Promise<any[]> {
+  const db = getAgentsDb(dbDir);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const query: any = {};
 
   if (options.status) {
@@ -92,7 +91,8 @@ export async function getAllAgents(options: DbOptions = {}) {
 
   const agents = await db.find(query);
   // Sort by spawnedAt descending
-  return agents.sort((a, b) => {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  return agents.sort((a: any, b: any) => {
     const dateA = a.spawnedAt || a._createdAt || '';
     const dateB = b.spawnedAt || b._createdAt || '';
     return dateB.localeCompare(dateA);
@@ -101,19 +101,21 @@ export async function getAllAgents(options: DbOptions = {}) {
 
 /**
  * Delete agent entry
- * @param {string} taskId - Task ID
+ * @param dbDir - Database directory path
+ * @param taskId - Task ID
  */
-export async function deleteAgent(taskId) {
-  const db = getAgentsDb();
+export async function deleteAgent(dbDir: string, taskId: string): Promise<void> {
+  const db = getAgentsDb(dbDir);
   await db.remove({ taskId });
 }
 
 /**
  * Clear all agents
- * @returns {Promise<number>} Number of agents cleared
+ * @param dbDir - Database directory path
+ * @returns Number of agents cleared
  */
-export async function clearAllAgents() {
-  const db = getAgentsDb();
+export async function clearAllAgents(dbDir: string): Promise<number> {
+  const db = getAgentsDb(dbDir);
   const count = await db.count();
   await db.clear();
   return count;
@@ -121,12 +123,13 @@ export async function clearAllAgents() {
 
 /**
  * Update agent status
- * @param {string} taskId - Task ID
- * @param {string} status - New status
- * @param {object} extraData - Additional fields to update
+ * @param dbDir - Database directory path
+ * @param taskId - Task ID
+ * @param status - New status
+ * @param extraData - Additional fields to update
  */
-export async function updateAgentStatus(taskId, status, extraData = {}) {
-  const db = getAgentsDb();
+export async function updateAgentStatus(dbDir: string, taskId: string, status: string, extraData: object = {}): Promise<void> {
+  const db = getAgentsDb(dbDir);
   await db.update(
     { taskId },
     { $set: { status, ...extraData } }
@@ -137,27 +140,30 @@ export async function updateAgentStatus(taskId, status, extraData = {}) {
 
 /**
  * Create a new run entry
- * @param {string} taskId - Task ID
- * @param {string} logFile - Log file path
- * @returns {Promise<string>} Run ID
+ * @param dbDir - Database directory path
+ * @param taskId - Task ID
+ * @param logFile - Log file path
+ * @returns Run ID
  */
-export async function createRun(taskId, logFile) {
-  const db = getRunsDb();
+export async function createRun(dbDir: string, taskId: string, logFile: string): Promise<string> {
+  const db = getRunsDb(dbDir);
   const doc = await db.insert({
     taskId,
     startedAt: new Date().toISOString(),
     logFile
-  });
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  }) as any;
   return doc._id;
 }
 
 /**
  * Complete a run
- * @param {string} runId - Run ID
- * @param {number} exitCode - Exit code
+ * @param dbDir - Database directory path
+ * @param runId - Run ID
+ * @param exitCode - Exit code
  */
-export async function completeRun(runId, exitCode) {
-  const db = getRunsDb();
+export async function completeRun(dbDir: string, runId: string, exitCode: number): Promise<void> {
+  const db = getRunsDb(dbDir);
   await db.update(
     { _id: runId },
     { $set: { endedAt: new Date().toISOString(), exitCode } }
@@ -166,14 +172,16 @@ export async function completeRun(runId, exitCode) {
 
 /**
  * Get runs for a task
- * @param {string} taskId - Task ID
- * @returns {Promise<object[]>} Array of runs
+ * @param dbDir - Database directory path
+ * @param taskId - Task ID
  */
-export async function getRunsForTask(taskId) {
-  const db = getRunsDb();
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export async function getRunsForTask(dbDir: string, taskId: string): Promise<any[]> {
+  const db = getRunsDb(dbDir);
   const runs = await db.find({ taskId });
   // Sort by startedAt descending
-  return runs.sort((a, b) => {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  return runs.sort((a: any, b: any) => {
     const dateA = a.startedAt || '';
     const dateB = b.startedAt || '';
     return dateB.localeCompare(dateA);
@@ -184,10 +192,11 @@ export async function getRunsForTask(taskId) {
 
 /**
  * Migrate agents from state.json to jsondb
- * Call this once during upgrade
+ * @param dbDir - Database directory path
+ * @param stateAgents - Agents from old state.json
  */
-export async function migrateFromStateJson(stateAgents) {
-  const db = getAgentsDb();
+export async function migrateFromStateJson(dbDir: string, stateAgents: Record<string, object>): Promise<number> {
+  const db = getAgentsDb(dbDir);
 
   let count = 0;
   for (const [taskId, data] of Object.entries(stateAgents)) {

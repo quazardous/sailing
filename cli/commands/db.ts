@@ -7,7 +7,7 @@ import path from 'path';
 import { jsonOut, resolvePlaceholders } from '../managers/core-manager.js';
 import {
   getAgentsDb, getRunsDb, getAgent, getAllAgents, deleteAgent, clearAllAgents, getRunsForTask, migrateFromStateJson
-} from '../lib/db.js';
+} from '../managers/db-manager.js';
 import { addDynamicHelp, withModifies } from '../lib/help.js';
 import { AgentInfo } from '../lib/types/agent.js';
 
@@ -213,11 +213,13 @@ export function registerDbCommands(program) {
   withModifies(db.command('compact'), ['state'])
     .description('Compact database files (remove deleted entries)')
     .action(async () => {
-      const agentsDb = getAgentsDb();
-      const runsDb = getRunsDb();
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const agentsDb = getAgentsDb() as any;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const runsDb = getRunsDb() as any;
 
-      await agentsDb.compactDatafile();
-      await runsDb.compactDatafile();
+      await agentsDb.compactDatafile?.();
+      await runsDb.compactDatafile?.();
 
       console.log('Compacted: agents.json, runs.json');
     });
