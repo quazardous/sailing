@@ -12,7 +12,7 @@
 import fs from 'fs';
 import path from 'path';
 import { findPrdDirs, loadFile, getMemoryDir, getPrdsDir } from './core-manager.js';
-import { extractIdKey, extractNumericId } from '../lib/artefacts.js';
+import { extractIdKey } from '../lib/artefacts.js';
 import { extractEpicId, normalizeId } from '../lib/normalize.js';
 import type {
   Task,
@@ -80,7 +80,7 @@ export function buildTaskIndex(): Map<string, TaskIndexEntry> {
       const status = loaded?.data?.status;
 
       if (_taskIndex.has(key)) {
-        const existingEntry = _taskIndex.get(key)!;
+        const existingEntry = _taskIndex.get(key);
         const existingStatus = existingEntry.data?.status;
         if (status !== 'Done' || existingStatus !== 'Done') {
           duplicates.push({ key, existing: existingEntry.file, new: filePath });
@@ -134,7 +134,7 @@ export function buildEpicIndex(): Map<string, EpicIndexEntry> {
       const status = loaded?.data?.status;
 
       if (_epicIndex.has(key)) {
-        const existingEntry = _epicIndex.get(key)!;
+        const existingEntry = _epicIndex.get(key);
         const existingStatus = existingEntry.data?.status;
         if (status !== 'Done' || existingStatus !== 'Done') {
           duplicates.push({ key, existing: existingEntry.file, new: filePath });
@@ -183,7 +183,7 @@ export function buildPrdIndex(): Map<number, PrdIndexEntry> {
     const loaded = fs.existsSync(prdFile) ? loadFile<Prd>(prdFile) : null;
 
     if (_prdIndex.has(num)) {
-      duplicates.push({ num, existing: _prdIndex.get(num)!.dir, new: prdDir });
+      duplicates.push({ num, existing: _prdIndex.get(num).dir, new: prdDir });
     }
 
     _prdIndex.set(num, {
@@ -231,7 +231,7 @@ export function buildStoryIndex(): Map<string, StoryIndexEntry> {
       const loaded = loadFile<Story>(filePath);
 
       if (_storyIndex.has(key)) {
-        duplicates.push({ key, existing: _storyIndex.get(key)!.file, new: filePath });
+        duplicates.push({ key, existing: _storyIndex.get(key).file, new: filePath });
       }
 
       _storyIndex.set(key, {

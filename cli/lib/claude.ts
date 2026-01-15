@@ -296,7 +296,7 @@ export async function spawnClaude(options: SpawnClaudeOptions): Promise<SpawnCla
   // Clean up bridge when process exits
   if (bridgeCleanup) {
     result.process.on('exit', () => {
-      bridgeCleanup!();
+      bridgeCleanup();
     });
   }
 

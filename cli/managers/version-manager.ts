@@ -159,7 +159,7 @@ const bumpers: Record<string, (filePath: string, pathExpr: string, newVersion: s
     }
 
     const parentObj = parent as Record<string, unknown>;
-    const oldVersion = typeof parentObj[lastKey] === 'string' ? (parentObj[lastKey] as string) : undefined;
+    const oldVersion = typeof parentObj[lastKey] === 'string' ? (parentObj[lastKey]) : undefined;
     parentObj[lastKey] = newVersion;
 
     // Preserve original formatting (detect indent)

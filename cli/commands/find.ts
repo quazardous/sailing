@@ -6,7 +6,6 @@
  *   rudder find task --blocked --exec "task:update {} --status Blocked"
  *   rudder find epic --prd PRD-001 --no-story --exec "epic:show {}"
  */
-import { Command } from 'commander';
 import { execSync } from 'child_process';
 import path from 'path';
 import { findProjectRoot, jsonOut } from '../managers/core-manager.js';

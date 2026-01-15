@@ -12,7 +12,7 @@ import { loadState, saveState } from './state-manager.js';
 import { getGit } from '../lib/git.js';
 import { getAgentConfig } from './core-manager.js';
 import { removeWorktree } from './worktree-manager.js';
-import { getTask, getTaskEpic } from './artefacts-manager.js';
+import { getTask } from './artefacts-manager.js';
 import { normalizeId } from '../lib/normalize.js';
 import { parseUpdateOptions } from '../lib/update.js';
 import { getAgentDir, checkAgentCompletion } from '../lib/agent-utils.js';

@@ -11,7 +11,7 @@ import {
   NoiseFilter, LogEvent,
   loadNoiseFilters, saveNoiseFilters,
   analyzeLog, printDiagnoseResult
-} from '../../lib/diagnose.js';
+} from '../../managers/diagnose-manager.js';
 
 /**
  * Summarize an event for display (exported for use in monitor.ts)

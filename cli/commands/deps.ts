@@ -3,11 +3,11 @@
  */
 import fs from 'fs';
 import path from 'path';
-import { findPrdDirs, loadFile, saveFile, jsonOut } from '../managers/core-manager.js';
-import { normalizeId, matchesId, extractTaskId, matchesPrdDir, parentContainsEpic } from '../lib/normalize.js';
-import { getEpic, getAllEpics, getEpicsForPrd } from '../managers/artefacts-manager.js';
+import { loadFile, saveFile, jsonOut } from '../managers/core-manager.js';
+import { normalizeId, extractTaskId, matchesPrdDir, parentContainsEpic } from '../lib/normalize.js';
+import { getEpic, getAllEpics } from '../managers/artefacts-manager.js';
 import { STATUS, normalizeStatus, isStatusDone, isStatusNotStarted, isStatusInProgress, isStatusCancelled, statusSymbol } from '../lib/lexicon.js';
-import { buildDependencyGraph, detectCycles, findRoots, blockersResolved, longestPath, countTotalUnblocked, getAncestors, getDescendants } from '../lib/graph.js';
+import { buildDependencyGraph, detectCycles, findRoots, blockersResolved, longestPath, countTotalUnblocked, getAncestors, getDescendants } from '../managers/graph-manager.js';
 import { addDynamicHelp, withModifies } from '../lib/help.js';
 
 /**

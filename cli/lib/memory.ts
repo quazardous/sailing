@@ -11,7 +11,7 @@
  */
 import fs from 'fs';
 import path from 'path';
-import { findPrdDirs, findFiles, loadFile, getMemoryDir } from '../managers/core-manager.js';
+import { getMemoryDir } from '../managers/core-manager.js';
 import { resolvePlaceholders, resolvePath } from '../managers/core-manager.js';
 import { normalizeId } from './normalize.js';
 import { getTaskEpic as indexGetTaskEpic, getEpicPrd as indexGetEpicPrd } from '../managers/artefacts-manager.js';

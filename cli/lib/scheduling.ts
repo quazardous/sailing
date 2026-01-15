@@ -79,7 +79,7 @@ export function calculateTheoreticalSchedule(
   const taskIds = Array.from(taskData.keys());
 
   for (const id of taskIds) {
-    const data = taskData.get(id)!;
+    const data = taskData.get(id);
     // Only count blockers that exist in our task set
     const validBlockers = data.blockedBy.filter(b => taskData.has(b));
     inDegree.set(id, validBlockers.length);
@@ -96,8 +96,8 @@ export function calculateTheoreticalSchedule(
   }
 
   while (queue.length > 0) {
-    const taskId = queue.shift()!;
-    const data = taskData.get(taskId)!;
+    const taskId = queue.shift();
+    const data = taskData.get(taskId);
 
     // Calculate duration from effort
     const durationHours = getDuration(data.effort, effortConfig);
@@ -131,7 +131,7 @@ export function calculateTheoreticalSchedule(
   // Handle any remaining tasks (circular dependencies) - place at end
   for (const id of taskIds) {
     if (!schedule.has(id)) {
-      const data = taskData.get(id)!;
+      const data = taskData.get(id);
       const durationHours = getDuration(data.effort, effortConfig);
       // Find max end hour so far
       let maxEnd = 0;
@@ -203,8 +203,8 @@ export function calculateRealSchedule(
   };
 
   for (const taskId of taskIds) {
-    const task = taskData.get(taskId)!;
-    const theoretical = theoreticalSchedule.get(taskId)!;
+    const task = taskData.get(taskId);
+    const theoretical = theoreticalSchedule.get(taskId);
     const durationHours = getDuration(task.effort, effortConfig);
 
     const status = task.status?.toLowerCase() || '';
@@ -288,7 +288,7 @@ export function calculateCriticalPath(
 
   // Trace back through dependencies
   while (toProcess.length > 0) {
-    const taskId = toProcess.pop()!;
+    const taskId = toProcess.pop();
     const task = taskData.get(taskId);
     if (!task) continue;
 
@@ -373,7 +373,7 @@ export function delayTask(
   const processed = new Set<string>();
 
   while (toProcess.length > 0) {
-    const currentId = toProcess.shift()!;
+    const currentId = toProcess.shift();
     if (processed.has(currentId)) continue;
     processed.add(currentId);
 

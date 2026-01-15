@@ -3,21 +3,18 @@
  * Assists skill with branch-aware agent spawning
  */
 import fs from 'fs';
-import path from 'path';
 import { execSync } from 'child_process';
 import { findProjectRoot, loadFile, jsonOut } from '../managers/core-manager.js';
 import { loadState } from '../managers/state-manager.js';
 import { getAgentConfig, getGitConfig } from '../managers/core-manager.js';
 import { addDynamicHelp } from '../lib/help.js';
-import {
-  getWorktreePath, getBranchName, worktreeExists,
+import { getBranchName,
   getParentBranch, getBranchHierarchy, getMainBranch
 } from '../managers/worktree-manager.js';
 import { extractPrdId, extractEpicId } from '../lib/normalize.js';
 import { getTask, getPrdBranching } from '../managers/artefacts-manager.js';
 import {
   diagnose as diagnoseReconciliation,
-  getBranchState,
   BranchState
 } from '../lib/reconciliation.js';
 import { getGit } from '../lib/git.js';

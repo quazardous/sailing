@@ -200,7 +200,7 @@ export function startSocatBridge(options: { socketPath: string; targetPort: numb
   }
 
   return {
-    pid: socat.pid!,
+    pid: socat.pid,
     socket: socketPath,
     cleanup: () => {
       try {

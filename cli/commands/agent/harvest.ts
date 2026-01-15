@@ -17,7 +17,7 @@ import { removeWorktree } from '../../managers/worktree-manager.js';
 import { getTask, getTaskEpic } from '../../managers/artefacts-manager.js';
 import { normalizeId } from '../../lib/normalize.js';
 import { getAgentDir, checkAgentCompletion } from '../../lib/agent-utils.js';
-import { analyzeLog, printDiagnoseResult } from '../../lib/diagnose.js';
+import { analyzeLog, printDiagnoseResult } from '../../managers/diagnose-manager.js';
 
 export function registerHarvestCommands(agent) {
   // agent:reap

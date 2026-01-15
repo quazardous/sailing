@@ -6,9 +6,8 @@
 import fs from 'fs';
 import { findProjectRoot } from '../managers/core-manager.js';
 import { getGit } from './git.js';
-import { getWorktreePath, getBranchName, listAgentWorktrees } from '../managers/worktree-manager.js';
+import { getWorktreePath, getBranchName } from '../managers/worktree-manager.js';
 import { loadState } from '../managers/state-manager.js';
-import { AgentInfo } from './types/agent.js';
 
 /**
  * Get modified files for an agent worktree

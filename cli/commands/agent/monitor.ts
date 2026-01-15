@@ -15,7 +15,7 @@ import { AgentInfo } from '../../lib/types/agent.js';
 import { getTaskEpic } from '../../managers/artefacts-manager.js';
 import {
   loadNoiseFilters, matchesNoiseFilter, parseJsonLog
-} from '../../lib/diagnose.js';
+} from '../../managers/diagnose-manager.js';
 import { summarizeEvent } from './diagnose.js';
 
 export function registerMonitorCommands(agent) {

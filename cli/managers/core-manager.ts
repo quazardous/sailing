@@ -20,7 +20,6 @@ import crypto from 'crypto';
 import yaml from 'js-yaml';
 import { execaSync } from 'execa';
 import { parseMarkdown, stringifyMarkdown } from '../lib/markdown.js';
-import { toKebab, stripComments, jsonOut } from '../lib/strings.js';
 import { formatIdFrom } from '../lib/normalize.js';
 import type { PathsInfo, ConfigInfo, SailingConfig, ConfigSchemaEntry, ConfigDisplayItem, ConfigSchema, Placeholders } from '../lib/types/config.js';
 
@@ -379,7 +378,7 @@ export function resolvePlaceholders(str: string, depth = 0): string {
 
   // Check cache (only for depth 0)
   if (depth === 0 && _placeholderCache.has(str)) {
-    return _placeholderCache.get(str)!;
+    return _placeholderCache.get(str);
   }
 
   const builtins = getBuiltinPlaceholders();
@@ -517,7 +516,7 @@ export function getSailingDir() {
 }
 
 export function getArtefactsDir() {
-  return getPath('artefacts')!;
+  return getPath('artefacts');
 }
 
 export function getPrdsDir() {
@@ -525,47 +524,47 @@ export function getPrdsDir() {
 }
 
 export function getMemoryDir() {
-  return getPath('memory')!;
+  return getPath('memory');
 }
 
 export function getArchiveDir() {
-  return getPath('archive')!;
+  return getPath('archive');
 }
 
 export function getTemplatesDir() {
-  return getPath('templates')!;
+  return getPath('templates');
 }
 
 export function getPromptingDir() {
-  return getPath('prompting')!;
+  return getPath('prompting');
 }
 
 export function getStateFile() {
-  return getPath('state')!;
+  return getPath('state');
 }
 
 export function getConfigFile() {
-  return getPath('config')!;
+  return getPath('config');
 }
 
 export function getComponentsFile() {
-  return getPath('components')!;
+  return getPath('components');
 }
 
 export function getAgentsDir() {
-  return getPath('agents')!;
+  return getPath('agents');
 }
 
 export function getWorktreesDir() {
-  return getPath('worktrees')!;
+  return getPath('worktrees');
 }
 
 export function getRunsDir() {
-  return getPath('runs')!;
+  return getPath('runs');
 }
 
 export function getAssignmentsDir() {
-  return getPath('assignments')!;
+  return getPath('assignments');
 }
 
 // Legacy export

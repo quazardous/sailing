@@ -9,7 +9,6 @@ import { loadState, saveState } from '../../managers/state-manager.js';
 import { withModifies } from '../../lib/help.js';
 import { buildConflictMatrix, suggestMergeOrder } from '../../lib/conflicts.js';
 import { normalizeId } from '../../lib/normalize.js';
-import { AgentInfo } from '../../lib/types/agent.js';
 
 export function registerManageCommands(agent) {
   // agent:sync

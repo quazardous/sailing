@@ -4,8 +4,8 @@
  * Manages state transitions with validation and history tracking.
  */
 import { AgentState, WorktreeState, isTerminalState } from './states.js';
-import { transitions, getTransition, getValidEvents } from './transitions.js';
-import { guards, runGuards } from './guards.js';
+import { getTransition, getValidEvents } from './transitions.js';
+import { runGuards } from './guards.js';
 
 /**
  * State Machine Engine

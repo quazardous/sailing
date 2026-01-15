@@ -31,7 +31,7 @@
  *   SAILING_PROJECT=/path/to/project rudder task:list
  *   rudder --root /path/to/project task:list
  */
-import { program, Command } from 'commander';
+import { program } from 'commander';
 import path from 'path';
 import { setProjectRoot, setScriptDir, setPathOverrides, parsePathOverride } from './managers/core-manager.js';
 import { setConfigOverrides, parseConfigOverride, validateConfigCoherence } from './managers/core-manager.js';
@@ -127,7 +127,7 @@ if (Object.keys(pathOverrides).length > 0) {
 }
 
 // Now import version (which uses core.js and needs project root set)
-import { getMainVersion, getCliVersion } from './managers/version-manager.js';
+import { getCliVersion } from './managers/version-manager.js';
 import { registerPrdCommands } from './commands/prd.js';
 import { registerEpicCommands } from './commands/epic.js';
 import { registerTaskCommands } from './commands/task.js';

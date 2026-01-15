@@ -7,11 +7,11 @@
 import fs from 'fs';
 import path from 'path';
 import yaml from 'js-yaml';
-import { jsonOut, getPrompting, getMemoryDir, loadFile, getPrdsDir, saveFile, getPath, loadPathsConfig, getRunsDir, getAssignmentsDir, ensureDir, computeProjectHash } from '../managers/core-manager.js';
+import { jsonOut, getMemoryDir, loadFile, saveFile, loadPathsConfig, getRunsDir, getAssignmentsDir, ensureDir, computeProjectHash } from '../managers/core-manager.js';
 import { normalizeId } from '../lib/normalize.js';
 import { getTask, getEpic, getPrd } from '../managers/artefacts-manager.js';
 import { addDynamicHelp, withModifies } from '../lib/help.js';
-import { findTaskEpic, readLogFile, checkPendingMemory, countTaskTips } from '../managers/memory-manager.js';
+import { checkPendingMemory, countTaskTips } from '../managers/memory-manager.js';
 import { addLogEntry } from '../lib/update.js';
 import { composeAgentContext } from '../managers/compose-manager.js';
 

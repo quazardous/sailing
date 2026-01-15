@@ -1,14 +1,17 @@
 /**
  * Dependency graph utilities
  * Build, analyze, and traverse task dependency graphs
+ *
+ * PURE LIB: No config access, no manager imports.
+ * All data must be passed as parameters.
  */
 import path from 'path';
-import { normalizeId, extractTaskId } from './normalize.js';
+import { extractTaskId } from './normalize.js';
 import { extractEpicId } from './normalize.js';
 import { isStatusDone, isStatusCancelled } from './lexicon.js';
-import { getAllTasks } from '../managers/artefacts-manager.js';
+import type { TaskIndexEntry } from './types/entities.js';
 
-type TaskNode = {
+export type TaskNode = {
   id: string;
   title: string;
   status: string;
@@ -27,8 +30,8 @@ type TaskNode = {
   blocked_at?: unknown;
 };
 
-type TasksMap = Map<string, TaskNode>;
-type BlocksMap = Map<string, string[]>;
+export type TasksMap = Map<string, TaskNode>;
+export type BlocksMap = Map<string, string[]>;
 
 interface TaskFrontmatter {
   id?: string;
@@ -46,15 +49,15 @@ interface TaskFrontmatter {
 }
 
 /**
- * Build complete dependency graph from all tasks
+ * Build complete dependency graph from task entries
+ * @param taskEntries - Array of task index entries (from getAllTasks())
  * @returns {{ tasks: Map, blocks: Map }}
  */
-export function buildDependencyGraph(): { tasks: TasksMap; blocks: BlocksMap } {
+export function buildDependencyGraph(taskEntries: TaskIndexEntry[]): { tasks: TasksMap; blocks: BlocksMap } {
   const tasks: TasksMap = new Map(); // id -> { id, title, status, assignee, blockedBy: [], file, prd, parent }
   const blocks: BlocksMap = new Map(); // id -> [ids that this task blocks]
 
-  // Use artefacts.ts contract - single entry point for task access
-  for (const taskEntry of getAllTasks()) {
+  for (const taskEntry of taskEntries) {
     const id = taskEntry.id;
     const data = taskEntry.data as TaskFrontmatter | undefined;
 
@@ -173,12 +176,12 @@ export function longestPath(
   blocks: BlocksMap,
   memo: Map<string, { length: number; path: string[] }> = new Map()
 ): { length: number; path: string[] } {
-  if (memo.has(taskId)) return memo.get(taskId)!;
+  if (memo.has(taskId)) return memo.get(taskId);
 
   const dependents = blocks.get(taskId) || [];
   if (dependents.length === 0) {
     memo.set(taskId, { length: 1, path: [taskId] });
-    return memo.get(taskId)!;
+    return memo.get(taskId);
   }
 
   let maxLen = 0;

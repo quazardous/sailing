@@ -7,7 +7,6 @@
  * TODO[P3]: Separate reporting/diagnostics from mutation to ease gradual TS migration.
  */
 import { execSync } from 'child_process';
-import fs from 'fs';
 import { findProjectRoot } from '../managers/core-manager.js';
 import { loadState } from '../managers/state-manager.js';
 import {
@@ -20,7 +19,6 @@ import {
   listAgentWorktrees
 } from '../managers/worktree-manager.js';
 import { getMainBranch } from '../managers/core-manager.js';
-import { AgentInfo } from './types/agent.js';
 
 export interface BranchHierarchyNode extends BranchStateInfo {
   branch: string;

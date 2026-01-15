@@ -9,7 +9,6 @@ import { addDynamicHelp, withModifies } from '../lib/help.js';
 import {
   parseMarkdownSections,
   serializeSections,
-  applyOps,
   parseSearchReplace,
   applySearchReplace,
   editArtifact,

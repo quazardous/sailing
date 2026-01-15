@@ -26,7 +26,6 @@ import {
   getAgentsDir,
   getRunsDir,
   getAssignmentsDir,
-  getPathType,
   getPlaceholders,
   resolvePlaceholders,
   computeProjectHash,
@@ -37,14 +36,14 @@ import {
   getConfigPath,
   getAgentConfig
 } from '../managers/core-manager.js';
-import { PATHS_SCHEMA, CATEGORIES, getPathDefault, getPathKeys, generatePathsYaml } from '../lib/paths-schema.js';
+import { PATHS_SCHEMA, CATEGORIES, getPathKeys, generatePathsYaml } from '../lib/paths-schema.js';
 import { addDynamicHelp } from '../lib/help.js';
 import { loadState, saveState } from '../managers/state-manager.js';
 import { getAllVersions, getMainVersion, getMainComponentName, bumpComponentVersion, findComponent, loadComponents } from '../managers/version-manager.js';
-import { buildDependencyGraph } from '../lib/graph.js';
+import { buildDependencyGraph } from '../managers/graph-manager.js';
 import { getAllEpics, getAllTasks } from '../managers/artefacts-manager.js';
 import { isStatusDone, isStatusInProgress, isStatusNotStarted, statusSymbol } from '../lib/lexicon.js';
-import { ConfigDisplayItem, PathInfo, ConfigSchema, PathsInfo, CheckResults, CheckEntry, ConfigSchemaEntry } from '../lib/types/config.js';
+import { ConfigDisplayItem, ConfigSchema, CheckResults, CheckEntry, ConfigSchemaEntry } from '../lib/types/config.js';
 
 type PathSchemaEntry = (typeof PATHS_SCHEMA)[keyof typeof PATHS_SCHEMA];
 
@@ -102,7 +101,7 @@ export function registerUtilCommands(program) {
       console.log('\n# Configured paths');
       console.log('paths:');
       for (const [key, val] of Object.entries(info.paths)) {
-        const pathInfo = val as PathInfo;
+        const pathInfo = val;
         const markers = [];
         if (pathInfo.isCustom) markers.push('custom');
         if (pathInfo.isAbsolute) markers.push('external');  // outside project root
@@ -1055,7 +1054,7 @@ export function registerUtilCommands(program) {
 
       // Group by category
       const byCategory: Record<string, Array<PathSchemaEntry & { key: string }>> = {};
-      for (const [key, schema] of Object.entries(PATHS_SCHEMA) as [string, PathSchemaEntry][]) {
+      for (const [key, schema] of Object.entries(PATHS_SCHEMA)) {
         const cat = schema.category;
         if (!byCategory[cat]) byCategory[cat] = [];
         byCategory[cat].push({ key, ...schema });

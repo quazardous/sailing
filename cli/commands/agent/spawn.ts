@@ -24,7 +24,7 @@ import { findDevMd, findToolset } from '../../managers/core-manager.js';
 import { getTask, getEpic, getMemoryFile, getPrdBranching } from '../../managers/artefacts-manager.js';
 import { getAgentDir, getProcessStats, formatDuration } from '../../lib/agent-utils.js';
 import { AgentInfo } from '../../lib/types/agent.js';
-import { analyzeLog, printDiagnoseResult } from '../../lib/diagnose.js';
+import { analyzeLog, printDiagnoseResult } from '../../managers/diagnose-manager.js';
 
 export function registerSpawnCommand(agent) {
   withModifies(agent.command('spawn <task-id>'), ['task', 'git', 'state'])

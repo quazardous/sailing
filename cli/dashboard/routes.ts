@@ -7,23 +7,17 @@ import { fileURLToPath } from 'url';
 import http from 'http';
 import { html, json } from './server.js';
 import {
-  findPrdDirs,
   findFiles,
   loadFile,
-  getPrdsDir,
   getMemoryDir,
-  findProjectRoot,
-  getPathsInfo,
-  getConfigFile
+  findProjectRoot
 } from '../managers/core-manager.js';
-import { loadConfig, getConfigPath, configExists, getConfigDisplay, getConfigValue } from '../managers/core-manager.js';
-import { getDuration } from '../lib/lexicon.js';
-import { calculateGanttMetrics, getTaskSchedules, calculateTheoreticalSchedule, calculateRealSchedule, getScheduleEnvelope, GanttMetrics, RealSchedulableTask } from '../lib/scheduling.js';
+import { getConfigDisplay, getConfigValue } from '../managers/core-manager.js';
+import { calculateGanttMetrics, getTaskSchedules, calculateTheoreticalSchedule, calculateRealSchedule, getScheduleEnvelope, RealSchedulableTask } from '../lib/scheduling.js';
 import { getConfigInfo } from '../managers/core-manager.js';
 import { getAllVersions, getMainVersion, getMainComponentName } from '../managers/version-manager.js';
-import { buildDependencyGraph } from '../lib/graph.js';
 import { buildPrdIndex, buildEpicIndex, buildTaskIndex } from '../managers/artefacts-manager.js';
-import { extractPrdId, extractEpicId } from '../lib/normalize.js';
+import { extractEpicId } from '../lib/normalize.js';
 import { marked } from 'marked';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -524,7 +518,7 @@ function generatePrdDag(prd: {
   }
 
   // Count edges for linkStyle indexing
-  let edgeIndex = lines.filter(l => l.includes('-->')).length;
+  const edgeIndex = lines.filter(l => l.includes('-->')).length;
 
   if (blockedByEdges.length > 0) {
     lines.push('');
@@ -603,7 +597,7 @@ function generateEpicDag(epic: {
   }
 
   // Count edges for linkStyle indexing
-  let edgeIndex = lines.filter(l => l.includes('-->')).length;
+  const edgeIndex = lines.filter(l => l.includes('-->')).length;
 
   if (blockedByEdges.length > 0) {
     lines.push('');
@@ -663,7 +657,7 @@ function generateTaskDag(task: {
 
   // Blocked by
   const blockedBy = task.meta?.blocked_by;
-  let edgeIndex = lines.filter(l => l.includes('-->')).length;
+  const edgeIndex = lines.filter(l => l.includes('-->')).length;
   const blockedByEdges: string[] = [];
 
   if (blockedBy) {
@@ -886,7 +880,7 @@ function generatePrdGantt(prd: {
       return aMin - bMin;
     });
 
-    const epicId = queue.shift()!;
+    const epicId = queue.shift();
     const epic = prd.epics.find(e => e.id === epicId);
     if (epic) sortedEpics.push(epic);
 

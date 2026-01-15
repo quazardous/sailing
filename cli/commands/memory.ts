@@ -7,14 +7,13 @@
  */
 import fs from 'fs';
 import path from 'path';
-import { jsonOut, findPrdDirs, getArchiveDir, findProjectRoot } from '../managers/core-manager.js';
+import { jsonOut, getArchiveDir, findProjectRoot } from '../managers/core-manager.js';
 import { getEpicsForPrd } from '../managers/artefacts-manager.js';
 import { normalizeId } from '../lib/normalize.js';
 import { addDynamicHelp } from '../lib/help.js';
 import {
   getMemoryDirPath,
   ensureMemoryDir,
-  logFilePath,
   memoryFilePath,
   memoryFileExists,
   readLogFile,
@@ -31,9 +30,7 @@ import {
   getHierarchicalMemory,
   findEpicPrd,
   extractAllSections as extractAllSectionsLib,
-  findSection,
-  editSection,
-  parseMultiSectionInput
+  editSection
 } from '../managers/memory-manager.js';
 import { getMemoryFile, getTask, getEpic } from '../managers/artefacts-manager.js';
 import { getGit } from '../lib/git.js';
@@ -651,7 +648,7 @@ export function registerMemoryCommands(program) {
       if (!id) {
         const headerRegex = /^## ([A-Z0-9-]+):(.+?)(?:\s*\[(append|prepend|replace)\])?\s*$/gm;
         const sections = [];
-        let lastIndex = 0;
+        const lastIndex = 0;
         let match;
 
         // Find all section headers

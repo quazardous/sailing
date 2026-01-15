@@ -10,14 +10,14 @@
 import path from 'path';
 import { loadFile, saveFile, findPrdDirs } from './core-manager.js';
 import { normalizeId, matchesPrdDir } from '../lib/normalize.js';
-import { getTask, getEpic, getEpicsForPrd, getPrd } from './artefacts-manager.js';
+import { getEpic, getEpicsForPrd } from './artefacts-manager.js';
 import {
   isStatusDone,
   isStatusNotStarted,
   isStatusCancelled,
   isStatusAutoDone
 } from '../lib/lexicon.js';
-import { buildDependencyGraph } from '../lib/graph.js';
+import { buildDependencyGraph } from './graph-manager.js';
 
 export interface StatusTransitionResult {
   updated: boolean;

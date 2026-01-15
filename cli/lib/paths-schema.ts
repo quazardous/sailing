@@ -163,7 +163,7 @@ export function getPathDefault(key: string, profile: string | null = null): stri
   if (!schema) return null;
 
   if (profile && schema.profiles?.[profile as keyof ProfileOverrides]) {
-    return schema.profiles[profile as keyof ProfileOverrides] as string;
+    return schema.profiles[profile as keyof ProfileOverrides];
   }
   return schema.default;
 }

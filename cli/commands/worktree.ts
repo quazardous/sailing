@@ -3,14 +3,12 @@
  * Manages git worktrees for parallel agent execution
  */
 import fs from 'fs';
-import path from 'path';
 import { execSync } from 'child_process';
 import { findProjectRoot, jsonOut } from '../managers/core-manager.js';
 import { loadState, saveState } from '../managers/state-manager.js';
 import { getAgentConfig, getGitConfig } from '../managers/core-manager.js';
 import { addDynamicHelp } from '../lib/help.js';
 import {
-  listAgentWorktrees,
   getWorktreePath,
   getBranchName,
   removeWorktree,
@@ -21,13 +19,10 @@ import {
 } from '../managers/worktree-manager.js';
 import {
   buildConflictMatrix,
-  suggestMergeOrder,
-  getModifiedFiles
+  suggestMergeOrder
 } from '../lib/conflicts.js';
 import {
-  diagnoseWorktreeState,
-  diagnoseAgentState,
-  getRecommendedActions
+  diagnoseWorktreeState
 } from '../lib/state-machine/index.js';
 import { getGit } from '../lib/git.js';
 import {
@@ -44,8 +39,7 @@ import {
   reconcileBranch,
   pruneOrphans,
   report as reconciliationReport,
-  BranchState,
-  BranchHierarchyNode
+  BranchState
 } from '../lib/reconciliation.js';
 
 interface AgentInfo {
@@ -1032,7 +1026,7 @@ export function registerWorktreeCommands(program: any) {
       if (options.sync) {
         for (const h of diag.hierarchy) {
           if (typeof h !== 'object' || !('branch' in h)) continue;
-          const branchInfo = h as BranchHierarchyNode;
+          const branchInfo = h;
           if (branchInfo.state === BranchState.BEHIND || branchInfo.state === BranchState.DIVERGED) {
             const agentConfig = getAgentConfig();
             const result = reconcileBranch(branchInfo.branch, branchInfo.parent, {

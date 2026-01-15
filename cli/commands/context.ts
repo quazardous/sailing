@@ -12,20 +12,16 @@
  *     4. roles[role].inject → project files
  *     5. if roles[role].workflow → orchestration[op]
  */
-import fs from 'fs';
-import { jsonOut, loadFile, findProjectRoot } from '../managers/core-manager.js';
+import { jsonOut } from '../managers/core-manager.js';
 import { addDynamicHelp } from '../lib/help.js';
 import {
   loadWorkflowsConfig,
   loadFragment,
-  getSetFragments,
   composeContext,
-  composeAgentContext,
   buildAgentSpawnPrompt
 } from '../managers/compose-manager.js';
 import { WorkflowsConfig, RoleDefinition, OperationMeta } from '../lib/types/workflows.js';
 // Entity functions moved to lib/index.ts
-import { getAgentConfig } from '../managers/core-manager.js';
 
 type OperationListItem = OperationMeta & { name: string; allowedRoles: string[] };
 type OperationsByRole = Record<string, OperationListItem[]>;

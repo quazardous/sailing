@@ -40,7 +40,6 @@ import {
   AGENT_RELEVANT_SECTIONS,
   getAgentMemory
 } from '../lib/memory-section.js';
-import { getMemoryDir } from './core-manager.js';
 import { normalizeId } from '../lib/normalize.js';
 import { getTasksForEpic as artefactsGetTasksForEpic } from './artefacts-manager.js';
 

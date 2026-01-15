@@ -2,7 +2,7 @@
  * Update utilities for parsing flags and updating entity data
  * Pure functions - no manager imports
  */
-import { normalizeStatus, STATUS, PRIORITY, validateEffort, LEGACY_EFFORT } from './lexicon.js';
+import { normalizeStatus, STATUS, PRIORITY, validateEffort } from './lexicon.js';
 import { formatIdFrom, DigitConfig } from './normalize.js';
 import { Task, Epic, Prd } from './types/entities.js';
 
@@ -125,8 +125,8 @@ export function parseUpdateOptions(
       const blockers = Array.isArray(options.addBlocker) ? options.addBlocker : [options.addBlocker];
       if (!Array.isArray(data.blocked_by)) data.blocked_by = [];
       blockers.forEach(b => {
-        if (!data.blocked_by!.includes(b)) {
-          data.blocked_by!.push(b);
+        if (!data.blocked_by.includes(b)) {
+          data.blocked_by.push(b);
         }
       });
       updated = true;
@@ -165,8 +165,8 @@ export function parseUpdateOptions(
       stories.forEach(s => {
         const num = s.match(/\d+/)?.[0];
         const normalized = num ? formatIdFrom('S', parseInt(num, 10), digitConfig) : s;
-        if (!data.stories!.includes(normalized)) {
-          data.stories!.push(normalized);
+        if (!data.stories.includes(normalized)) {
+          data.stories.push(normalized);
         }
       });
       updated = true;
@@ -194,7 +194,7 @@ export function parseUpdateOptions(
       versions.forEach(tv => {
         const [component, version] = tv.split(':');
         if (component && version) {
-          data.target_versions![component] = version;
+          data.target_versions[component] = version;
           updated = true;
         } else {
           console.error(`Invalid target-version format: ${tv}. Use component:version`);
@@ -205,7 +205,7 @@ export function parseUpdateOptions(
     if (options.removeTargetVersion) {
       const components = Array.isArray(options.removeTargetVersion) ? options.removeTargetVersion : [options.removeTargetVersion];
       if (data.target_versions) {
-        components.forEach(c => delete data.target_versions![c]);
+        components.forEach(c => delete data.target_versions[c]);
         updated = true;
       }
     }
@@ -309,7 +309,7 @@ export function addLogEntry(body: string, message: string, author = 'agent'): st
   // Find ## Log section and append
   const logMatch = body.match(/^## Log\s*$/m);
   if (logMatch) {
-    const insertPos = body.indexOf('\n', logMatch.index! + logMatch[0].length);
+    const insertPos = body.indexOf('\n', logMatch.index + logMatch[0].length);
     return body.slice(0, insertPos + 1) + '\n' + entry + body.slice(insertPos);
   }
 

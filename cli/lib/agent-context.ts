@@ -8,7 +8,6 @@ import fs from 'fs';
 import path from 'path';
 import { execaSync } from 'execa';
 import { findProjectRoot } from '../managers/core-manager.js';
-import { resolvePlaceholders } from '../managers/core-manager.js';
 
 type MissionInfo = {
   taskId: string;

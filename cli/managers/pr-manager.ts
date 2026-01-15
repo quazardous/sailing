@@ -56,7 +56,7 @@ export async function detectProvider(cwd: string): Promise<'github' | 'gitlab' |
 export async function getProvider(cwd: string): Promise<'github' | 'gitlab' | null> {
   const config = getAgentConfig();
   if (config.pr_provider && config.pr_provider !== 'auto') {
-    return config.pr_provider as 'github' | 'gitlab';
+    return config.pr_provider;
   }
   return detectProvider(cwd);
 }
@@ -148,7 +148,7 @@ async function createCore(taskId: string, options: PrOptions = {}) {
   const branch = getBranchName(taskId);
 
   // Build title and body
-  let title = options.title || `${taskId}: Agent work`;
+  const title = options.title || `${taskId}: Agent work`;
   let body = options.body || `Task: ${taskId}`;
   if (options.epicId) body += `\nEpic: ${options.epicId}`;
   if (options.prdId) body += `\nPRD: ${options.prdId}`;

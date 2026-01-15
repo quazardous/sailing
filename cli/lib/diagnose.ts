@@ -1,10 +1,12 @@
 /**
  * Diagnose library - Filter and analyze agent run logs
+ *
+ * PURE LIB: No config access, no manager imports.
+ * All paths must be passed as parameters.
  */
 import fs from 'fs';
 import path from 'path';
 import yaml from 'js-yaml';
-import { getPath } from '../managers/core-manager.js';
 
 export interface NoiseFilter {
   id: string;
@@ -35,20 +37,23 @@ export interface DiagnoseResult {
 
 /**
  * Get diagnostics directory for an epic
+ * @param baseDiagnosticsDir - Base diagnostics directory path
+ * @param epicId - Epic ID or null for global
  */
-export function getDiagnosticsDir(epicId: string | null): string {
-  const baseDir = getPath('diagnostics')!;
+export function getDiagnosticsDir(baseDiagnosticsDir: string, epicId: string | null): string {
   if (epicId) {
-    return path.join(baseDir, epicId);
+    return path.join(baseDiagnosticsDir, epicId);
   }
-  return path.join(baseDir, 'global');
+  return path.join(baseDiagnosticsDir, 'global');
 }
 
 /**
  * Load noise filters for an epic
+ * @param baseDiagnosticsDir - Base diagnostics directory path
+ * @param epicId - Epic ID or null for global
  */
-export function loadNoiseFilters(epicId: string | null): NoiseFilter[] {
-  const dir = getDiagnosticsDir(epicId);
+export function loadNoiseFilters(baseDiagnosticsDir: string, epicId: string | null): NoiseFilter[] {
+  const dir = getDiagnosticsDir(baseDiagnosticsDir, epicId);
   const filtersFile = path.join(dir, 'noise-filters.yaml');
 
   if (!fs.existsSync(filtersFile)) {
@@ -66,9 +71,12 @@ export function loadNoiseFilters(epicId: string | null): NoiseFilter[] {
 
 /**
  * Save noise filters for an epic
+ * @param baseDiagnosticsDir - Base diagnostics directory path
+ * @param epicId - Epic ID or null for global
+ * @param filters - Filters to save
  */
-export function saveNoiseFilters(epicId: string | null, filters: NoiseFilter[]): void {
-  const dir = getDiagnosticsDir(epicId);
+export function saveNoiseFilters(baseDiagnosticsDir: string, epicId: string | null, filters: NoiseFilter[]): void {
+  const dir = getDiagnosticsDir(baseDiagnosticsDir, epicId);
   fs.mkdirSync(dir, { recursive: true });
   const filtersFile = path.join(dir, 'noise-filters.yaml');
   fs.writeFileSync(filtersFile, yaml.dump({ filters }));
@@ -139,8 +147,12 @@ export function truncateError(msg: string, maxLen = 500): string {
 
 /**
  * Analyze log file and return errors (main function for post-run analysis)
+ * @param logFile - Path to the JSON log file
+ * @param baseDiagnosticsDir - Base diagnostics directory path for noise filters
+ * @param epicId - Epic ID or null for global filters
+ * @param maxLineLen - Maximum error line length (default 500)
  */
-export function analyzeLog(logFile: string, epicId: string | null, maxLineLen = 500): DiagnoseResult {
+export function analyzeLog(logFile: string, baseDiagnosticsDir: string, epicId: string | null, maxLineLen = 500): DiagnoseResult {
   if (!fs.existsSync(logFile)) {
     return {
       task_id: '',
@@ -151,7 +163,7 @@ export function analyzeLog(logFile: string, epicId: string | null, maxLineLen = 
     };
   }
 
-  const noiseFilters = loadNoiseFilters(epicId);
+  const noiseFilters = loadNoiseFilters(baseDiagnosticsDir, epicId);
   const { events, lines } = parseJsonLog(logFile);
 
   const errors: string[] = [];

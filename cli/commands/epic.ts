@@ -4,7 +4,7 @@
 import fs from 'fs';
 import path from 'path';
 import { findPrdDirs, loadFile, saveFile, toKebab, loadTemplate, jsonOut, getMemoryDir, stripComments } from '../managers/core-manager.js';
-import { normalizeId, matchesId, matchesPrdDir } from '../lib/normalize.js';
+import { normalizeId, matchesPrdDir } from '../lib/normalize.js';
 import { STATUS, normalizeStatus, statusSymbol } from '../lib/lexicon.js';
 import { nextId } from '../managers/state-manager.js';
 import { parseUpdateOptions } from '../lib/update.js';
@@ -12,7 +12,7 @@ import { addDynamicHelp, withModifies } from '../lib/help.js';
 import { formatId } from '../managers/core-manager.js';
 import { parseSearchReplace, editArtifact, parseMultiSectionContent, processMultiSectionOps } from '../lib/artifact.js';
 import { getEpic, getAllEpics, getTasksForEpic } from '../managers/artefacts-manager.js';
-import { Epic, Task } from '../lib/types/entities.js';
+import { Epic } from '../lib/types/entities.js';
 import { mergeEpicTaskLogs, deleteEpicLog, getEpicLogContent } from '../managers/memory-manager.js';
 
 /**
@@ -599,7 +599,7 @@ See: bin/rudder artifact edit --help for full documentation
       if (options.append) opType = 'append';
       if (options.prepend) opType = 'prepend';
 
-      let ops = options.section
+      const ops = options.section
         ? [{ op: opType, section: options.section, content }]
         : parseMultiSectionContent(content, opType);
 

@@ -815,7 +815,7 @@ See: bin/rudder artifact edit --help for full documentation
       if (options.append) opType = 'append';
       if (options.prepend) opType = 'prepend';
 
-      let ops = options.section
+      const ops = options.section
         ? [{ op: opType, section: options.section, content }]
         : parseMultiSectionContent(content, opType);
 

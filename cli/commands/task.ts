@@ -3,13 +3,12 @@
  */
 import fs from 'fs';
 import path from 'path';
-import { execSync } from 'child_process';
 import { findPrdDirs, loadFile, saveFile, toKebab, loadTemplate, jsonOut, getMemoryDir, stripComments } from '../managers/core-manager.js';
-import { normalizeId, matchesId, matchesPrdDir, parentContainsEpic } from '../lib/normalize.js';
+import { normalizeId, matchesPrdDir, parentContainsEpic } from '../lib/normalize.js';
 import { getTask, getEpic, getEpicPrd, getAllTasks, getAllEpics } from '../managers/artefacts-manager.js';
 import { getHierarchicalMemory, ensureMemoryDir, hasPendingMemoryLogs } from '../managers/memory-manager.js';
-import { STATUS, normalizeStatus, isStatusDone, isStatusNotStarted, isStatusInProgress, isStatusCancelled, isStatusAutoDone, statusSymbol } from '../lib/lexicon.js';
-import { buildDependencyGraph, blockersResolved } from '../lib/graph.js';
+import { STATUS, normalizeStatus, isStatusDone, isStatusNotStarted, isStatusCancelled, statusSymbol } from '../lib/lexicon.js';
+import { buildDependencyGraph, blockersResolved } from '../managers/graph-manager.js';
 import { nextId } from '../managers/state-manager.js';
 import { parseUpdateOptions, addLogEntry } from '../lib/update.js';
 import { addDynamicHelp, withModifies } from '../lib/help.js';
@@ -975,7 +974,7 @@ See: bin/rudder artifact edit --help for full documentation
       if (options.append) opType = 'append';
       if (options.prepend) opType = 'prepend';
 
-      let ops = options.section
+      const ops = options.section
         ? [{ op: opType, section: options.section, content }]
         : parseMultiSectionContent(content, opType);
 
