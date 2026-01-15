@@ -12,6 +12,84 @@ const VALID_LOG_LEVELS = ['info', 'tip', 'warn', 'error', 'critical'] as const;
 const VALID_FILE_ACTIONS = ['created', 'modified', 'deleted'] as const;
 const VALID_ISSUE_TYPES = ['blocker', 'question', 'concern'] as const;
 
+type Status = (typeof VALID_STATUSES)[number];
+type FileAction = (typeof VALID_FILE_ACTIONS)[number];
+type IssueType = (typeof VALID_ISSUE_TYPES)[number];
+
+interface MissionConstraints {
+  max_files?: number;
+  no_git_commit?: boolean;
+  no_new_deps?: boolean;
+}
+
+interface MissionContext {
+  dev_md?: string | null;
+  epic_file: string;
+  task_file: string;
+  memory?: string | null;
+  toolset?: string | null;
+}
+
+interface MissionParams {
+  task_id: string;
+  epic_id: string;
+  prd_id: string;
+  instruction: string;
+  dev_md?: string | null;
+  epic_file: string;
+  task_file: string;
+  memory?: string | null;
+  toolset?: string | null;
+  constraints?: MissionConstraints;
+  timeout?: number;
+}
+
+interface Mission {
+  version: string;
+  task_id: string;
+  epic_id: string;
+  prd_id: string;
+  instruction: string;
+  context: MissionContext;
+  constraints: MissionConstraints;
+  timeout: number;
+}
+
+interface FileModified {
+  path: string;
+  action: FileAction;
+}
+
+interface LogEntry {
+  level: string;
+  message: string;
+  timestamp: string;
+}
+
+interface Issue {
+  type: IssueType;
+  description: string;
+}
+
+interface ResultParams {
+  task_id: string;
+  status: Status;
+  files_modified?: FileModified[];
+  log?: LogEntry[];
+  issues?: Issue[];
+  completed_at?: string;
+}
+
+interface Result {
+  version: string;
+  task_id: string;
+  status: Status;
+  files_modified: FileModified[];
+  log: LogEntry[];
+  issues: Issue[];
+  completed_at: string;
+}
+
 /**
  * Validate a mission object
  * @param {object} mission - Mission object to validate
@@ -204,7 +282,7 @@ export function validateResult(result: any): string[] {
  * @param {object} params - Mission parameters
  * @returns {object} Complete mission object
  */
-export function createMission(params: any) {
+export function createMission(params: MissionParams): Mission {
   return {
     version: PROTOCOL_VERSION,
     task_id: params.task_id,
@@ -215,11 +293,11 @@ export function createMission(params: any) {
       dev_md: params.dev_md,
       epic_file: params.epic_file,
       task_file: params.task_file,
-      memory: params.memory || null,
-      toolset: params.toolset || null
+      memory: params.memory ?? null,
+      toolset: params.toolset ?? null
     },
-    constraints: params.constraints || {},
-    timeout: params.timeout || 0
+    constraints: params.constraints ?? {},
+    timeout: params.timeout ?? 0
   };
 }
 
@@ -228,15 +306,15 @@ export function createMission(params: any) {
  * @param {object} params - Result parameters
  * @returns {object} Complete result object
  */
-export function createResult(params: any) {
+export function createResult(params: ResultParams): Result {
   return {
     version: PROTOCOL_VERSION,
     task_id: params.task_id,
     status: params.status,
-    files_modified: params.files_modified || [],
-    log: params.log || [],
-    issues: params.issues || [],
-    completed_at: params.completed_at || new Date().toISOString()
+    files_modified: params.files_modified ?? [],
+    log: params.log ?? [],
+    issues: params.issues ?? [],
+    completed_at: params.completed_at ?? new Date().toISOString()
   };
 }
 

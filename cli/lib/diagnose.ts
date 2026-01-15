@@ -20,11 +20,28 @@ export interface NoiseFilter {
   learned_at?: string;
 }
 
+export interface ToolUseResult {
+  stderr?: string;
+  stdout?: string;
+  [key: string]: unknown;
+}
+
+export interface MessageContent {
+  is_error?: boolean;
+  content?: string | unknown;
+  [key: string]: unknown;
+}
+
+export interface LogEventMessage {
+  content?: MessageContent[] | unknown;
+  [key: string]: unknown;
+}
+
 export interface LogEvent {
   type: string;
-  message?: any;
-  tool_use_result?: any;
-  [key: string]: any;
+  message?: LogEventMessage;
+  tool_use_result?: ToolUseResult;
+  [key: string]: unknown;
 }
 
 export interface DiagnoseResult {
@@ -225,7 +242,7 @@ export class DiagnoseOps {
         if (Array.isArray(content)) {
           for (const c of content) {
             if (c.is_error === true) {
-              const msg = typeof c.content === 'string' ? c.content : JSON.stringify(c.content);
+              const msg = typeof c.content === 'string' ? c.content as string : JSON.stringify(c.content);
               errors.push(`L${i + 1}: ${truncateError(msg, maxLineLen)}`);
             }
           }

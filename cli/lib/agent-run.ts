@@ -127,8 +127,8 @@ export class AgentRunManager {
     try {
       this.createRunFile(taskId, operation);
       return { success: true };
-    } catch (e: any) {
-      return { success: false, error: e.message };
+    } catch (e) {
+      return { success: false, error: e instanceof Error ? e.message : String(e) };
     }
   }
 
@@ -143,8 +143,8 @@ export class AgentRunManager {
     try {
       this.removeRunFile(taskId);
       return { success: true };
-    } catch (e: any) {
-      return { success: false, error: e.message };
+    } catch (e) {
+      return { success: false, error: e instanceof Error ? e.message : String(e) };
     }
   }
 }

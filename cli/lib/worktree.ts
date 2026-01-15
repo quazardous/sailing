@@ -206,8 +206,8 @@ export class WorktreeOps {
         stdio: ['pipe', 'pipe', 'pipe']
       });
       return { created: true, branch: branchName };
-    } catch (e: any) {
-      return { created: false, branch: branchName, error: e.message };
+    } catch (e) {
+      return { created: false, branch: branchName, error: e instanceof Error ? e.message : String(e) };
     }
   }
 
@@ -318,8 +318,8 @@ export class WorktreeOps {
 
         return { success: false, synced: false, error: `Conflict during ${strategy}: ${e.message}` };
       }
-    } catch (e: any) {
-      return { success: false, synced: false, error: e.message };
+    } catch (e) {
+      return { success: false, synced: false, error: e instanceof Error ? e.message : String(e) };
     }
   }
 
@@ -497,12 +497,12 @@ export class WorktreeOps {
         ahead,
         behind
       };
-    } catch (e: any) {
+    } catch (e) {
       return {
         exists: true,
         path: worktreePath,
         branch,
-        error: e.message
+        error: e instanceof Error ? e.message : String(e)
       };
     }
   }
@@ -605,12 +605,12 @@ export class WorktreeOps {
           reused: false
         };
       }
-    } catch (e: any) {
+    } catch (e) {
       return {
         success: false,
         path: worktreePath,
         branch,
-        error: e.message || String(e)
+        error: e instanceof Error ? e.message : String(e)
       };
     }
   }
@@ -660,12 +660,12 @@ export class WorktreeOps {
         path: worktreePath,
         branch
       };
-    } catch (e: any) {
+    } catch (e) {
       return {
         success: false,
         path: worktreePath,
         branch,
-        error: e.message || String(e)
+        error: e instanceof Error ? e.message : String(e)
       };
     }
   }

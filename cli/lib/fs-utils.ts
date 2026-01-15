@@ -3,6 +3,7 @@
  * Pure fs operations - no manager imports
  */
 import fs from 'fs';
+import path from 'path';
 
 /**
  * Ensure directory exists (create recursively if needed)
@@ -36,7 +37,7 @@ export function readFile(filePath: string): string | null {
  * Write file (creates parent directories if needed)
  */
 export function writeFile(filePath: string, content: string): void {
-  const dir = require('path').dirname(filePath);
+  const dir = path.dirname(filePath);
   ensureDir(dir);
   fs.writeFileSync(filePath, content);
 }

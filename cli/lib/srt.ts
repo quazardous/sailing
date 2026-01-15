@@ -4,7 +4,7 @@
  * Shared library for spawning Claude with or without srt sandbox.
  * Used by spawnClaude (agent:spawn) and sandbox:run.
  */
-import { spawn, spawnSync } from 'child_process';
+import { spawn, spawnSync, type ChildProcess } from 'child_process';
 import fs from 'fs';
 import path from 'path';
 import os from 'os';
@@ -13,17 +13,42 @@ import { ensureDir } from './fs-utils.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
+/** Stream JSON event types */
+interface StreamJsonEvent {
+  type: string;
+  subtype?: string;
+  model?: string;
+  tools?: unknown[];
+  message?: {
+    content?: Array<{
+      type: string;
+      name?: string;
+      text?: string;
+      input?: {
+        command?: string;
+        file_path?: string;
+        pattern?: string;
+      };
+    }>;
+  };
+  tool_use_result?: {
+    stdout?: string;
+  };
+  num_turns?: number;
+  total_cost_usd?: number;
+}
+
 /**
  * Process a stream-json line and return condensed output
  * Returns null if event should be filtered out
  * @param {string} line - Raw JSON line
  * @returns {string|null} Condensed output or null
  */
-export function processStreamJsonLine(line) {
+export function processStreamJsonLine(line: string): string | null {
   if (!line.trim()) return null;
 
   try {
-    const event = JSON.parse(line);
+    const event = JSON.parse(line) as StreamJsonEvent;
 
     switch (event.type) {
       case 'system':
@@ -37,7 +62,7 @@ export function processStreamJsonLine(line) {
         const toolUses = content.filter(c => c.type === 'tool_use');
         const text = content.filter(c => c.type === 'text');
 
-        const parts = [];
+        const parts: string[] = [];
         for (const t of toolUses) {
           // Show tool name and brief input summary
           const inputSummary = t.input?.command || t.input?.file_path || t.input?.pattern || '';
@@ -46,7 +71,7 @@ export function processStreamJsonLine(line) {
         // Only show text if no tool use (final answer)
         if (text.length && !toolUses.length) {
           const preview = text[0].text?.slice(0, 100)?.replace(/\n/g, ' ') || '';
-          parts.push(`[TEXT] ${preview}${text[0].text?.length > 100 ? '...' : ''}`);
+          parts.push(`[TEXT] ${preview}${(text[0].text?.length || 0) > 100 ? '...' : ''}`);
         }
         return parts.length ? parts.join('\n') : null;
       }
@@ -79,7 +104,7 @@ export function processStreamJsonLine(line) {
  * @param {string} projectRoot - Project root path
  * @returns {string} Path to MCP server
  */
-export function findMcpServerPath(projectRoot) {
+export function findMcpServerPath(projectRoot: string): string {
   // Priority 1: Project's own sailing installation
   const projectMcp = path.join(projectRoot, 'mcp', 'rudder-server.js');
   if (fs.existsSync(projectMcp)) {
@@ -100,15 +125,27 @@ export function findMcpServerPath(projectRoot) {
  * Find an available TCP port
  * @returns {Promise<number>} Available port number
  */
-export function getAvailablePort() {
+export function getAvailablePort(): Promise<number> {
   return new Promise((resolve, reject) => {
-    const server = require('net').createServer();
+    // Dynamic require needed for net module in this context
+    const net = require('net') as typeof import('net');
+    const server = net.createServer();
     server.listen(0, '127.0.0.1', () => {
-      const port = server.address().port;
+      const addr = server.address();
+      const port = typeof addr === 'object' && addr !== null ? addr.port : 0;
       server.close(() => resolve(port));
     });
     server.on('error', reject);
   });
+}
+
+/** Result of checking MCP server status */
+interface McpServerStatus {
+  running: boolean;
+  mode?: string;
+  socket?: string;
+  port?: number;
+  pid?: number;
 }
 
 /**
@@ -117,7 +154,7 @@ export function getAvailablePort() {
  * @param {string} havenDir - Haven directory
  * @returns {{ running: boolean, mode?: string, socket?: string, port?: number, pid?: number }}
  */
-export function checkMcpServer(havenDir) {
+export function checkMcpServer(havenDir: string): McpServerStatus {
   const socketPath = path.join(havenDir, 'mcp.sock');
   const portFile = path.join(havenDir, 'mcp.port');
   const pidFile = path.join(havenDir, 'mcp.pid');
@@ -141,11 +178,11 @@ export function checkMcpServer(havenDir) {
       // PID exists but no socket or port file - stale
       throw new Error('Stale PID file');
     }
-  } catch (e) {
+  } catch {
     // Process not running, clean up stale files
-    try { fs.unlinkSync(socketPath); } catch {}
-    try { fs.unlinkSync(pidFile); } catch {}
-    try { fs.unlinkSync(portFile); } catch {}
+    try { fs.unlinkSync(socketPath); } catch { /* ignore */ }
+    try { fs.unlinkSync(pidFile); } catch { /* ignore */ }
+    try { fs.unlinkSync(portFile); } catch { /* ignore */ }
     return { running: false };
   }
 }
@@ -213,6 +250,25 @@ export function startSocatBridge(options: { socketPath: string; targetPort: numb
   };
 }
 
+/** MCP config structure */
+interface McpConfig {
+  mcpServers: {
+    rudder: {
+      command: string;
+      args: string[];
+    };
+  };
+}
+
+/** Options for generating agent MCP config */
+interface GenerateAgentMcpConfigOptions {
+  outputPath: string;
+  projectRoot: string;
+  externalSocket?: string;
+  externalPort?: number;
+  taskId?: string;
+}
+
 /**
  * Generate MCP config for agent
  * Supports three modes:
@@ -228,11 +284,11 @@ export function startSocatBridge(options: { socketPath: string; targetPort: numb
  * @param {string} [options.taskId] - Task ID (only for internal mode)
  * @returns {{ configPath: string, mode: string }}
  */
-export function generateAgentMcpConfig(options) {
+export function generateAgentMcpConfig(options: GenerateAgentMcpConfigOptions): { configPath: string; mode: string } {
   const { outputPath, projectRoot, externalSocket, externalPort, taskId } = options;
 
-  let config;
-  let mode;
+  let config: McpConfig;
+  let mode: string;
 
   if (externalSocket) {
     // Unix socket mode: use socat to bridge to Unix socket (preferred)
@@ -284,15 +340,30 @@ export function generateAgentMcpConfig(options) {
   };
 }
 
+/** SRT config structure */
+interface SrtConfig {
+  network: {
+    allowedDomains: string[];
+    deniedDomains: string[];
+    allowUnixSockets: string[];
+    allowAllUnixSockets?: boolean;
+  };
+  filesystem: {
+    allowWrite: string[];
+    denyWrite: string[];
+    denyRead: string[];
+  };
+}
+
 /**
  * Load base srt config from file or generate defaults
  * @param {string} [configPath] - Path to existing config
  * @returns {object} SRT configuration
  */
-export function loadBaseSrtConfig(configPath) {
+export function loadBaseSrtConfig(configPath?: string): SrtConfig {
   if (configPath && fs.existsSync(configPath)) {
     try {
-      return JSON.parse(fs.readFileSync(configPath, 'utf8'));
+      return JSON.parse(fs.readFileSync(configPath, 'utf8')) as SrtConfig;
     } catch {
       // Fall through to defaults
     }
@@ -337,6 +408,17 @@ export function loadBaseSrtConfig(configPath) {
   };
 }
 
+/** Options for generating SRT config */
+interface GenerateSrtConfigOptions {
+  baseConfigPath?: string;
+  outputPath: string;
+  additionalWritePaths?: string[];
+  additionalDenyReadPaths?: string[];
+  allowUnixSockets?: string[];
+  allowAllUnixSockets?: boolean;
+  strictMode?: boolean;
+}
+
 /**
  * Generate agent-specific srt config with additional write paths
  * @param {object} options - Options
@@ -349,7 +431,7 @@ export function loadBaseSrtConfig(configPath) {
  * @param {boolean} [options.strictMode=false] - If true, ONLY allow /tmp + additionalWritePaths (ignore base config paths)
  * @returns {string} Path to generated config
  */
-export function generateSrtConfig(options) {
+export function generateSrtConfig(options: GenerateSrtConfigOptions): string {
   const { baseConfigPath, outputPath, additionalWritePaths = [], additionalDenyReadPaths = [], allowUnixSockets = [], allowAllUnixSockets = false, strictMode = false } = options;
 
   const config = loadBaseSrtConfig(baseConfigPath);
@@ -425,6 +507,34 @@ export function generateSrtConfig(options) {
   return outputPath;
 }
 
+/** Options for spawning Claude with SRT */
+interface SpawnClaudeWithSrtOptions {
+  prompt: string;
+  cwd: string;
+  logFile?: string;
+  sandbox?: boolean;
+  srtConfigPath?: string;
+  riskyMode?: boolean;
+  extraArgs?: string[];
+  debug?: boolean;
+  timeout?: number;
+  onStdout?: (data: Buffer) => void;
+  onStderr?: (data: Buffer) => void;
+  mcpConfigPath?: string;
+  sandboxHome?: string;
+  maxBudgetUsd?: number;
+  watchdogTimeout?: number;
+  noSessionPersistence?: boolean;
+}
+
+/** Result of spawning Claude with SRT */
+interface SpawnClaudeWithSrtResult {
+  process: ChildProcess;
+  pid: number | undefined;
+  logFile: string | null;
+  jsonLogFile: string | null;
+}
+
 /**
  * Spawn Claude with optional srt wrapper
  *
@@ -447,7 +557,7 @@ export function generateSrtConfig(options) {
  * @param {boolean} [options.noSessionPersistence=true] - Disable session persistence (lighter weight)
  * @returns {{ process: ChildProcess, pid: number, logFile?: string }}
  */
-export function spawnClaudeWithSrt(options) {
+export function spawnClaudeWithSrt(options: SpawnClaudeWithSrtOptions): SpawnClaudeWithSrtResult {
   const {
     prompt,
     cwd,
@@ -468,7 +578,7 @@ export function spawnClaudeWithSrt(options) {
   } = options;
 
   // Build claude args
-  const claudeArgs = [];
+  const claudeArgs: string[] = [];
 
   if (riskyMode) {
     claudeArgs.push('--dangerously-skip-permissions');
@@ -501,7 +611,8 @@ export function spawnClaudeWithSrt(options) {
   claudeArgs.push('-p');
 
   // Build final command
-  let command, finalArgs;
+  let command: string;
+  let finalArgs: string[];
 
   if (sandbox) {
     command = 'srt';
@@ -520,10 +631,10 @@ export function spawnClaudeWithSrt(options) {
   // Setup dual log streams if logFile provided:
   // - jsonLogStream: raw JSON for post-mortem (.jsonlog)
   // - filteredLogStream: filtered output like stdout (.log)
-  let jsonLogStream = null;
-  let filteredLogStream = null;
-  let jsonLogFile = null;
-  let filteredLogFile = null;
+  let jsonLogStream: fs.WriteStream | null = null;
+  let filteredLogStream: fs.WriteStream | null = null;
+  let jsonLogFile: string | null = null;
+  let filteredLogFile: string | null = null;
 
   if (logFile) {
     ensureDir(path.dirname(logFile));
@@ -631,7 +742,7 @@ export function spawnClaudeWithSrt(options) {
   child.stdin.end();
 
   // Watchdog: kill if no output for N seconds (detects stalls)
-  let watchdogId = null;
+  let watchdogId: ReturnType<typeof setTimeout> | null = null;
   let lastOutputTime = Date.now();
 
   const resetWatchdog = () => {
@@ -666,7 +777,7 @@ export function spawnClaudeWithSrt(options) {
   /**
    * Write filtered output to both stdout and filtered log
    */
-  const writeFiltered = (text) => {
+  const writeFiltered = (text: string): void => {
     process.stdout.write(text + '\n');
     if (filteredLogStream) filteredLogStream.write(text + '\n');
   };
@@ -676,7 +787,7 @@ export function spawnClaudeWithSrt(options) {
    * - Raw JSON → jsonLogStream (post-mortem)
    * - Filtered → stdout + filteredLogStream
    */
-  const processData = (data) => {
+  const processData = (data: Buffer): void => {
     resetWatchdog();  // Activity detected
 
     // Raw data goes to JSON log file (post-mortem)
@@ -719,7 +830,7 @@ export function spawnClaudeWithSrt(options) {
   });
 
   // Handle timeout (absolute timeout, independent of watchdog)
-  let timeoutId = null;
+  let timeoutId: ReturnType<typeof setTimeout> | null = null;
   if (timeout && timeout > 0) {
     timeoutId = setTimeout(() => {
       const msg = `\n=== TIMEOUT after ${timeout}s ===\n`;

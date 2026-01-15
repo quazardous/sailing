@@ -158,9 +158,9 @@ export async function spawnClaude(options: SpawnClaudeOptions): Promise<SpawnCla
   const useExternalMcp = sandbox && agentDir && projectRoot;
 
   // Start external MCP server if needed (before Claude, outside sandbox)
-  let mcpInfo = null;
-  let mcpSocket = null;
-  let mcpPid = null;
+  let mcpInfo: { configPath: string; mode: string } | null = null;
+  let mcpSocket: string | null = null;
+  let mcpPid: number | null = null;
   let mcpPort: number | null = null;
   let mcpServerPath: string | null = null;
 
@@ -244,7 +244,7 @@ export async function spawnClaude(options: SpawnClaudeOptions): Promise<SpawnCla
   // On Linux, sandbox + MCP requires:
   // - allowAllUnixSockets: true (disables seccomp AF_UNIX blocking)
   // - For port mode: socat bridge (started above) to work around --unshare-net
-  let srtConfigPath = null;
+  let srtConfigPath: string | null = null;
   if (sandbox) {
     if (agentDir) {
       srtConfigPath = generateAgentSrtConfig({
@@ -262,8 +262,8 @@ export async function spawnClaude(options: SpawnClaudeOptions): Promise<SpawnCla
   }
 
   // Setup output handlers for quiet mode
-  let onStdout = null;
-  let onStderr = null;
+  let onStdout: ((data: Buffer) => void) | null = null;
+  let onStderr: ((data: Buffer) => void) | null = null;
   if (quietMode) {
     // Quiet mode: suppress all console output (log file still gets it)
     onStdout = () => {};

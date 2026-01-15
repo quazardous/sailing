@@ -110,8 +110,8 @@ export function parseUpdateOptions(
 
     if (options.priority) {
       const priority = options.priority.toLowerCase();
-      if (PRIORITY.includes(priority as any)) {
-        data.priority = priority as any;
+      if (PRIORITY.includes(priority as (typeof PRIORITY)[number])) {
+        data.priority = priority as (typeof PRIORITY)[number];
         updated = true;
       } else {
         console.error(`Invalid priority: ${priority}. Use ${PRIORITY.join(', ')}.`);
@@ -221,21 +221,22 @@ export function parseUpdateOptions(
         return;
       }
       const key = kv.slice(0, eqIndex);
-      let value: any = kv.slice(eqIndex + 1);
+      let value: string | number | boolean | null | string[] | unknown = kv.slice(eqIndex + 1);
 
       // Parse value types
       if (value === 'true') value = true;
       else if (value === 'false') value = false;
       else if (value === 'null') value = null;
-      else if (/^-?\d+$/.test(value)) value = parseInt(value, 10);
-      else if (/^-?\d+\.\d+$/.test(value)) value = parseFloat(value);
-      else if (value.startsWith('[') && value.endsWith(']')) {
+      else if (typeof value === 'string' && /^-?\d+$/.test(value)) value = parseInt(value, 10);
+      else if (typeof value === 'string' && /^-?\d+\.\d+$/.test(value)) value = parseFloat(value);
+      else if (typeof value === 'string' && value.startsWith('[') && value.endsWith(']')) {
         // Try JSON first, then simple bracket syntax [a,b,c]
+        const arrayStr = value; // Preserve string type for catch block
         try {
-          value = JSON.parse(value);
-        } catch (e) {
+          value = JSON.parse(arrayStr) as unknown;
+        } catch {
           // Parse simple array syntax: [E001,E002] -> ["E001", "E002"]
-          const inner = value.slice(1, -1).trim();
+          const inner: string = arrayStr.slice(1, -1).trim();
           if (inner === '') {
             value = [];
           } else {
@@ -246,12 +247,12 @@ export function parseUpdateOptions(
 
       // Support nested keys with dot notation (e.g., target_versions.admin)
       const keys = key.split('.');
-      let obj: any = data;
+      let obj: Record<string, unknown> = data as Record<string, unknown>;
       for (let i = 0; i < keys.length - 1; i++) {
         if (!obj[keys[i]] || typeof obj[keys[i]] !== 'object') {
           obj[keys[i]] = {};
         }
-        obj = obj[keys[i]];
+        obj = obj[keys[i]] as Record<string, unknown>;
       }
       obj[keys[keys.length - 1]] = value;
       updated = true;
@@ -261,6 +262,11 @@ export function parseUpdateOptions(
   return { updated, data };
 }
 
+interface LoadedFile {
+  data: Record<string, unknown>;
+  body: string;
+}
+
 /**
  * Update task status directly (for internal use)
  * Handles status normalization and timestamp tracking
@@ -268,11 +274,11 @@ export function parseUpdateOptions(
 export function updateTaskStatus(
   taskFile: string,
   newStatus: string,
-  options: { loadFileFn: Function; saveFileFn: Function }
+  options: { loadFileFn: (path: string) => LoadedFile | null; saveFileFn: (path: string, data: Record<string, unknown>, body: string) => void }
 ): { success: boolean; error?: string } {
   const { loadFileFn, saveFileFn } = options;
 
-  const file = loadFileFn(taskFile);
+  const file: LoadedFile | null = loadFileFn(taskFile);
   if (!file) {
     return { success: false, error: `Task file not found: ${taskFile}` };
   }
@@ -283,7 +289,7 @@ export function updateTaskStatus(
   }
 
   const now = new Date().toISOString();
-  const prevStatus = file.data.status;
+  const prevStatus = file.data.status as string | undefined;
 
   file.data.status = normalized;
 

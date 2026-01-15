@@ -18,20 +18,25 @@ interface ArtifactOp {
   item?: string;
 }
 
+export interface ParsedMarkdown {
+  frontmatter: string;
+  preamble: string;
+  sections: Map<string, string>;
+  order: string[];
+}
+
 /**
  * Parse markdown content into frontmatter and sections
  * @param {string} content - Raw markdown content
  * @returns {{ frontmatter: string, sections: Map<string, string>, order: string[] }}
  */
-export function parseMarkdownSections(content) {
-  const lines = content.split('\n');
+export function parseMarkdownSections(content: string): ParsedMarkdown {
+  const lines: string[] = content.split('\n');
   let frontmatter = '';
-  let inFrontmatter = false;
   let frontmatterEnd = 0;
 
   // Extract frontmatter
   if (lines[0] === '---') {
-    inFrontmatter = true;
     for (let i = 1; i < lines.length; i++) {
       if (lines[i] === '---') {
         frontmatterEnd = i + 1;
@@ -42,15 +47,15 @@ export function parseMarkdownSections(content) {
   }
 
   // Parse sections (## headings)
-  const sections = new Map();
-  const order = [];
-  let currentSection = null;
-  let currentContent = [];
-  let preamble = []; // Content before first section
+  const sections: Map<string, string> = new Map();
+  const order: string[] = [];
+  let currentSection: string | null = null;
+  let currentContent: string[] = [];
+  let preamble: string[] = []; // Content before first section
 
   for (let i = frontmatterEnd; i < lines.length; i++) {
-    const line = lines[i];
-    const headingMatch = line.match(/^## (.+)$/);
+    const line: string = lines[i];
+    const headingMatch: RegExpMatchArray | null = line.match(/^## (.+)$/);
 
     if (headingMatch) {
       // Save previous section
@@ -87,9 +92,9 @@ export function parseMarkdownSections(content) {
  * @param {{ frontmatter: string, preamble?: string, sections: Map<string, string>, order: string[] }} parsed
  * @returns {string}
  */
-export function serializeSections(parsed) {
+export function serializeSections(parsed: ParsedMarkdown): string {
   const { frontmatter, preamble, sections, order } = parsed;
-  const parts = [];
+  const parts: string[] = [];
 
   if (frontmatter) {
     parts.push(frontmatter);
@@ -104,7 +109,7 @@ export function serializeSections(parsed) {
   for (const name of order) {
     if (sections.has(name)) {
       parts.push(`## ${name}`);
-      const content = sections.get(name);
+      const content: string | undefined = sections.get(name);
       if (content) {
         parts.push('');
         parts.push(content);
@@ -116,6 +121,11 @@ export function serializeSections(parsed) {
   return parts.join('\n').trimEnd() + '\n';
 }
 
+export interface OpResult {
+  success: boolean;
+  error?: string;
+}
+
 /**
  * Apply a single operation to sections
  * @param {Map<string, string>} sections - Sections map
@@ -123,13 +133,13 @@ export function serializeSections(parsed) {
  * @param {object} op - Operation to apply
  * @returns {{ success: boolean, error?: string }}
  */
-export function applyOp(sections, order, op) {
+export function applyOp(sections: Map<string, string>, order: string[], op: ArtifactOp): OpResult {
   switch (op.op) {
     case 'replace': {
       if (!sections.has(op.section)) {
         return { success: false, error: `Section not found: ${op.section}` };
       }
-      sections.set(op.section, op.content);
+      sections.set(op.section, op.content ?? '');
       return { success: true };
     }
 
@@ -137,9 +147,9 @@ export function applyOp(sections, order, op) {
       if (!sections.has(op.section)) {
         return { success: false, error: `Section not found: ${op.section}` };
       }
-      const current = sections.get(op.section);
-      const separator = current && !current.endsWith('\n') ? '\n' : '';
-      sections.set(op.section, current + separator + op.content);
+      const current: string | undefined = sections.get(op.section);
+      const separator: string = current && !current.endsWith('\n') ? '\n' : '';
+      sections.set(op.section, (current ?? '') + separator + (op.content ?? ''));
       return { success: true };
     }
 
@@ -147,21 +157,21 @@ export function applyOp(sections, order, op) {
       if (!sections.has(op.section)) {
         return { success: false, error: `Section not found: ${op.section}` };
       }
-      const current = sections.get(op.section);
-      sections.set(op.section, op.content + (current ? '\n' + current : ''));
+      const current: string | undefined = sections.get(op.section);
+      sections.set(op.section, (op.content ?? '') + (current ? '\n' + current : ''));
       return { success: true };
     }
 
     case 'check': {
-      return toggleCheckbox(sections, op.section, op.item, true);
+      return toggleCheckbox(sections, op.section, op.item ?? '', true);
     }
 
     case 'uncheck': {
-      return toggleCheckbox(sections, op.section, op.item, false);
+      return toggleCheckbox(sections, op.section, op.item ?? '', false);
     }
 
     case 'toggle': {
-      return toggleCheckbox(sections, op.section, op.item, 'toggle');
+      return toggleCheckbox(sections, op.section, op.item ?? '', 'toggle');
     }
 
     case 'delete': {
@@ -169,7 +179,7 @@ export function applyOp(sections, order, op) {
         return { success: false, error: `Section not found: ${op.section}` };
       }
       sections.delete(op.section);
-      const idx = order.indexOf(op.section);
+      const idx: number = order.indexOf(op.section);
       if (idx !== -1) order.splice(idx, 1);
       return { success: true };
     }
@@ -178,9 +188,9 @@ export function applyOp(sections, order, op) {
       if (sections.has(op.section)) {
         return { success: false, error: `Section already exists: ${op.section}` };
       }
-      sections.set(op.section, op.content || '');
+      sections.set(op.section, op.content ?? '');
       if (op.after && order.includes(op.after)) {
-        const idx = order.indexOf(op.after);
+        const idx: number = order.indexOf(op.after);
         order.splice(idx + 1, 0, op.section);
       } else {
         order.push(op.section);
@@ -201,26 +211,26 @@ export function applyOp(sections, order, op) {
  * @param {boolean|'toggle'} checked - true=check, false=uncheck, 'toggle'=flip
  * @returns {{ success: boolean, error?: string }}
  */
-function toggleCheckbox(sections, sectionName, itemText, checked) {
+function toggleCheckbox(sections: Map<string, string>, sectionName: string, itemText: string, checked: boolean | 'toggle'): OpResult {
   if (!sections.has(sectionName)) {
     return { success: false, error: `Section not found: ${sectionName}` };
   }
 
-  const content = sections.get(sectionName);
-  const lines = content.split('\n');
+  const content: string | undefined = sections.get(sectionName);
+  const lines: string[] = (content ?? '').split('\n');
   let found = false;
 
-  const updatedLines = lines.map(line => {
+  const updatedLines: string[] = lines.map((line: string): string => {
     // Match checkbox pattern: - [ ] or - [x] or - [X]
-    const checkboxMatch = line.match(/^(\s*-\s*)\[([ xX])\](\s*.*)$/);
+    const checkboxMatch: RegExpMatchArray | null = line.match(/^(\s*-\s*)\[([ xX])\](\s*.*)$/);
     if (checkboxMatch) {
-      const [, prefix, currentState, rest] = checkboxMatch;
-      const lineText = rest.trim();
+      const [, prefix, currentState, rest] = checkboxMatch as [string, string, string, string];
+      const lineText: string = rest.trim();
 
       // Match by item text (partial match, case-insensitive)
       if (lineText.toLowerCase().includes(itemText.toLowerCase())) {
         found = true;
-        let newState;
+        let newState: string;
         if (checked === 'toggle') {
           newState = currentState === ' ' ? 'x' : ' ';
         } else {
@@ -240,6 +250,12 @@ function toggleCheckbox(sections, sectionName, itemText, checked) {
   return { success: true };
 }
 
+export interface ApplyOpsResult {
+  success: boolean;
+  applied: number;
+  errors: string[];
+}
+
 /**
  * Apply multiple operations
  * @param {Map<string, string>} sections
@@ -247,15 +263,15 @@ function toggleCheckbox(sections, sectionName, itemText, checked) {
  * @param {object[]} ops
  * @returns {{ success: boolean, applied: number, errors: string[] }}
  */
-export function applyOps(sections, order, ops) {
-  const errors = [];
+export function applyOps(sections: Map<string, string>, order: string[], ops: ArtifactOp[]): ApplyOpsResult {
+  const errors: string[] = [];
   let applied = 0;
 
   for (const op of ops) {
-    const result = applyOp(sections, order, op);
+    const result: OpResult = applyOp(sections, order, op);
     if (result.success) {
       applied++;
-    } else {
+    } else if (result.error) {
       errors.push(result.error);
     }
   }
@@ -267,19 +283,25 @@ export function applyOps(sections, order, ops) {
   };
 }
 
+export interface SearchReplaceOp {
+  op: 'search_replace';
+  search: string;
+  replace: string;
+}
+
 /**
  * Parse Aider-style SEARCH/REPLACE blocks into ops
  * @param {string} input - Input containing SEARCH/REPLACE blocks
  * @returns {object[]} Array of ops
  */
-export function parseSearchReplace(input) {
-  const ops = [];
+export function parseSearchReplace(input: string): SearchReplaceOp[] {
+  const ops: SearchReplaceOp[] = [];
   // Allow optional indentation around markers to be forgiving with indented heredocs
-  const blockRegex = /^\s*<<<<<<< SEARCH\s*\n([\s\S]*?)\n^\s*=======\s*\n([\s\S]*?)\n^\s*>>>>>>> REPLACE\s*$/gms;
+  const blockRegex = /^\s*<<<<<<< SEARCH\s*\n(.*?)\n^\s*=======\s*\n(.*?)\n^\s*>>>>>>> REPLACE\s*$/gms;
 
-  let match;
+  let match: RegExpExecArray | null;
   while ((match = blockRegex.exec(input)) !== null) {
-    const [, searchBlock, replaceBlock] = match;
+    const [, searchBlock, replaceBlock] = match as [string, string, string];
     ops.push({
       op: 'search_replace',
       search: searchBlock,
@@ -290,6 +312,12 @@ export function parseSearchReplace(input) {
   return ops;
 }
 
+export interface SearchReplaceResult {
+  success: boolean;
+  content?: string;
+  error?: string;
+}
+
 /**
  * Apply SEARCH/REPLACE operation to raw content
  * @param {string} content - Full file content
@@ -297,16 +325,16 @@ export function parseSearchReplace(input) {
  * @param {string} replace - Replacement text
  * @returns {{ success: boolean, content?: string, error?: string }}
  */
-export function applySearchReplace(content, search, replace) {
+export function applySearchReplace(content: string, search: string, replace: string): SearchReplaceResult {
   // Normalize line endings
-  const normalizedContent = content.replace(/\r\n/g, '\n');
-  const normalizedSearch = search.replace(/\r\n/g, '\n').trim();
-  const normalizedReplace = replace.replace(/\r\n/g, '\n').trim();
+  const normalizedContent: string = content.replace(/\r\n/g, '\n');
+  const normalizedSearch: string = search.replace(/\r\n/g, '\n').trim();
+  const normalizedReplace: string = replace.replace(/\r\n/g, '\n').trim();
 
   if (!normalizedContent.includes(normalizedSearch)) {
     // Try fuzzy match (ignore leading/trailing whitespace per line)
-    const searchLines = normalizedSearch.split('\n').map(l => l.trim());
-    const contentLines = normalizedContent.split('\n');
+    const searchLines: string[] = normalizedSearch.split('\n').map((l: string) => l.trim());
+    const contentLines: string[] = normalizedContent.split('\n');
 
     let startIdx = -1;
     for (let i = 0; i <= contentLines.length - searchLines.length; i++) {
@@ -328,11 +356,11 @@ export function applySearchReplace(content, search, replace) {
     }
 
     // Replace with proper indentation preserved from first line
-    const indent = contentLines[startIdx].match(/^(\s*)/)[1];
-    const replaceLines = normalizedReplace.split('\n').map((line, idx) => {
+    const indentMatch: RegExpMatchArray | null = contentLines[startIdx].match(/^(\s*)/);
+    const indent: string = indentMatch ? indentMatch[1] : '';
+    const replaceLines: string[] = normalizedReplace.split('\n').map((line: string, idx: number): string => {
       if (idx === 0) return indent + line.trim();
       // Preserve relative indentation
-      const lineIndent = line.match(/^(\s*)/)[1];
       return indent + line;
     });
 
@@ -341,9 +369,11 @@ export function applySearchReplace(content, search, replace) {
   }
 
   // Exact match
-  const newContent = normalizedContent.replace(normalizedSearch, normalizedReplace);
+  const newContent: string = normalizedContent.replace(normalizedSearch, normalizedReplace);
   return { success: true, content: newContent };
 }
+
+export type EditOp = ArtifactOp | SearchReplaceOp;
 
 /**
  * Read artifact file, apply ops, write back
@@ -351,33 +381,33 @@ export function applySearchReplace(content, search, replace) {
  * @param {object[]} ops - Operations to apply
  * @returns {{ success: boolean, applied: number, errors: string[] }}
  */
-export function editArtifact(filePath, ops) {
+export function editArtifact(filePath: string, ops: EditOp[]): ApplyOpsResult {
   if (!fs.existsSync(filePath)) {
     return { success: false, applied: 0, errors: [`File not found: ${filePath}`] };
   }
 
-  let content = fs.readFileSync(filePath, 'utf8');
-  const errors = [];
+  let content: string = fs.readFileSync(filePath, 'utf8');
+  const errors: string[] = [];
   let applied = 0;
 
   // Handle search_replace ops on raw content first
-  const searchReplaceOps = ops.filter(op => op.op === 'search_replace');
-  const sectionOps = ops.filter(op => op.op !== 'search_replace');
+  const searchReplaceOps: SearchReplaceOp[] = ops.filter((op): op is SearchReplaceOp => op.op === 'search_replace');
+  const sectionOps: ArtifactOp[] = ops.filter((op): op is ArtifactOp => op.op !== 'search_replace');
 
   for (const op of searchReplaceOps) {
-    const result = applySearchReplace(content, op.search, op.replace);
-    if (result.success) {
+    const result: SearchReplaceResult = applySearchReplace(content, op.search, op.replace);
+    if (result.success && result.content) {
       content = result.content;
       applied++;
-    } else {
+    } else if (result.error) {
       errors.push(result.error);
     }
   }
 
   // Handle section-based ops
   if (sectionOps.length > 0) {
-    const parsed = parseMarkdownSections(content);
-    const result = applyOps(parsed.sections, parsed.order, sectionOps);
+    const parsed: ParsedMarkdown = parseMarkdownSections(content);
+    const result: ApplyOpsResult = applyOps(parsed.sections, parsed.order, sectionOps);
     applied += result.applied;
     errors.push(...result.errors);
 
@@ -403,12 +433,12 @@ export function editArtifact(filePath, ops) {
  * @param {string} filePath - Path to markdown file
  * @returns {string[]} Section names
  */
-export function listSections(filePath) {
+export function listSections(filePath: string): string[] {
   if (!fs.existsSync(filePath)) {
     return [];
   }
-  const content = fs.readFileSync(filePath, 'utf8');
-  const parsed = parseMarkdownSections(content);
+  const content: string = fs.readFileSync(filePath, 'utf8');
+  const parsed: ParsedMarkdown = parseMarkdownSections(content);
   return parsed.order;
 }
 
@@ -418,12 +448,12 @@ export function listSections(filePath) {
  * @param {string} sectionName - Section name
  * @returns {string|null} Section content or null if not found
  */
-export function getSection(filePath, sectionName) {
+export function getSection(filePath: string, sectionName: string): string | null {
   if (!fs.existsSync(filePath)) {
     return null;
   }
-  const content = fs.readFileSync(filePath, 'utf8');
-  const parsed = parseMarkdownSections(content);
+  const content: string = fs.readFileSync(filePath, 'utf8');
+  const parsed: ParsedMarkdown = parseMarkdownSections(content);
   return parsed.sections.get(sectionName) ?? null;
 }
 
@@ -436,6 +466,12 @@ export function getSection(filePath, sectionName) {
  */
 export const SECTION_OPS = ['replace', 'append', 'prepend', 'delete', 'sed', 'check', 'uncheck', 'toggle', 'patch'];
 
+export interface SedCommand {
+  search: string;
+  replace: string;
+  global: boolean;
+}
+
 /**
  * Parse sed-like commands from content
  * Format: s/search/replace/ or s/search/replace/g
@@ -443,14 +479,14 @@ export const SECTION_OPS = ['replace', 'append', 'prepend', 'delete', 'sed', 'ch
  * @param {string} content - Lines of sed commands
  * @returns {Array<{search: string, replace: string, global: boolean}>}
  */
-export function parseSedCommands(content) {
-  const commands = [];
-  const lines = content.split('\n').filter(l => l.trim());
+export function parseSedCommands(content: string): SedCommand[] {
+  const commands: SedCommand[] = [];
+  const lines: string[] = content.split('\n').filter((l: string) => l.trim());
 
   for (const line of lines) {
     // Match s/search/replace/ or s/search/replace/g
     // Support different delimiters: s|search|replace| or s#search#replace#
-    const match = line.match(/^s([\/|#@])(.+?)\1(.*?)\1(g)?$/);
+    const match: RegExpMatchArray | null = line.match(/^s([\/|#@])(.+?)\1(.*?)\1(g)?$/);
     if (match) {
       commands.push({
         search: match[2],
@@ -469,13 +505,13 @@ export function parseSedCommands(content) {
  * @param {Array<{search: string, replace: string, global: boolean}>} commands
  * @returns {string} Modified content
  */
-export function applySedCommands(content, commands) {
-  let result = content;
+export function applySedCommands(content: string, commands: SedCommand[]): string {
+  let result: string = content;
   for (const cmd of commands) {
     try {
       const regex = new RegExp(cmd.search, cmd.global ? 'g' : '');
       result = result.replace(regex, cmd.replace);
-    } catch (e) {
+    } catch {
       // If regex is invalid, fall back to literal string replacement
       if (cmd.global) {
         result = result.split(cmd.search).join(cmd.replace);
@@ -494,18 +530,18 @@ export function applySedCommands(content, commands) {
  * @param {string} defaultOp - Default operation if not specified (default: 'replace')
  * @returns {Array<{op: string, section: string, content: string, sedCommands?: Array}>}
  */
-export function parseMultiSectionContent(content, defaultOp = 'replace') {
-  const ops = [];
-  const lines = content.split('\n');
-  let currentSection = null;
-  let currentOp = defaultOp;
-  let currentContent = [];
+export function parseMultiSectionContent(content: string, defaultOp = 'replace'): ArtifactOp[] {
+  const ops: ArtifactOp[] = [];
+  const lines: string[] = content.split('\n');
+  let currentSection: string | null = null;
+  let currentOp: string = defaultOp;
+  let currentContent: string[] = [];
 
-  const opPattern = SECTION_OPS.join('|');
+  const opPattern: string = SECTION_OPS.join('|');
   const headerRegex = new RegExp(`^##\\s+(.+?)(?:\\s+\\[(${opPattern})\\])?\\s*$`);
 
   for (const line of lines) {
-    const match = line.match(headerRegex);
+    const match: RegExpMatchArray | null = line.match(headerRegex);
     if (match) {
       // Save previous section
       if (currentSection) {
@@ -515,12 +551,12 @@ export function parseMultiSectionContent(content, defaultOp = 'replace') {
           content: currentContent.join('\n').trim()
         };
         if (currentOp === 'sed') {
-          op.sedCommands = parseSedCommands(op.content || '');
+          op.sedCommands = parseSedCommands(op.content ?? '');
         }
         ops.push(op);
       }
       currentSection = match[1].trim();
-      currentOp = match[2] || defaultOp;
+      currentOp = match[2] ?? defaultOp;
       currentContent = [];
     } else if (currentSection) {
       currentContent.push(line);
@@ -535,7 +571,7 @@ export function parseMultiSectionContent(content, defaultOp = 'replace') {
       content: currentContent.join('\n').trim()
     };
     if (currentOp === 'sed') {
-      op.sedCommands = parseSedCommands(op.content || '');
+      op.sedCommands = parseSedCommands(op.content ?? '');
     }
     ops.push(op);
   }
@@ -549,10 +585,15 @@ export function parseMultiSectionContent(content, defaultOp = 'replace') {
  * @param {string} content - Lines of checkbox items
  * @returns {string[]} Item texts
  */
-export function parseCheckboxItems(content) {
+export function parseCheckboxItems(content: string): string[] {
   return content.split('\n')
-    .map(l => l.replace(/^-\s*\[[ xX]\]\s*/, '').trim())
-    .filter(l => l.length > 0);
+    .map((l: string) => l.replace(/^-\s*\[[ xX]\]\s*/, '').trim())
+    .filter((l: string) => l.length > 0);
+}
+
+export interface ProcessMultiSectionOpsResult {
+  expandedOps: ArtifactOp[];
+  errors: string[];
 }
 
 /**
@@ -561,13 +602,13 @@ export function parseCheckboxItems(content) {
  * @param {Array} ops - Parsed operations from parseMultiSectionContent
  * @returns {{ expandedOps: Array, errors: string[] }}
  */
-export function processMultiSectionOps(filePath, ops) {
-  const expandedOps = [];
-  const errors = [];
+export function processMultiSectionOps(filePath: string, ops: ArtifactOp[]): ProcessMultiSectionOpsResult {
+  const expandedOps: ArtifactOp[] = [];
+  const errors: string[] = [];
 
   for (const op of ops) {
-    if (op.op === 'sed' && op.sedCommands?.length > 0) {
-      const sectionContent = getSection(filePath, op.section);
+    if (op.op === 'sed' && op.sedCommands && op.sedCommands.length > 0) {
+      const sectionContent: string | null = getSection(filePath, op.section);
       if (sectionContent === null) {
         errors.push(`Section not found for sed: ${op.section}`);
         continue;
@@ -578,24 +619,24 @@ export function processMultiSectionOps(filePath, ops) {
         content: applySedCommands(sectionContent, op.sedCommands)
       });
     } else if (op.op === 'patch') {
-      const patches = parseSearchReplace(op.content);
+      const patches: SearchReplaceOp[] = parseSearchReplace(op.content ?? '');
       if (patches.length === 0) {
         errors.push(`No SEARCH/REPLACE blocks found for patch: ${op.section}`);
         continue;
       }
-      let sectionContent = getSection(filePath, op.section);
+      let sectionContent: string | null = getSection(filePath, op.section);
       if (sectionContent === null) {
         errors.push(`Section not found for patch: ${op.section}`);
         continue;
       }
-      let patchError = null;
+      let patchError: string | null = null;
       for (const patch of patches) {
-        const result = applySearchReplace(sectionContent, patch.search, patch.replace);
+        const result: SearchReplaceResult = applySearchReplace(sectionContent, patch.search, patch.replace);
         if (!result.success) {
-          patchError = `Patch failed on ${op.section}: ${result.error}`;
+          patchError = `Patch failed on ${op.section}: ${result.error ?? 'unknown error'}`;
           break;
         }
-        sectionContent = result.content;
+        sectionContent = result.content ?? '';
       }
       if (patchError) {
         errors.push(patchError);
@@ -607,7 +648,7 @@ export function processMultiSectionOps(filePath, ops) {
         content: sectionContent
       });
     } else if (['check', 'uncheck', 'toggle'].includes(op.op)) {
-      for (const item of parseCheckboxItems(op.content)) {
+      for (const item of parseCheckboxItems(op.content ?? '')) {
         expandedOps.push({
           op: op.op,
           section: op.section,

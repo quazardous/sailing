@@ -58,7 +58,7 @@ function matchQuery<T>(doc: T, query: Query<T>): boolean {
   if (!query || Object.keys(query).length === 0) return true;
 
   for (const [key, condition] of Object.entries(query)) {
-    const value = (doc as any)[key];
+    const value: unknown = (doc as Record<string, unknown>)[key];
 
     // Operator query: { age: { $gt: 18 } }
     if (condition && typeof condition === 'object' && !Array.isArray(condition)) {
@@ -93,7 +93,7 @@ function matchQuery<T>(doc: T, query: Query<T>): boolean {
  * Supports: $set, $unset, $inc, $push
  */
 function applyUpdate<T>(doc: T, update: UpdateOps<T>): T {
-  const result = { ...doc } as any;
+  const result: Record<string, unknown> = { ...doc };
 
   for (const [op, fields] of Object.entries(update)) {
     switch (op) {
@@ -107,7 +107,8 @@ function applyUpdate<T>(doc: T, update: UpdateOps<T>): T {
         break;
       case '$inc':
         for (const [key, amount] of Object.entries(fields as object)) {
-          result[key] = (result[key] || 0) + (amount as number);
+          const currentValue = typeof result[key] === 'number' ? result[key] : 0;
+          result[key] = currentValue + (amount as number);
         }
         break;
       case '$push':
@@ -119,12 +120,12 @@ function applyUpdate<T>(doc: T, update: UpdateOps<T>): T {
       default:
         // Direct field update (no operator)
         if (!op.startsWith('$')) {
-          result[op] = fields;
+          result[op] = fields as unknown;
         }
     }
   }
 
-  result._updatedAt = new Date().toISOString();
+  result['_updatedAt'] = new Date().toISOString();
   return result as T;
 }
 
@@ -169,7 +170,7 @@ export class Collection<T = Record<string, any>> {
         if (anyErr.code === 'EEXIST') {
           // Lock exists - check if stale
           try {
-            const lockData = JSON.parse(fs.readFileSync(this.lockfile, 'utf8'));
+            const lockData = JSON.parse(fs.readFileSync(this.lockfile, 'utf8')) as { pid: number; time: number; host: string };
             if (Date.now() - lockData.time > LOCK_STALE_MS) {
               // Stale lock - remove it
               fs.unlinkSync(this.lockfile);
@@ -388,7 +389,7 @@ export class Collection<T = Record<string, any>> {
     const indexFile = this.filepath + '.idx';
     let indexes: Record<string, { unique: boolean }> = {};
     try {
-      indexes = JSON.parse(fs.readFileSync(indexFile, 'utf8'));
+      indexes = JSON.parse(fs.readFileSync(indexFile, 'utf8')) as Record<string, { unique: boolean }>;
     } catch { /* ignore */ }
 
     indexes[fieldName] = { unique };

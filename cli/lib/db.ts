@@ -98,8 +98,8 @@ export class DbOps {
     // Sort by spawnedAt descending
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     return agents.sort((a: any, b: any) => {
-      const dateA = a.spawnedAt || a._createdAt || '';
-      const dateB = b.spawnedAt || b._createdAt || '';
+      const dateA: string = (a.spawnedAt || a._createdAt || '') as string;
+      const dateB: string = (b.spawnedAt || b._createdAt || '') as string;
       return dateB.localeCompare(dateA);
     });
   }
@@ -142,12 +142,11 @@ export class DbOps {
    */
   async createRun(taskId: string, logFile: string): Promise<string> {
     const db = this.getRunsDb();
-    const doc = await db.insert({
+    const doc: { _id: string } = await db.insert({
       taskId,
       startedAt: new Date().toISOString(),
       logFile
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    }) as any;
+    }) as { _id: string };
     return doc._id;
   }
 
@@ -172,8 +171,8 @@ export class DbOps {
     // Sort by startedAt descending
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     return runs.sort((a: any, b: any) => {
-      const dateA = a.startedAt || '';
-      const dateB = b.startedAt || '';
+      const dateA: string = (a.startedAt || '') as string;
+      const dateB: string = (b.startedAt || '') as string;
       return dateB.localeCompare(dateA);
     });
   }

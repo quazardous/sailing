@@ -122,9 +122,17 @@ function escapeRegex(str: string): string {
  * @param {string} input - Multi-section input
  * @returns {Array<{id: string, section: string, operation: string, content: string}>}
  */
+interface ParsedMatch {
+  fullMatch: string;
+  id: string;
+  section: string;
+  operation: EditOperation;
+  index: number;
+}
+
 export function parseMultiSectionInput(input: string): ParsedSection[] {
   const headerRegex = /^## ([A-Z0-9-]+):(.+?)(?:\s*\[(append|prepend|replace)\])?\s*$/gm;
-  const matches = [];
+  const matches: ParsedMatch[] = [];
   let match: RegExpExecArray | null;
 
   // Find all section headers
@@ -139,12 +147,12 @@ export function parseMultiSectionInput(input: string): ParsedSection[] {
   }
 
   // Extract content for each section
-  const sections = [];
+  const sections: ParsedSection[] = [];
   for (let i = 0; i < matches.length; i++) {
-    const current = matches[i];
-    const nextIndex = matches[i + 1]?.index ?? input.length;
-    const headerEnd = current.index + current.fullMatch.length;
-    const content = input.slice(headerEnd, nextIndex).trim();
+    const current: ParsedMatch = matches[i];
+    const nextIndex: number = matches[i + 1]?.index ?? input.length;
+    const headerEnd: number = current.index + current.fullMatch.length;
+    const content: string = input.slice(headerEnd, nextIndex).trim();
 
     sections.push({
       id: current.id,

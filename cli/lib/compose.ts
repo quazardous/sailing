@@ -32,10 +32,68 @@ export interface BuildPromptOptions {
 export interface ResolvedFragments {
   fragments: string[];
   role: string;
-  roleDef: any;
+  roleDef: RoleDef;
   exclude: string[];
   injectFragments: string[];
   injectFiles: string[];
+}
+
+// Types for workflows.yaml structure
+export interface InjectConfig {
+  files?: string[];
+  fragments?: string[];
+  exclude?: string[];
+  inline?: string[] | InjectModeConfig;
+  subprocess?: string[] | InjectModeConfig;
+  both?: string[] | InjectModeConfig;
+  worktrees?: string[] | InjectModeConfig;
+  no_worktrees?: string[] | InjectModeConfig;
+}
+
+export interface InjectModeConfig {
+  files?: string[];
+  fragments?: string[];
+  exclude?: string[];
+}
+
+export interface RoleDef {
+  base_sets?: string[];
+  inject?: InjectConfig;
+  [key: string]: unknown;
+}
+
+export interface SetDef {
+  fragments?: string[];
+  roles?: string[] | null;
+}
+
+export interface OperationMeta {
+  roles?: string[];
+  role?: string;
+  entity?: string;
+}
+
+export interface OrchestrationCommand {
+  mode: string;
+  cmd: string;
+  required?: boolean;
+  condition?: string;
+  purpose: string;
+  note?: string;
+}
+
+export interface OrchestrationPhase {
+  name: string;
+  actor: string;
+  commands?: OrchestrationCommand[];
+}
+
+export interface WorkflowsConfig {
+  operations?: Record<string, OperationMeta>;
+  roles?: Record<string, RoleDef>;
+  sets?: Record<string, string[] | SetDef>;
+  matrix?: Record<string, string[]>;
+  orchestration?: Record<string, OrchestrationPhase[]>;
 }
 
 // ============================================================================
@@ -50,22 +108,24 @@ export interface ResolvedFragments {
  * @param useWorktrees - Whether worktrees are enabled
  * @returns { files: string[], fragments: string[], exclude: string[] }
  */
-export function resolveInject(roleDef: any, mode: string, useWorktrees: boolean = true) {
-  const inject = roleDef?.inject || {};
-  const modeConfig = inject[mode];
+type ModeConfigValue = string[] | InjectModeConfig | undefined;
+
+export function resolveInject(roleDef: RoleDef | undefined, mode: string, useWorktrees: boolean = true) {
+  const inject: InjectConfig = roleDef?.inject ?? {};
+  const modeConfig: ModeConfigValue = inject[mode as keyof InjectConfig];
 
   // Default empty result
   const result = { files: [] as string[], fragments: [] as string[], exclude: [] as string[] };
 
   // Helper to merge config into result
-  const mergeConfig = (config: any) => {
+  const mergeConfig = (config: string[] | InjectModeConfig | undefined) => {
     if (!config) return;
     if (Array.isArray(config)) {
       result.files.push(...config);
     } else if (typeof config === 'object') {
-      result.files.push(...(config.files || []));
-      result.fragments.push(...(config.fragments || []));
-      result.exclude.push(...(config.exclude || []));
+      result.files.push(...(config.files ?? []));
+      result.fragments.push(...(config.fragments ?? []));
+      result.exclude.push(...(config.exclude ?? []));
     }
   };
 
@@ -91,7 +151,7 @@ export function resolveInject(roleDef: any, mode: string, useWorktrees: boolean 
  * @param setDef - Set definition (array or object with fragments/roles)
  * @returns { fragments: string[], roles: string[] | null }
  */
-export function getSetFragments(setDef: any) {
+export function getSetFragments(setDef: string[] | SetDef | undefined): { fragments: string[]; roles: string[] | null } {
   if (!setDef) return { fragments: [], roles: null };
 
   // Legacy format: array of fragments
@@ -102,8 +162,8 @@ export function getSetFragments(setDef: any) {
   // New format: { fragments: [...], roles?: [...] }
   if (typeof setDef === 'object') {
     return {
-      fragments: setDef.fragments || [],
-      roles: setDef.roles || null  // null = all roles allowed
+      fragments: setDef.fragments ?? [],
+      roles: setDef.roles ?? null  // null = all roles allowed
     };
   }
 
@@ -120,32 +180,32 @@ export function getSetFragments(setDef: any) {
  * @returns Resolved fragments info or null
  */
 export function resolveFragments(
-  config: any,
+  config: WorkflowsConfig,
   operation: string,
   role: string | null,
   mode: string,
   useWorktrees: boolean = true
 ): ResolvedFragments | null {
   // Get operation metadata (fallback to default)
-  const opMeta = config.operations?.[operation] || config.operations?.['default'];
+  const opMeta: OperationMeta | undefined = config.operations?.[operation] ?? config.operations?.['default'];
   if (!opMeta) return null;
 
   // Get allowed roles (support both 'roles' array and legacy 'role' string)
-  const allowedRoles = opMeta.roles || (opMeta.role ? [opMeta.role] : ['agent']);
-  const defaultRole = allowedRoles[0];
-  const resolvedRole = role || defaultRole;
+  const allowedRoles: string[] = opMeta.roles ?? (opMeta.role ? [opMeta.role] : ['agent']);
+  const defaultRole: string = allowedRoles[0];
+  const resolvedRole: string = role ?? defaultRole;
 
   // Validate role is allowed for this operation
   if (role && !allowedRoles.includes(role)) {
     return null;  // Role not allowed
   }
 
-  const roleDef = config.roles?.[resolvedRole];
+  const roleDef: RoleDef | undefined = config.roles?.[resolvedRole];
   if (!roleDef) return null;
 
   // Collect fragments from role's base_sets (no role filtering - base_sets are role-specific)
   const fragments: string[] = [];
-  const baseSets = roleDef.base_sets || [];
+  const baseSets: string[] = roleDef.base_sets ?? [];
 
   for (const setName of baseSets) {
     const { fragments: setFragments } = getSetFragments(config.sets?.[setName]);
@@ -153,7 +213,7 @@ export function resolveFragments(
   }
 
   // Add operation-specific sets from matrix (with role filtering)
-  const opSets = config.matrix?.[operation] || [];
+  const opSets: string[] = config.matrix?.[operation] ?? [];
   for (const setName of opSets) {
     const { fragments: setFragments, roles: allowedSetRoles } = getSetFragments(config.sets?.[setName]);
 
@@ -192,13 +252,13 @@ export function resolveFragments(
  * @param actualRole - The resolved role
  * @returns Rendered markdown or null
  */
-export function renderOrchestration(config: any, command: string, mode: string, actualRole: string) {
-  const steps = config.orchestration?.[command];
+export function renderOrchestration(config: WorkflowsConfig, command: string, mode: string, actualRole: string) {
+  const steps: OrchestrationPhase[] | undefined = config.orchestration?.[command];
   if (!steps) return null;
 
-  const opMeta = config.operations?.[command] || {};
-  const entity = opMeta.entity?.toUpperCase() || 'ENTITY';
-  const role = actualRole || 'agent';
+  const opMeta: OperationMeta = config.operations?.[command] ?? {};
+  const entity: string = opMeta.entity?.toUpperCase() ?? 'ENTITY';
+  const role: string = actualRole || 'agent';
 
   const lines: string[] = [];
   lines.push(`## Workflow: ${command}`);
@@ -208,7 +268,7 @@ export function renderOrchestration(config: any, command: string, mode: string, 
 
   for (const phase of steps) {
     // Filter commands by mode
-    const commands = (phase.commands || []).filter((cmd: any) =>
+    const commands: OrchestrationCommand[] = (phase.commands ?? []).filter((cmd: OrchestrationCommand) =>
       cmd.mode === 'both' || cmd.mode === mode
     );
 
@@ -218,9 +278,9 @@ export function renderOrchestration(config: any, command: string, mode: string, 
     lines.push('');
 
     for (const cmd of commands) {
-      const cmdStr = cmd.cmd.replace(/\{(\w+)\}/g, (_: string, key: string) => `<${key}>`);
-      const required = cmd.required ? ' **[required]**' : '';
-      const condition = cmd.condition ? ` _(if ${cmd.condition})_` : '';
+      const cmdStr: string = cmd.cmd.replace(/\{(\w+)\}/g, (_: string, key: string) => `<${key}>`);
+      const required: string = cmd.required ? ' **[required]**' : '';
+      const condition: string = cmd.condition ? ` _(if ${cmd.condition})_` : '';
 
       lines.push(`- \`${cmdStr}\`${required}${condition}`);
       lines.push(`  → ${cmd.purpose}`);
@@ -242,7 +302,7 @@ export function renderOrchestration(config: any, command: string, mode: string, 
  * Load workflows.yaml from a specific directory
  * @param promptingDir - Absolute path to prompting directory
  */
-export function loadWorkflowsConfigFrom(promptingDir: string): any {
+export function loadWorkflowsConfigFrom(promptingDir: string): WorkflowsConfig | null {
   const configPath = path.join(promptingDir, 'workflows.yaml');
 
   if (!fs.existsSync(configPath)) {
@@ -250,7 +310,7 @@ export function loadWorkflowsConfigFrom(promptingDir: string): any {
   }
 
   const content = fs.readFileSync(configPath, 'utf8');
-  return yaml.load(content);
+  return yaml.load(content) as WorkflowsConfig;
 }
 
 /**
