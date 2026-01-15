@@ -26,3 +26,6 @@ tmp/
 skill/SKILL_INLINE.md
 skill/SKILL_WORKTREE.md
 skill/SKILL.md
+
+# Built files (live on dist branch)
+dist/

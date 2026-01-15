@@ -1,0 +1,61 @@
+#!/bin/bash
+# Publish dist files to dist branch
+# Called automatically after build
+
+set -e
+
+DIST_BRANCH="dist"
+MAIN_BRANCH="main"
+
+# Get last commit info from main
+LAST_MSG=$(git log -1 --format="%s" "$MAIN_BRANCH" 2>/dev/null || git log -1 --format="%s")
+LAST_SHA=$(git log -1 --format="%h" "$MAIN_BRANCH" 2>/dev/null || git log -1 --format="%h")
+
+echo "Publishing dist (ref: $LAST_SHA)..."
+
+# Save built files to temp
+TEMP_DIR=$(mktemp -d)
+trap "rm -rf $TEMP_DIR" EXIT
+
+# Core files for install.sh
+cp -r dist/ "$TEMP_DIR/"
+cp -r bin/ "$TEMP_DIR/"
+cp -r prompting/ "$TEMP_DIR/"
+cp -r templates/ "$TEMP_DIR/" 2>/dev/null || true
+cp -r skill/ "$TEMP_DIR/" 2>/dev/null || true
+cp -r commands/ "$TEMP_DIR/" 2>/dev/null || true
+
+# Package files (cli/package.json has runtime deps)
+cp package.json "$TEMP_DIR/"
+cp package-lock.json "$TEMP_DIR/" 2>/dev/null || true
+mkdir -p "$TEMP_DIR/cli"
+cp cli/package.json "$TEMP_DIR/cli/"
+
+# Save current branch
+CURRENT_BRANCH=$(git branch --show-current)
+
+# Switch to dist branch
+if git show-ref --verify --quiet "refs/heads/$DIST_BRANCH"; then
+  git checkout -q "$DIST_BRANCH"
+else
+  git checkout -q --orphan "$DIST_BRANCH"
+  git rm -rf . >/dev/null 2>&1 || true
+fi
+
+# Clean and copy
+git rm -rf . >/dev/null 2>&1 || true
+cp -r "$TEMP_DIR"/* .
+
+# Commit
+git add -A
+if git diff --cached --quiet; then
+  echo "No changes to dist"
+else
+  git commit -q -m "chore(dist): $LAST_MSG"
+  echo "✓ Committed: chore(dist): $LAST_MSG"
+fi
+
+# Back to original branch
+git checkout -q "$CURRENT_BRANCH"
+
+echo "✓ dist branch updated (use 'git push origin dist' to publish)"

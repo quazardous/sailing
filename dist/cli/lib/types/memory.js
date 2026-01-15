@@ -1,4 +1,0 @@
-/**
- * Memory types
- */
-export {};

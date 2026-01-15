@@ -28,6 +28,7 @@ NC='\033[0m' # No Color
 # Repo info
 REPO_URL="https://github.com/quazardous/sailing"
 REPO_RAW="https://raw.githubusercontent.com/quazardous/sailing/main"
+DIST_BRANCH="dist"
 
 # Default paths
 DEFAULT_SAILING_DIR=".sailing"
@@ -266,8 +267,8 @@ echo -e "${BLUE}Getting sailing source...${NC}"
 TEMP_DIR=$(mktemp -d)
 trap "rm -rf $TEMP_DIR" EXIT
 
-git clone --depth 1 "$REPO_URL" "$TEMP_DIR/sailing" 2>/dev/null || {
-  echo -e "${RED}Failed to clone repository${NC}"
+git clone --depth 1 --branch "$DIST_BRANCH" "$REPO_URL" "$TEMP_DIR/sailing" 2>/dev/null || {
+  echo -e "${RED}Failed to clone repository (dist branch)${NC}"
   exit 1
 }
 
