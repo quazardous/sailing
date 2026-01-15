@@ -15,7 +15,7 @@
     "rudder": "node dist/cli/rudder.js",
     "mcp": "node mcp/rudder-server.js",
     "build": "npm run --workspace cli build",
-    "postbuild": "bin/publish-dist",
+    "build-dist": "npm run build && bin/publish-dist --push",
     "dev": "npm run --workspace cli dev",
     "lint": "npm run --workspace cli lint",
     "build:skill": "./skill/build.sh",

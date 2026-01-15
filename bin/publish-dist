@@ -1,12 +1,22 @@
 #!/bin/bash
 # Publish dist files to dist branch
-# Called automatically after build
-# Only includes files needed by install.sh
+# Uses a temporary worktree - never touches your working directory
+#
+# Usage: bin/publish-dist [--push]
 
 set -e
 
 DIST_BRANCH="dist"
 MAIN_BRANCH="main"
+DO_PUSH=false
+
+# Parse args
+while [[ $# -gt 0 ]]; do
+  case $1 in
+    --push) DO_PUSH=true; shift ;;
+    *) shift ;;
+  esac
+done
 
 # Get last commit info from main
 LAST_MSG=$(git log -1 --format="%s" "$MAIN_BRANCH" 2>/dev/null || git log -1 --format="%s")
@@ -14,57 +24,58 @@ LAST_SHA=$(git log -1 --format="%h" "$MAIN_BRANCH" 2>/dev/null || git log -1 --f
 
 echo "Publishing dist (ref: $LAST_SHA)..."
 
-# Save built files to temp
-TEMP_DIR=$(mktemp -d)
-trap "rm -rf $TEMP_DIR" EXIT
+# Create temp worktree for dist branch
+WORK_DIR=$(mktemp -d)
+trap "git worktree remove --force '$WORK_DIR' 2>/dev/null; rm -rf '$WORK_DIR'" EXIT
 
-# === Essential files only ===
-
-# Compiled CLI
-mkdir -p "$TEMP_DIR/dist"
-cp -r dist/cli "$TEMP_DIR/dist/"
-
-# Distribution templates (*.yaml-dist, *.md-dist)
-cp dist/*.yaml-dist dist/*.md-dist "$TEMP_DIR/dist/" 2>/dev/null || true
-
-# CLI wrappers
-mkdir -p "$TEMP_DIR/bin"
-cp bin/rudder bin/rudder-mcp "$TEMP_DIR/bin/"
-
-# Prompting fragments
-cp -r prompting "$TEMP_DIR/"
-
-# Templates
-cp -r templates "$TEMP_DIR/" 2>/dev/null || true
-
-# Skill (source + build script)
-mkdir -p "$TEMP_DIR/skill"
-cp skill/build.sh "$TEMP_DIR/skill/"
-cp skill/*.md "$TEMP_DIR/skill/" 2>/dev/null || true
-
-# Commands
-cp -r commands "$TEMP_DIR/" 2>/dev/null || true
-
-# Package files (cli/package.json has runtime deps)
-mkdir -p "$TEMP_DIR/cli"
-cp cli/package.json "$TEMP_DIR/cli/"
-
-# === Commit to dist branch ===
-
-CURRENT_BRANCH=$(git branch --show-current)
-
-if git show-ref --verify --quiet "refs/heads/$DIST_BRANCH"; then
-  git checkout -q "$DIST_BRANCH"
+# Create dist branch if it doesn't exist (orphan)
+if ! git show-ref --verify --quiet "refs/heads/$DIST_BRANCH"; then
+  git branch --orphan "$DIST_BRANCH" 2>/dev/null || \
+    git checkout --orphan "$DIST_BRANCH" && git checkout - && git branch -D "$DIST_BRANCH" 2>/dev/null || true
+  # Create empty orphan branch
+  git worktree add --detach "$WORK_DIR"
+  (cd "$WORK_DIR" && git checkout --orphan "$DIST_BRANCH" && git rm -rf . 2>/dev/null || true)
 else
-  git checkout -q --orphan "$DIST_BRANCH"
-  git rm -rf . >/dev/null 2>&1 || true
+  git worktree add "$WORK_DIR" "$DIST_BRANCH"
 fi
 
-# Clean and copy
-git rm -rf . >/dev/null 2>&1 || true
-cp -r "$TEMP_DIR"/* .
+# Clean worktree
+rm -rf "$WORK_DIR"/*
 
-# Commit
+# === Copy essential files ===
+
+# Compiled CLI
+mkdir -p "$WORK_DIR/dist"
+cp -r dist/cli "$WORK_DIR/dist/"
+
+# Distribution templates
+cp dist/*.yaml-dist dist/*.md-dist "$WORK_DIR/dist/" 2>/dev/null || true
+
+# CLI wrappers
+mkdir -p "$WORK_DIR/bin"
+cp bin/rudder bin/rudder-mcp "$WORK_DIR/bin/"
+
+# Prompting fragments
+cp -r prompting "$WORK_DIR/"
+
+# Templates
+cp -r templates "$WORK_DIR/" 2>/dev/null || true
+
+# Skill
+mkdir -p "$WORK_DIR/skill"
+cp skill/build.sh "$WORK_DIR/skill/"
+cp skill/*.md "$WORK_DIR/skill/" 2>/dev/null || true
+
+# Commands
+cp -r commands "$WORK_DIR/" 2>/dev/null || true
+
+# Package files
+mkdir -p "$WORK_DIR/cli"
+cp cli/package.json "$WORK_DIR/cli/"
+
+# === Commit ===
+
+cd "$WORK_DIR"
 git add -A
 if git diff --cached --quiet; then
   echo "No changes to dist"
@@ -73,6 +84,12 @@ else
   echo "✓ Committed: chore(dist): $LAST_MSG"
 fi
 
-git checkout -q "$CURRENT_BRANCH"
+echo "✓ dist branch updated"
 
-echo "✓ dist branch updated (use 'git push origin dist' to publish)"
+if [ "$DO_PUSH" = true ]; then
+  cd - >/dev/null
+  git push origin "$DIST_BRANCH"
+  echo "✓ Pushed to origin/$DIST_BRANCH"
+else
+  echo "  (use 'git push origin dist' to publish)"
+fi
