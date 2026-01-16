@@ -104,6 +104,8 @@ Task: rudder agent:spawn T003 (run_in_background: true)
 
 **NEVER use bash `&`** - it loses the output and useful completion info.
 
+**NEVER use `sleep && check` patterns** - Task tool handles completion notification automatically.
+
 Each spawn runs independently in background. Check status with `agent:status`.
 
 ## After Spawn Completes

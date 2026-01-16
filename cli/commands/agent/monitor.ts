@@ -3,6 +3,7 @@
  */
 import fs from 'fs';
 import path from 'path';
+import { execSync } from 'child_process';
 import { findProjectRoot, jsonOut, getAgentsDir, getWorktreesDir } from '../../managers/core-manager.js';
 import { loadState } from '../../managers/state-manager.js';
 import { getAgentLifecycle } from '../../managers/agent-manager.js';
@@ -13,6 +14,8 @@ import {
 } from '../../lib/agent-utils.js';
 import { WorktreeOps } from '../../lib/worktree.js';
 import { AgentInfo } from '../../lib/types/agent.js';
+import { getWorktreePath } from '../../managers/worktree-manager.js';
+import { diagnoseWorktreeState } from '../../lib/state-machine/index.js';
 import { getTaskEpic } from '../../managers/artefacts-manager.js';
 import {
   getDiagnoseOps, matchesNoiseFilter, parseJsonLog
@@ -39,7 +42,7 @@ function parseDuration(duration: string): number {
  */
 function isInterestingAgent(agentData: AgentInfo & { live_complete?: boolean; worktree_merged?: boolean }, maxAge: number = 24 * 60 * 60 * 1000): boolean {
   // Active agents are always interesting
-  if (['dispatched', 'running'].includes(agentData.status)) return true;
+  if (['spawned', 'dispatched', 'running'].includes(agentData.status)) return true;
 
   // Ready to reap (complete but not reaped)
   if (agentData.live_complete && agentData.status === 'dispatched') return true;
@@ -80,8 +83,9 @@ export function registerMonitorCommands(agent) {
     .description('Show agent status (all or specific task)')
     .option('--all', 'Show all agents (including old reaped)')
     .option('--since <duration>', 'Show agents from last duration (e.g., 1h, 24h, 2d)')
+    .option('--git', 'Include git worktree details (branch, ahead/behind, dirty)')
     .option('--json', 'JSON output')
-    .action((taskId: string | undefined, options: { all?: boolean; since?: string; json?: boolean }) => {
+    .action((taskId: string | undefined, options: { all?: boolean; since?: string; git?: boolean; json?: boolean }) => {
       const state = loadState();
       const agents: Record<string, AgentInfo> = state.agents || {};
       const agentUtils = new AgentUtils(getAgentsDir());
@@ -123,12 +127,48 @@ export function registerMonitorCommands(agent) {
             console.log(`  PID: ${agentData.pid} (${procState})`);
           }
           console.log(`  Started: ${agentData.spawned_at || agentData.started_at || 'unknown'}`);
+          // Show last activity from log file mtime
+          if (agentData.log_file && fs.existsSync(agentData.log_file)) {
+            const logStat = fs.statSync(agentData.log_file);
+            console.log(`  Last activity: ${logStat.mtime.toISOString()}`);
+          }
           console.log(`  Mission: ${agentData.mission_file}`);
           console.log(`  Complete: ${isComplete ? 'yes' : 'no'}`);
           if (completion.hasResult) console.log(`  Result: ${path.join(completion.agentDir, 'result.yaml')}`);
           if (completion.hasSentinel) console.log(`  Sentinel: ${path.join(completion.agentDir, 'done')}`);
           if (agentData.completed_at) {
             console.log(`  Collected: ${agentData.completed_at}`);
+          }
+          // Show git worktree details if --git flag
+          if (options.git && agentData.worktree) {
+            const projectRoot = findProjectRoot();
+            const worktreePath = getWorktreePath(taskId);
+            const mainBranch = agentData.worktree.base_branch || 'main';
+            const diagnosis = diagnoseWorktreeState(worktreePath, projectRoot, mainBranch);
+            console.log(`  Worktree:`);
+            console.log(`    Branch: ${diagnosis.details.branch || 'unknown'}`);
+            console.log(`    Path: ${worktreePath}`);
+            const gitParts = [];
+            if (diagnosis.details.ahead > 0) gitParts.push(`↑${diagnosis.details.ahead}`);
+            if (diagnosis.details.behind > 0) gitParts.push(`↓${diagnosis.details.behind}`);
+            if (!diagnosis.details.clean) gitParts.push('dirty');
+            if (gitParts.length > 0) {
+              console.log(`    State: ${gitParts.join(' ')}`);
+            } else {
+              console.log(`    State: clean, up-to-date`);
+            }
+            // Show last commit date
+            if (diagnosis.details.exists && fs.existsSync(worktreePath)) {
+              try {
+                const lastCommit = execSync('LC_ALL=C git log -1 --format=%cr 2>/dev/null', { cwd: worktreePath, encoding: 'utf-8' }).trim();
+                if (lastCommit) {
+                  console.log(`    Last commit: ${lastCommit}`);
+                }
+              } catch { /* ignore */ }
+            }
+            if (diagnosis.details.conflictFiles?.length > 0) {
+              console.log(`    Conflicts: ${diagnosis.details.conflictFiles.join(', ')}`);
+            }
           }
         }
         return;
@@ -173,36 +213,99 @@ export function registerMonitorCommands(agent) {
         return;
       }
 
+      // ANSI colors
+      const gray = '\x1b[90m';
+      const green = '\x1b[32m';
+      const yellow = '\x1b[33m';
+      const red = '\x1b[31m';
+      const cyan = '\x1b[36m';
+      const reset = '\x1b[0m';
+      const dim = '\x1b[2m';
+
+      // Add last activity and sort by most recent at bottom
+      const agentListWithActivity = agentList.map(a => {
+        let lastActivity: Date | null = null;
+        if (a.log_file && fs.existsSync(a.log_file)) {
+          lastActivity = fs.statSync(a.log_file).mtime;
+        } else if (a.spawned_at || a.started_at) {
+          lastActivity = new Date(a.spawned_at || a.started_at);
+        }
+        return { ...a, last_activity: lastActivity };
+      });
+
+      // Sort: oldest first, most recent at bottom
+      agentListWithActivity.sort((a, b) => {
+        const aTime = a.last_activity?.getTime() || 0;
+        const bTime = b.last_activity?.getTime() || 0;
+        return aTime - bTime;
+      });
+
+      const statusIconMap: Record<string, { icon: string; color: string }> = {
+        'running': { icon: '●', color: green },
+        'spawned': { icon: '◐', color: yellow },
+        'dispatched': { icon: '◐', color: yellow },
+        'completed': { icon: '✓', color: green },
+        'reaped': { icon: '✓', color: green },
+        'merged': { icon: '✓✓', color: green },
+        'collected': { icon: '✓', color: green },
+        'failed': { icon: '✗', color: red },
+        'blocked': { icon: '⊘', color: red },
+        'rejected': { icon: '✗', color: red },
+        'dead': { icon: '✖', color: red }
+      };
+
       const title = options.all ? 'All agents' : (options.since ? `Agents (since ${options.since})` : 'Agents (recent/active)');
       console.log(`${title}:\n`);
-      for (const agentData of agentList) {
-        let status;
-        if (agentData.live_complete) {
-          status = '✓';
-        } else if (agentData.status === 'dispatched') {
-          status = '●';
-        } else if (agentData.status === 'collected' || agentData.status === 'reaped') {
-          status = '✓';
-        } else {
-          status = '✗';
+
+      for (let i = 0; i < agentListWithActivity.length; i++) {
+        const agentData = agentListWithActivity[i];
+        const isLast = i === agentListWithActivity.length - 1;
+        const treeChar = isLast ? '└── ' : '├── ';
+
+        // Check if agent is dead (has PID but process not running, and status suggests it should be)
+        const isActiveStatus = ['spawned', 'dispatched', 'running'].includes(agentData.status);
+        const processInfo = agentData.pid ? getProcessStats(agentData.pid) : { running: false };
+        const isDead = isActiveStatus && agentData.pid && !processInfo.running;
+
+        const displayStatus = isDead ? 'dead' : agentData.status;
+        const statusInfo = statusIconMap[displayStatus] || { icon: '○', color: gray };
+
+        // Build line
+        let line = `${gray}${treeChar}${reset}`;
+        line += `${statusInfo.color}${statusInfo.icon}${reset} `;
+        line += `${agentData.task_id}`;
+        line += `  ${isDead ? red : dim}${displayStatus}${reset}`;
+
+        // Ready to reap indicator
+        if (agentData.live_complete && agentData.status === 'dispatched') {
+          line += `  ${green}[ready to reap]${reset}`;
         }
-        const completeNote = agentData.live_complete && agentData.status === 'dispatched' ? ' [ready to reap]' : '';
-        // Show worktree merge status
-        const worktreeNote = (agentData.worktree && !agentData.worktree_merged) ? ' [worktree not merged]' : '';
-        // Show PID and process state only for active agents
-        let pidInfo = '';
-        if (agentData.pid && ['dispatched', 'running'].includes(agentData.status)) {
-          const processInfo = getProcessStats(agentData.pid);
-          pidInfo = ` [PID ${agentData.pid}: ${processInfo.running ? 'running' : 'stopped'}]`;
+
+        // Worktree not merged
+        if (agentData.worktree && !agentData.worktree_merged) {
+          line += `  ${yellow}[unmerged]${reset}`;
         }
-        console.log(`  ${status} ${agentData.task_id}: ${agentData.status}${completeNote}${worktreeNote}${pidInfo}`);
+
+        // PID for active agents (show even if dead)
+        if (agentData.pid && isActiveStatus) {
+          const pidColor = processInfo.running ? green : red;
+          line += `  ${dim}PID:${reset}${pidColor}${agentData.pid}${reset}`;
+        }
+
+        // Last activity
+        if (agentData.last_activity) {
+          const ago = formatDuration(Date.now() - agentData.last_activity.getTime());
+          line += `  ${dim}(${ago} ago)${reset}`;
+        }
+
+        console.log(line);
       }
     });
 
   // agent:list
   agent.command('list')
     .description('List all agents with status and details')
-    .option('--active', 'Only show active agents (dispatched/running)')
+    .option('--active', 'Only show active agents (spawned/dispatched/running)')
     .option('--json', 'JSON output')
     .action((options: { active?: boolean; json?: boolean }) => {
       const state = loadState();
@@ -228,7 +331,7 @@ export function registerMonitorCommands(agent) {
 
       if (options.active) {
         agentList = agentList.filter(a =>
-          ['dispatched', 'running'].includes(a.status)
+          ['spawned', 'dispatched', 'running'].includes(a.status)
         );
       }
 

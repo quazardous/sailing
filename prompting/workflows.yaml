@@ -96,6 +96,7 @@ sets:
   milestone:    { fragments: [shared/milestone] }
   versioning:   { fragments: [shared/versioning] }
   editing:      { fragments: [shared/artefact-editing] }
+  breakdown:    { fragments: [shared/breakdown] }
   vision:       { fragments: [] }
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -145,9 +146,9 @@ matrix:
   task-start:         [deps, execution]
   task-done:          [execution]
   tasks-batch:        [deps, execution]
-  epic-breakdown:     [deps, editing]
+  epic-breakdown:     [deps, editing, breakdown]
   epic-review:        [milestone, editing]
-  prd-breakdown:      [deps, milestone, editing]
+  prd-breakdown:      [deps, milestone, editing, breakdown]
   prd-story:          [editing]
   prd-story-finalize: [editing]
   prd-review:         [milestone, versioning]

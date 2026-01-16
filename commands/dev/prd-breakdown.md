@@ -35,7 +35,7 @@ When spawning an agent for epic creation, ensure the prompt contains:
 | 2 | **Context paths**: PRD file, architecture docs | Agent reads first, does not invent |
 | 3 | **Draft reference**: Existing bullet points from PRD to expand | Agent interprets, doesn't create from scratch |
 | 4 | **Intent**: 1–2 phrases on what this achieves and why | Reduces scope creep |
-| 5 | **Sizing**: Epic = 5–10 tasks (tasks created later) | Prevents micro/macro splitting |
+| 5 | **Sizing**: Epic = 5–10 tasks, each task ~1-2h AI effort | Prevents micro/macro splitting |
 | 6 | **File creation mandate**: "Use `rudder epic:create` then `:patch` — NEVER Edit/Write directly" | Ensures proper state tracking |
 
 ### IF APPLICABLE

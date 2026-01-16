@@ -59,7 +59,17 @@ rudder task:update TNNN --add-story S001  # Link if needed
 
 - Tasks = WHAT/WHY, not HOW
 - No implementation code
-- Sizing: ~1-2 dev days per task, 5-10 tasks per epic
+
+### Sizing (AI-calibrated)
+
+| Effort | Description |
+|--------|-------------|
+| **1h** | Standard task (baseline) |
+| **2h** | Complex task |
+| **4h** | Large task (consider splitting) |
+| **8h+** | Must split |
+
+Target: **1-2h per task**, 5-10 tasks per epic. Set `effort` field in frontmatter.
 
 ## Non-Goals
 
