@@ -135,11 +135,14 @@ const TOOLS: Tool[] = [
   },
   {
     name: 'assign_claim',
-    description: 'Claim a task.',
+    description: 'Claim a task. Role must be "agent" (only agents can claim tasks).',
     inputSchema: {
       type: 'object',
-      properties: { task_id: { type: 'string' } },
-      required: ['task_id']
+      properties: {
+        task_id: { type: 'string' },
+        role: { type: 'string', enum: ['agent'], default: 'agent' }
+      },
+      required: ['task_id', 'role']
     }
   },
   {
@@ -333,7 +336,7 @@ async function handleToolCall(request: any) {
     }
     case 'task_show': result = runRudder(`task:show ${args.task_id}`); break;
     case 'task_show_memory': result = runRudder(`task:show-memory ${args.task_id}`); break;
-    case 'assign_claim': result = runRudder(`assign:claim ${args.task_id}`); break;
+    case 'assign_claim': result = runRudder(`assign:claim ${args.task_id} --role ${args.role || 'agent'}`); break;
     case 'assign_release': result = runRudder(`assign:release ${args.task_id}`); break;
     case 'deps_show': result = runRudder(`deps:show ${args.task_id}`); break;
     case 'task_targets': result = runRudder(`task:targets ${args.task_id}`); break;
