@@ -56,6 +56,23 @@ export function generateAgentSrtConfig(options: {
     path.dirname(logFile)         // Log directory
   ];
 
+  // For git worktrees: add the .git/worktrees/<name>/ directory
+  // Git stores worktree metadata (index.lock, HEAD, etc.) in the main repo's .git/worktrees/
+  // Without this, git operations fail with "Read-only file system"
+  const gitFile = path.join(cwd, '.git');
+  if (fs.existsSync(gitFile) && fs.statSync(gitFile).isFile()) {
+    try {
+      const gitContent = fs.readFileSync(gitFile, 'utf8').trim();
+      const match = gitContent.match(/^gitdir:\s*(.+)$/);
+      if (match) {
+        const gitWorktreeDir = match[1].trim();
+        additionalWritePaths.push(gitWorktreeDir);
+      }
+    } catch {
+      // Ignore errors reading .git file
+    }
+  }
+
   // Add MCP socket to allow socat to connect from inside sandbox
   if (mcpSocket) {
     additionalWritePaths.push(mcpSocket);

@@ -444,7 +444,9 @@ export function generateSrtConfig(options: GenerateSrtConfigOptions): string {
       '/tmp',                         // Temp files
       `${homeDir}/.claude`,           // Claude session data (required)
       `${homeDir}/.claude.json`,      // Claude config (required)
-      `${homeDir}/.cache/claude-cli-nodejs`  // Claude cache (required)
+      `${homeDir}/.cache/claude-cli-nodejs`,  // Claude cache (required)
+      `${homeDir}/.gradle`,           // Gradle build cache (Android builds)
+      `${homeDir}/.npm/_logs`         // npm logs
     ];
     for (const p of additionalWritePaths) {
       if (p) {
