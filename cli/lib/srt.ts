@@ -527,6 +527,7 @@ interface SpawnClaudeWithSrtOptions {
   maxBudgetUsd?: number;
   watchdogTimeout?: number;
   noSessionPersistence?: boolean;
+  appendLogs?: boolean;  // Skip rotation and append to existing logs (for --resume)
 }
 
 /** Result of spawning Claude with SRT */
@@ -576,7 +577,8 @@ export function spawnClaudeWithSrt(options: SpawnClaudeWithSrtOptions): SpawnCla
     sandboxHome,
     maxBudgetUsd,
     watchdogTimeout,
-    noSessionPersistence = true
+    noSessionPersistence = true,
+    appendLogs = false
   } = options;
 
   // Build claude args
@@ -662,11 +664,16 @@ export function spawnClaudeWithSrt(options: SpawnClaudeWithSrtOptions): SpawnCla
       }
     };
 
-    rotateLog(jsonLogFile);
-    rotateLog(filteredLogFile);
+    // Rotate logs unless appending (resume mode)
+    if (!appendLogs) {
+      rotateLog(jsonLogFile);
+      rotateLog(filteredLogFile);
+    }
 
-    jsonLogStream = fs.createWriteStream(jsonLogFile, { flags: 'w' });
-    filteredLogStream = fs.createWriteStream(filteredLogFile, { flags: 'w' });
+    // Use append mode for resume, write mode for new sessions
+    const fileFlags = appendLogs ? 'a' : 'w';
+    jsonLogStream = fs.createWriteStream(jsonLogFile, { flags: fileFlags });
+    filteredLogStream = fs.createWriteStream(filteredLogFile, { flags: fileFlags });
 
     const startTime = new Date().toISOString();
     const header = [
@@ -694,6 +701,7 @@ export function spawnClaudeWithSrt(options: SpawnClaudeWithSrtOptions): SpawnCla
   if (sandboxHome) {
     ensureDir(sandboxHome);
     ensureDir(path.join(sandboxHome, '.claude'));
+    ensureDir(path.join(sandboxHome, '.android'));  // Android SDK metrics
     spawnEnv.HOME = sandboxHome;
 
     // Copy credentials from real ~/.claude.json and ~/.claude/.credentials.json
@@ -718,6 +726,17 @@ export function spawnClaudeWithSrt(options: SpawnClaudeWithSrtOptions): SpawnCla
     if (fs.existsSync(realCredentials)) {
       try {
         fs.copyFileSync(realCredentials, sandboxCredentialsPath);
+      } catch {
+        // Ignore errors
+      }
+    }
+
+    // Copy .gitconfig for git identity (author name/email for commits)
+    const realGitConfig = path.join(realHome, '.gitconfig');
+    const sandboxGitConfig = path.join(sandboxHome, '.gitconfig');
+    if (fs.existsSync(realGitConfig)) {
+      try {
+        fs.copyFileSync(realGitConfig, sandboxGitConfig);
       } catch {
         // Ignore errors
       }

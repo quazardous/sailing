@@ -502,7 +502,8 @@ export function registerSpawnCommand(agent) {
         sandbox: agentConfig.sandbox,
         maxBudgetUsd: agentConfig.max_budget_usd,
         watchdogTimeout: agentConfig.watchdog_timeout,
-        baseSrtConfigPath: paths.srtConfig?.absolute
+        baseSrtConfigPath: paths.srtConfig?.absolute,
+        appendLogs: worktreeInfo?.resumed  // Don't rotate logs on resume
       });
 
       // Update state atomically

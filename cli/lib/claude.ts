@@ -56,9 +56,12 @@ export function generateAgentSrtConfig(options: {
     path.dirname(logFile)         // Log directory
   ];
 
-  // For git worktrees: add the .git/worktrees/<name>/ directory
-  // Git stores worktree metadata (index.lock, HEAD, etc.) in the main repo's .git/worktrees/
-  // Without this, git operations fail with "Read-only file system"
+  // For git worktrees: add necessary git directories for full git operations
+  // Git worktrees share objects/refs with main repo, so we need write access to:
+  // 1. .git/worktrees/<name>/ - worktree metadata (index.lock, HEAD, etc.)
+  // 2. .git/objects/ - shared object store (for commits)
+  // 3. .git/refs/ - references (for branch updates)
+  // Without these, git operations fail with "Read-only file system"
   const gitFile = path.join(cwd, '.git');
   if (fs.existsSync(gitFile) && fs.statSync(gitFile).isFile()) {
     try {
@@ -67,6 +70,16 @@ export function generateAgentSrtConfig(options: {
       if (match) {
         const gitWorktreeDir = match[1].trim();
         additionalWritePaths.push(gitWorktreeDir);
+
+        // gitWorktreeDir is like /path/to/repo/.git/worktrees/<name>
+        // Git needs write access to the main .git directory for:
+        // - objects/ (shared object store)
+        // - refs/ (references)
+        // - logs/ (ref logs)
+        // - config (locking)
+        // Simplest: allow entire .git directory
+        const mainGitDir = path.dirname(path.dirname(gitWorktreeDir)); // .git
+        additionalWritePaths.push(mainGitDir);
       }
     } catch {
       // Ignore errors reading .git file
@@ -157,6 +170,7 @@ export interface SpawnClaudeOptions {
   maxBudgetUsd?: number;
   watchdogTimeout?: number;
   baseSrtConfigPath?: string;  // Base srt config path for sandbox mode
+  appendLogs?: boolean;        // Append to existing logs (for --resume)
 }
 
 /**
@@ -311,7 +325,8 @@ export function spawnClaude(options: SpawnClaudeOptions): SpawnClaudeResult {
     mcpConfigPath: mcpInfo?.configPath,
     sandboxHome,
     maxBudgetUsd,
-    watchdogTimeout
+    watchdogTimeout,
+    appendLogs: options.appendLogs
   });
 
   // Clean up bridge when process exits
