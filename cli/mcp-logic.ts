@@ -133,27 +133,8 @@ const TOOLS: Tool[] = [
       required: ['task_id']
     }
   },
-  {
-    name: 'assign_claim',
-    description: 'Claim a task. Role must be "agent" (only agents can claim tasks).',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        task_id: { type: 'string' },
-        role: { type: 'string', enum: ['agent'], default: 'agent' }
-      },
-      required: ['task_id', 'role']
-    }
-  },
-  {
-    name: 'assign_release',
-    description: 'Release a task.',
-    inputSchema: {
-      type: 'object',
-      properties: { task_id: { type: 'string' } },
-      required: ['task_id']
-    }
-  },
+  // assign_claim/assign_release removed: sandbox agents get complete mission file,
+  // no need to claim. Release is automatic on spawn exit.
   {
     name: 'deps_show',
     description: 'Show dependencies.',
@@ -336,8 +317,7 @@ async function handleToolCall(request: any) {
     }
     case 'task_show': result = runRudder(`task:show ${args.task_id}`); break;
     case 'task_show_memory': result = runRudder(`task:show-memory ${args.task_id}`); break;
-    case 'assign_claim': result = runRudder(`assign:claim ${args.task_id} --role ${args.role || 'agent'}`); break;
-    case 'assign_release': result = runRudder(`assign:release ${args.task_id}`); break;
+    // assign_claim/assign_release removed - sandbox agents don't need them
     case 'deps_show': result = runRudder(`deps:show ${args.task_id}`); break;
     case 'task_targets': result = runRudder(`task:targets ${args.task_id}`); break;
     case 'context_load': result = runRudder(`context:load ${args.operation} --role ${args.role || 'agent'}`); break;
