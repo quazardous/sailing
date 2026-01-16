@@ -69,12 +69,12 @@ function isPrdDone(prdDir) {
 /**
  * Get PRD status for error message
  */
-function getPrdStatus(prdDir) {
+function getPrdStatus(prdDir: string): string {
   const prdFile = path.join(prdDir, 'prd.md');
   if (!fs.existsSync(prdFile)) return 'unknown';
 
   const loaded = loadFile(prdFile);
-  return loaded?.data?.status || 'unknown';
+  return (loaded?.data?.status as string | undefined) || 'unknown';
 }
 
 /**
@@ -280,7 +280,7 @@ function listDonePrds() {
 
   console.log(`PRDs ready to archive (${donePrds.length}):\n`);
   for (const prd of donePrds) {
-    const title = prd.data?.title || path.basename(prd.dir);
+    const title = (prd.data?.title as string | undefined) || path.basename(prd.dir);
     console.log(`  ${prd.id}: ${title}`);
   }
   console.log();

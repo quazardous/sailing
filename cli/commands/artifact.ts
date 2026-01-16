@@ -87,8 +87,8 @@ function readStdin(): Promise<string> {
     }
 
     process.stdin.on('readable', () => {
-      let chunk;
-      while ((chunk = process.stdin.read()) !== null) {
+      let chunk: string | null;
+      while ((chunk = (process.stdin.read() as string | null)) !== null) {
         data += chunk;
       }
     });

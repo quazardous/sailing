@@ -4,12 +4,13 @@
 import { findPrdDirs, loadFile, jsonOut } from '../managers/core-manager.js';
 import { getAllEpics, getAllTasks } from '../managers/artefacts-manager.js';
 import { addDynamicHelp } from '../lib/help.js';
+import type { Command } from 'commander';
 
 /**
  * Register tag commands
  */
-export function registerTagCommands(program: any) {
-  const tag = program.command('tag').description('Tag operations') as any;
+export function registerTagCommands(program: Command): void {
+  const tag: Command = program.command('tag').description('Tag operations') as Command;
 
   // Dynamic help generated from registered commands
   addDynamicHelp(tag, { entityType: 'tag' });
@@ -60,7 +61,7 @@ export function registerTagCommands(program: any) {
       const sorted = [...tagCounts.entries()].sort((a, b) => b[1].total - a[1].total);
 
       if (options.json) {
-        const result = sorted.map(([tag, counts]) => ({ tag, ...(counts as object) }));
+        const result = sorted.map(([tag, counts]: [string, { prd: number; epic: number; task: number; total: number }]) => ({ tag, ...counts }));
         jsonOut(result);
       } else {
         if (sorted.length === 0) {

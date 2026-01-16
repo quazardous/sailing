@@ -9,6 +9,7 @@ import { normalizeId } from '../lib/normalize.js';
 import { isStatusDone, isStatusCancelled, isStatusInProgress, isStatusNotStarted, isStatusAutoDone, statusSymbol } from '../lib/lexicon.js';
 import { addDynamicHelp } from '../lib/help.js';
 import { buildTaskIndex, buildEpicIndex, buildPrdIndex } from '../managers/artefacts-manager.js';
+import type { Command } from 'commander';
 
 // New status: Auto-Done = all children done, awaiting manual validation
 const STATUS_AUTO_DONE = 'Auto-Done';
@@ -285,7 +286,7 @@ function applyFixes(issues: AuditIssue[], mode: 'optimistic' | 'pessimistic'): n
 /**
  * Register audit commands
  */
-export function registerAuditCommands(program: any) {
+export function registerAuditCommands(program: Command) {
   const audit = program.command('audit').description('Audit project consistency');
 
   addDynamicHelp(audit, { entityType: 'audit' });

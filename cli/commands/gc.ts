@@ -9,6 +9,7 @@ import { findProjectRoot, jsonOut, computeProjectHash } from '../managers/core-m
 import { loadState, saveState } from '../managers/state-manager.js';
 import { listAgentWorktrees, pruneWorktrees } from '../managers/worktree-manager.js';
 import { AgentInfo } from '../lib/types/agent.js';
+import type { Command } from 'commander';
 
 /**
  * Get base havens directory (~/.sailing/havens)
@@ -96,8 +97,8 @@ function getStaleAgents(days = 7) {
 /**
  * Register GC commands
  */
-export function registerGcCommands(program: any) {
-  const gc = program.command('gc') as any;
+export function registerGcCommands(program: Command) {
+  const gc = program.command('gc');
   gc.description('Garbage collection: clean orphaned resources');
 
   // gc:haven
