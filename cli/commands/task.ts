@@ -94,6 +94,70 @@ interface TaskNextOptions {
   json?: boolean;
 }
 
+interface TaskWithPriority {
+  id: string;
+  title: string;
+  status: string;
+  parent: string;
+  assignee: string;
+  priority: string;
+  prd?: string;
+  file?: string;
+}
+
+interface TaskStartOptions {
+  assignee: string;
+  path?: boolean;
+  json?: boolean;
+}
+
+interface TaskDoneOptions {
+  message: string;
+  json?: boolean;
+}
+
+interface TaskShowOptions {
+  role?: string;
+  raw?: boolean;
+  comments?: boolean;
+  path?: boolean;
+  json?: boolean;
+}
+
+interface TaskShowMemoryOptions {
+  json?: boolean;
+}
+
+interface TaskLogOptions {
+  info?: boolean;
+  tip?: boolean;
+  warn?: boolean;
+  error?: boolean;
+  critical?: boolean;
+  file?: string[];
+  snippet?: string;
+  cmd?: string;
+}
+
+interface TaskTargetsOptions {
+  path?: boolean;
+  json?: boolean;
+}
+
+interface TaskPatchOptions {
+  file?: string;
+  dryRun?: boolean;
+  json?: boolean;
+}
+
+interface TaskEditOptions {
+  section?: string;
+  content?: string;
+  append?: boolean;
+  prepend?: boolean;
+  json?: boolean;
+}
+
 // ============================================================================
 // Helper Functions
 // ============================================================================
@@ -251,7 +315,7 @@ export function registerTaskCommands(program: Command): void {
     .option('--comments', 'Include template comments (stripped by default)')
     .option('--path', 'Include file path (discouraged)')
     .option('--json', 'JSON output')
-    .action((id, options) => {
+    .action((id: string, options: TaskShowOptions) => {
       const taskFile = findTaskFile(id);
       if (!taskFile) {
         console.error(`Task not found: ${id}`);
@@ -495,7 +559,7 @@ export function registerTaskCommands(program: Command): void {
         set: options.set?.length ? options.set : null
       };
 
-      const { updated, data } = parseUpdateOptions(opts, fileData, 'task');
+      const { updated, data } = parseUpdateOptions(opts, fileData, 'task') as { updated: boolean; data: Record<string, unknown> };
 
       if (updated) {
         saveFile(taskFile, data, file.body);
@@ -520,7 +584,7 @@ export function registerTaskCommands(program: Command): void {
       const { tasks, blocks } = buildDependencyGraph();
 
       // Find ready tasks (not started, all blockers done, unassigned)
-      const ready: Array<{ id: string; title: string; status: string; parent: string; assignee: string; prd?: string }> = [];
+      const ready: TaskWithPriority[] = [];
       for (const [id, task] of tasks) {
         // PRD filter
         if (options.prd) {
@@ -536,7 +600,16 @@ export function registerTaskCommands(program: Command): void {
         if (isStatusNotStarted(task.status) &&
             task.assignee === 'unassigned' &&
             blockersResolved(task, tasks)) {
-          ready.push(task);
+          ready.push({
+            id: task.id,
+            title: task.title,
+            status: task.status,
+            parent: task.parent,
+            assignee: task.assignee,
+            priority: task.priority,
+            prd: task.prd,
+            file: task.file
+          });
         }
       }
 
@@ -550,10 +623,10 @@ export function registerTaskCommands(program: Command): void {
       }
 
       // Sort by priority and ID
-      const priorityOrder = { critical: 0, high: 1, normal: 2, low: 3 };
+      const priorityOrder: Record<string, number> = { critical: 0, high: 1, normal: 2, low: 3 };
       ready.sort((a, b) => {
-        const pa = priorityOrder[a.priority] ?? 2;
-        const pb = priorityOrder[b.priority] ?? 2;
+        const pa = (priorityOrder[a.priority as string] as number | undefined) ?? 2;
+        const pb = (priorityOrder[b.priority as string] as number | undefined) ?? 2;
         if (pa !== pb) return pa - pb;
         const numA = parseInt(a.id.match(/\d+/)?.[0] || '0');
         const numB = parseInt(b.id.match(/\d+/)?.[0] || '0');
@@ -595,7 +668,7 @@ export function registerTaskCommands(program: Command): void {
     .option('-a, --assignee <name>', 'Assignee name', 'agent')
     .option('--path', 'Include file path (discouraged)')
     .option('--json', 'JSON output')
-    .action((id, options) => {
+    .action((id: string, options: TaskStartOptions) => {
       const taskFile = findTaskFile(id);
       if (!taskFile) {
         console.error(`Task not found: ${id}`);
@@ -619,7 +692,7 @@ export function registerTaskCommands(program: Command): void {
 
       // Update status and assignee
       const opts = { status: 'In Progress', assignee: options.assignee };
-      const { data } = parseUpdateOptions(opts, file.data, 'task');
+      const { data } = parseUpdateOptions(opts, file.data, 'task') as { updated: boolean; data: Record<string, unknown> };
       saveFile(taskFile, data, file.body);
 
       // Auto-escalate: Epic and PRD to In Progress if not started
@@ -632,7 +705,7 @@ export function registerTaskCommands(program: Command): void {
       }
 
       if (options.json) {
-        const output: any = { ...data };
+        const output: Record<string, unknown> = { ...data };
         if (options.path) output.file = taskFile;
         jsonOut(output);
       } else {
@@ -648,7 +721,7 @@ export function registerTaskCommands(program: Command): void {
     .description('Complete task → sets Done + adds log entry')
     .option('-m, --message <msg>', 'Log message', 'Completed')
     .option('--json', 'JSON output')
-    .action((id, options) => {
+    .action((id: string, options: TaskDoneOptions) => {
       const taskFile = findTaskFile(id);
       if (!taskFile) {
         console.error(`Task not found: ${id}`);
@@ -659,7 +732,7 @@ export function registerTaskCommands(program: Command): void {
 
       // Update status
       const opts = { status: 'Done' };
-      const { data } = parseUpdateOptions(opts, file.data, 'task');
+      const { data } = parseUpdateOptions(opts, file.data, 'task') as { updated: boolean; data: Record<string, unknown> };
 
       // Add log entry
       const body = addLogEntry(file.body, options.message, data.assignee || 'agent');
@@ -692,10 +765,10 @@ export function registerTaskCommands(program: Command): void {
     .option('--warn', 'Issue encountered, workaround applied')
     .option('--error', 'Significant problem, needs review')
     .option('--critical', 'Cannot continue, blocks completion')
-    .option('-f, --file <path>', 'Related file (repeatable)', (v, arr) => arr.concat(v), [])
+    .option('-f, --file <path>', 'Related file (repeatable)', (v: string, arr: string[]) => arr.concat(v), [] as string[])
     .option('-s, --snippet <code>', 'Code snippet (inline)')
     .option('-c, --cmd <command>', 'Related command')
-    .action((id, message, options) => {
+    .action((id: string, message: string, options: TaskLogOptions) => {
       // Verify task exists
       const taskFile = findTaskFile(id);
       if (!taskFile) {
@@ -724,10 +797,10 @@ export function registerTaskCommands(program: Command): void {
       let entry = `${timestamp} [${level}] ${message}`;
 
       // Add metadata on same line as JSON suffix if present
-      const meta: any = {};
-      if (options.file?.length) meta.files = options.file;
-      if (options.snippet) meta.snippet = options.snippet;
-      if (options.cmd) meta.cmd = options.cmd;
+      const meta: Record<string, unknown> = {};
+      if (options.file?.length) meta.files = options.file as string[];
+      if (options.snippet) meta.snippet = options.snippet as string;
+      if (options.cmd) meta.cmd = options.cmd as string;
 
       if (Object.keys(meta).length > 0) {
         entry += ` {{${JSON.stringify(meta)}}}`;
@@ -764,7 +837,7 @@ export function registerTaskCommands(program: Command): void {
   task.command('show-memory <id>')
     .description('Show agent-focused memory context for a task')
     .option('--json', 'JSON output')
-    .action((id, options) => {
+    .action((id: string, options: TaskShowMemoryOptions) => {
       const taskFile = findTaskFile(id);
       if (!taskFile) {
         console.error(`Task not found: ${id}`);
@@ -772,13 +845,13 @@ export function registerTaskCommands(program: Command): void {
       }
 
       const file = loadFile(taskFile);
-      const taskId = file.data.id;
+      const taskId = file.data.id as string;
       const epicParent = findEpicParent(taskFile);
 
       ensureMemoryDir();
 
       // Collect context
-      const context: any = {
+      const context: Record<string, unknown> = {
         taskId,
         epicId: epicParent?.prdId || null, // Use prdId as epicId is not directly available from findEpicParent
         memory: null,
@@ -891,14 +964,14 @@ export function registerTaskCommands(program: Command): void {
     .description('Find tasks with target_versions for a component')
     .option('--path', 'Include file path (discouraged)')
     .option('--json', 'JSON output')
-    .action((component, options) => {
-      const results: any[] = [];
+    .action((component: string, options: TaskTargetsOptions) => {
+      const results: Array<Record<string, unknown>> = [];
 
       // Use artefacts.ts contract - single entry point
       for (const taskEntry of getAllTasks()) {
         const data = taskEntry.data;
         if (data?.target_versions && data.target_versions[component]) {
-          const entry: any = {
+          const entry: Record<string, unknown> = {
             id: data.id,
             title: data.title,
             status: data.status,
@@ -913,7 +986,7 @@ export function registerTaskCommands(program: Command): void {
       for (const epicEntry of getAllEpics()) {
         const data = epicEntry.data;
         if (data?.target_versions && data.target_versions[component]) {
-          const entry: any = {
+          const entry: Record<string, unknown> = {
             id: data.id,
             title: data.title,
             status: data.status,
@@ -948,7 +1021,7 @@ export function registerTaskCommands(program: Command): void {
     .option('-f, --file <path>', 'Read patch from file instead of stdin')
     .option('--dry-run', 'Show what would be changed without applying')
     .option('--json', 'JSON output')
-    .action(async (id, options) => {
+    .action(async (id: string, options: TaskPatchOptions) => {
       const normalizedId = normalizeId(id);
       const taskPath = findTaskFile(normalizedId);
 
@@ -958,7 +1031,7 @@ export function registerTaskCommands(program: Command): void {
       }
 
       // Read patch content
-      let patchContent;
+      let patchContent: string;
       if (options.file) {
         if (!fs.existsSync(options.file)) {
           console.error(`Patch file not found: ${options.file}`);
@@ -967,12 +1040,12 @@ export function registerTaskCommands(program: Command): void {
         patchContent = fs.readFileSync(options.file, 'utf8');
       } else {
         // Read from stdin
-        patchContent = await new Promise((resolve) => {
+        patchContent = await new Promise<string>((resolve) => {
           let data = '';
           if (process.stdin.isTTY) { resolve(''); return; }
           process.stdin.setEncoding('utf8');
           process.stdin.on('readable', () => {
-            let chunk; while ((chunk = process.stdin.read()) !== null) data += chunk;
+            let chunk: string | null; while ((chunk = process.stdin.read() as string | null) !== null) data += chunk;
           });
           process.stdin.on('end', () => resolve(data));
         });
@@ -1024,7 +1097,7 @@ Multi-section format: use ## headers with optional [op]
 Operations: [replace], [append], [prepend], [delete], [sed], [check], [uncheck], [toggle], [patch]
 See: bin/rudder artifact edit --help for full documentation
 `)
-    .action(async (id, options) => {
+    .action(async (id: string, options: TaskEditOptions) => {
       const normalizedId = normalizeId(id);
       const taskPath = findTaskFile(normalizedId);
 
@@ -1033,18 +1106,18 @@ See: bin/rudder artifact edit --help for full documentation
         process.exit(1);
       }
 
-      let content = options.content;
+      let content: string | undefined = options.content as string | undefined;
       if (!content) {
-        content = await new Promise((resolve) => {
+        const stdinContent = await new Promise<string>((resolve) => {
           let data = '';
           if (process.stdin.isTTY) { resolve(''); return; }
           process.stdin.setEncoding('utf8');
           process.stdin.on('readable', () => {
-            let chunk; while ((chunk = process.stdin.read()) !== null) data += chunk;
+            let chunk: string | null; while ((chunk = process.stdin.read() as string | null) !== null) data += chunk;
           });
           process.stdin.on('end', () => resolve(data));
         });
-        content = content.trim();
+        content = stdinContent.trim();
       }
 
       if (!content) {
@@ -1057,16 +1130,16 @@ See: bin/rudder artifact edit --help for full documentation
       if (options.prepend) opType = 'prepend';
 
       const ops = options.section
-        ? [{ op: opType, section: options.section, content }]
-        : parseMultiSectionContent(content, opType);
+        ? [{ op: opType as string, section: options.section as string, content }]
+        : parseMultiSectionContent(content, opType as string);
 
       if (ops.length === 0) {
         console.error('No sections found. Use --section or format stdin with ## headers');
         process.exit(1);
       }
 
-      const originalOps = ops.map(o => ({ op: o.op, section: o.section }));
-      const { expandedOps, errors: processErrors } = processMultiSectionOps(taskPath, ops);
+      const originalOps = ops.map(o => ({ op: o.op as string, section: o.section as string }));
+      const { expandedOps, errors: processErrors } = processMultiSectionOps(taskPath, ops) as { expandedOps: unknown[]; errors: string[] };
       if (processErrors.length > 0) {
         processErrors.forEach(e => console.error(e));
         process.exit(1);
@@ -1080,8 +1153,8 @@ See: bin/rudder artifact edit --help for full documentation
         if (originalOps.length === 1) {
           console.log(`✓ ${originalOps[0].op} on ${originalOps[0].section} in ${normalizedId}`);
         } else {
-          const byOp = {};
-          originalOps.forEach(o => { byOp[o.op] = (byOp[o.op] || 0) + 1; });
+          const byOp: Record<string, number> = {};
+          originalOps.forEach(o => { byOp[o.op] = ((byOp[o.op] as number | undefined) || 0) + 1; });
           const summary = Object.entries(byOp).map(([op, n]) => `${op}:${n}`).join(', ');
           console.log(`✓ ${originalOps.length} sections in ${normalizedId} (${summary})`);
         }

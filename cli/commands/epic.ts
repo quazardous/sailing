@@ -14,6 +14,48 @@ import { parseSearchReplace, editArtifact, parseMultiSectionContent, processMult
 import { getEpic, getAllEpics, getTasksForEpic } from '../managers/artefacts-manager.js';
 import { Epic } from '../lib/types/entities.js';
 import { getEpicMemory } from '../managers/memory-manager.js';
+import { Command } from 'commander';
+
+interface EpicListOptions {
+  status?: string;
+  tag?: string[];
+  limit?: number;
+  prd?: string;
+  path?: boolean;
+  json?: boolean;
+}
+
+interface EpicUpdateOptions {
+  status?: string;
+  title?: string;
+  assignee?: string;
+  addBlocker?: string[];
+  removeBlocker?: string[];
+  clearBlockers?: boolean;
+  story?: string[];
+  addStory?: string[];
+  removeStory?: string[];
+  targetVersion?: string[];
+  removeTargetVersion?: string[];
+  set?: string[];
+  json?: boolean;
+}
+
+interface EpicEditOptions {
+  section?: string;
+  content?: string;
+  append?: boolean;
+  prepend?: boolean;
+  json?: boolean;
+}
+
+interface EpicCreateOptions {
+  story?: string[];
+  tag?: string[];
+  targetVersion?: string[];
+  path?: boolean;
+  json?: boolean;
+}
 
 /**
  * Find an epic file by ID (format-agnostic via index library)
@@ -28,8 +70,8 @@ function findEpicFile(epicId) {
 /**
  * Register epic commands
  */
-export function registerEpicCommands(program) {
-  const epic = program.command('epic').description('Epic operations (groups of tasks)');
+export function registerEpicCommands(program: Command) {
+  const epic = program.command('epic').description('Epic operations (groups of tasks)') as Command;
 
   // Dynamic help generated from registered commands
   addDynamicHelp(epic, { entityType: 'epic' });
@@ -45,7 +87,7 @@ export function registerEpicCommands(program) {
     .option('--prd <id>', 'Filter by PRD (alias for positional arg)')
     .option('--path', 'Include file path (discouraged)')
     .option('--json', 'JSON output')
-    .action((prdArg, options) => {
+    .action((prdArg: string, options: EpicListOptions) => {
       const prd = prdArg || options.prd;
       const epics: (Epic & { file?: string; prd: string; tasks: number })[] = [];
 
@@ -67,7 +109,7 @@ export function registerEpicCommands(program) {
         // Tag filter (AND logic)
         if (options.tag?.length > 0) {
           const epicTags = data.tags || [];
-          const allTagsMatch = options.tag.every(t => epicTags.includes(t));
+          const allTagsMatch = options.tag.every((t: string) => epicTags.includes(t));
           if (!allTagsMatch) continue;
         }
 
@@ -156,7 +198,7 @@ export function registerEpicCommands(program) {
         status: t.data?.status
       }));
 
-      const tasksByStatus = {};
+      const tasksByStatus: Record<string, number> = {};
       tasks.forEach(t => {
         const status = t.status || 'Unknown';
         tasksByStatus[status] = (tasksByStatus[status] || 0) + 1;
@@ -192,7 +234,7 @@ export function registerEpicCommands(program) {
     .option('--target-version <comp:ver>', 'Target version (repeatable)', (v, arr) => arr.concat(v), [])
     .option('--path', 'Show file path')
     .option('--json', 'JSON output')
-    .action((prd, title, options) => {
+    .action((prd: string, title: string, options: EpicCreateOptions) => {
       const prdDir = findPrdDirs().find(d => matchesPrdDir(d, prd));
       if (!prdDir) {
         console.error(`PRD not found: ${prd}`);
@@ -223,17 +265,17 @@ export function registerEpicCommands(program) {
 
       // Add stories if specified
       if (options.story?.length > 0) {
-        data.stories = options.story.map(s => normalizeId(s));
+        data.stories = options.story.map((s: string) => normalizeId(s));
       }
 
       // Add tags if specified (slugified to kebab-case)
       if (options.tag?.length > 0) {
-        data.tags = options.tag.map(t => toKebab(t));
+        data.tags = options.tag.map((t: string) => toKebab(t));
       }
 
       // Add target versions if specified
       if (options.targetVersion?.length > 0) {
-        options.targetVersion.forEach(tv => {
+        options.targetVersion.forEach((tv: string) => {
           const [comp, ver] = tv.split(':');
           if (comp && ver) data.target_versions[comp] = ver;
         });
@@ -273,7 +315,7 @@ updated: '${new Date().toISOString()}'
       fs.writeFileSync(memoryFile, memoryContent);
 
       if (options.json) {
-        const output: any = { id, title, parent: data.parent };
+        const output: Record<string, unknown> = { id, title, parent: data.parent };
         if (options.path) {
           output.file = epicPath;
           output.memory = memoryFile;
@@ -303,7 +345,7 @@ updated: '${new Date().toISOString()}'
     .option('--remove-target-version <comp>', 'Remove target version', (v, arr) => arr.concat(v), [])
     .option('--set <key=value>', 'Set any frontmatter field (repeatable)', (v, arr) => arr.concat(v), [])
     .option('--json', 'JSON output')
-    .action((id, options) => {
+    .action((id: string, options: EpicUpdateOptions) => {
       const result = findEpicFile(id);
       if (!result) {
         console.error(`Epic not found: ${id}`);
@@ -327,7 +369,7 @@ updated: '${new Date().toISOString()}'
         set: options.set?.length ? options.set : null
       };
 
-      const { updated, data } = parseUpdateOptions(opts, file.data, 'epic');
+      const { updated, data } = parseUpdateOptions(opts, file.data, 'epic') as { updated: boolean; data: Epic };
 
       if (updated) {
         saveFile(result.file, data, file.body);
@@ -378,9 +420,9 @@ updated: '${new Date().toISOString()}'
   withModifies(epic.command('merge-logs <id>'), ['epic'])
     .description('Merge task logs into epic log and flush (TNNN.log → ENNN.log)')
     .option('--keep', 'Keep task logs after merge (don\'t delete)')
-    .action((id, options) => {
+    .action((id: string, options: { keep?: boolean }) => {
       const epicId = normalizeId(id);
-      const result = getEpicMemory(epicId).mergeTaskLogs({ keep: options.keep });
+      const result = getEpicMemory(epicId).mergeTaskLogs({ keep: options.keep }) as { flushedCount: number; deletedEmpty: number; totalEntries: number };
 
       if (result.flushedCount === 0 && result.deletedEmpty === 0) {
         console.log(`No task logs to flush for ${epicId}`);
@@ -493,7 +535,7 @@ updated: '${new Date().toISOString()}'
     .option('-f, --file <path>', 'Read patch from file instead of stdin')
     .option('--dry-run', 'Show what would be changed without applying')
     .option('--json', 'JSON output')
-    .action(async (id, options) => {
+    .action(async (id: string, options: { file?: string; dryRun?: boolean; json?: boolean }) => {
       const normalizedId = normalizeId(id);
       const epicPath = findEpicFile(normalizedId);
 
@@ -502,7 +544,7 @@ updated: '${new Date().toISOString()}'
         process.exit(1);
       }
 
-      let patchContent;
+      let patchContent: string;
       if (options.file) {
         if (!fs.existsSync(options.file)) {
           console.error(`Patch file not found: ${options.file}`);
@@ -510,12 +552,12 @@ updated: '${new Date().toISOString()}'
         }
         patchContent = fs.readFileSync(options.file, 'utf8');
       } else {
-        patchContent = await new Promise((resolve) => {
+        patchContent = await new Promise<string>((resolve) => {
           let data = '';
           if (process.stdin.isTTY) { resolve(''); return; }
           process.stdin.setEncoding('utf8');
           process.stdin.on('readable', () => {
-            let chunk; while ((chunk = process.stdin.read()) !== null) data += chunk;
+            let chunk: string | null; while ((chunk = process.stdin.read() as string | null) !== null) data += chunk;
           });
           process.stdin.on('end', () => resolve(data));
         });
@@ -567,7 +609,7 @@ Multi-section format: use ## headers with optional [op]
 Operations: [replace], [append], [prepend], [delete], [sed], [check], [uncheck], [toggle], [patch]
 See: bin/rudder artifact edit --help for full documentation
 `)
-    .action(async (id, options) => {
+    .action(async (id: string, options: EpicEditOptions) => {
       const result = findEpicFile(id);
       if (!result) {
         console.error(`Epic not found: ${id}`);
@@ -578,12 +620,12 @@ See: bin/rudder artifact edit --help for full documentation
 
       let content = options.content;
       if (!content) {
-        content = await new Promise((resolve) => {
+        content = await new Promise<string>((resolve) => {
           let data = '';
           if (process.stdin.isTTY) { resolve(''); return; }
           process.stdin.setEncoding('utf8');
           process.stdin.on('readable', () => {
-            let chunk; while ((chunk = process.stdin.read()) !== null) data += chunk;
+            let chunk: string | null; while ((chunk = process.stdin.read() as string | null) !== null) data += chunk;
           });
           process.stdin.on('end', () => resolve(data));
         });
@@ -608,8 +650,8 @@ See: bin/rudder artifact edit --help for full documentation
         process.exit(1);
       }
 
-      const originalOps = ops.map(o => ({ op: o.op, section: o.section }));
-      const { expandedOps, errors: processErrors } = processMultiSectionOps(epicPath, ops);
+      const originalOps = ops.map((o: { op: string; section: string }) => ({ op: o.op, section: o.section }));
+      const { expandedOps, errors: processErrors } = processMultiSectionOps(epicPath, ops) as { expandedOps: unknown[]; errors: string[] };
       if (processErrors.length > 0) {
         processErrors.forEach(e => console.error(e));
         process.exit(1);
@@ -623,8 +665,8 @@ See: bin/rudder artifact edit --help for full documentation
         if (originalOps.length === 1) {
           console.log(`✓ ${originalOps[0].op} on ${originalOps[0].section} in ${normalizeId(id)}`);
         } else {
-          const byOp = {};
-          originalOps.forEach(o => { byOp[o.op] = (byOp[o.op] || 0) + 1; });
+          const byOp: Record<string, number> = {};
+          originalOps.forEach((o: { op: string }) => { byOp[o.op] = (byOp[o.op] || 0) + 1; });
           const summary = Object.entries(byOp).map(([op, n]) => `${op}:${n}`).join(', ');
           console.log(`✓ ${originalOps.length} sections in ${normalizeId(id)} (${summary})`);
         }

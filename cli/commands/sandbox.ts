@@ -6,6 +6,7 @@ import fs from 'fs';
 import path from 'path';
 import os from 'os';
 import { execaSync } from 'execa';
+import type { Command } from 'commander';
 import { getPathsInfo } from '../managers/core-manager.js';
 import { spawnClaudeWithSrt, generateSrtConfig, loadBaseSrtConfig } from '../lib/srt.js';
 
@@ -102,7 +103,7 @@ function checkSrt() {
 /**
  * sandbox:check - Check srt installation and dependencies
  */
-function sandboxCheck(args, options) {
+function sandboxCheck(args: string[], options: Record<string, unknown>) {
   const status = checkSrt();
 
   console.log('Sandbox Runtime Status\n');
@@ -161,7 +162,7 @@ function sandboxCheck(args, options) {
 /**
  * sandbox:init - Initialize srt config
  */
-function sandboxInit(args, options) {
+function sandboxInit(args: string[], options: { force?: boolean }) {
   const paths = getPathsInfo();
 
   if (!paths.srtConfig) {
@@ -201,7 +202,7 @@ function sandboxInit(args, options) {
 /**
  * sandbox:show - Show current config
  */
-function sandboxShow(args, options) {
+function sandboxShow(args: string[], options: Record<string, unknown>) {
   const paths = getPathsInfo();
 
   if (!paths.srtConfig || !fs.existsSync(paths.srtConfig.absolute)) {
@@ -209,7 +210,7 @@ function sandboxShow(args, options) {
     return;
   }
 
-  const config = JSON.parse(fs.readFileSync(paths.srtConfig.absolute, 'utf8'));
+  const config = JSON.parse(fs.readFileSync(paths.srtConfig.absolute, 'utf8')) as Record<string, unknown>;
   console.log(`Config: ${paths.srtConfig.absolute}\n`);
   console.log(JSON.stringify(config, null, 2));
 }
@@ -217,7 +218,7 @@ function sandboxShow(args, options) {
 /**
  * Register sandbox commands
  */
-export function registerSandboxCommands(program) {
+export function registerSandboxCommands(program: Command) {
   const sandbox = program
     .command('sandbox')
     .description('Manage sandbox-runtime (srt) for agent isolation');
@@ -248,9 +249,16 @@ export function registerSandboxCommands(program) {
     .option('--debug', 'Enable srt debug mode')
     .option('--claude-args <args>', 'Additional args to pass to claude (e.g. "--model opus")')
     .option('--dangerously-skip-permissions', 'Skip permission prompts')
-    .action((promptArgs, options) => {
+    .action((promptArgs: string[], options: {
+      workdir?: string;
+      prompt?: string;
+      sandbox?: boolean;
+      debug?: boolean;
+      claudeArgs?: string;
+      dangerouslySkipPermissions?: boolean;
+    }) => {
       // Use temp dir by default for safety
-      let cwd;
+      let cwd: string;
       if (options.workdir) {
         cwd = path.resolve(options.workdir);
       } else {
@@ -259,7 +267,7 @@ export function registerSandboxCommands(program) {
       }
 
       // Get prompt from args or option
-      let prompt = options.prompt || promptArgs.join(' ');
+      let prompt: string = options.prompt || (promptArgs as string[]).join(' ');
 
       // If no prompt, try to read from stdin
       if (!prompt) {
@@ -279,7 +287,7 @@ export function registerSandboxCommands(program) {
       const paths = getPathsInfo();
 
       // Generate temp srt config with workdir added to allowWrite
-      let srtConfigPath = null;
+      let srtConfigPath: string | null = null;
       if (useSandbox) {
         srtConfigPath = generateSrtConfig({
           baseConfigPath: paths.srtConfig?.absolute,
@@ -289,9 +297,9 @@ export function registerSandboxCommands(program) {
       }
 
       // Build extra args
-      const extraArgs = [];
+      const extraArgs: string[] = [];
       if (options.claudeArgs) {
-        extraArgs.push(...options.claudeArgs.split(/\s+/));
+        extraArgs.push(...(options.claudeArgs as string).split(/\s+/));
       }
 
       // Session log file

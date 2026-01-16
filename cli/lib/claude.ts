@@ -72,7 +72,7 @@ export function generateAgentSrtConfig(options: {
   // Block reading of other worktrees and haven artefacts
   // Agent should use MCP for context, not explore the filesystem
   const havenDir = getHavenDir(agentDir);
-  const additionalDenyReadPaths = [];
+  const additionalDenyReadPaths: string[] = [];
 
   // Block other worktrees (agent should only see its own)
   const worktreesDir = path.join(havenDir, 'worktrees');

@@ -184,7 +184,7 @@ export function getBranchHierarchy(context: WorktreeContext) {
  * Called before spawning task
  */
 export function syncParentBranch(context: WorktreeContext) {
-  const syncEnabled = getConfigValue('git.sync_before_spawn');
+  const syncEnabled = getConfigValue('git.sync_before_spawn') as boolean;
   if (!syncEnabled) {
     return { success: true, disabled: true };
   }

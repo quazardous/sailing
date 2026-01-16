@@ -96,9 +96,9 @@ function getStaleAgents(days = 7) {
 /**
  * Register GC commands
  */
-export function registerGcCommands(program) {
-  const gc = program.command('gc')
-    .description('Garbage collection: clean orphaned resources');
+export function registerGcCommands(program: any) {
+  const gc = program.command('gc') as any;
+  gc.description('Garbage collection: clean orphaned resources');
 
   // gc:haven
   gc.command('haven')

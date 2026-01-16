@@ -7,6 +7,7 @@
  */
 import fs from 'fs';
 import path from 'path';
+import { Command } from 'commander';
 import { jsonOut, getArchiveDir, findProjectRoot } from '../managers/core-manager.js';
 import { getEpicsForPrd } from '../managers/artefacts-manager.js';
 import { normalizeId } from '../lib/normalize.js';
@@ -37,7 +38,7 @@ import { getGit } from '../lib/git.js';
  * Check if role is allowed for memory write operations
  * Agents are blocked - they receive memory via context:load only
  */
-function checkWriteAccess(role, commandName) {
+function checkWriteAccess(role: string | undefined, commandName: string): void {
   if (role === 'agent') {
     console.error(`ERROR: ${commandName} is not available to agents.`);
     console.error('Agents receive memory via context:load at task start.');
@@ -46,10 +47,39 @@ function checkWriteAccess(role, commandName) {
   }
 }
 
+interface ShowOptions {
+  full?: boolean;
+  level?: string;
+  section?: string;
+  epicOnly?: boolean;
+  json?: boolean;
+}
+
+interface SyncOptions {
+  create?: boolean;
+  role?: string;
+  json?: boolean;
+}
+
+interface EscalationsOptions {
+  prd?: string;
+  epic?: string;
+  json?: boolean;
+}
+
+interface EditOptions {
+  section?: string;
+  content?: string;
+  append?: boolean;
+  prepend?: boolean;
+  role?: string;
+  json?: boolean;
+}
+
 /**
  * Register memory commands
  */
-export function registerMemoryCommands(program) {
+export function registerMemoryCommands(program: Command): void {
   const memory = program.command('memory').description('Memory operations (logs, consolidation)');
 
   addDynamicHelp(memory, { entityType: 'memory' });
@@ -65,7 +95,7 @@ export function registerMemoryCommands(program) {
     .option('--section <name>', 'Filter by section name (partial match)')
     .option('--epic-only', 'Show only epic memory (skip PRD/project)')
     .option('--json', 'JSON output')
-    .action((id, options) => {
+    .action((id: string, options: ShowOptions) => {
       ensureMemoryDir();
 
       const normalized = normalizeId(id);
@@ -83,11 +113,11 @@ export function registerMemoryCommands(program) {
       }
 
       // Collect all sections from hierarchy
-      const allSections = [];
+      const allSections: Array<{ level: string; id: string; section: string; content: string }> = [];
 
       // Level filter
-      const levelFilter = options.level?.toLowerCase();
-      const sectionFilter = options.section?.toLowerCase();
+      const levelFilter: string | undefined = options.level?.toLowerCase();
+      const sectionFilter: string | undefined = options.section?.toLowerCase();
 
       // Agent-relevant sections (default view)
       const agentRelevantSections = [
@@ -147,7 +177,7 @@ export function registerMemoryCommands(program) {
         return;
       }
 
-      let currentLevel = null;
+      let currentLevel: string | null = null;
       for (const sec of allSections) {
         if (sec.level !== currentLevel) {
           if (currentLevel !== null) console.log('\n' + sep);
@@ -165,7 +195,7 @@ export function registerMemoryCommands(program) {
     .option('--no-create', 'Do not create missing memory (.md) files')
     .option('--role <role>', 'Role context (skill, coordinator, agent)')
     .option('--json', 'JSON output')
-    .action(async (id, options) => {
+    .action(async (id: string | undefined, options: SyncOptions) => {
       // Block agents - they don't manage memory
       checkWriteAccess(options.role, 'memory:sync');
       ensureMemoryDir();
@@ -268,7 +298,15 @@ export function registerMemoryCommands(program) {
         epicLogFiles = epicLogFiles.filter(f => f.id === targetEpicId);
       }
 
-      const epicLogs = [];
+      interface EpicLog {
+        id: string;
+        lines: number;
+        entries: number;
+        levels: Record<string, number>;
+        hasMd: boolean;
+        content: string;
+      }
+      const epicLogs: EpicLog[] = [];
 
       for (const { id: epicId, path: logPath } of epicLogFiles) {
         const content = readLogFile(epicId);
@@ -300,12 +338,12 @@ export function registerMemoryCommands(program) {
         const totalEntries = Object.values(levels).reduce((a, b) => a + b, 0);
 
         epicLogs.push({
-          id: epicId,
-          lines: content.split('\n').length,
-          entries: totalEntries,
-          levels,
-          hasMd: mdExists || (options.create !== false),
-          content
+          id: epicId as string,
+          lines: content.split('\n').length as number,
+          entries: totalEntries as number,
+          levels: levels as Record<string, number>,
+          hasMd: (mdExists || (options.create !== false)) as boolean,
+          content: content as string
         });
       }
 
@@ -512,7 +550,7 @@ export function registerMemoryCommands(program) {
     .option('--prd <id>', 'Filter by PRD (PRD-NNN)')
     .option('--epic <id>', 'Filter by epic (ENNN)')
     .option('--json', 'JSON output')
-    .action((options) => {
+    .action((options: EscalationsOptions) => {
       ensureMemoryDir();
 
       let files = fs.readdirSync(getMemoryDirPath()).filter(f => f.endsWith('.md') && f.startsWith('E'));
@@ -573,7 +611,7 @@ export function registerMemoryCommands(program) {
     });
 
   // Helper: get memory file path for ID (uses index for format-agnostic lookup)
-  function getMemoryPath(id) {
+  function getMemoryPath(id: string): string | null {
     if (id === 'PROJECT') {
       return projectMemoryFilePath();
     }
@@ -594,8 +632,18 @@ export function registerMemoryCommands(program) {
     return null;
   }
 
+  interface EditResult {
+    success?: boolean;
+    warning?: string;
+    error?: string;
+    content?: string;
+    id?: string;
+    section?: string;
+    operation?: string;
+  }
+
   // Helper: edit a single section in a memory file (uses library)
-  function editMemorySection(memoryId, section, content, operation) {
+  function editMemorySection(memoryId: string, section: string, content: string, operation: string): EditResult {
     const filePath = getMemoryPath(memoryId);
     if (!filePath) {
       return { error: `Invalid memory ID: ${memoryId}` };
@@ -605,18 +653,18 @@ export function registerMemoryCommands(program) {
     }
 
     const fileContent = fs.readFileSync(filePath, 'utf8');
-    const result: any = editSection(fileContent, section, content, operation);
+    const result = editSection(fileContent, section, content, operation) as EditResult;
 
     if (result.warning) {
-      return { warning: result.warning, id: memoryId, section };
+      return { warning: result.warning as string, id: memoryId, section };
     }
 
     if (result.success) {
-      fs.writeFileSync(filePath, result.content);
+      fs.writeFileSync(filePath, result.content as string);
       return { success: true, id: memoryId, section, operation };
     }
 
-    return { error: result.error || 'Unknown error', id: memoryId, section };
+    return { error: (result.error as string) || 'Unknown error', id: memoryId, section };
   }
 
   // memory:edit [ID] - edit memory section(s)
@@ -628,7 +676,7 @@ export function registerMemoryCommands(program) {
     .option('-p, --prepend', 'Prepend to section instead of replace')
     .option('--role <role>', 'Role context (skill, coordinator, agent)')
     .option('--json', 'JSON output')
-    .action((id, options) => {
+    .action((id: string | undefined, options: EditOptions) => {
       // Block agents from editing memory
       checkWriteAccess(options.role, 'memory:edit');
       ensureMemoryDir();
@@ -636,7 +684,7 @@ export function registerMemoryCommands(program) {
       // Get content from stdin or option
       let inputContent = options.content;
       if (!inputContent && !process.stdin.isTTY) {
-        inputContent = fs.readFileSync(0, 'utf8').trim();
+        inputContent = fs.readFileSync(0, 'utf8').trim() as string;
       }
 
       if (!inputContent) {
@@ -648,19 +696,25 @@ export function registerMemoryCommands(program) {
       // Format: ## ID:Section [operation]
       if (!id) {
         const headerRegex = /^## ([A-Z0-9-]+):(.+?)(?:\s*\[(append|prepend|replace)\])?\s*$/gm;
-        const sections = [];
-        const lastIndex = 0;
-        let match;
+        interface SectionMatch {
+          fullMatch: string;
+          id: string;
+          section: string;
+          operation: string;
+          index: number;
+        }
+        const sections: Array<{ id: string; section: string; operation: string; content: string }> = [];
+        let match: RegExpExecArray | null;
 
         // Find all section headers
-        const matches = [];
+        const matches: SectionMatch[] = [];
         while ((match = headerRegex.exec(inputContent)) !== null) {
           matches.push({
-            fullMatch: match[0],
-            id: match[1].toUpperCase(),
-            section: match[2].trim(),
-            operation: match[3] || 'replace',
-            index: match.index
+            fullMatch: match[0] as string,
+            id: (match[1] as string).toUpperCase(),
+            section: (match[2] as string).trim(),
+            operation: (match[3] as string) || 'replace',
+            index: match.index as number
           });
         }
 
@@ -676,21 +730,21 @@ export function registerMemoryCommands(program) {
 
         // Extract content for each section
         for (let i = 0; i < matches.length; i++) {
-          const current = matches[i];
-          const nextIndex = matches[i + 1]?.index ?? inputContent.length;
+          const current = matches[i] as SectionMatch;
+          const nextIndex = (matches[i + 1] as SectionMatch | undefined)?.index ?? inputContent.length;
           const headerEnd = current.index + current.fullMatch.length;
           const content = inputContent.slice(headerEnd, nextIndex).trim();
 
           sections.push({
             id: current.id === 'PROJECT' ? 'PROJECT' : normalizeId(current.id),
-            section: current.section,
-            operation: current.operation,
-            content
+            section: current.section as string,
+            operation: current.operation as string,
+            content: content as string
           });
         }
 
         // Apply all edits
-        const results = [];
+        const results: Array<EditResult & { id: string; section: string; operation: string; content: string }> = [];
         for (const sec of sections) {
           const result = editMemorySection(sec.id, sec.section, sec.content, sec.operation);
           results.push({ ...sec, ...result });

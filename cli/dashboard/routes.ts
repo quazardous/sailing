@@ -303,12 +303,12 @@ export function createRoutes(options: RoutesOptions = {}) {
       return;
     }
 
-    const epicDone = foundEpic.tasks.filter(t => t.status === 'Done').length;
-    const epicTotal = foundEpic.tasks.length;
+    const epicDone = (foundEpic.tasks as Array<{ status: string }>).filter(t => t.status === 'Done').length;
+    const epicTotal = (foundEpic.tasks as Array<unknown>).length;
     const epicProgress = epicTotal > 0 ? Math.round((epicDone / epicTotal) * 100) : 0;
     const progressClass = getProgressClass(epicProgress);
 
-    const tasksHtml = foundEpic.tasks.map(task => taskItemTemplate(task)).join('');
+    const tasksHtml = (foundEpic.tasks as Array<unknown>).map(task => taskItemTemplate(task)).join('');
 
     const statsContent = `
       ${kpiGridTemplate([
@@ -349,9 +349,9 @@ export function createRoutes(options: RoutesOptions = {}) {
 
     html(res, `
       ${detailHeaderTemplate({
-        id: foundEpic.id,
-        title: foundEpic.title,
-        status: foundEpic.status,
+        id: foundEpic.id as string,
+        title: foundEpic.title as string,
+        status: foundEpic.status as string,
         parentInfo: `Part of ${entityLink(parentPrd.id)}: ${parentPrd.title}`
       })}
       ${renderTabs([
@@ -392,8 +392,8 @@ export function createRoutes(options: RoutesOptions = {}) {
       return;
     }
 
-    const blockedBy = foundTask.meta?.blocked_by;
-    const blockers = blockedBy ? (Array.isArray(blockedBy) ? blockedBy : [blockedBy]) : [];
+    const blockedBy = (foundTask.meta as Record<string, unknown> | undefined)?.blocked_by;
+    const blockers = blockedBy ? (Array.isArray(blockedBy) ? blockedBy as string[] : [blockedBy as string]) : [];
 
     const formatDate = (iso?: string) => {
       if (!iso) return '-';
@@ -401,14 +401,15 @@ export function createRoutes(options: RoutesOptions = {}) {
       return d.toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric' });
     };
 
+    const taskMeta = foundTask.meta as Record<string, unknown> | undefined;
     const statsContent = taskStatsTemplate({
-      status: foundTask.status,
-      effort: foundTask.meta?.effort as string | undefined,
-      startedAt: foundTask.meta?.started_at as string | undefined,
-      doneAt: foundTask.meta?.done_at as string | undefined,
-      priority: foundTask.meta?.priority as string | undefined,
-      assignee: foundTask.meta?.assignee as string | undefined,
-      blockers: blockers as string[]
+      status: foundTask.status as string,
+      effort: taskMeta?.effort as string | undefined,
+      startedAt: taskMeta?.started_at as string | undefined,
+      doneAt: taskMeta?.done_at as string | undefined,
+      priority: taskMeta?.priority as string | undefined,
+      assignee: taskMeta?.assignee as string | undefined,
+      blockers: blockers
     }, formatDate);
 
     const descContent = foundTask.description
@@ -423,7 +424,7 @@ export function createRoutes(options: RoutesOptions = {}) {
     const parentInfo = `${parentEpic ? entityLink(parentEpic.id) : ''}: ${parentEpic?.title}<br>${parentPrd ? entityLink(parentPrd.id) : ''}: ${parentPrd?.title}`;
 
     html(res, `
-      ${detailHeaderTemplate({ id: foundTask.id, title: foundTask.title, status: foundTask.status, parentInfo })}
+      ${detailHeaderTemplate({ id: foundTask.id as string, title: foundTask.title as string, status: foundTask.status as string, parentInfo })}
       ${renderTabs([
         { id: 'stats', label: 'Stats', content: statsContent, active: true },
         { id: 'desc', label: 'Description', content: descContent },

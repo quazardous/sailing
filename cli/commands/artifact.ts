@@ -245,10 +245,10 @@ Examples:
       }
 
       // Get content from option or stdin
-      let content = options.content;
+      let content = options.content || '';
       if (!content) {
-        content = await readStdin();
-        content = content.trim();
+        const stdinContent = await readStdin();
+        content = stdinContent.trim();
       }
 
       if (!content) {
@@ -346,11 +346,11 @@ Examples:
           console.log(`✓ ${originalOps[0].op} on ${originalOps[0].section} in ${id}`);
         } else {
           // Group by operation type for cleaner output
-          const byOp = {};
+          const byOp: Record<string, number> = {};
           originalOps.forEach(o => {
             byOp[o.op] = (byOp[o.op] || 0) + 1;
           });
-          const summary = Object.entries(byOp).map(([op, n]) => `${op}:${n}`).join(', ');
+          const summary = Object.entries(byOp).map(([op, n]) => `${op}:${n as number}`).join(', ');
           console.log(`✓ ${originalOps.length} sections in ${id} (${summary})`);
         }
       } else {
@@ -513,14 +513,17 @@ Examples:
         opsContent = await readStdin();
       }
 
-      let ops;
+      let ops: SectionOp[];
       try {
-        ops = JSON.parse(opsContent);
-        if (!Array.isArray(ops)) {
-          ops = [ops]; // Allow single op
+        const parsed = JSON.parse(opsContent) as SectionOp | SectionOp[];
+        if (!Array.isArray(parsed)) {
+          ops = [parsed]; // Allow single op
+        } else {
+          ops = parsed;
         }
       } catch (e) {
-        console.error(`Invalid JSON: ${e.message}`);
+        const error = e as Error;
+        console.error(`Invalid JSON: ${error.message}`);
         process.exit(1);
       }
 

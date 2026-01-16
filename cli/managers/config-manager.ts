@@ -206,13 +206,13 @@ export const CONFIG_SCHEMA: Record<string, ConfigSchemaEntry> = {
  * Build DEFAULTS object from schema
  */
 function buildConfigDefaults(): SailingConfig {
-  const defaults: any = {};
+  const defaults: Record<string, any> = {};
   for (const [key, schema] of Object.entries(CONFIG_SCHEMA)) {
     const parts = key.split('.');
-    let obj = defaults;
+    let obj: Record<string, any> = defaults;
     for (let i = 0; i < parts.length - 1; i++) {
       if (!obj[parts[i]]) obj[parts[i]] = {};
-      obj = obj[parts[i]];
+      obj = obj[parts[i]] as Record<string, any>;
     }
     obj[parts[parts.length - 1]] = schema.default;
   }
@@ -264,7 +264,7 @@ export function parseConfigOverride(override: string): { key: string; value: any
   }
 
   // Coerce value based on schema type
-  let value: any = rawValue;
+  let value: string | number | boolean = rawValue;
   switch (schema.type) {
     case 'boolean':
       value = rawValue.toLowerCase() === 'true' || rawValue === '1';
@@ -299,10 +299,10 @@ export function parseConfigOverride(override: string): { key: string; value: any
  */
 export function getNestedValue(obj: any, key: string): any {
   const parts = key.split('.');
-  let value = obj;
+  let value: unknown = obj;
   for (const part of parts) {
     if (value === undefined || value === null) return undefined;
-    value = value[part];
+    value = (value as Record<string, unknown>)[part];
   }
   return value;
 }
@@ -310,12 +310,12 @@ export function getNestedValue(obj: any, key: string): any {
 /**
  * Set nested value in object using dot notation
  */
-function setNestedValue(obj: any, key: string, value: any): void {
+function setNestedValue(obj: any, key: string, value: unknown): void {
   const parts = key.split('.');
-  let target = obj;
+  let target: Record<string, any> = obj as Record<string, any>;
   for (let i = 0; i < parts.length - 1; i++) {
     if (!target[parts[i]]) target[parts[i]] = {};
-    target = target[parts[i]];
+    target = target[parts[i]] as Record<string, any>;
   }
   target[parts[parts.length - 1]] = value;
 }
@@ -323,14 +323,17 @@ function setNestedValue(obj: any, key: string, value: any): void {
 /**
  * Deep merge objects
  */
-function deepMerge(target: any, source: any): any {
-  const result = { ...target };
+function deepMerge(target: any, source: any): Record<string, any> {
+  const result: Record<string, any> = { ...target } as Record<string, any>;
+  const sourceObj = source as Record<string, unknown>;
+  const targetObj = target as Record<string, unknown>;
 
-  for (const key in source) {
-    if (source[key] && typeof source[key] === 'object' && !Array.isArray(source[key])) {
-      result[key] = deepMerge(target[key] || {}, source[key]);
+  for (const key in sourceObj) {
+    const sourceValue: unknown = sourceObj[key];
+    if (sourceValue && typeof sourceValue === 'object' && !Array.isArray(sourceValue)) {
+      result[key] = deepMerge(targetObj[key] || {}, sourceValue);
     } else {
-      result[key] = source[key];
+      result[key] = sourceValue;
     }
   }
 
@@ -356,14 +359,15 @@ export function loadConfig(): SailingConfig {
   if (_sailingConfig) return _sailingConfig;
 
   const configPath = getConfigPath();
-  let userConfig = {};
+  let userConfig: Record<string, any> = {};
 
   if (fs.existsSync(configPath)) {
     try {
       const content = fs.readFileSync(configPath, 'utf8');
-      userConfig = yaml.load(content) || {};
-    } catch (e: any) {
-      console.error(`Warning: Could not parse config.yaml: ${e.message}`);
+      userConfig = (yaml.load(content) as Record<string, any>) || {};
+    } catch (e) {
+      const message = e instanceof Error ? e.message : String(e);
+      console.error(`Warning: Could not parse config.yaml: ${message}`);
     }
   }
 
@@ -388,7 +392,7 @@ export function loadConfig(): SailingConfig {
  */
 function validateConfig(config: any): void {
   for (const [key, schema] of Object.entries(CONFIG_SCHEMA)) {
-    const value = getNestedValue(config, key);
+    const value: unknown = getNestedValue(config, key);
     if (value === undefined) continue;
 
     switch (schema.type) {
@@ -574,7 +578,7 @@ export function getConfigDisplay(): ConfigDisplayItem[] {
   const result: ConfigDisplayItem[] = [];
 
   for (const [key, schema] of Object.entries(CONFIG_SCHEMA)) {
-    const value = getNestedValue(config, key);
+    const value: unknown = getNestedValue(config, key);
     result.push({
       key,
       value,

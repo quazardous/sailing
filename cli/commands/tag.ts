@@ -8,8 +8,8 @@ import { addDynamicHelp } from '../lib/help.js';
 /**
  * Register tag commands
  */
-export function registerTagCommands(program) {
-  const tag = program.command('tag').description('Tag operations');
+export function registerTagCommands(program: any) {
+  const tag = program.command('tag').description('Tag operations') as any;
 
   // Dynamic help generated from registered commands
   addDynamicHelp(tag, { entityType: 'tag' });
@@ -22,12 +22,12 @@ export function registerTagCommands(program) {
       // Map<tag, {prd: N, epic: N, task: N}>
       const tagCounts = new Map();
 
-      const addTags = (tags, type) => {
+      const addTags = (tags: string[] | undefined, type: 'prd' | 'epic' | 'task') => {
         for (const t of (tags || [])) {
           if (!tagCounts.has(t)) {
             tagCounts.set(t, { prd: 0, epic: 0, task: 0, total: 0 });
           }
-          const counts = tagCounts.get(t);
+          const counts = tagCounts.get(t) as { prd: number; epic: number; task: number; total: number };
           counts[type]++;
           counts.total++;
         }
@@ -60,7 +60,7 @@ export function registerTagCommands(program) {
       const sorted = [...tagCounts.entries()].sort((a, b) => b[1].total - a[1].total);
 
       if (options.json) {
-        const result = sorted.map(([tag, counts]) => ({ tag, ...counts }));
+        const result = sorted.map(([tag, counts]) => ({ tag, ...(counts as object) }));
         jsonOut(result);
       } else {
         if (sorted.length === 0) {

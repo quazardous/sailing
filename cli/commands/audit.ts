@@ -91,7 +91,7 @@ function buildProjectStructure(): PrdInfo[] {
     if (!prdEpicsMap.has(prdId)) {
       prdEpicsMap.set(prdId, []);
     }
-    prdEpicsMap.get(prdId).push({
+    prdEpicsMap.get(prdId)!.push({
       id: epic.id,
       status: epic.data?.status || 'Unknown',
       prdId,
@@ -302,7 +302,7 @@ export function registerAuditCommands(program: any) {
 
       // Filter by PRD if specified
       if (options.prd) {
-        const prdId = options.prd.toUpperCase();
+        const prdId = (options.prd as string).toUpperCase();
         issues = issues.filter(i => i.prd.toUpperCase().includes(prdId));
       }
 

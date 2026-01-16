@@ -64,11 +64,11 @@ export function loadComponents(): any {
  */
 export function saveComponents(data: any): void {
   const componentsFile = getComponentsFile();
-  let content;
+  let content: string;
   if (componentsFile.endsWith('.json')) {
     content = JSON.stringify(data, null, 2);
   } else {
-    content = yaml.dump(data, { lineWidth: -1 });
+    content = yaml.dump(data, { lineWidth: -1 }) as string;
   }
   fs.writeFileSync(componentsFile, content);
 }

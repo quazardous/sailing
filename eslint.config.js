@@ -50,28 +50,28 @@ export default tseslint.config(
       // WARNINGS - Fix progressively
       // ══════════════════════════════════════════════════════════════════════
       // Any-related (root cause = no-explicit-any)
-      '@typescript-eslint/no-explicit-any': 'warn',
+      '@typescript-eslint/no-explicit-any': 'error',
       '@typescript-eslint/no-unsafe-assignment': 'error',
-      '@typescript-eslint/no-unsafe-member-access': 'warn',
-      '@typescript-eslint/no-unsafe-call': 'warn',
-      '@typescript-eslint/no-unsafe-return': 'warn',
-      '@typescript-eslint/no-unsafe-argument': 'warn',
+      '@typescript-eslint/no-unsafe-member-access': 'error',
+      '@typescript-eslint/no-unsafe-call': 'error',
+      '@typescript-eslint/no-unsafe-return': 'error',
+      '@typescript-eslint/no-unsafe-argument': 'error',
 
       // Code quality - unused imports (auto-fixable)
       'unused-imports/no-unused-imports': 'error',
       'unused-imports/no-unused-vars': ['warn', { argsIgnorePattern: '^_', varsIgnorePattern: '^_' }],
-      '@typescript-eslint/no-unused-vars': 'off', // handled by unused-imports
-      '@typescript-eslint/require-await': 'warn',
-      '@typescript-eslint/no-unnecessary-type-assertion': 'warn',
+      '@typescript-eslint/no-unused-vars': 'error', // handled by unused-imports
+      '@typescript-eslint/require-await': 'error',
+      '@typescript-eslint/no-unnecessary-type-assertion': 'error',
       '@typescript-eslint/no-base-to-string': 'warn',
       '@typescript-eslint/restrict-template-expressions': 'warn',
       '@typescript-eslint/no-redundant-type-constituents': 'warn',
 
       // SonarJS
-      'sonarjs/cognitive-complexity': ['warn', 15],
+      'sonarjs/cognitive-complexity': ['error', 10],
       'sonarjs/prefer-regexp-exec': 'warn',
-      'sonarjs/unused-import': 'off', // handled by unused-imports plugin
-      'sonarjs/no-dead-store': 'warn',
+      'sonarjs/unused-import': 'error', // handled by unused-imports plugin
+      'sonarjs/no-dead-store': 'error',
       'sonarjs/slow-regex': 'warn',
       'sonarjs/no-nested-conditional': 'warn',
       'sonarjs/no-ignored-exceptions': 'warn',

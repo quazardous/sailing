@@ -31,7 +31,7 @@ function acquireLock(timeout = 5000) {
       if (err.code === 'EEXIST') {
         // Lock exists - check if stale (> 30s old)
         try {
-          const lockData = JSON.parse(fs.readFileSync(lockFile, 'utf8'));
+          const lockData = JSON.parse(fs.readFileSync(lockFile, 'utf8')) as { pid: number; time: number };
           if (Date.now() - lockData.time > 30000) {
             // Stale lock - remove it
             fs.unlinkSync(lockFile);

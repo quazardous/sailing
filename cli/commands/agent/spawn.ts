@@ -97,7 +97,7 @@ export function registerSpawnCommand(agent) {
       const projectRoot = findProjectRoot();
 
       // Helper for escalation with next steps
-      const escalate = (reason, nextSteps) => {
+      const escalate = (reason: string, nextSteps: string[]) => {
         if (options.json) {
           jsonOut({
             task_id: taskId,
@@ -359,7 +359,7 @@ export function registerSpawnCommand(agent) {
       }
 
       // Create worktree if enabled
-      let worktreeInfo = null;
+      let worktreeInfo: { path: string; branch: string; base_branch: string; branching: string; resumed?: boolean } | null = null;
       let cwd = findProjectRoot();
 
       if (useWorktree) {
@@ -525,7 +525,7 @@ export function registerSpawnCommand(agent) {
         let commitsAhead = 0;
         if (useWorktree && worktreeInfo?.base_branch) {
           const exitLog = await exitGit.log({ from: worktreeInfo.base_branch, to: 'HEAD' });
-          commitsAhead = exitLog.total;
+          commitsAhead = (exitLog as { total: number }).total;
         }
 
         const updatedState = updateStateAtomic(s => {
@@ -625,8 +625,8 @@ export function registerSpawnCommand(agent) {
       const shouldHeartbeat = options.heartbeat !== false;
       let lastHeartbeat = startTime;
       let detached = false;
-      let exitCode = null;
-      let exitSignal = null;
+      let exitCode: number | null = null;
+      let exitSignal: NodeJS.Signals | null = null;
 
       if (!options.json) {
         if (isQuiet) {
@@ -703,7 +703,7 @@ export function registerSpawnCommand(agent) {
       process.on('SIGTERM', sigtermHandler);
 
       // Cleanup signal handlers
-      let heartbeatTimer = null;
+      let heartbeatTimer: NodeJS.Timeout | null = null;
       const cleanup = () => {
         process.off('SIGHUP', sighupHandler);
         process.off('SIGINT', sigintHandler);
@@ -720,7 +720,7 @@ export function registerSpawnCommand(agent) {
 
       // Wait for process to exit
       await new Promise<void>((resolve) => {
-        spawnResult.process.on('exit', (code, signal) => {
+        spawnResult.process.on('exit', (code: number | null, signal: NodeJS.Signals | null) => {
           exitCode = code;
           exitSignal = signal;
           resolve();

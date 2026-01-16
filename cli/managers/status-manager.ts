@@ -77,14 +77,14 @@ export function escalateEpicToInProgress(epicId: string): StatusTransitionResult
     return { updated: false, entityId: epicId, message: 'Epic already started' };
   }
 
-  const previousStatus = epicData.data.status;
+  const previousStatus = epicData.data.status as string;
   epicData.data.status = 'In Progress';
   saveFile(epicFile, epicData.data, epicData.body);
 
   return {
     updated: true,
     entityId: epicId,
-    previousStatus,
+    previousStatus: previousStatus,
     newStatus: 'In Progress',
     message: `Epic ${epicId} → In Progress`
   };
@@ -106,19 +106,19 @@ export function escalatePrdToInProgress(parent: string): StatusTransitionResult 
     return { updated: false, entityId: prdId, message: 'Could not load PRD' };
   }
 
-  const status = prdData.data.status;
+  const status = prdData.data.status as string;
   if (status !== 'Draft' && status !== 'Approved' && !isStatusNotStarted(status)) {
     return { updated: false, entityId: prdId, message: 'PRD already in progress' };
   }
 
-  const previousStatus = status;
+  const previousStatus = status as string;
   prdData.data.status = 'In Progress';
   saveFile(prdFile, prdData.data, prdData.body);
 
   return {
     updated: true,
     entityId: prdId,
-    previousStatus,
+    previousStatus: previousStatus,
     newStatus: 'In Progress',
     message: `PRD ${prdId} → In Progress`
   };
@@ -208,14 +208,14 @@ export function checkAndUpdateEpicAutoDone(epicId: string, currentTaskId?: strin
     return { updated: false, entityId: epicId, message: 'Epic already done' };
   }
 
-  const previousStatus = epicData.data.status;
+  const previousStatus = epicData.data.status as string;
   epicData.data.status = 'Auto-Done';
   saveFile(epicFile, epicData.data, epicData.body);
 
   return {
     updated: true,
     entityId: epicId,
-    previousStatus,
+    previousStatus: previousStatus,
     newStatus: 'Auto-Done',
     message: `Epic ${epicId} → Auto-Done (to be reviewed for completion)`
   };
@@ -245,14 +245,14 @@ export function checkAndUpdatePrdAutoDone(parent: string): StatusTransitionResul
     return { updated: false, entityId: prdId, message: 'PRD already done' };
   }
 
-  const previousStatus = prdData.data.status;
+  const previousStatus = prdData.data.status as string;
   prdData.data.status = 'Auto-Done';
   saveFile(prdFile, prdData.data, prdData.body);
 
   return {
     updated: true,
     entityId: prdId,
-    previousStatus,
+    previousStatus: previousStatus,
     newStatus: 'Auto-Done',
     message: `PRD ${prdId} → Auto-Done (to be reviewed for completion)`
   };
@@ -286,14 +286,14 @@ export function cascadeTaskCompletion(taskId: string, taskData: { parent?: strin
       if (prdInfo) {
         const prdData = loadFile(prdInfo.prdFile);
         if (prdData?.data) {
-          const status = prdData.data.status;
+          const status = prdData.data.status as string;
           if (status === 'Draft' || status === 'Approved') {
             prdData.data.status = 'In Progress';
             saveFile(prdInfo.prdFile, prdData.data, prdData.body);
             result.prd = {
               updated: true,
               entityId: prdInfo.prdId,
-              previousStatus: status,
+              previousStatus: status as string,
               newStatus: 'In Progress',
               message: `PRD ${prdInfo.prdId} → In Progress`
             };

@@ -238,8 +238,9 @@ export class AgentLifecycleManager {
         await mainGit.merge([branch, '--no-edit']);
       }
       return { success: true, strategy };
-    } catch (e: any) {
-      return { success: false, strategy, error: e.message };
+    } catch (e: unknown) {
+      const message = e instanceof Error ? e.message : String(e);
+      return { success: false, strategy, error: message };
     }
   }
 
@@ -347,8 +348,8 @@ export class AgentLifecycleManager {
     const resultFile = path.join(agentDir, 'result.yaml');
     if (fs.existsSync(resultFile)) {
       try {
-        const result = yaml.load(fs.readFileSync(resultFile, 'utf8')) as any;
-        resultStatus = result.status || 'completed';
+        const result = yaml.load(fs.readFileSync(resultFile, 'utf8')) as { status?: string };
+        resultStatus = (result.status as 'completed' | 'blocked') || 'completed';
       } catch { /* ignore */ }
     }
 
@@ -437,7 +438,7 @@ export class AgentLifecycleManager {
     const taskFile = getTask(this.taskId)?.file;
     if (taskFile) {
       const file = loadFile(taskFile);
-      const { updated, data } = parseUpdateOptions({ status: taskStatus }, file.data, 'task');
+      const { updated, data } = parseUpdateOptions({ status: taskStatus }, file.data, 'task') as { updated: boolean; data: Record<string, unknown> };
       if (updated) {
         saveFile(taskFile, data, file.body);
       }
@@ -489,9 +490,11 @@ export class AgentLifecycleManager {
       } catch {
         // Already terminated
       }
-    } catch (e: any) {
-      if (e.code !== 'ESRCH') {
-        return { success: false, taskId: this.taskId, pid, error: e.message };
+    } catch (e: unknown) {
+      const error = e as { code?: string; message?: string };
+      if (error.code !== 'ESRCH') {
+        const message = error.message || String(e);
+        return { success: false, taskId: this.taskId, pid, error: message };
       }
       // ESRCH = process already gone, that's fine
     }

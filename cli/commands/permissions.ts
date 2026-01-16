@@ -4,8 +4,20 @@
  */
 import fs from 'fs';
 import path from 'path';
+import { Command } from 'commander';
 import { findProjectRoot, loadPathsConfig, jsonOut } from '../managers/core-manager.js';
 import { addDynamicHelp } from '../lib/help.js';
+
+interface ClaudeSettings {
+  includeCoAuthoredBy: boolean;
+  permissions: {
+    allow: string[];
+  };
+}
+
+interface PathsConfig {
+  paths: Record<string, string | null>;
+}
 
 // Base sailing permissions (path-independent)
 const BASE_PERMISSIONS = [
@@ -27,12 +39,12 @@ const BASE_PERMISSIONS = [
  * Get sailing permissions based on paths.yaml configuration
  */
 function getSailingPermissions() {
-  const config = loadPathsConfig();
-  const perms = [...BASE_PERMISSIONS];
+  const config = loadPathsConfig() as PathsConfig;
+  const perms: string[] = [...BASE_PERMISSIONS];
 
   // Add Read permission for the sailing directory
   // Use artefacts path as base (e.g., 'sailing' or '.sailing/artefacts')
-  const artefactsPath = config.paths.artefacts || '.sailing/artefacts';
+  const artefactsPath = (config.paths.artefacts || '.sailing/artefacts') as string;
   const sailingBase = artefactsPath.split('/')[0]; // Get first segment
 
   perms.push(`Read(${sailingBase}/**)`);
@@ -51,11 +63,11 @@ function getSettingsPath() {
 /**
  * Load existing settings or create default
  */
-function loadSettings() {
+function loadSettings(): ClaudeSettings {
   const settingsPath = getSettingsPath();
   if (fs.existsSync(settingsPath)) {
     try {
-      return JSON.parse(fs.readFileSync(settingsPath, 'utf8'));
+      return JSON.parse(fs.readFileSync(settingsPath, 'utf8')) as ClaudeSettings;
     } catch (e) {
       console.error(`Warning: Could not parse ${settingsPath}, creating new`);
     }
@@ -69,7 +81,7 @@ function loadSettings() {
 /**
  * Save settings
  */
-function saveSettings(settings) {
+function saveSettings(settings: ClaudeSettings) {
   const settingsPath = getSettingsPath();
   const dir = path.dirname(settingsPath);
   if (!fs.existsSync(dir)) {
@@ -81,21 +93,21 @@ function saveSettings(settings) {
 /**
  * Register permissions commands
  */
-export function registerPermissionsCommands(program) {
-  const perms = program.command('permissions').description('Claude Code permissions management');
+export function registerPermissionsCommands(program: Command) {
+  const perms = program.command('permissions').description('Claude Code permissions management') as Command;
 
   // permissions:check
   perms.command('check')
     .description('Check if sailing permissions are configured')
     .option('--json', 'JSON output')
-    .action((options) => {
+    .action((options: { json?: boolean }) => {
       const settings = loadSettings();
-      const existing = settings.permissions?.allow || [];
+      const existing: string[] = settings.permissions?.allow || [];
       const requiredPerms = getSailingPermissions();
 
-      const missing = requiredPerms.filter(p => !existing.includes(p));
-      const extra = existing.filter(p => !requiredPerms.includes(p));
-      const present = requiredPerms.filter(p => existing.includes(p));
+      const missing: string[] = requiredPerms.filter(p => !existing.includes(p));
+      const extra: string[] = existing.filter(p => !requiredPerms.includes(p));
+      const present: string[] = requiredPerms.filter(p => existing.includes(p));
 
       const result = {
         settingsPath: getSettingsPath(),
@@ -138,13 +150,13 @@ export function registerPermissionsCommands(program) {
     .description('Add missing sailing permissions to settings')
     .option('--dry-run', 'Show what would be done')
     .option('--json', 'JSON output')
-    .action((options) => {
+    .action((options: { dryRun?: boolean; json?: boolean }) => {
       const settings = loadSettings();
-      if (!settings.permissions) settings.permissions = {};
+      if (!settings.permissions) settings.permissions = { allow: [] };
       if (!Array.isArray(settings.permissions.allow)) settings.permissions.allow = [];
 
-      const existing = settings.permissions.allow;
-      const added = [];
+      const existing: string[] = settings.permissions.allow;
+      const added: string[] = [];
       const requiredPerms = getSailingPermissions();
 
       // Ensure includeCoAuthoredBy is set to false
@@ -209,7 +221,7 @@ export function registerPermissionsCommands(program) {
   perms.command('list')
     .description('List required sailing permissions')
     .option('--json', 'JSON output')
-    .action((options) => {
+    .action((options: { json?: boolean }) => {
       const requiredPerms = getSailingPermissions();
       if (options.json) {
         jsonOut(requiredPerms);
@@ -223,7 +235,7 @@ export function registerPermissionsCommands(program) {
   perms.command('show')
     .description('Show current Claude settings')
     .option('--json', 'JSON output')
-    .action((options) => {
+    .action((options: { json?: boolean }) => {
       const settingsPath = getSettingsPath();
 
       if (!fs.existsSync(settingsPath)) {

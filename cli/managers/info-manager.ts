@@ -57,7 +57,7 @@ function getPathString(value: any): string | null {
  * Get comprehensive paths information
  */
 export function getPathsInfo(): PathsInfo {
-  const config = loadPathsConfig();
+  const config = loadPathsConfig() as { paths: Record<string, string | null> };
   const artefactsPath = getArtefactsDir();
   const templatesPath = getTemplates();
   const havenPath = resolvePlaceholders('${haven}');
@@ -71,17 +71,17 @@ export function getPathsInfo(): PathsInfo {
   };
 
   const getHavenPath = (key: string, subpath: string) => {
-    const custom = resolvePath(key);
+    const custom = resolvePath(key) as string | null;
     const resolved = custom || path.join(havenPath, subpath);
-    const template = custom ? config.paths?.[key] : '${haven}/' + subpath;
+    const template = custom ? (config.paths?.[key] as string) : '${haven}/' + subpath;
     return { template, relative: toHomeRelative(resolved), absolute: resolved };
   };
 
   const getProjectPath = (key: string) => {
-    const configuredPath = config.paths[key] || DEFAULT_PATHS[key];
-    const absolute = getPath(key);
-    const relative = absolute ? toHomeRelative(absolute) : configuredPath;
-    return { template: configuredPath, relative, absolute };
+    const configuredPath = (config.paths[key] as string | undefined) || (DEFAULT_PATHS[key] as string | { path: string; type: 'dir' | 'file' });
+    const absolute = getPath(key) as string | null;
+    const relative = absolute ? toHomeRelative(absolute) : (configuredPath as string);
+    return { template: configuredPath as string, relative, absolute };
   };
 
   return {
@@ -94,7 +94,7 @@ export function getPathsInfo(): PathsInfo {
     archive: getProjectPath('archive'),
     templates: {
       template: '^/templates',
-      relative: config.paths.templates,
+      relative: config.paths.templates as string,
       absolute: templatesPath
     },
     prompting: getProjectPath('prompting'),
@@ -120,21 +120,21 @@ export function getPathsInfo(): PathsInfo {
 export function getConfigInfo(scriptDir?: string): ConfigInfo {
   const projectRoot = findProjectRoot();
   const pathsConfigPath = path.join(projectRoot, '.sailing', 'paths.yaml');
-  const config = loadPathsConfig();
+  const config = loadPathsConfig() as { paths: Record<string, string | null> };
 
-  const pathsInfo: any = {};
+  const pathsInfo: Record<string, { path: string | null; configured: string | undefined; type: string | undefined; isCustom: boolean; isAbsolute: boolean }> = {};
   for (const key of Object.keys(DEFAULT_PATHS)) {
-    const configuredPath = config.paths[key];
+    const configuredPath = config.paths[key] as string | undefined;
     const defaultPath = getPathString(DEFAULT_PATHS[key]);
     const isCustom = configuredPath !== defaultPath;
     const isHome = configuredPath?.startsWith('~/') || false;
     const isHaven = configuredPath?.includes('%') || false;
-    const absolutePath = getPath(key);
+    const absolutePath = getPath(key) as string | null;
 
     pathsInfo[key] = {
       path: absolutePath,
       configured: configuredPath,
-      type: getPathType(key),
+      type: getPathType(key) as string | undefined,
       isCustom,
       isAbsolute: isHome || isHaven || path.isAbsolute(configuredPath || '')
     };

@@ -77,9 +77,10 @@ const extractors: Record<string, (filePath: string | null, pathExpr?: string) =>
   // JSON file, path is dot-notation (e.g., "version", "versions.api")
   json: (filePath, pathExpr = 'version') => {
     if (!filePath) return { version: null, source: 'missing file' };
-    const data = JSON.parse(fs.readFileSync(filePath, 'utf8'));
-    const version = pathExpr.split('.').reduce((o, k) => o?.[k], data);
-    return { version: version ?? null, source: `${path.basename(filePath)}:${pathExpr}` };
+    const data = JSON.parse(fs.readFileSync(filePath, 'utf8')) as Record<string, unknown>;
+    const version = pathExpr.split('.').reduce((o, k) => o?.[k], data as Record<string, unknown>);
+    const versionStr = typeof version === 'string' ? version : null;
+    return { version: versionStr, source: `${path.basename(filePath)}:${pathExpr}` };
   },
 
   // Plain text file containing only the version string
@@ -144,7 +145,7 @@ const bumpers: Record<string, (filePath: string, pathExpr: string, newVersion: s
   // JSON file - update version at dot-notation path
   json: (filePath, pathExpr, newVersion) => {
     const content = fs.readFileSync(filePath, 'utf8');
-    const data = JSON.parse(content);
+    const data = JSON.parse(content) as Record<string, unknown>;
     const keys = pathExpr.split('.');
     const lastKey = keys.pop();
     const parent = keys.reduce<Record<string, unknown> | unknown>((o, k) => {
@@ -220,12 +221,12 @@ const bumpers: Record<string, (filePath: string, pathExpr: string, newVersion: s
  * Load components configuration
  */
 export function loadComponents(): { components: ComponentConfig[] } {
-  const config = loadComponentsConfig();
+  const config = loadComponentsConfig() as { components: ComponentConfig[] } | null;
   if (!config) {
     console.error(`Components config not found: ${getComponentsFile()}`);
     process.exit(1);
   }
-  return config as { components: ComponentConfig[] };
+  return config;
 }
 
 /**
@@ -284,8 +285,8 @@ export function getCliVersion(): string {
   for (const pkgPath of candidates) {
     try {
       if (!fs.existsSync(pkgPath)) continue;
-      const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf8'));
-      if (pkg?.version) return pkg.version as string;
+      const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf8')) as { version?: string };
+      if (pkg?.version) return pkg.version;
     } catch { /* ignore and try next */ }
   }
   return '0.0.0';
@@ -296,7 +297,7 @@ export function getCliVersion(): string {
  * Returns '0.0.0' if components config is missing (for init/paths commands)
  */
 export function getMainVersion(): string {
-  const config = loadComponentsConfig();
+  const config = loadComponentsConfig() as { components?: ComponentConfig[] } | null;
   if (config) {
     const mainComponent = config.components?.find((c: ComponentConfig) => c.main);
     if (mainComponent) {
@@ -316,8 +317,8 @@ export function getMainVersion(): string {
     ];
     for (const pkgPath of candidates) {
       if (!fs.existsSync(pkgPath)) continue;
-      const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf8'));
-      if (pkg?.version) return pkg.version as string;
+      const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf8')) as { version?: string };
+      if (pkg?.version) return pkg.version;
     }
   } catch { /* ignore */ }
 
@@ -329,7 +330,7 @@ export function getMainVersion(): string {
  * Returns 'Project' if components config is missing
  */
 export function getMainComponentName(): string {
-  const config = loadComponentsConfig();
+  const config = loadComponentsConfig() as { components?: ComponentConfig[] } | null;
   if (!config) return 'Project';
   const mainComponent = config.components?.find((c: ComponentConfig) => c.main);
   if (!mainComponent) return 'Project';

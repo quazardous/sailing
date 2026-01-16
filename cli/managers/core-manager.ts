@@ -76,7 +76,11 @@ const DEFAULT_PATHS: Record<string, { path: string; type: 'dir' | 'file' }> = {
 };
 
 // Cached state
-let _config: any = null;
+interface PathsConfig {
+  paths: Record<string, string | null>;
+}
+
+let _config: PathsConfig | null = null;
 let _projectRoot: string | null = null;
 let _scriptDir: string | null = null;
 let _repoRoot: string | null | undefined = undefined;
@@ -212,7 +216,7 @@ export function getPathType(key: string): 'dir' | 'file' {
   return 'dir';
 }
 
-export function loadPathsConfig(): any {
+export function loadPathsConfig(): PathsConfig {
   if (_config) return _config;
 
   const projectRoot = findProjectRoot();
@@ -226,8 +230,9 @@ export function loadPathsConfig(): any {
   if (fs.existsSync(pathsConfigPath)) {
     try {
       const content = fs.readFileSync(pathsConfigPath, 'utf8');
-      const parsed = yaml.load(content) as any;
-      _config = { paths: { ...defaultPaths, ...(parsed.paths || {}) } };
+      const parsed = yaml.load(content) as PathsConfig;
+      const parsedPaths = (parsed.paths || {}) as Record<string, string | null>;
+      _config = { paths: { ...defaultPaths, ...parsedPaths } };
     } catch (e) {
       console.error(`Warning: Could not parse ${pathsConfigPath}, using defaults`);
       _config = { paths: defaultPaths };
@@ -237,17 +242,17 @@ export function loadPathsConfig(): any {
   }
 
   if (Object.keys(_pathOverrides).length > 0) {
-    _config.paths = { ..._config.paths, ..._pathOverrides };
+    _config = { paths: { ..._config.paths, ..._pathOverrides } };
   }
 
   return _config;
 }
 
 export function getPath(key: string): string | null {
-  const config = loadPathsConfig();
+  const config: PathsConfig = loadPathsConfig();
   const projectRoot = findProjectRoot();
 
-  let configuredPath = config.paths[key];
+  let configuredPath: string | null = config.paths[key] as string | null;
   if (!configuredPath) {
     const def = DEFAULT_PATHS[key];
     configuredPath = getPathString(def);

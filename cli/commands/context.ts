@@ -21,6 +21,7 @@ import {
   buildAgentSpawnPrompt
 } from '../managers/compose-manager.js';
 import { WorkflowsConfig, RoleDefinition, OperationMeta } from '../lib/types/workflows.js';
+import type { Command } from 'commander';
 // Entity functions moved to lib/index.ts
 
 type OperationListItem = OperationMeta & { name: string; allowedRoles: string[] };
@@ -46,7 +47,7 @@ function listOperations(config: WorkflowsConfig): OperationsByRole {
 /**
  * Register context commands
  */
-export function registerContextCommands(program) {
+export function registerContextCommands(program: Command) {
   const context = program.command('context')
     .description('Context operations (role-based prompts)');
 
@@ -176,7 +177,7 @@ export function registerContextCommands(program) {
       // Delegate to load
       if (options.list) {
         const config = loadWorkflowsConfig();
-        const byRole: any = listOperations(config);
+        const byRole = listOperations(config) as OperationsByRole;
         // Filter to agent role only
         const agentOps = byRole.agent || [];
         if (options.json) {
@@ -238,7 +239,7 @@ export function registerContextCommands(program) {
       // Delegate to load
       if (options.list) {
         const config = loadWorkflowsConfig();
-        const byRole: any = listOperations(config);
+        const byRole = listOperations(config) as OperationsByRole;
         // Filter to skill + coordinator roles
         const skillOps = [...(byRole.skill || []), ...(byRole.coordinator || [])];
         if (options.json) {

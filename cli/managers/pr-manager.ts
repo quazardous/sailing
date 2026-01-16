@@ -120,7 +120,7 @@ export async function exists(branch: string, cwd: string): Promise<boolean> {
  * Check if PR is merged
  */
 export async function isMerged(branch: string, cwd: string): Promise<boolean> {
-  const status = await getStatusCore(branch, cwd);
+  const status = await getStatusCore(branch, cwd) as { state: string } | null;
   if (!status) return false;
   return status.state === 'MERGED' || status.state === 'merged';
 }
