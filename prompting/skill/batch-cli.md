@@ -49,6 +49,39 @@ rudder find task --status "In Progress" --exec "task:update {} --assignee agent"
 
 Options: `--dry-run`, `--quiet`, `--verbose`
 
+## Dependency Commands
+
+**ALWAYS use `deps:*` commands - NEVER grep/search for dependency info.**
+
+```bash
+# Check task dependencies (blockers/blocked-by)
+rudder deps:show TNNN
+
+# Ready tasks (sorted by impact - best to work on first)
+rudder deps:ready
+rudder deps:ready --epic E001
+rudder deps:ready --limit 5
+
+# Dependency tree visualization
+rudder deps:tree TNNN --ancestors    # What blocks this
+rudder deps:tree TNNN --descendants  # What this blocks
+
+# Impact analysis: what gets unblocked when task completes
+rudder deps:impact TNNN
+
+# Critical path: bottleneck tasks blocking the most work
+rudder deps:critical
+rudder deps:critical --prd PRD-001
+
+# Add/modify dependencies
+rudder deps:add T001 --blocked-by T002 T003
+rudder deps:add T001 --blocks T004 T005
+
+# Validate dependency graph (find cycles, missing refs)
+rudder deps:validate
+rudder deps:validate --fix   # Auto-fix issues
+```
+
 ## Common Patterns
 
 ```bash
