@@ -280,11 +280,11 @@ export function registerPrdCommands(program: Command): void {
         console.log(fs.readFileSync(prdFile, 'utf8'));
         console.log(`${'─'.repeat(60)}`);
         console.log(`\nEdit with CLI:`);
-        console.log(`  rudder artifact patch ${id} <<EOF`);
+        console.log(`  rudder prd:edit ${id} <<EOF`);
         console.log(`  ## Problem Statement`);
         console.log(`  Your problem description here...`);
         console.log(`  EOF`);
-        console.log(`\nMore: rudder artifact --help`);
+        console.log(`\nMore: rudder prd:edit --help`);
       }
     });
 

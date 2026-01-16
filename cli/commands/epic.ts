@@ -328,11 +328,11 @@ updated: '${new Date().toISOString()}'
         console.log(fs.readFileSync(epicPath, 'utf8'));
         console.log(`${'─'.repeat(60)}`);
         console.log(`\nEdit with CLI:`);
-        console.log(`  rudder artifact patch ${id} <<EOF`);
+        console.log(`  rudder epic:edit ${id} <<EOF`);
         console.log(`  ## Description`);
         console.log(`  Your epic description here...`);
         console.log(`  EOF`);
-        console.log(`\nMore: rudder artifact --help`);
+        console.log(`\nMore: rudder epic:edit --help`);
       }
     });
 

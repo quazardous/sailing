@@ -12,11 +12,15 @@ import {
   loadPathsConfig,
   getArtefactsDir,
   getTemplates,
+  getPrompting,
+  isDevInstall,
+  getRepoRoot,
   resolvePlaceholders,
   resolvePath,
   getPath,
   getPathType
 } from './core-manager.js';
+import { PATHS_SCHEMA } from '../lib/paths-schema.js';
 
 /**
  * Default paths configuration (for reference)
@@ -59,6 +63,7 @@ function getPathString(value: any): string | null {
 export function getPathsInfo(): PathsInfo {
   const config = loadPathsConfig() as { paths: Record<string, string | null> };
   const templatesPath = getTemplates();
+  const promptingPath = getPrompting();
   const havenPath = resolvePlaceholders('${haven}');
   const home = os.homedir();
 
@@ -77,10 +82,16 @@ export function getPathsInfo(): PathsInfo {
   };
 
   const getProjectPath = (key: string) => {
-    const configuredPath = (config.paths[key]) || (DEFAULT_PATHS[key] as string | { path: string; type: 'dir' | 'file' });
+    // Template is the unresolved value: from paths.yaml if explicitly configured, otherwise schema default
+    // loadPathsConfig fills defaults, so compare against DEFAULT_PATHS to detect explicit config
+    const configValue = config.paths?.[key];
+    const defaultValue = DEFAULT_PATHS[key]?.path;
+    const schemaDefault = PATHS_SCHEMA[key]?.default;
+    const wasExplicitlyConfigured = configValue && configValue !== defaultValue;
+    const template = wasExplicitlyConfigured ? configValue : (schemaDefault || defaultValue);
     const absolute = getPath(key);
-    const relative = absolute ? toHomeRelative(absolute) : (configuredPath as string);
-    return { template: configuredPath as string, relative, absolute };
+    const relative = absolute ? toHomeRelative(absolute) : (template || '');
+    return { template, relative, absolute };
   };
 
   return {
@@ -92,11 +103,22 @@ export function getPathsInfo(): PathsInfo {
     memory: getProjectPath('memory'),
     archive: getProjectPath('archive'),
     templates: {
-      template: '^/templates',
-      relative: config.paths.templates,
+      // Template: if explicitly configured use that, else if dev use ^/templates, else schema default
+      // loadPathsConfig fills defaults, so compare against DEFAULT_PATHS to detect explicit config
+      template: (config.paths?.templates && config.paths.templates !== DEFAULT_PATHS.templates?.path)
+        ? config.paths.templates
+        : (isDevInstall() ? '^/templates' : PATHS_SCHEMA.templates?.default),
+      relative: toHomeRelative(templatesPath),
       absolute: templatesPath
     },
-    prompting: getProjectPath('prompting'),
+    prompting: {
+      // Template: if explicitly configured use that, else if dev use ^/prompting, else schema default
+      template: (config.paths?.prompting && config.paths.prompting !== DEFAULT_PATHS.prompting?.path)
+        ? config.paths.prompting
+        : (isDevInstall() ? '^/prompting' : PATHS_SCHEMA.prompting?.default),
+      relative: toHomeRelative(promptingPath),
+      absolute: promptingPath
+    },
     components: getProjectPath('components'),
     state: getProjectPath('state'),
     config: getProjectPath('config'),
@@ -110,6 +132,20 @@ export function getPathsInfo(): PathsInfo {
     assignments: getHavenPath('assignments', 'assignments'),
     worktrees: getHavenPath('worktrees', 'worktrees'),
     srtConfig: getHavenPath('srtConfig', 'srt-settings.json')
+  };
+}
+
+/**
+ * Get dev install information
+ */
+export function getDevInfo() {
+  const isDev = isDevInstall();
+  const repoRoot = getRepoRoot();
+  return {
+    isDevInstall: isDev,
+    repoRoot: repoRoot,
+    templatesResolved: getTemplates(),
+    promptingResolved: getPrompting()
   };
 }
 

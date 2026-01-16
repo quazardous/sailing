@@ -3,6 +3,7 @@
  */
 import fs from 'fs';
 import path from 'path';
+import os from 'os';
 import yaml from 'js-yaml';
 import {
   jsonOut,
@@ -12,10 +13,18 @@ import {
   getPlaceholders,
   resolvePlaceholders,
   computeProjectHash,
-  clearPlaceholderCache
+  clearPlaceholderCache,
+  getDevInfo
 } from '../../managers/core-manager.js';
 import { PATHS_SCHEMA, CATEGORIES, getPathKeys, generatePathsYaml } from '../../lib/paths-schema.js';
 import { addDynamicHelp } from '../../lib/help.js';
+
+const home = os.homedir();
+const toHomeRelative = (p: string) => p.startsWith(home) ? '~' + p.slice(home.length) : p;
+
+// ANSI colors
+const yellow = (s: string) => `\x1b[33m${s}\x1b[0m`;
+const dim = (s: string) => `\x1b[2m${s}\x1b[0m`;
 
 type PathSchemaEntry = (typeof PATHS_SCHEMA)[keyof typeof PATHS_SCHEMA];
 
@@ -30,10 +39,12 @@ export function registerPathsCommands(program) {
     .option('-p, --placeholders', 'Include placeholders in output')
     .option('-n, --no-resolve', 'Show paths with placeholders (unresolved)')
     .option('-r, --realpath', 'Show fully resolved absolute paths')
+    .option('-d, --show-defaults', 'Show defaults alongside effective paths')
     .action((key, options) => {
       const pathsInfo = getPathsInfo();
+      const devInfo = getDevInfo();
 
-      const getDisplay = (v) => {
+      const getDisplay = (v: { template?: string; relative: string; absolute: string }) => {
         if (options.resolve === false) return v.template || v.relative;
         if (options.realpath) return v.absolute;
         return v.relative;
@@ -50,20 +61,52 @@ export function registerPathsCommands(program) {
       }
 
       if (options.json) {
-        const result: any = { paths: {} };
+        const result: Record<string, unknown> = { paths: {} as Record<string, string> };
         for (const [k, v] of Object.entries(pathsInfo)) {
-          result.paths[k] = getDisplay(v);
+          (result.paths as Record<string, string>)[k] = getDisplay(v);
         }
         if (options.placeholders) {
           result.placeholders = getPlaceholders();
         }
-        jsonOut(options.placeholders ? result : result.paths);
+        result.devInfo = devInfo;
+        jsonOut(result);
         return;
       }
 
       console.log('Paths:\n');
       for (const [k, v] of Object.entries(pathsInfo)) {
-        console.log(`  ${k.padEnd(12)} ${getDisplay(v)}`);
+        const display = getDisplay(v);
+        const defaultPath = PATHS_SCHEMA[k]?.default;
+        // Compare template (unresolved) values to detect if configured differs from schema default
+        const template = v.template || '';
+        const isDifferent = defaultPath ? template !== defaultPath : false;
+        const displayValue = isDifferent ? yellow(display) : display;
+
+        if (options.showDefaults && defaultPath && isDifferent) {
+          // Resolve default path the same way as current path
+          let defaultDisplay: string;
+          if (options.resolve === false) {
+            // -n: show unresolved template
+            defaultDisplay = defaultPath;
+          } else if (options.realpath) {
+            // -r: show absolute path
+            defaultDisplay = resolvePlaceholders(defaultPath);
+          } else {
+            // default: show relative with ~ for home
+            defaultDisplay = toHomeRelative(resolvePlaceholders(defaultPath));
+          }
+          console.log(`  ${k.padEnd(12)} ${displayValue}`);
+          console.log(`  ${''.padEnd(12)} ${dim(defaultDisplay)}`);
+        } else {
+          console.log(`  ${k.padEnd(12)} ${displayValue}`);
+        }
+      }
+
+      // Dev info section
+      console.log('\nDev mode:\n');
+      console.log(`  isDevInstall   ${devInfo.isDevInstall}`);
+      if (devInfo.repoRoot) {
+        console.log(`  repoRoot       ${devInfo.repoRoot}`);
       }
 
       if (options.placeholders) {

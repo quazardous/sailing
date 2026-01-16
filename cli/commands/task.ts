@@ -504,11 +504,11 @@ export function registerTaskCommands(program: Command): void {
         console.log(fs.readFileSync(taskPath, 'utf8'));
         console.log(`${'─'.repeat(60)}`);
         console.log(`\nEdit with CLI:`);
-        console.log(`  rudder artifact patch ${id} <<EOF`);
+        console.log(`  rudder task:edit ${id} <<EOF`);
         console.log(`  ## Description`);
         console.log(`  Your task description here...`);
         console.log(`  EOF`);
-        console.log(`\nMore: rudder artifact --help`);
+        console.log(`\nMore: rudder task:edit --help`);
       }
     });
 

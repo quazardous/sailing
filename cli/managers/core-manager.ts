@@ -572,9 +572,8 @@ export const PROJECT_ROOT = findProjectRoot();
 // ============================================================================
 
 export function isDevInstall() {
-  const repoRoot = _scriptDir
-    ? path.resolve(_scriptDir, '..')
-    : path.resolve(import.meta.dirname, '../..');
+  const repoRoot = getRepoRoot();
+  if (!repoRoot) return false;
 
   return fs.existsSync(path.join(repoRoot, 'prompting')) &&
          fs.existsSync(path.join(repoRoot, 'cli')) &&
@@ -582,9 +581,7 @@ export function isDevInstall() {
 }
 
 export function getSailingRepoRoot() {
-  return _scriptDir
-    ? path.resolve(_scriptDir, '..')
-    : path.resolve(import.meta.dirname, '../..');
+  return getRepoRoot();
 }
 
 export function getPrompting() {
@@ -616,7 +613,7 @@ export {
 // INFO GETTERS (re-exported from info-manager.ts)
 // ============================================================================
 
-export { getPathsInfo, getConfigInfo } from './info-manager.js';
+export { getPathsInfo, getConfigInfo, getDevInfo } from './info-manager.js';
 
 // ============================================================================
 // FILE I/O (re-exported from fileio-manager.ts)
