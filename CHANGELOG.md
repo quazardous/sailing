@@ -4,6 +4,22 @@ All notable changes to the Sailing Framework will be documented in this file.
 
 <!-- NOTE: This is a USER changelog, not a commit log. Focus on user-visible features and benefits, not implementation details. -->
 
+## [1.12.0] - 2026-01-16
+
+### Added
+- `agent:status --active` flag to show only agents with PID (running or dead)
+- `agent:log --events --tail` to follow jsonlog in real-time
+- `agent:log --events --raw` for raw JSON lines output (no summarizing)
+- `agent:wait` now supports same log options as `agent:log` (`-n`, `-e`, `--raw`)
+
+### Changed
+- `agent:spawn --resume` no longer rotates logs (append mode preserves history)
+
+### Fixed
+- Sandbox: full `.git/` write access for git commits in worktrees
+- Sandbox: `.android/` directory created in sandbox home for Android SDK
+- Sandbox: `.gitconfig` copied to sandbox home for git identity
+
 ## [1.11.0] - 2026-01-16
 
 ### Added
