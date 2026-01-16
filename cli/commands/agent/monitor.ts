@@ -298,10 +298,11 @@ export function registerMonitorCommands(agent) {
     .description('Show agent status (all or specific task)')
     .option('--all', 'Show all agents (including old reaped)')
     .option('--active', 'Show only agents with PID (running or dead)')
+    .option('--unmerged', 'Show only agents with unmerged worktrees')
     .option('--since <duration>', 'Show agents from last duration (e.g., 1h, 24h, 2d)')
     .option('--git', 'Include git worktree details (branch, ahead/behind, dirty)')
     .option('--json', 'JSON output')
-    .action((taskId: string | undefined, options: { all?: boolean; active?: boolean; since?: string; git?: boolean; json?: boolean }) => {
+    .action((taskId: string | undefined, options: { all?: boolean; active?: boolean; unmerged?: boolean; since?: string; git?: boolean; json?: boolean }) => {
       const state = loadState();
       const agents: Record<string, AgentInfo> = state.agents || {};
       const agentUtils = new AgentUtils(getAgentsDir());
@@ -423,6 +424,11 @@ export function registerMonitorCommands(agent) {
         agentList = agentList.filter(a => a.pid);
       }
 
+      // Filter by unmerged worktrees
+      if (options.unmerged) {
+        agentList = agentList.filter(a => a.worktree && !a.worktree_merged);
+      }
+
       if (options.json) {
         jsonOut(agentList);
         return;
@@ -430,7 +436,9 @@ export function registerMonitorCommands(agent) {
 
       if (agentList.length === 0) {
         let hint = '';
-        if (options.active) {
+        if (options.unmerged) {
+          hint = ' (all worktrees merged)';
+        } else if (options.active) {
           hint = ' (no agents have PID)';
         } else if (!options.all) {
           hint = ' (use --all to show old agents)';
@@ -482,6 +490,7 @@ export function registerMonitorCommands(agent) {
 
       let title = options.all ? 'All agents' : (options.since ? `Agents (since ${options.since})` : 'Agents (recent/active)');
       if (options.active) title += ' with PID';
+      if (options.unmerged) title += ' unmerged';
       console.log(`${title}:\n`);
 
       for (let i = 0; i < agentListWithActivity.length; i++) {
