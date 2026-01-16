@@ -4,6 +4,20 @@ All notable changes to the Sailing Framework will be documented in this file.
 
 <!-- NOTE: This is a USER changelog, not a commit log. Focus on user-visible features and benefits, not implementation details. -->
 
+## [1.11.0] - 2026-01-16
+
+### Added
+- `agent:status --git` flag to show worktree details (branch, ahead/behind, dirty, last commit)
+- `agent:status` now shows last activity time for each agent
+- Dead agent detection: agents with non-existent PID shown with ✖ icon and "dead" status
+
+### Changed
+- `agent:status` list redesigned with file explorer style and colors
+- `agent:status` sorted by last activity (most recent at bottom)
+- `worktree:status` redesigned with colors and single-line format per worktree
+- `worktree:status` now shows branch name, ahead/behind indicators, last commit time
+- `worktree:status` header clarifies to use `agent:status` for agent monitoring
+
 ## [1.10.0] - 2026-01-16
 
 ### Added
