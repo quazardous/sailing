@@ -92,7 +92,7 @@ function buildProjectStructure(): PrdInfo[] {
     if (!prdEpicsMap.has(prdId)) {
       prdEpicsMap.set(prdId, []);
     }
-    prdEpicsMap.get(prdId)!.push({
+    prdEpicsMap.get(prdId).push({
       id: epic.id,
       status: epic.data?.status || 'Unknown',
       prdId,

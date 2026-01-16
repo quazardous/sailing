@@ -25,7 +25,7 @@ interface StoryListOptions {
 
 interface StoryShowOptions {
   raw?: boolean;
-  comments?: boolean;
+  stripComments?: boolean;
   path?: boolean;
   json?: boolean;
 }
@@ -207,7 +207,7 @@ function buildStoryTree(stories: (Story & { prd: string; file?: string })[]) {
     if (s.parent_story) {
       const parentId = normalizeId(s.parent_story);
       if (children.has(parentId)) {
-        children.get(parentId)!.push(s);
+        children.get(parentId).push(s);
       }
     } else {
       roots.push(s);
@@ -274,7 +274,7 @@ export function registerStoryCommands(program: Command) {
   story.command('show <id>')
     .description('Show story details (children, references)')
     .option('--raw', 'Dump raw markdown')
-    .option('--comments', 'Include template comments (stripped by default)')
+    .option('--strip-comments', 'Strip template comments from output')
     .option('--path', 'Include file path (discouraged)')
     .option('--json', 'JSON output')
     .action((id: string, options: StoryShowOptions) => {
@@ -288,7 +288,7 @@ export function registerStoryCommands(program: Command) {
       if (options.raw) {
         if (options.path) console.log(`# File: ${result.file}\n`);
         const content = fs.readFileSync(result.file, 'utf8');
-        console.log(options.comments ? content : stripComments(content));
+        console.log(options.stripComments ? stripComments(content) : content);
         return;
       }
 
@@ -494,7 +494,6 @@ export function registerStoryCommands(program: Command) {
         childList.forEach((child, i) => {
           const isLast = i === childList.length - 1;
           const prefix = isLast ? '└── ' : '├── ';
-          const nextIndent = indent + (isLast ? '    ' : '│   ');
           printTree(child, indent + prefix.slice(0, -4));
         });
       }
@@ -830,7 +829,7 @@ export function registerStoryCommands(program: Command) {
           process.stdin.on('readable', () => {
             let chunk: Buffer | string | null = process.stdin.read() as Buffer | string | null;
             while (chunk !== null) {
-              data += chunk;
+              data += chunk.toString();
               chunk = process.stdin.read() as Buffer | string | null;
             }
           });
@@ -902,7 +901,7 @@ See: bin/rudder artifact edit --help for full documentation
           process.stdin.on('readable', () => {
             let chunk: Buffer | string | null = process.stdin.read() as Buffer | string | null;
             while (chunk !== null) {
-              data += chunk;
+              data += chunk.toString();
               chunk = process.stdin.read() as Buffer | string | null;
             }
           });

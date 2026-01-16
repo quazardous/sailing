@@ -78,7 +78,7 @@ const extractors: Record<string, (filePath: string | null, pathExpr?: string) =>
   json: (filePath, pathExpr = 'version') => {
     if (!filePath) return { version: null, source: 'missing file' };
     const data = JSON.parse(fs.readFileSync(filePath, 'utf8')) as Record<string, unknown>;
-    const version = pathExpr.split('.').reduce((o, k) => o?.[k], data as Record<string, unknown>);
+    const version = pathExpr.split('.').reduce((o, k) => o?.[k], data);
     const versionStr = typeof version === 'string' ? version : null;
     return { version: versionStr, source: `${path.basename(filePath)}:${pathExpr}` };
   },
@@ -153,7 +153,7 @@ const bumpers: Record<string, (filePath: string, pathExpr: string, newVersion: s
         return (o as Record<string, unknown>)[k];
       }
       return undefined;
-    }, data as Record<string, unknown>);
+    }, data);
 
     if (!parent || typeof parent !== 'object' || lastKey === undefined) {
       return { success: false, error: `Invalid path: ${pathExpr}` };

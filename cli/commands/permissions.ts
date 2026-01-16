@@ -44,7 +44,7 @@ function getSailingPermissions() {
 
   // Add Read permission for the sailing directory
   // Use artefacts path as base (e.g., 'sailing' or '.sailing/artefacts')
-  const artefactsPath = (config.paths.artefacts || '.sailing/artefacts') as string;
+  const artefactsPath = (config.paths.artefacts || '.sailing/artefacts');
   const sailingBase = artefactsPath.split('/')[0]; // Get first segment
 
   perms.push(`Read(${sailingBase}/**)`);
@@ -68,7 +68,7 @@ function loadSettings(): ClaudeSettings {
   if (fs.existsSync(settingsPath)) {
     try {
       return JSON.parse(fs.readFileSync(settingsPath, 'utf8')) as ClaudeSettings;
-    } catch (e) {
+    } catch {
       console.error(`Warning: Could not parse ${settingsPath}, creating new`);
     }
   }
@@ -94,7 +94,7 @@ function saveSettings(settings: ClaudeSettings) {
  * Register permissions commands
  */
 export function registerPermissionsCommands(program: Command) {
-  const perms = program.command('permissions').description('Claude Code permissions management') as Command;
+  const perms = program.command('permissions').description('Claude Code permissions management');
 
   // permissions:check
   perms.command('check')

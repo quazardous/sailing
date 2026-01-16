@@ -121,7 +121,7 @@ function findPrds(filters: FindFilters): PrdResult[] {
   for (const prdEntry of getAllPrds()) {
     const data = prdEntry.data || {};
 
-    if (!matchesFilters(data, filters, 'prd')) continue;
+    if (!matchesFilters(data, filters)) continue;
 
     results.push({
       id: normalizeId(prdEntry.id),
@@ -151,7 +151,7 @@ function findEpics(filters: FindFilters): EpicResult[] {
     const data = epicEntry.data;
     if (!data) continue;
 
-    if (!matchesFilters(data, filters, 'epic')) continue;
+    if (!matchesFilters(data, filters)) continue;
 
     results.push({
       id: normalizeId(data.id),
@@ -188,7 +188,7 @@ function findTasks(filters: FindFilters): TaskResult[] {
       if (!parentContainsEpic(data.parent, filters.epic)) continue;
     }
 
-    if (!matchesFilters(data, filters, 'task')) continue;
+    if (!matchesFilters(data, filters)) continue;
 
     results.push({
       id: normalizeId(data.id),
@@ -230,7 +230,7 @@ function findStories(filters: FindFilters): StoryResult[] {
   for (const storyEntry of storyEntries) {
     const data = storyEntry.data || {};
 
-    if (!matchesFilters(data, filters, 'story')) continue;
+    if (!matchesFilters(data, filters)) continue;
 
     results.push({
       id: normalizeId(data.id || storyEntry.id),
@@ -247,7 +247,7 @@ function findStories(filters: FindFilters): StoryResult[] {
 /**
  * Check if entity matches all filters
  */
-function matchesFilters(data: Record<string, unknown>, filters: FindFilters, entityType: string): boolean {
+function matchesFilters(data: Record<string, unknown>, filters: FindFilters): boolean {
   // Status filter
   if (filters.status) {
     const status = String(data.status || '').toLowerCase();
@@ -258,7 +258,7 @@ function matchesFilters(data: Record<string, unknown>, filters: FindFilters, ent
   // Tag filter
   if (filters.tag) {
     const tags = (data.tags || []) as string[];
-    if (!tags.some(t => t.toLowerCase() === filters.tag!.toLowerCase())) return false;
+    if (!tags.some(t => t.toLowerCase() === filters.tag.toLowerCase())) return false;
   }
 
   // Assignee filter

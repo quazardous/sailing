@@ -27,34 +27,34 @@ export function registerDashboardDebugCommands(program: any) {
     .description('Debug PRD scheduling data')
     .option('--json', 'Output raw JSON')
     .option('--schedule', 'Show full schedule data')
-    .action(async (id: string, options: DebugOptions) => {
-      await debugPrd(id, options);
+    .action((id: string, options: DebugOptions) => {
+      debugPrd(id, options);
     });
 
   program.command('debug-epic <id>')
     .description('Debug Epic data')
     .option('--json', 'Output raw JSON')
-    .action(async (id: string, options: DebugOptions) => {
-      await debugEpic(id, options);
+    .action((id: string, options: DebugOptions) => {
+      debugEpic(id, options);
     });
 
   program.command('debug-task <id>')
     .description('Debug Task data')
     .option('--json', 'Output raw JSON')
-    .action(async (id: string, options: DebugOptions) => {
-      await debugTask(id, options);
+    .action((id: string, options: DebugOptions) => {
+      debugTask(id, options);
     });
 
   program.command('debug-gantt <prdId>')
     .description('Compare Gantt metrics vs actual schedule (debug overflow)')
     .option('--ascii', 'Show ASCII Gantt chart')
     .option('-w, --width <chars>', 'Chart width in characters', '80')
-    .action(async (prdId: string, options: { ascii?: boolean; width?: string }) => {
-      await debugCompare(prdId, options);
+    .action((prdId: string, options: { ascii?: boolean; width?: string }) => {
+      debugCompare(prdId, options);
     });
 }
 
-async function debugPrd(id: string, options: DebugOptions) {
+function debugPrd(id: string, options: DebugOptions) {
   const prd = getFullPrd(id);
   if (!prd) {
     console.error(`PRD ${id} not found`);
@@ -114,7 +114,7 @@ async function debugPrd(id: string, options: DebugOptions) {
   }
 }
 
-async function debugEpic(id: string, options: DebugOptions) {
+function debugEpic(id: string, options: DebugOptions) {
   const epicEntry = getEpic(id);
   if (!epicEntry) {
     console.error(`Epic ${id} not found`);
@@ -135,7 +135,7 @@ async function debugEpic(id: string, options: DebugOptions) {
   console.log(JSON.stringify(epicEntry.data, null, 2));
 }
 
-async function debugTask(id: string, options: DebugOptions) {
+function debugTask(id: string, options: DebugOptions) {
   const taskEntry = getTask(id);
   if (!taskEntry) {
     console.error(`Task ${id} not found`);
@@ -156,7 +156,7 @@ async function debugTask(id: string, options: DebugOptions) {
   console.log(JSON.stringify(taskEntry.data, null, 2));
 }
 
-async function debugCompare(prdId: string, options: { ascii?: boolean; width?: string } = {}) {
+function debugCompare(prdId: string, options: { ascii?: boolean; width?: string } = {}) {
   const prd = getFullPrd(prdId);
   if (!prd) {
     console.error(`PRD ${prdId} not found`);
@@ -237,10 +237,6 @@ function renderAsciiGantt(
   const totalHours = metrics.maxEndHour - metrics.minStartHour;
   const hoursPerChar = totalHours / chartWidth;
 
-  // Now marker position
-  const nowHours = (Date.now() - new Date().setHours(0, 0, 0, 0)) / (1000 * 60 * 60) +
-    (new Date().getTime() - new Date().setHours(0, 0, 0, 0)) / (1000 * 60 * 60);
-
   console.log(`\n--- ASCII Gantt (${chartWidth} chars = ${totalHours.toFixed(0)}h) ---`);
 
   // Header with scale
@@ -267,7 +263,6 @@ function renderAsciiGantt(
     // Calculate bar position
     const startPos = Math.floor((sched.startHour - metrics.minStartHour) / hoursPerChar);
     const endPos = Math.ceil((sched.endHour - metrics.minStartHour) / hoursPerChar);
-    const barLength = Math.max(1, endPos - startPos);
 
     // Choose character based on status
     let barChar = '█';

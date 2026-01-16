@@ -63,8 +63,7 @@ export const BranchState = {
 /**
  * Get branch state relative to its parent
  */
-export function getBranchState(branch: string, parent: string, cwd?: string): BranchStateInfo {
-  const projectRoot = cwd || findProjectRoot();
+export function getBranchState(branch: string, parent: string): BranchStateInfo {
 
   if (!branchExists(branch)) {
     return { state: BranchState.MISSING, ahead: 0, behind: 0 };

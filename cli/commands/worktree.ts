@@ -42,20 +42,7 @@ import {
   report as reconciliationReport,
   BranchState
 } from '../managers/reconciliation-manager.js';
-
-interface AgentInfo {
-  status: string;
-  worktree?: {
-    path: string;
-    branch: string;
-    base_branch?: string;
-    branching?: string;
-  };
-  pr_url?: string;
-  task_title?: string;
-  epic_id?: string;
-  prd_id?: string;
-}
+import type { AgentInfo } from '../lib/types/agent.js';
 
 interface StatusOptions {
   json?: boolean;
@@ -1053,9 +1040,6 @@ export function registerWorktreeCommands(program: Command) {
     .option('--dry-run', 'Show what would be done without doing it')
     .option('--json', 'JSON output')
     .action((options: ReconcileOptions) => {
-      const projectRoot = findProjectRoot();
-      const gitConfig = getGitConfig();
-
       // Build context
       const context: { prdId?: string; epicId?: string; branching: string } = {
         prdId: options.prd,
@@ -1097,7 +1081,7 @@ export function registerWorktreeCommands(program: Command) {
       if (options.sync) {
         for (const h of diag.hierarchy) {
           if (typeof h !== 'object' || !('branch' in h)) continue;
-          const branchInfo = h as { branch: string; parent?: string; state: BranchState };
+          const branchInfo = h as { branch: string; parent?: string; state: string };
           if (branchInfo.state === BranchState.BEHIND || branchInfo.state === BranchState.DIVERGED) {
             const agentConfig = getAgentConfig();
             const result = reconcileBranch(branchInfo.branch, branchInfo.parent, {

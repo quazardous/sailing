@@ -10,7 +10,7 @@ import type { Command } from 'commander';
  * Register tag commands
  */
 export function registerTagCommands(program: Command): void {
-  const tag: Command = program.command('tag').description('Tag operations') as Command;
+  const tag: Command = program.command('tag').description('Tag operations');
 
   // Dynamic help generated from registered commands
   addDynamicHelp(tag, { entityType: 'tag' });

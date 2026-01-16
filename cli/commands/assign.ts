@@ -134,7 +134,7 @@ function isPidAlive(pid: number | undefined): boolean {
   try {
     process.kill(pid, 0);  // Signal 0 = check if process exists
     return true;
-  } catch (e) {
+  } catch {
     return false;  // ESRCH = no such process
   }
 }
@@ -292,6 +292,7 @@ interface AssignmentData {
   epicId: string | null;
   operation: string;
   status?: string;
+  created_at?: string;
   claimed_at?: string;
   completed_at?: string;
 }
@@ -432,7 +433,7 @@ function handleTaskClaim(taskId: string, options: TaskClaimOptions) {
       entityType: 'task',
       entityId: taskId,
       operation,
-      sources: agentContext.sources as string[],
+      sources: agentContext.sources,
       memoryEpic: memory.epicId,
       tracked,
       prompt: compiledPrompt
@@ -529,7 +530,7 @@ function handleEpicClaim(epicId: string, options: EpicClaimOptions) {
       entityType: 'epic',
       entityId: epicId,
       operation,
-      sources: agentContext.sources as string[],
+      sources: agentContext.sources,
       prdId,
       prompt: compiledPrompt
     });
@@ -595,7 +596,7 @@ function handlePrdClaim(prdId: string, options: PrdClaimOptions) {
       entityType: 'prd',
       entityId: prdId,
       operation,
-      sources: agentContext.sources as string[],
+      sources: agentContext.sources,
       prompt: compiledPrompt
     });
     return;

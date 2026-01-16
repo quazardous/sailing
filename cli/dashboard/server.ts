@@ -50,48 +50,50 @@ export function createServer(
     }
   };
 
-  const server = http.createServer(async (req, res) => {
-    // Reset timeout on each request
-    resetTimeout();
-    const url = new URL(req.url || '/', `http://localhost:${port}`);
-    const pathname = url.pathname;
+  const server = http.createServer((req, res) => {
+    void (async () => {
+      // Reset timeout on each request
+      resetTimeout();
+      const url = new URL(req.url || '/', `http://localhost:${port}`);
+      const pathname = url.pathname;
 
-    // CORS for local dev
-    res.setHeader('Access-Control-Allow-Origin', '*');
+      // CORS for local dev
+      res.setHeader('Access-Control-Allow-Origin', '*');
 
-    // Static files
-    if (pathname.startsWith('/static/')) {
-      return serveStatic(pathname.replace('/static/', ''), res);
-    }
+      // Static files
+      if (pathname.startsWith('/static/')) {
+        return serveStatic(pathname.replace('/static/', ''), res);
+      }
 
-    // Route matching (exact match first, then pattern match)
-    let handler = routes[pathname];
+      // Route matching (exact match first, then pattern match)
+      let handler = routes[pathname];
 
-    // Try pattern matching for dynamic routes like /api/prd/:id
-    if (!handler) {
-      for (const [pattern, h] of Object.entries(routes)) {
-        if (pattern.includes(':')) {
-          const regex = new RegExp('^' + pattern.replace(/:(\w+)/g, '([^/]+)') + '$');
-          if (regex.test(pathname)) {
-            handler = h;
-            break;
+      // Try pattern matching for dynamic routes like /api/prd/:id
+      if (!handler) {
+        for (const [pattern, h] of Object.entries(routes)) {
+          if (pattern.includes(':')) {
+            const regex = new RegExp('^' + pattern.replace(/:(\w+)/g, '([^/]+)') + '$');
+            if (regex.test(pathname)) {
+              handler = h;
+              break;
+            }
           }
         }
       }
-    }
 
-    if (handler) {
-      try {
-        await handler(req, res);
-      } catch (err) {
-        console.error('Route error:', err);
-        res.writeHead(500, { 'Content-Type': 'text/plain' });
-        res.end('Internal Server Error');
+      if (handler) {
+        try {
+          await handler(req, res);
+        } catch (err) {
+          console.error('Route error:', err);
+          res.writeHead(500, { 'Content-Type': 'text/plain' });
+          res.end('Internal Server Error');
+        }
+      } else {
+        res.writeHead(404, { 'Content-Type': 'text/plain' });
+        res.end('Not Found');
       }
-    } else {
-      res.writeHead(404, { 'Content-Type': 'text/plain' });
-      res.end('Not Found');
-    }
+    })();
   });
 
   let actualPort = port;

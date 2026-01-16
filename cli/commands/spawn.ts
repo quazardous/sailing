@@ -4,6 +4,7 @@
  */
 import fs from 'fs';
 import { execSync } from 'child_process';
+import type { Command } from 'commander';
 import { findProjectRoot, loadFile, jsonOut } from '../managers/core-manager.js';
 import { loadState } from '../managers/state-manager.js';
 import { getAgentConfig, getGitConfig } from '../managers/core-manager.js';
@@ -69,7 +70,7 @@ async function checkGitState(projectRoot) {
  * @param {boolean} options.forMerge - If true, conflicts are warnings not blockers
  */
 function checkBranchState(context: any, projectRoot: string, options: CheckBranchStateOptions = {}) {
-  const { prdId, epicId, branching } = context as { prdId: string | null; epicId: string | null; branching: string };
+  const { prdId, branching } = context as { prdId: string | null; epicId: string | null; branching: string };
   const { forMerge = false } = options;
   const issues = [];
   const warnings = [];
@@ -185,7 +186,6 @@ async function checkConflicts(taskId) {
   }
 
   // Check if any conflict involves this task's files
-  const taskFiles = matrix.filesByAgent?.[taskId] || [];
   const potentialConflicts: Array<{ with: string, files: string[] }> = [];
 
   for (const conflict of matrix.conflicts) {
@@ -222,9 +222,9 @@ interface CommandInterface {
 
 export function registerSpawnCommands(program: any) {
   const spawn = program.command('spawn')
-    .description('Spawn preflight and postflight checks') as CommandInterface;
+    .description('Spawn preflight and postflight checks') as Command;
 
-  addDynamicHelp(spawn, { entityType: 'spawn' });
+  addDynamicHelp(spawn as any, { entityType: 'spawn' });
 
   // spawn:preflight (DEPRECATED - agent:spawn is now optimistic)
   spawn.command('preflight')
@@ -238,11 +238,10 @@ export function registerSpawnCommands(program: any) {
         console.error('   agent:spawn now handles pre-flight checks automatically.\n');
       }
 
-      taskId = (taskId.toUpperCase()) as string;
+      taskId = (taskId.toUpperCase());
       if (!taskId.startsWith('T')) taskId = 'T' + taskId;
 
       const projectRoot = findProjectRoot();
-      const gitConfig = getGitConfig();
       const agentConfig = getAgentConfig();
 
       // Find task and extract context
@@ -266,7 +265,7 @@ export function registerSpawnCommands(program: any) {
 
       // Run all checks
       const gitCheck = await checkGitState(projectRoot);
-      const branchCheck = checkBranchState(context, projectRoot, { forMerge: forMerge as boolean });
+      const branchCheck = checkBranchState(context, projectRoot, { forMerge: forMerge });
       const depsCheck = checkDependencies(taskId);
       const conflictCheck = await checkConflicts(taskId);
 
@@ -274,7 +273,7 @@ export function registerSpawnCommands(program: any) {
       const allIssues = [
         ...(gitCheck.issues as string[]),
         ...(branchCheck.issues as string[]),
-        ...(depsCheck.issues as string[]),
+        ...(depsCheck.issues),
         ...(conflictCheck.issues as string[])
       ];
 
@@ -294,8 +293,8 @@ export function registerSpawnCommands(program: any) {
 
       const result = {
         ready,
-        taskId: taskId as string,
-        forMerge: forMerge as boolean,
+        taskId: taskId,
+        forMerge: forMerge,
         context: {
           prdId,
           epicId,
@@ -371,7 +370,7 @@ export function registerSpawnCommands(program: any) {
         console.error('   agent:reap handles wait, merge, cleanup, and status update.\n');
       }
 
-      taskId = (taskId.toUpperCase()) as string;
+      taskId = (taskId.toUpperCase());
       if (!taskId.startsWith('T')) taskId = 'T' + taskId;
 
       const projectRoot = findProjectRoot();
@@ -397,7 +396,6 @@ export function registerSpawnCommands(program: any) {
       // Check worktree state
       const branch = getBranchName(taskId);
       const parentBranch = getParentBranch(taskId, { prdId, epicId, branching });
-      const mainBranch = getMainBranch();
 
       let hasChanges = false;
       let commitCount = 0;
@@ -497,8 +495,8 @@ export function registerSpawnCommands(program: any) {
       }
 
       const result = {
-        taskId: taskId as string,
-        agentStatus: agentInfo.status as string,
+        taskId: taskId,
+        agentStatus: agentInfo.status,
         hasChanges,
         commitCount,
         conflictDetected,

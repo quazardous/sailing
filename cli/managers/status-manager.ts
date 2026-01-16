@@ -111,7 +111,7 @@ export function escalatePrdToInProgress(parent: string): StatusTransitionResult 
     return { updated: false, entityId: prdId, message: 'PRD already in progress' };
   }
 
-  const previousStatus = status as string;
+  const previousStatus = status;
   prdData.data.status = 'In Progress';
   saveFile(prdFile, prdData.data, prdData.body);
 

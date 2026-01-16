@@ -19,6 +19,13 @@ interface EpicDependency {
   prdDir: string;
 }
 
+interface TaskFrontmatter {
+  id?: string;
+  status?: string;
+  blocked_by?: string[];
+  [key: string]: unknown;
+}
+
 interface TreeOptions {
   ancestors?: boolean;
   descendants?: boolean;
@@ -92,16 +99,6 @@ function isEpicId(id: string): boolean {
   return /^E\d+$/i.test(id);
 }
 
-/**
- * Find an epic file by ID (via index.ts)
- * @returns {{ file: string, prdDir: string, data: object } | null}
- */
-function findEpicFile(epicId: string) {
-  const epic = getEpic(epicId);
-  if (!epic) return null;
-  const fileData = loadFile(epic.file);
-  return { file: epic.file, prdDir: epic.prdDir, data: fileData };
-}
 
 /**
  * Build epic dependency map
@@ -192,7 +189,7 @@ export function registerDepsCommands(program: Command): void {
     .option('--json', 'JSON output')
     .action((taskId: string | undefined, options: TreeOptions) => {
       const { tasks, blocks } = buildDependencyGraph();
-      const maxDepth = (options.depth as number | undefined) || Infinity;
+      const maxDepth = (options.depth) || Infinity;
 
       if (taskId) {
         const id = normalizeId(taskId);
@@ -374,7 +371,7 @@ export function registerDepsCommands(program: Command): void {
               message: `${id}: blocked_by "${raw}" should be "${extracted}"`
             });
             if (options.fix) {
-              fixes.push({ task: id, file: task.file, action: 'normalize', raw, normalized: extracted });
+              fixes.push({ task: id, file: task.file, action: 'normalize', raw: raw as string, normalized: extracted });
             }
           }
         }
@@ -501,26 +498,26 @@ export function registerDepsCommands(program: Command): void {
 
       // 10. Epic/Task consistency
       const tasksByEpic = new Map<string, TaskNode[]>();
-      for (const [id, task] of tasks) {
+      for (const [, task] of tasks) {
         if (prdFilter && !task.prd?.includes(prdFilter)) continue;
         const epicMatch = task.parent?.match(/E(\d+)/i);
         if (epicMatch) {
           const epicId = normalizeId(`E${epicMatch[1]}`);
           if (!tasksByEpic.has(epicId)) tasksByEpic.set(epicId, []);
-          (tasksByEpic.get(epicId) as TaskNode[]).push(task);
+          (tasksByEpic.get(epicId)).push(task);
         }
       }
 
       // Use artefacts.ts contract - single entry point for epic access
       for (const epicEntry of getAllEpics()) {
         // Skip PRDs not matching filter
-        if (prdFilter && !matchesPrdDir(epicEntry.prdDir, options.prd as string)) continue;
+        if (prdFilter && !matchesPrdDir(epicEntry.prdDir, options.prd)) continue;
 
         const epicId = normalizeId(epicEntry.data?.id);
         if (!epicId) continue;
 
-        const epicStatus = (epicEntry.data?.status as string | undefined) || 'Unknown';
-        const epicTasks = (tasksByEpic.get(epicId) || []) as TaskNode[];
+        const epicStatus = (epicEntry.data?.status) || 'Unknown';
+        const epicTasks = (tasksByEpic.get(epicId) || []);
 
         if (epicTasks.length === 0) continue;
 
@@ -551,7 +548,7 @@ export function registerDepsCommands(program: Command): void {
         }
 
         if (isStatusDone(epicStatus) && !allDone) {
-          const notDone = (epicTasks as TaskNode[]).filter(t => !isStatusDone(t.status) && !isStatusCancelled(t.status));
+          const notDone = (epicTasks).filter(t => !isStatusDone(t.status) && !isStatusCancelled(t.status));
           errors.push({
             type: 'epic_done_prematurely',
             epic: epicId,
@@ -563,12 +560,12 @@ export function registerDepsCommands(program: Command): void {
       // Apply fixes
       let fixedCount = 0;
       if (options.fix && fixes.length > 0) {
-        const fileUpdates = new Map<string, {file: ReturnType<typeof loadFile>; fixes: Fix[]}>();
+        const fileUpdates = new Map<string, {file: ReturnType<typeof loadFile<TaskFrontmatter>>; fixes: Fix[]}>();
         for (const f of fixes) {
           if (!fileUpdates.has(f.file)) {
-            fileUpdates.set(f.file, { file: loadFile(f.file), fixes: [] });
+            fileUpdates.set(f.file, { file: loadFile<TaskFrontmatter>(f.file), fixes: [] });
           }
-          (fileUpdates.get(f.file) as {file: ReturnType<typeof loadFile>; fixes: Fix[]}).fixes.push(f);
+          (fileUpdates.get(f.file) as {file: ReturnType<typeof loadFile<TaskFrontmatter>>; fixes: Fix[]}).fixes.push(f);
         }
 
         for (const [filepath, { file, fixes: fileFixes }] of fileUpdates) {
@@ -582,17 +579,17 @@ export function registerDepsCommands(program: Command): void {
 
             switch (fix.action) {
               case 'normalize': {
-                const idx = (file.data.blocked_by as unknown[]).indexOf(fix.raw as string);
+                const idx = file.data.blocked_by.indexOf(fix.raw);
                 if (idx !== -1) {
-                  (file.data.blocked_by as unknown[])[idx] = fix.normalized as string;
+                  file.data.blocked_by[idx] = fix.normalized;
                   updated = true;
                   fixedCount++;
                 }
                 break;
               }
               case 'remove_duplicates': {
-                const unique = [...new Set(file.data.blocked_by as unknown[])];
-                if (unique.length !== (file.data.blocked_by as unknown[]).length) {
+                const unique = [...new Set(file.data.blocked_by)];
+                if (unique.length !== file.data.blocked_by.length) {
                   file.data.blocked_by = unique;
                   updated = true;
                   fixedCount++;
@@ -600,8 +597,8 @@ export function registerDepsCommands(program: Command): void {
                 break;
               }
               case 'remove_self': {
-                const filtered = (file.data.blocked_by as unknown[]).filter(b => extractTaskId(b as string) !== fix.task);
-                if (filtered.length !== (file.data.blocked_by as unknown[]).length) {
+                const filtered = file.data.blocked_by.filter(b => extractTaskId(b as string) !== fix.task);
+                if (filtered.length !== file.data.blocked_by.length) {
                   file.data.blocked_by = filtered;
                   updated = true;
                   fixedCount++;
@@ -610,8 +607,8 @@ export function registerDepsCommands(program: Command): void {
               }
               case 'remove_missing':
               case 'remove_cancelled': {
-                const filtered = (file.data.blocked_by as unknown[]).filter(b => extractTaskId(b as string) !== fix.blockerId);
-                if (filtered.length !== (file.data.blocked_by as unknown[]).length) {
+                const filtered = file.data.blocked_by.filter(b => extractTaskId(b as string) !== fix.blockerId);
+                if (filtered.length !== file.data.blocked_by.length) {
                   file.data.blocked_by = filtered;
                   updated = true;
                   fixedCount++;
@@ -620,7 +617,7 @@ export function registerDepsCommands(program: Command): void {
               }
               case 'normalize_status': {
                 if (file.data.status !== fix.newStatus) {
-                  file.data.status = fix.newStatus as string;
+                  file.data.status = fix.newStatus;
                   updated = true;
                   fixedCount++;
                 }
@@ -628,7 +625,7 @@ export function registerDepsCommands(program: Command): void {
               }
               case 'update_epic_status': {
                 if (file.data.status !== fix.newStatus) {
-                  file.data.status = fix.newStatus as string;
+                  file.data.status = fix.newStatus;
                   updated = true;
                   fixedCount++;
                 }
@@ -929,7 +926,8 @@ export function registerDepsCommands(program: Command): void {
               continue;
             }
 
-            const file = loadFile(target.file);
+            const file = loadFile<TaskFrontmatter>(target.file);
+            if (!file) continue;
             if (!Array.isArray(file.data.blocked_by)) file.data.blocked_by = [];
             if (!file.data.blocked_by.includes(id)) {
               file.data.blocked_by.push(id);
@@ -941,8 +939,10 @@ export function registerDepsCommands(program: Command): void {
 
         if (options.blockedBy) {
           // Add blockers to this epic
-          const epic = epics.get(id) as EpicDependency;
-          const file = loadFile(epic.file);
+          const epic = epics.get(id);
+          if (!epic) return;
+          const file = loadFile<TaskFrontmatter>(epic.file);
+          if (!file) return;
           if (!Array.isArray(file.data.blocked_by)) file.data.blocked_by = [];
 
           for (const blockerId of options.blockedBy) {
@@ -974,6 +974,7 @@ export function registerDepsCommands(program: Command): void {
         }
 
         const task = tasks.get(id);
+        if (!task) return;
 
         if (options.blocks) {
           // Add this task as a blocker to others
@@ -989,7 +990,8 @@ export function registerDepsCommands(program: Command): void {
               continue;
             }
 
-            const file = loadFile(target.file);
+            const file = loadFile<TaskFrontmatter>(target.file);
+            if (!file) continue;
             if (!Array.isArray(file.data.blocked_by)) file.data.blocked_by = [];
             if (!file.data.blocked_by.includes(id)) {
               file.data.blocked_by.push(id);
@@ -1001,7 +1003,8 @@ export function registerDepsCommands(program: Command): void {
 
         if (options.blockedBy) {
           // Add blockers to this task
-          const file = loadFile(task.file);
+          const file = loadFile<TaskFrontmatter>(task.file);
+          if (!file) return;
           if (!Array.isArray(file.data.blocked_by)) file.data.blocked_by = [];
 
           for (const blockerId of options.blockedBy) {

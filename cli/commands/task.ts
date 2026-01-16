@@ -119,7 +119,7 @@ interface TaskDoneOptions {
 interface TaskShowOptions {
   role?: string;
   raw?: boolean;
-  comments?: boolean;
+  stripComments?: boolean;
   path?: boolean;
   json?: boolean;
 }
@@ -231,37 +231,37 @@ export function registerTaskCommands(program: Command): void {
         // Status filter
         if (options.status) {
           const targetStatus = normalizeStatus(options.status, 'task');
-          const taskStatus = normalizeStatus(data.status as string, 'task');
+          const taskStatus = normalizeStatus(data.status, 'task');
           if (targetStatus !== taskStatus) continue;
         }
 
         // Epic filter (format-agnostic: E1 matches E001 in parent)
         if (options.epic) {
-          if (!parentContainsEpic(data.parent as string, options.epic)) continue;
+          if (!parentContainsEpic(data.parent, options.epic)) continue;
         }
 
         // Assignee filter
         if (options.assignee) {
-          const assignee = ((data.assignee as string) || '').toLowerCase();
+          const assignee = ((data.assignee) || '').toLowerCase();
           if (!assignee.includes(options.assignee.toLowerCase())) continue;
         }
 
         // Tag filter (AND logic - all specified tags must be present)
         if (options.tag && options.tag.length > 0) {
-          const taskTags = (data.tags as string[]) || [];
+          const taskTags = (data.tags) || [];
           const allTagsMatch = options.tag.every((t: string) => taskTags.includes(t));
           if (!allTagsMatch) continue;
         }
 
         const taskResult: Task & { file?: string; prd: string } = {
-          id: (data.id as string) || taskEntry.id,
-          title: (data.title as string) || '',
-          status: (data.status as string) || 'Unknown',
-          parent: (data.parent as string) || '',
-          assignee: (data.assignee as string) || 'unassigned',
-          effort: (data.effort as string | null) || null,
-          priority: (data.priority as string) || 'normal',
-          blocked_by: (data.blocked_by as string[]) || [],
+          id: (data.id) || taskEntry.id,
+          title: (data.title) || '',
+          status: (data.status) || 'Unknown',
+          parent: (data.parent) || '',
+          assignee: (data.assignee) || 'unassigned',
+          effort: (data.effort) || null,
+          priority: (data.priority as "critical" | "low" | "normal" | "high") || 'normal',
+          blocked_by: (data.blocked_by) || [],
           prd: prdName
         };
         if (options.path) taskResult.file = taskEntry.file;
@@ -312,7 +312,7 @@ export function registerTaskCommands(program: Command): void {
     .description('Show task details (blockers, dependents, ready status)')
     .option('--role <role>', 'Role context: agent (minimal), skill/coordinator (full)')
     .option('--raw', 'Dump raw markdown')
-    .option('--comments', 'Include template comments (stripped by default)')
+    .option('--strip-comments', 'Strip template comments from output')
     .option('--path', 'Include file path (discouraged)')
     .option('--json', 'JSON output')
     .action((id: string, options: TaskShowOptions) => {
@@ -326,7 +326,7 @@ export function registerTaskCommands(program: Command): void {
       if (options.raw) {
         if (options.path) console.log(`# File: ${taskFile}\n`);
         const content = fs.readFileSync(taskFile, 'utf8');
-        console.log(options.comments ? content : stripComments(content));
+        console.log(options.stripComments ? stripComments(content) : content);
         return;
       }
 
@@ -502,6 +502,13 @@ export function registerTaskCommands(program: Command): void {
         if (options.path) console.log(`File: ${taskPath}`);
         console.log(`\n${'─'.repeat(60)}\n`);
         console.log(fs.readFileSync(taskPath, 'utf8'));
+        console.log(`${'─'.repeat(60)}`);
+        console.log(`\nEdit with CLI:`);
+        console.log(`  rudder artifact patch ${id} <<EOF`);
+        console.log(`  ## Description`);
+        console.log(`  Your task description here...`);
+        console.log(`  EOF`);
+        console.log(`\nMore: rudder artifact --help`);
       }
     });
 
@@ -581,7 +588,7 @@ export function registerTaskCommands(program: Command): void {
     .option('--path', 'Include file path (discouraged)')
     .option('--json', 'JSON output')
     .action((options: TaskNextOptions) => {
-      const { tasks, blocks } = buildDependencyGraph();
+      const { tasks } = buildDependencyGraph();
 
       // Find ready tasks (not started, all blockers done, unassigned)
       const ready: TaskWithPriority[] = [];
@@ -625,8 +632,8 @@ export function registerTaskCommands(program: Command): void {
       // Sort by priority and ID
       const priorityOrder: Record<string, number> = { critical: 0, high: 1, normal: 2, low: 3 };
       ready.sort((a, b) => {
-        const pa = (priorityOrder[a.priority as string] as number | undefined) ?? 2;
-        const pb = (priorityOrder[b.priority as string] as number | undefined) ?? 2;
+        const pa = (priorityOrder[a.priority]) ?? 2;
+        const pb = (priorityOrder[b.priority]) ?? 2;
         if (pa !== pb) return pa - pb;
         const numA = parseInt(a.id.match(/\d+/)?.[0] || '0');
         const numB = parseInt(b.id.match(/\d+/)?.[0] || '0');
@@ -735,7 +742,7 @@ export function registerTaskCommands(program: Command): void {
       const { data } = parseUpdateOptions(opts, file.data, 'task') as { updated: boolean; data: Record<string, unknown> };
 
       // Add log entry
-      const body = addLogEntry(file.body, options.message, data.assignee || 'agent');
+      const body = addLogEntry(file.body, options.message, (data.assignee as string) || 'agent');
 
       saveFile(taskFile, data, body);
 
@@ -756,8 +763,6 @@ export function registerTaskCommands(program: Command): void {
     });
 
   // task:log
-  const LOG_LEVELS = ['info', 'tip', 'warn', 'error', 'critical'];
-
   task.command('log <id> <message>')
     .description('Log message during task work (→ memory/TNNN.log)')
     .option('--info', 'Progress note (default)')
@@ -798,9 +803,9 @@ export function registerTaskCommands(program: Command): void {
 
       // Add metadata on same line as JSON suffix if present
       const meta: Record<string, unknown> = {};
-      if (options.file?.length) meta.files = options.file as string[];
-      if (options.snippet) meta.snippet = options.snippet as string;
-      if (options.cmd) meta.cmd = options.cmd as string;
+      if (options.file?.length) meta.files = options.file;
+      if (options.snippet) meta.snippet = options.snippet;
+      if (options.cmd) meta.cmd = options.cmd;
 
       if (Object.keys(meta).length > 0) {
         entry += ` {{${JSON.stringify(meta)}}}`;
@@ -936,10 +941,11 @@ export function registerTaskCommands(program: Command): void {
       }
 
       // Memory sections
-      if (context.memory?.length) {
+      const memoryArray = context.memory as Array<{ level: string; name: string; content: string }> | null;
+      if (memoryArray && memoryArray.length) {
         console.log(`\n${sep}`);
         console.log('## Memory (tips & learnings)\n');
-        for (const sec of context.memory) {
+        for (const sec of memoryArray) {
           console.log(`### [${sec.level}] ${sec.name}\n`);
           console.log(sec.content);
           console.log('');
@@ -947,14 +953,15 @@ export function registerTaskCommands(program: Command): void {
       }
 
       // Dependencies
-      if (context.dependencies) {
+      const deps = context.dependencies as { blockedBy: string[]; allResolved: boolean } | null;
+      if (deps) {
         console.log(`\n${sep}`);
         console.log('## Dependencies\n');
-        console.log(`Blocked by: ${context.dependencies.blockedBy.join(', ')}`);
-        console.log(`All resolved: ${context.dependencies.allResolved ? '✓' : '✗'}`);
+        console.log(`Blocked by: ${deps.blockedBy.join(', ')}`);
+        console.log(`All resolved: ${deps.allResolved ? '✓' : '✗'}`);
       }
 
-      if (!context.memory?.length && !context.technicalNotes && !context.dependencies) {
+      if (!memoryArray?.length && !context.technicalNotes && !deps) {
         console.log('(No memory or context available for this task)');
       }
     });
@@ -1006,7 +1013,7 @@ export function registerTaskCommands(program: Command): void {
         } else {
           console.log(`Tasks/epics targeting ${component}:\n`);
           results.forEach(r => {
-            const sym = statusSymbol(r.status);
+            const sym = statusSymbol(r.status as string);
             const type = r.type === 'epic' ? ' (epic)' : '';
             console.log(`${sym} ${r.id}: ${r.title}${type}`);
             console.log(`   target: ${r.target_version} | status: ${r.status}`);
@@ -1106,7 +1113,7 @@ See: bin/rudder artifact edit --help for full documentation
         process.exit(1);
       }
 
-      let content: string | undefined = options.content as string | undefined;
+      let content: string | undefined = options.content;
       if (!content) {
         const stdinContent = await new Promise<string>((resolve) => {
           let data = '';
@@ -1130,22 +1137,22 @@ See: bin/rudder artifact edit --help for full documentation
       if (options.prepend) opType = 'prepend';
 
       const ops = options.section
-        ? [{ op: opType as string, section: options.section as string, content }]
-        : parseMultiSectionContent(content, opType as string);
+        ? [{ op: opType, section: options.section, content }]
+        : parseMultiSectionContent(content, opType);
 
       if (ops.length === 0) {
         console.error('No sections found. Use --section or format stdin with ## headers');
         process.exit(1);
       }
 
-      const originalOps = ops.map(o => ({ op: o.op as string, section: o.section as string }));
-      const { expandedOps, errors: processErrors } = processMultiSectionOps(taskPath, ops) as { expandedOps: unknown[]; errors: string[] };
+      const originalOps = ops.map(o => ({ op: o.op, section: o.section }));
+      const { expandedOps, errors: processErrors } = processMultiSectionOps(taskPath, ops) as { expandedOps: any[]; errors: string[] };
       if (processErrors.length > 0) {
         processErrors.forEach(e => console.error(e));
         process.exit(1);
       }
 
-      const result = editArtifact(taskPath, expandedOps);
+      const result = editArtifact(taskPath, expandedOps as import('../lib/artifact.js').EditOp[]);
 
       if (options.json) {
         jsonOut({ id: normalizedId, ...result });
@@ -1154,7 +1161,7 @@ See: bin/rudder artifact edit --help for full documentation
           console.log(`✓ ${originalOps[0].op} on ${originalOps[0].section} in ${normalizedId}`);
         } else {
           const byOp: Record<string, number> = {};
-          originalOps.forEach(o => { byOp[o.op] = ((byOp[o.op] as number | undefined) || 0) + 1; });
+          originalOps.forEach(o => { byOp[o.op] = ((byOp[o.op]) || 0) + 1; });
           const summary = Object.entries(byOp).map(([op, n]) => `${op}:${n}`).join(', ');
           console.log(`✓ ${originalOps.length} sections in ${normalizedId} (${summary})`);
         }

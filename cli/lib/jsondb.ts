@@ -64,10 +64,10 @@ function matchQuery<T>(doc: T, query: Query<T>): boolean {
     if (condition && typeof condition === 'object' && !Array.isArray(condition)) {
       for (const [op, opValue] of Object.entries(condition)) {
         switch (op) {
-          case '$gt': if (!(value > (opValue as number))) return false; break;
-          case '$gte': if (!(value >= (opValue as number))) return false; break;
-          case '$lt': if (!(value < (opValue as number))) return false; break;
-          case '$lte': if (!(value <= (opValue as number))) return false; break;
+          case '$gt': if (!((value as number) > (opValue as number))) return false; break;
+          case '$gte': if (!((value as number) >= (opValue as number))) return false; break;
+          case '$lt': if (!((value as number) < (opValue as number))) return false; break;
+          case '$lte': if (!((value as number) <= (opValue as number))) return false; break;
           case '$ne': if (value === opValue) return false; break;
           case '$in': if (!Array.isArray(opValue) || !opValue.includes(value)) return false; break;
           case '$nin': if (Array.isArray(opValue) && opValue.includes(value)) return false; break;
@@ -93,7 +93,7 @@ function matchQuery<T>(doc: T, query: Query<T>): boolean {
  * Supports: $set, $unset, $inc, $push
  */
 function applyUpdate<T>(doc: T, update: UpdateOps<T>): T {
-  const result: Record<string, unknown> = { ...doc };
+  const result: Record<string, unknown> = { ...(doc as Record<string, unknown>) };
 
   for (const [op, fields] of Object.entries(update)) {
     switch (op) {
@@ -114,7 +114,7 @@ function applyUpdate<T>(doc: T, update: UpdateOps<T>): T {
       case '$push':
         for (const [key, value] of Object.entries(fields as object)) {
           if (!Array.isArray(result[key])) result[key] = [];
-          result[key].push(value);
+          (result[key] as unknown[]).push(value);
         }
         break;
       default:
@@ -197,7 +197,7 @@ export class Collection<T = Record<string, any>> {
   releaseLock(): void {
     try {
       fs.unlinkSync(this.lockfile);
-    } catch (_err) {
+    } catch {
       // Ignore errors
     }
   }
@@ -243,7 +243,7 @@ export class Collection<T = Record<string, any>> {
   /**
    * Find all matching documents
    */
-  async find(query: Query<T> = {}): Promise<T[]> {
+  find(query: Query<T> = {}): T[] {
     const docs = this.readAll();
     return docs.filter(doc => matchQuery(doc, query));
   }
@@ -251,7 +251,7 @@ export class Collection<T = Record<string, any>> {
   /**
    * Find first matching document
    */
-  async findOne(query: Query<T> = {}): Promise<T | null> {
+  findOne(query: Query<T> = {}): T | null {
     const docs = this.readAll();
     return docs.find(doc => matchQuery(doc, query)) || null;
   }
@@ -259,8 +259,8 @@ export class Collection<T = Record<string, any>> {
   /**
    * Count matching documents
    */
-  async count(query: Query<T> = {}): Promise<number> {
-    const docs = await this.find(query);
+  count(query: Query<T> = {}): number {
+    const docs = this.find(query);
     return docs.length;
   }
 
@@ -381,7 +381,7 @@ export class Collection<T = Record<string, any>> {
    * Ensure index exists (for API compatibility, indexes stored in separate file)
    * Note: For this simple implementation, indexes just speed up unique checks
    */
-  async ensureIndex(options: EnsureIndexOptions = {}): Promise<void> {
+  ensureIndex(options: EnsureIndexOptions = {}): void {
     const { fieldName, unique = false } = options;
     if (!fieldName) return;
 

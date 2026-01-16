@@ -27,7 +27,7 @@ interface ListOptions {
 
 interface ShowOptions {
   raw?: boolean;
-  comments?: boolean;
+  stripComments?: boolean;
   path?: boolean;
   json?: boolean;
 }
@@ -151,7 +151,7 @@ export function registerPrdCommands(program: Command): void {
   prd.command('show <id>')
     .description('Show PRD details (epics, tasks by status)')
     .option('--raw', 'Dump raw markdown')
-    .option('--comments', 'Include template comments (stripped by default)')
+    .option('--strip-comments', 'Strip template comments from output')
     .option('--path', 'Include file path (discouraged)')
     .option('--json', 'JSON output')
     .action((id: string, options: ShowOptions) => {
@@ -167,7 +167,7 @@ export function registerPrdCommands(program: Command): void {
       if (options.raw) {
         if (options.path) console.log(`# File: ${prdFile}\n`);
         const content = fs.readFileSync(prdFile, 'utf8');
-        console.log(options.comments ? content : stripComments(content));
+        console.log(options.stripComments ? stripComments(content) : content);
         return;
       }
 
@@ -278,6 +278,13 @@ export function registerPrdCommands(program: Command): void {
         if (options.path) console.log(`File: ${prdFile}`);
         console.log(`\n${'─'.repeat(60)}\n`);
         console.log(fs.readFileSync(prdFile, 'utf8'));
+        console.log(`${'─'.repeat(60)}`);
+        console.log(`\nEdit with CLI:`);
+        console.log(`  rudder artifact patch ${id} <<EOF`);
+        console.log(`  ## Problem Statement`);
+        console.log(`  Your problem description here...`);
+        console.log(`  EOF`);
+        console.log(`\nMore: rudder artifact --help`);
       }
     });
 

@@ -231,9 +231,9 @@ export function loadPathsConfig(): PathsConfig {
     try {
       const content = fs.readFileSync(pathsConfigPath, 'utf8');
       const parsed = yaml.load(content) as PathsConfig;
-      const parsedPaths = (parsed.paths || {}) as Record<string, string | null>;
+      const parsedPaths = (parsed.paths || {});
       _config = { paths: { ...defaultPaths, ...parsedPaths } };
-    } catch (e) {
+    } catch {
       console.error(`Warning: Could not parse ${pathsConfigPath}, using defaults`);
       _config = { paths: defaultPaths };
     }
@@ -252,7 +252,7 @@ export function getPath(key: string): string | null {
   const config: PathsConfig = loadPathsConfig();
   const projectRoot = findProjectRoot();
 
-  let configuredPath: string | null = config.paths[key] as string | null;
+  let configuredPath: string | null = config.paths[key];
   if (!configuredPath) {
     const def = DEFAULT_PATHS[key];
     configuredPath = getPathString(def);

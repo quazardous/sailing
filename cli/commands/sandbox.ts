@@ -103,7 +103,7 @@ function checkSrt() {
 /**
  * sandbox:check - Check srt installation and dependencies
  */
-function sandboxCheck(args: string[], options: Record<string, unknown>) {
+function sandboxCheck() {
   const status = checkSrt();
 
   console.log('Sandbox Runtime Status\n');
@@ -202,7 +202,7 @@ function sandboxInit(args: string[], options: { force?: boolean }) {
 /**
  * sandbox:show - Show current config
  */
-function sandboxShow(args: string[], options: Record<string, unknown>) {
+function sandboxShow() {
   const paths = getPathsInfo();
 
   if (!paths.srtConfig || !fs.existsSync(paths.srtConfig.absolute)) {
@@ -226,18 +226,18 @@ export function registerSandboxCommands(program: Command) {
   sandbox
     .command('check')
     .description('Check srt installation and dependencies')
-    .action((options) => sandboxCheck([], options));
+    .action(() => { sandboxCheck(); });
 
   sandbox
     .command('init')
     .description('Initialize srt config for this project')
     .option('-f, --force', 'Overwrite existing config')
-    .action((options) => sandboxInit([], options));
+    .action((options: { force?: boolean }) => sandboxInit([], options));
 
   sandbox
     .command('show')
     .description('Show current srt config')
-    .action((options) => sandboxShow([], options));
+    .action(() => sandboxShow());
 
   // sandbox:run - proxy to claude with sandbox
   sandbox
@@ -267,7 +267,7 @@ export function registerSandboxCommands(program: Command) {
       }
 
       // Get prompt from args or option
-      let prompt: string = options.prompt || (promptArgs as string[]).join(' ');
+      let prompt: string = options.prompt || (promptArgs).join(' ');
 
       // If no prompt, try to read from stdin
       if (!prompt) {
@@ -299,7 +299,7 @@ export function registerSandboxCommands(program: Command) {
       // Build extra args
       const extraArgs: string[] = [];
       if (options.claudeArgs) {
-        extraArgs.push(...(options.claudeArgs as string).split(/\s+/));
+        extraArgs.push(...(options.claudeArgs).split(/\s+/));
       }
 
       // Session log file

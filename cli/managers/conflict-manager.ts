@@ -32,7 +32,7 @@ export async function getModifiedFiles(taskId: string): Promise<string[]> {
     const trimmed = output.trim();
     if (!trimmed) return [];
     return trimmed.split('\n').filter(f => f.trim());
-  } catch (e) {
+  } catch {
     // Branch might not have diverged yet
     try {
       // Try getting uncommitted changes instead
@@ -82,7 +82,7 @@ export async function buildConflictMatrix() {
 
   // Get agents with worktrees that are dispatched or running
   const activeAgents = Object.entries(agents)
-    .filter(([_, info]) => info.worktree && ['dispatched', 'running'].includes(info.status || ''))
+    .filter(([, info]) => info.worktree && ['dispatched', 'running'].includes(info.status || ''))
     .map(([id]) => id);
 
   if (activeAgents.length < 2) {

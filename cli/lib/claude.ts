@@ -146,7 +146,7 @@ export interface SpawnClaudeOptions {
  * Spawn Claude subprocess
  * Config values (riskyMode, sandbox, maxBudgetUsd, watchdogTimeout, baseSrtConfigPath) should be passed explicitly.
  */
-export async function spawnClaude(options: SpawnClaudeOptions): Promise<SpawnClaudeResult> {
+export function spawnClaude(options: SpawnClaudeOptions): SpawnClaudeResult {
   const { prompt, cwd, logFile, timeout, agentDir, taskId, projectRoot, stderrToFile, quietMode, baseSrtConfigPath } = options;
 
   // Config values must be passed explicitly (no defaults from config)

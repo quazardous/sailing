@@ -13,8 +13,8 @@ import { AgentInfo } from '../lib/types/agent.js';
  * Register database commands
  */
 export function registerDbCommands(program) {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-assignment
-  const db = program.command('db') as any;
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+  const db = program.command('db');
   db.description('Database management (NeDB JSON files)');
 
   addDynamicHelp(db, { entityType: 'db' });
@@ -23,10 +23,10 @@ export function registerDbCommands(program) {
   db.command('status')
     .description('Show database status and collection counts')
     .option('--json', 'JSON output')
-    .action(async (options: { json?: boolean }) => {
+    .action((options: { json?: boolean }) => {
       const db = getDbOps();
-      const agents = await db.getAllAgents();
-      const runs = await db.getRunsDb().find({});
+      const agents = db.getAllAgents();
+      const runs = db.getRunsDb().find({});
 
       const statusCounts: Record<string, number> = {};
       agents.forEach(a => {
@@ -54,8 +54,8 @@ export function registerDbCommands(program) {
     .alias('list')
     .description('List all agents')
     .option('--status <status>', 'Filter by status')
-    .action(async (options: { status?: string; json?: boolean }) => {
-      const agents = await getDbOps().getAllAgents({ status: options.status });
+    .action((options: { status?: string; json?: boolean }) => {
+      const agents = getDbOps().getAllAgents({ status: options.status });
 
       if (options.json) {
         jsonOut(agents);
@@ -76,12 +76,12 @@ export function registerDbCommands(program) {
   db.command('agent <task-id>')
     .description('Show agent details')
     .option('--json', 'JSON output')
-    .action(async (taskId: string, options: { json?: boolean }) => {
+    .action((taskId: string, options: { json?: boolean }) => {
       taskId = taskId.toUpperCase();
       if (!taskId.startsWith('T')) taskId = 'T' + taskId;
 
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-assignment
-      const agent = (await getDbOps().getAgent(taskId)) as any;
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+      const agent = getDbOps().getAgent(taskId);
 
       if (!agent) {
         console.error(`Agent not found: ${taskId}`);
@@ -118,8 +118,8 @@ export function registerDbCommands(program) {
       if (!taskId.startsWith('T')) taskId = 'T' + taskId;
 
       const db = getDbOps();
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-assignment
-      const agent = (await db.getAgent(taskId)) as any;
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+      const agent = db.getAgent(taskId);
       if (!agent) {
         console.error(`Agent not found: ${taskId}`);
         process.exit(1);
@@ -147,11 +147,11 @@ export function registerDbCommands(program) {
   db.command('runs <task-id>')
     .description('Show run history for a task')
     .option('--json', 'JSON output')
-    .action(async (taskId: string, options: { json?: boolean }) => {
+    .action((taskId: string, options: { json?: boolean }) => {
       taskId = taskId.toUpperCase();
       if (!taskId.startsWith('T')) taskId = 'T' + taskId;
 
-      const runs = await getDbOps().getRunsForTask(taskId);
+      const runs = getDbOps().getRunsForTask(taskId);
 
       if (options.json) {
         jsonOut(runs);
@@ -183,8 +183,8 @@ export function registerDbCommands(program) {
         return;
       }
 
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-assignment
-      const state = JSON.parse(fs.readFileSync(stateFile, 'utf8')) as any;
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+      const state = JSON.parse(fs.readFileSync(stateFile, 'utf8'));
 
       if (!state.agents || Object.keys(state.agents).length === 0) {
         console.log('No agents in state.json to migrate');

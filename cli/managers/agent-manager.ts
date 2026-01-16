@@ -513,7 +513,7 @@ export class AgentLifecycleManager {
   }
 
   /** Reject agent work and cleanup */
-  async reject(reason?: string): Promise<{ success: boolean; taskId: string }> {
+  reject(reason?: string): { success: boolean; taskId: string } {
     const state = this.getState();
     const agentInfo = state.agents?.[this.taskId];
 

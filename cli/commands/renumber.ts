@@ -90,7 +90,7 @@ function buildEpicIndexForDuplicates(): Map<string, EpicEntry[]> {
     const data = epicEntry.data;
     if (!data?.id) continue;
 
-    const id = data.id as string;
+    const id = data.id;
     const key = extractNumericKey(id);
     if (!key) continue;
 
@@ -108,7 +108,7 @@ function buildEpicIndexForDuplicates(): Map<string, EpicEntry[]> {
     if (!index.has(key)) {
       index.set(key, []);
     }
-    index.get(key)!.push(entry);
+    index.get(key).push(entry);
   }
 
   return index;
@@ -126,7 +126,7 @@ function buildTaskIndexForDuplicates(): Map<string, TaskEntry[]> {
     const data = taskEntry.data;
     if (!data?.id) continue;
 
-    const id = data.id as string;
+    const id = data.id;
     const key = extractNumericKey(id);
     if (!key) continue;
 
@@ -137,7 +137,7 @@ function buildTaskIndexForDuplicates(): Map<string, TaskEntry[]> {
     const prdId = prdDirName.match(/^PRD-\d+/)?.[0] || prdDirName;
 
     // Extract epic from parent field
-    const parent = (data.parent as string) || '';
+    const parent = (data.parent) || '';
     const epicMatch = parent.match(/E\d+/i);
     const epicId = epicMatch ? epicMatch[0].toUpperCase() : null;
 
@@ -153,7 +153,7 @@ function buildTaskIndexForDuplicates(): Map<string, TaskEntry[]> {
     if (!index.has(key)) {
       index.set(key, []);
     }
-    index.get(key)!.push(entry);
+    index.get(key).push(entry);
   }
 
   return index;
@@ -339,7 +339,7 @@ function renameTask(taskFile: string, newId: string, scope: string, prdDir: stri
   results.renamed = { from: taskFile, to: newTaskFile };
 
   // 2. Update blocked_by references in other tasks (artefacts.ts contract)
-  const scopeDirs = getScopeDirs(scope, prdDir, epicId);
+  const scopeDirs = getScopeDirs(scope, prdDir);
   const scopeDirSet = new Set(scopeDirs);
 
   for (const otherTaskEntry of getAllTasks()) {
@@ -376,7 +376,7 @@ function renameTask(taskFile: string, newId: string, scope: string, prdDir: stri
 /**
  * Get directories to search based on scope
  */
-function getScopeDirs(scope: string, prdDir: string, _epicId: string | null = null): string[] {
+function getScopeDirs(scope: string, prdDir: string): string[] {
   if (scope === 'project') {
     return findPrdDirs();
   }
@@ -605,7 +605,7 @@ export function registerRenumberCommands(program: Command): void {
         if (type === 'epic') {
           results = renameEpic(item.file, normalizedNewId, options.scope, item.prdDir);
         } else {
-          results = renameTask(item.file, normalizedNewId, options.scope, item.prdDir, item.epicId);
+          results = renameTask(item.file, normalizedNewId, options.scope, item.prdDir, (item as TaskEntry).epicId);
         }
 
         if (options.json) {
@@ -676,7 +676,6 @@ export function registerRenumberCommands(program: Command): void {
 
         if (options.fix) {
           const dupes = type === 'epic' ? filteredEpicDupes : filteredTaskDupes;
-          const index = type === 'epic' ? epicIndex : taskIndex;
 
           if (dupes.length === 0) {
             console.log(`✓ No duplicates for ${target}`);
@@ -712,7 +711,7 @@ export function registerRenumberCommands(program: Command): void {
               // Update index - use type-specific handling
               if (type === 'epic') {
                 epicIndex.set(extractNumericKey(assignedNewId), [{
-                  ...item as EpicEntry,
+                  ...item,
                   id: assignedNewId,
                   file: results.renamed?.to ?? item.file
                 }]);

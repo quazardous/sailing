@@ -71,7 +71,7 @@ function findEpicFile(epicId) {
  * Register epic commands
  */
 export function registerEpicCommands(program: Command) {
-  const epic = program.command('epic').description('Epic operations (groups of tasks)') as Command;
+  const epic = program.command('epic').description('Epic operations (groups of tasks)');
 
   // Dynamic help generated from registered commands
   addDynamicHelp(epic, { entityType: 'epic' });
@@ -162,7 +162,7 @@ export function registerEpicCommands(program: Command) {
     .description('Show epic details (tasks count by status)')
     .option('--role <role>', 'Role context: agent blocked, skill/coordinator allowed')
     .option('--raw', 'Dump raw markdown')
-    .option('--comments', 'Include template comments (stripped by default)')
+    .option('--strip-comments', 'Strip template comments from output')
     .option('--path', 'Include file path (discouraged)')
     .option('--json', 'JSON output')
     .action((id, options) => {
@@ -185,7 +185,7 @@ export function registerEpicCommands(program: Command) {
       if (options.raw) {
         if (options.path) console.log(`# File: ${epicFile}\n`);
         const content = fs.readFileSync(epicFile, 'utf8');
-        console.log(options.comments ? content : stripComments(content));
+        console.log(options.stripComments ? stripComments(content) : content);
         return;
       }
 
@@ -326,6 +326,13 @@ updated: '${new Date().toISOString()}'
         if (options.path) console.log(`File: ${epicPath}`);
         console.log(`\n${'─'.repeat(60)}\n`);
         console.log(fs.readFileSync(epicPath, 'utf8'));
+        console.log(`${'─'.repeat(60)}`);
+        console.log(`\nEdit with CLI:`);
+        console.log(`  rudder artifact patch ${id} <<EOF`);
+        console.log(`  ## Description`);
+        console.log(`  Your epic description here...`);
+        console.log(`  EOF`);
+        console.log(`\nMore: rudder artifact --help`);
       }
     });
 
@@ -657,7 +664,7 @@ See: bin/rudder artifact edit --help for full documentation
         process.exit(1);
       }
 
-      const editResult = editArtifact(epicPath, expandedOps);
+      const editResult = editArtifact(epicPath, expandedOps as any);
 
       if (options.json) {
         jsonOut({ id: normalizeId(id), ...editResult });

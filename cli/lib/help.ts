@@ -42,34 +42,35 @@ function formatOptionFlags(opt: OptionWithMeta): string {
   return flags;
 }
 
-/**
- * Generate detailed help for a single command
- * @param {Object} cmd - Commander command object
- * @returns {string[]} Lines of help text
- */
-function generateCommandHelp(cmd: Command): { flags: string; desc: string }[] {
-  const lines: { flags: string; desc: string }[] = [];
-  const command = cmd as CommandWithInternals;
-
-  // Arguments
-  command._args.forEach((arg) => {
-    const name = arg.required ? `<${arg.name()}>` : `[${arg.name()}]`;
-    const desc = arg.description || '';
-    lines.push({ flags: name, desc });
-  });
-
-  // Options (skip -h/--help)
-  command.options.forEach((opt: OptionWithMeta) => {
-    if (opt.short === '-h' || opt.long === '--help') return;
-    if (opt.negate) return;
-
-    const flags = formatOptionFlags(opt);
-    const desc = opt.description || '';
-    lines.push({ flags, desc });
-  });
-
-  return lines;
-}
+// Commented out - not currently used
+// /**
+//  * Generate detailed help for a single command
+//  * @param {Object} cmd - Commander command object
+//  * @returns {string[]} Lines of help text
+//  */
+// function generateCommandHelp(cmd: Command): { flags: string; desc: string }[] {
+//   const lines: { flags: string; desc: string }[] = [];
+//   const command = cmd as CommandWithInternals;
+//
+//   // Arguments
+//   command._args.forEach((arg) => {
+//     const name = arg.required ? `<${arg.name()}>` : `[${arg.name()}]`;
+//     const desc = arg.description || '';
+//     lines.push({ flags: name, desc });
+//   });
+//
+//   // Options (skip -h/--help)
+//   command.options.forEach((opt: OptionWithMeta) => {
+//     if (opt.short === '-h' || opt.long === '--help') return;
+//     if (opt.negate) return;
+//
+//     const flags = formatOptionFlags(opt);
+//     const desc = opt.description || '';
+//     lines.push({ flags, desc });
+//   });
+//
+//   return lines;
+// }
 
 /**
  * Generate help text for a command group

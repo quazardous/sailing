@@ -68,7 +68,7 @@ export function registerContextCommands(program: Command) {
       json?: boolean;
     }) => {
       if (options.list) {
-        const config = loadWorkflowsConfig();
+        const config = loadWorkflowsConfig() as unknown as WorkflowsConfig;
         const byRole = listOperations(config);
         if (options.json) {
           jsonOut(byRole);
@@ -135,7 +135,7 @@ export function registerContextCommands(program: Command) {
       });
 
       if (!result) {
-        const config = loadWorkflowsConfig();
+        const config = loadWorkflowsConfig() as unknown as WorkflowsConfig;
         console.error(`Error: No context defined for operation '${operation}'`);
         console.error(`Available operations: ${Object.keys(config.operations || {}).join(', ')}`);
         process.exit(1);
@@ -176,8 +176,8 @@ export function registerContextCommands(program: Command) {
       }
       // Delegate to load
       if (options.list) {
-        const config = loadWorkflowsConfig();
-        const byRole = listOperations(config) as OperationsByRole;
+        const config = loadWorkflowsConfig() as unknown as WorkflowsConfig;
+        const byRole = listOperations(config);
         // Filter to agent role only
         const agentOps = byRole.agent || [];
         if (options.json) {
@@ -238,8 +238,8 @@ export function registerContextCommands(program: Command) {
       }
       // Delegate to load
       if (options.list) {
-        const config = loadWorkflowsConfig();
-        const byRole = listOperations(config) as OperationsByRole;
+        const config = loadWorkflowsConfig() as unknown as WorkflowsConfig;
+        const byRole = listOperations(config);
         // Filter to skill + coordinator roles
         const skillOps = [...(byRole.skill || []), ...(byRole.coordinator || [])];
         if (options.json) {
@@ -310,7 +310,7 @@ export function registerContextCommands(program: Command) {
     .option('--sets', 'Show fragment sets')
     .option('--json', 'JSON output')
     .action((options: { sets?: boolean; json?: boolean }) => {
-      const config = loadWorkflowsConfig();
+      const config = loadWorkflowsConfig() as unknown as WorkflowsConfig;
 
       if (options.json) {
         jsonOut({
@@ -324,7 +324,7 @@ export function registerContextCommands(program: Command) {
 
       console.log('Roles:\n');
       for (const [name, def] of Object.entries(config.roles || {})) {
-        const roleDef = def as RoleDefinition;
+        const roleDef = def as unknown as RoleDefinition;
         console.log(`  ${name.padEnd(15)} ${roleDef.description || ''}`);
         console.log(`    base_sets: [${roleDef.base_sets?.join(', ') || ''}]`);
         console.log(`    workflow: ${roleDef.workflow || false}`);
@@ -341,7 +341,7 @@ export function registerContextCommands(program: Command) {
       }
 
       console.log('\nOperations by Role:\n');
-      const byRole = listOperations(config);
+      const byRole = listOperations(config as WorkflowsConfig);
       for (const [role, ops] of Object.entries(byRole)) {
         console.log(`  ${role.toUpperCase()}:`);
         for (const op of ops) {

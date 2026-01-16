@@ -40,7 +40,7 @@ export class DbOps {
   getAgentsDb(): Collection {
     if (!this.agentsDb) {
       this.agentsDb = new Collection(path.join(this.dbDir, 'agents.json'));
-      this.agentsDb.ensureIndex({ fieldName: 'taskId', unique: true });
+      void this.agentsDb.ensureIndex({ fieldName: 'taskId', unique: true });
     }
     return this.agentsDb;
   }
@@ -51,7 +51,7 @@ export class DbOps {
   getRunsDb(): Collection {
     if (!this.runsDb) {
       this.runsDb = new Collection(path.join(this.dbDir, 'runs.json'));
-      this.runsDb.ensureIndex({ fieldName: 'taskId' });
+      void this.runsDb.ensureIndex({ fieldName: 'taskId' });
     }
     return this.runsDb;
   }
@@ -76,16 +76,16 @@ export class DbOps {
    * Get agent by task ID
    */
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  async getAgent(taskId: string): Promise<any> {
+  getAgent(taskId: string): any {
     const db = this.getAgentsDb();
-    return await db.findOne({ taskId });
+    return db.findOne({ taskId });
   }
 
   /**
    * Get all agents
    */
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  async getAllAgents(options: DbOptions = {}): Promise<any[]> {
+  getAllAgents(options: DbOptions = {}): any[] {
     const db = this.getAgentsDb();
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const query: any = {};
@@ -94,7 +94,7 @@ export class DbOps {
       query.status = options.status;
     }
 
-    const agents = await db.find(query);
+    const agents = db.find(query);
     // Sort by spawnedAt descending
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     return agents.sort((a: any, b: any) => {
@@ -117,7 +117,7 @@ export class DbOps {
    */
   async clearAllAgents(): Promise<number> {
     const db = this.getAgentsDb();
-    const count = await db.count();
+    const count = db.count();
     await db.clear();
     return count;
   }
@@ -165,9 +165,9 @@ export class DbOps {
    * Get runs for a task
    */
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  async getRunsForTask(taskId: string): Promise<any[]> {
+  getRunsForTask(taskId: string): any[] {
     const db = this.getRunsDb();
-    const runs = await db.find({ taskId });
+    const runs = db.find({ taskId });
     // Sort by startedAt descending
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     return runs.sort((a: any, b: any) => {

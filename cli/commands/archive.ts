@@ -14,7 +14,6 @@ import { findEpicPrd, findTaskEpic } from '../managers/memory-manager.js';
 import { normalizeId } from '../lib/normalize.js';
 import { getGit } from '../lib/git.js';
 import { withModifies } from '../lib/help.js';
-import type { Command } from 'commander';
 
 interface ArchiveOptions {
   force?: boolean;
@@ -259,7 +258,7 @@ async function archivePrd(prdId, options: ArchiveOptions = {}) {
 function getDonePrds() {
   const prdIndex = buildPrdIndex();
   const donePrds = [];
-  for (const [num, prd] of prdIndex) {
+  for (const [, prd] of prdIndex) {
     if (prd.data?.status === 'Done') {
       donePrds.push(prd);
     }

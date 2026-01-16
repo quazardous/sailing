@@ -308,7 +308,7 @@ export function createRoutes(options: RoutesOptions = {}) {
     const epicProgress = epicTotal > 0 ? Math.round((epicDone / epicTotal) * 100) : 0;
     const progressClass = getProgressClass(epicProgress);
 
-    const tasksHtml = (foundEpic.tasks as Array<unknown>).map(task => taskItemTemplate(task)).join('');
+    const tasksHtml = (foundEpic.tasks as Array<unknown>).map(task => taskItemTemplate(task as { id: string; title: string; status: string })).join('');
 
     const statsContent = `
       ${kpiGridTemplate([

@@ -301,7 +301,7 @@ export function parseSearchReplace(input: string): SearchReplaceOp[] {
 
   let match: RegExpExecArray | null;
   while ((match = blockRegex.exec(input)) !== null) {
-    const [, searchBlock, replaceBlock] = match as [string, string, string];
+    const [, searchBlock, replaceBlock] = match as unknown as [string, string, string];
     ops.push({
       op: 'search_replace',
       search: searchBlock,

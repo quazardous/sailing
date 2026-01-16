@@ -49,24 +49,6 @@ function listHavens() {
   return havens;
 }
 
-/**
- * Check if a project hash is valid (project still exists)
- * @param {string} hash - Project hash
- * @returns {{ valid: boolean, projectPath?: string }}
- */
-function validateProjectHash(hash) {
-  // The hash is first 12 chars of MD5 of project path
-  // We can't reverse it, but we can check our current project
-  const currentHash = computeProjectHash();
-
-  if (hash === currentHash) {
-    return { valid: true, projectPath: findProjectRoot() };
-  }
-
-  // For other hashes, we can't validate without a registry
-  // Mark as potentially orphaned
-  return { valid: false };
-}
 
 /**
  * Get stale agent entries (completed/failed/rejected more than N days ago)
@@ -79,7 +61,7 @@ function getStaleAgents(days = 7) {
   const cutoff = Date.now() - (days * 24 * 60 * 60 * 1000);
 
   return Object.entries(agents)
-    .filter(([_, info]) => {
+    .filter(([, info]) => {
       const agentInfo = info;
       // Check if terminal status
       const terminalStatus = ['collected', 'merged', 'rejected', 'killed', 'error'];

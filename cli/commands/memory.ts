@@ -338,12 +338,12 @@ export function registerMemoryCommands(program: Command): void {
         const totalEntries = Object.values(levels).reduce((a, b) => a + b, 0);
 
         epicLogs.push({
-          id: epicId as string,
-          lines: content.split('\n').length as number,
-          entries: totalEntries as number,
+          id: epicId,
+          lines: content.split('\n').length,
+          entries: totalEntries,
           levels: levels as Record<string, number>,
-          hasMd: (mdExists || (options.create !== false)) as boolean,
-          content: content as string
+          hasMd: (mdExists || (options.create !== false)),
+          content: content
         });
       }
 
@@ -653,18 +653,18 @@ export function registerMemoryCommands(program: Command): void {
     }
 
     const fileContent = fs.readFileSync(filePath, 'utf8');
-    const result = editSection(fileContent, section, content, operation) as EditResult;
+    const result = editSection(fileContent, section, content, operation as any) as EditResult;
 
     if (result.warning) {
-      return { warning: result.warning as string, id: memoryId, section };
+      return { warning: result.warning, id: memoryId, section };
     }
 
     if (result.success) {
-      fs.writeFileSync(filePath, result.content as string);
+      fs.writeFileSync(filePath, result.content);
       return { success: true, id: memoryId, section, operation };
     }
 
-    return { error: (result.error as string) || 'Unknown error', id: memoryId, section };
+    return { error: (result.error) || 'Unknown error', id: memoryId, section };
   }
 
   // memory:edit [ID] - edit memory section(s)
@@ -684,7 +684,7 @@ export function registerMemoryCommands(program: Command): void {
       // Get content from stdin or option
       let inputContent = options.content;
       if (!inputContent && !process.stdin.isTTY) {
-        inputContent = fs.readFileSync(0, 'utf8').trim() as string;
+        inputContent = fs.readFileSync(0, 'utf8').trim();
       }
 
       if (!inputContent) {
@@ -710,11 +710,11 @@ export function registerMemoryCommands(program: Command): void {
         const matches: SectionMatch[] = [];
         while ((match = headerRegex.exec(inputContent)) !== null) {
           matches.push({
-            fullMatch: match[0] as string,
-            id: (match[1] as string).toUpperCase(),
-            section: (match[2] as string).trim(),
-            operation: (match[3] as string) || 'replace',
-            index: match.index as number
+            fullMatch: match[0],
+            id: (match[1]).toUpperCase(),
+            section: (match[2]).trim(),
+            operation: (match[3]) || 'replace',
+            index: match.index
           });
         }
 
@@ -730,16 +730,16 @@ export function registerMemoryCommands(program: Command): void {
 
         // Extract content for each section
         for (let i = 0; i < matches.length; i++) {
-          const current = matches[i] as SectionMatch;
-          const nextIndex = (matches[i + 1] as SectionMatch | undefined)?.index ?? inputContent.length;
+          const current = matches[i];
+          const nextIndex = (matches[i + 1])?.index ?? inputContent.length;
           const headerEnd = current.index + current.fullMatch.length;
           const content = inputContent.slice(headerEnd, nextIndex).trim();
 
           sections.push({
             id: current.id === 'PROJECT' ? 'PROJECT' : normalizeId(current.id),
-            section: current.section as string,
-            operation: current.operation as string,
-            content: content as string
+            section: current.section,
+            operation: current.operation,
+            content: content
           });
         }
 

@@ -204,7 +204,6 @@ export function calculateRealSchedule(
 
   for (const taskId of taskIds) {
     const task = taskData.get(taskId);
-    const theoretical = theoreticalSchedule.get(taskId);
     const durationHours = getDuration(task.effort, effortConfig);
 
     const status = task.status?.toLowerCase() || '';

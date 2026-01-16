@@ -18,7 +18,7 @@ export function registerDashboardCommands(program: any) {
     .option('-t, --timeout <seconds>', `Idle timeout in seconds (default: ${DEFAULT_TIMEOUT}, -1 for infinite)`, String(DEFAULT_TIMEOUT))
     .option('-c, --cache <seconds>', `Data cache TTL in seconds (default: ${DEFAULT_CACHE}, 0 to disable)`, String(DEFAULT_CACHE))
     .option('--no-open', 'Do not open browser automatically')
-    .action(async (options: { port: string; timeout: string; cache: string; open: boolean }) => {
+    .action((options: { port: string; timeout: string; cache: string; open: boolean }) => {
       const port = parseInt(options.port, 10);
       const timeout = parseInt(options.timeout, 10);
       const cacheTTL = parseInt(options.cache, 10);
@@ -57,34 +57,36 @@ export function registerDashboardCommands(program: any) {
       process.on('SIGTERM', shutdown);
 
       // Start server with callback for browser open
-      server.start(async (actualPort) => {
-        if (timeout > 0) {
-          console.log(`Idle timeout: ${timeout}s`);
-        } else if (timeout === -1) {
-          console.log('Idle timeout: disabled');
-        }
-        if (cacheTTL > 0) {
-          console.log(`Cache TTL: ${cacheTTL}s`);
-        } else {
-          console.log('Cache: disabled');
-        }
-        console.log('Press Ctrl+C to stop');
+      server.start((actualPort) => {
+        void (async () => {
+          if (timeout > 0) {
+            console.log(`Idle timeout: ${timeout}s`);
+          } else if (timeout === -1) {
+            console.log('Idle timeout: disabled');
+          }
+          if (cacheTTL > 0) {
+            console.log(`Cache TTL: ${cacheTTL}s`);
+          } else {
+            console.log('Cache: disabled');
+          }
+          console.log('Press Ctrl+C to stop');
 
-        // Open browser with actual port
-        if (options.open) {
-          const url = `http://127.0.0.1:${actualPort}`;
-          const { exec } = await import('child_process');
+          // Open browser with actual port
+          if (options.open) {
+            const url = `http://127.0.0.1:${actualPort}`;
+            const { exec } = await import('child_process');
 
-          // Platform-specific open command
-          const cmd = process.platform === 'darwin' ? 'open' :
-                      process.platform === 'win32' ? 'start' : 'xdg-open';
+            // Platform-specific open command
+            const cmd = process.platform === 'darwin' ? 'open' :
+                        process.platform === 'win32' ? 'start' : 'xdg-open';
 
-          exec(`${cmd} ${url}`, (err) => {
-            if (err) {
-              console.log(`Open ${url} in your browser`);
-            }
-          });
-        }
+            exec(`${cmd} ${url}`, (err) => {
+              if (err) {
+                console.log(`Open ${url} in your browser`);
+              }
+            });
+          }
+        })();
       }, shutdown); // Pass shutdown as onShutdown callback
     });
 }

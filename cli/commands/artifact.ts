@@ -3,7 +3,6 @@
  * Provides section-based editing for PRD, Epic, and Task files.
  */
 import fs from 'fs';
-import path from 'path';
 import { jsonOut, stripComments } from '../managers/core-manager.js';
 import { addDynamicHelp, withModifies } from '../lib/help.js';
 import {
@@ -119,12 +118,12 @@ export function registerArtifactCommands(program: Command): void {
     .description('Show artifact content or specific section')
     .option('-s, --section <name>', 'Show only this section')
     .option('-l, --list', 'List section names only')
-    .option('--comments', 'Include template comments (stripped by default)')
+    .option('--strip-comments', 'Strip template comments from output')
     .option('--json', 'JSON output')
     .action((id: string, options: {
       section?: string;
       list?: boolean;
-      comments?: boolean;
+      stripComments?: boolean;
       json?: boolean;
     }) => {
       const resolved = resolveArtifact(id);
@@ -160,7 +159,7 @@ export function registerArtifactCommands(program: Command): void {
 
       // Show full content (without frontmatter)
       let raw = fs.readFileSync(resolved.path, 'utf8');
-      if (!options.comments) {
+      if (options.stripComments) {
         raw = stripComments(raw);
       }
       const parsed = parseMarkdownSections(raw);
@@ -295,7 +294,7 @@ Examples:
           expandedOps.push({
             op: 'replace',
             section: op.section,
-            content: applySedCommands(sectionContent, op.sedCommands)
+            content: applySedCommands(sectionContent, op.sedCommands as any)
           });
         } else if (op.op === 'patch') {
           // Parse SEARCH/REPLACE blocks and apply to section
@@ -350,7 +349,7 @@ Examples:
           originalOps.forEach(o => {
             byOp[o.op] = (byOp[o.op] || 0) + 1;
           });
-          const summary = Object.entries(byOp).map(([op, n]) => `${op}:${n as number}`).join(', ');
+          const summary = Object.entries(byOp).map(([op, n]) => `${op}:${n}`).join(', ');
           console.log(`✓ ${originalOps.length} sections in ${id} (${summary})`);
         }
       } else {
@@ -527,7 +526,7 @@ Examples:
         process.exit(1);
       }
 
-      const result = editArtifact(resolved.path, ops);
+      const result = editArtifact(resolved.path, ops as any);
 
       if (options.json) {
         jsonOut({ id, ...result });

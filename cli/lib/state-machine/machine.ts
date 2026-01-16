@@ -72,7 +72,7 @@ export class AgentStateMachine {
 
     // Check guards
     if (transition.guards) {
-      const result = runGuards(transition.guards, this.context as GuardContext);
+      const result = runGuards(transition.guards, this.context as unknown as GuardContext);
       if (!result.ok) {
         return { valid: false, errors: result.errors };
       }
