@@ -4,7 +4,7 @@
 import fs from 'fs';
 import path from 'path';
 import yaml from 'js-yaml';
-import { findProjectRoot, loadFile, jsonOut, resolvePlaceholders, getAgentConfig, ensureDir, getAgentsDir, getPathsInfo } from '../../managers/core-manager.js';
+import { findProjectRoot, loadFile, jsonOut, resolvePlaceholders, getAgentConfig, ensureDir, getAgentsDir, getPathsInfo, getWorktreesDir } from '../../managers/core-manager.js';
 import { getGit } from '../../lib/git.js';
 import { create as createPr } from '../../managers/pr-manager.js';
 import { AgentRunManager } from '../../lib/agent-run.js';
@@ -17,6 +17,7 @@ import {
   createWorktree, getWorktreePath, getBranchName, worktreeExists, removeWorktree,
   ensureBranchHierarchy, syncParentBranch, getParentBranch, getMainBranch
 } from '../../managers/worktree-manager.js';
+import { WorktreeOps } from '../../lib/worktree.js';
 import { spawnClaude, getLogFilePath } from '../../lib/claude.js';
 import { checkMcpServer } from '../../lib/srt.js';
 import { extractPrdId, extractEpicId, normalizeId } from '../../lib/normalize.js';
@@ -148,7 +149,7 @@ export function registerSpawnCommand(agent) {
           const branch = agentInfo.worktree.branch;
 
           if (fs.existsSync(worktreePath)) {
-            // Check for uncommitted changes and commits ahead
+            // Check for uncommitted changes, commits ahead, and merge status
             const baseBranch = agentInfo.worktree.base_branch || 'main';
             const worktreeGit = getGit(worktreePath);
             const worktreeStatus = await worktreeGit.status();
@@ -156,13 +157,38 @@ export function registerSpawnCommand(agent) {
             const worktreeLog = await worktreeGit.log({ from: baseBranch, to: 'HEAD' });
             const commitsAhead = worktreeLog.total;
 
-            // Completed agent with work to merge
-            if ((status === 'completed' || status === 'reaped') && (isDirty || commitsAhead > 0)) {
+            // Check if branch is already merged into main (handles non-fast-forward merges)
+            const ops = new WorktreeOps(projectRoot, getWorktreesDir());
+            const isMerged = ops.branchExists(branch) ? ops.isAncestor(branch, baseBranch) : true;
+
+            // Already merged and clean → auto-cleanup
+            if (isMerged && !isDirty) {
+              if (!options.json) {
+                console.log(`Auto-cleaning previous ${taskId} (already merged)...`);
+              }
+              removeWorktree(taskId, { force: true });
+              delete state.agents[taskId];
+              saveState(state);
+            }
+            // Already merged but dirty → escalate (uncommitted work after merge)
+            else if (isMerged && isDirty) {
+              if (options.resume) {
+                if (!options.json) {
+                  console.log(`Resuming ${taskId} with uncommitted changes (branch already merged)...`);
+                }
+              } else {
+                escalate(`Agent ${taskId} has uncommitted changes (branch already merged)`, [
+                  `agent:spawn ${taskId} --resume  # Continue with existing work`,
+                  `agent:reject ${taskId}          # Discard uncommitted work`
+                ]);
+              }
+            }
+            // Not merged: completed/reaped agent with work to merge
+            else if ((status === 'completed' || status === 'reaped') && (isDirty || commitsAhead > 0)) {
               if (options.resume) {
                 if (!options.json) {
                   console.log(`Resuming ${taskId} with existing work (${isDirty ? 'uncommitted changes' : commitsAhead + ' commits'})...`);
                 }
-                // Continue - reuse worktree
               } else {
                 escalate(`Agent ${taskId} has unmerged work`, [
                   `agent:spawn ${taskId} --resume  # Continue with existing work`,
@@ -171,14 +197,12 @@ export function registerSpawnCommand(agent) {
                 ]);
               }
             }
-
-            // Agent has uncommitted work but didn't complete properly
-            if (isDirty && !['completed', 'reaped'].includes(status)) {
+            // Not merged: uncommitted work but didn't complete properly
+            else if (isDirty && !['completed', 'reaped'].includes(status)) {
               if (options.resume) {
                 if (!options.json) {
                   console.log(`Resuming ${taskId} with uncommitted changes (status: ${status})...`);
                 }
-                // Continue - reuse worktree
               } else {
                 escalate(`Agent ${taskId} has uncommitted changes (status: ${status})`, [
                   `agent:spawn ${taskId} --resume  # Continue with existing work`,
@@ -187,14 +211,12 @@ export function registerSpawnCommand(agent) {
                 ]);
               }
             }
-
-            // Has commits but not merged
-            if (commitsAhead > 0 && !['reaped'].includes(status)) {
+            // Not merged: has commits but not reaped
+            else if (commitsAhead > 0 && !['reaped'].includes(status)) {
               if (options.resume) {
                 if (!options.json) {
                   console.log(`Resuming ${taskId} with ${commitsAhead} commit(s)...`);
                 }
-                // Continue - reuse worktree
               } else {
                 escalate(`Agent ${taskId} has ${commitsAhead} commit(s) not merged`, [
                   `agent:spawn ${taskId} --resume  # Continue with existing work`,
@@ -203,9 +225,8 @@ export function registerSpawnCommand(agent) {
                 ]);
               }
             }
-
-            // Clean worktree, can reuse - auto-cleanup
-            if (!isDirty && commitsAhead === 0) {
+            // Clean worktree, no commits ahead - auto-cleanup
+            else if (!isDirty && commitsAhead === 0) {
               if (!options.json) {
                 console.log(`Auto-cleaning previous ${taskId} (no changes)...`);
               }
