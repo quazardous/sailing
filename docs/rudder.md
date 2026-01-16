@@ -23,8 +23,9 @@ bin/rudder versions              # Component versions
 bin/rudder paths                 # Authoritative paths for agents
 
 # Find work
-bin/rudder task:next             # First ready task
-bin/rudder deps:ready -l 5       # Top 5 by impact
+bin/rudder deps:ready            # Ready tasks sorted by impact
+bin/rudder deps:ready -l 1       # Single best task
+bin/rudder deps:ready --epic E001  # Ready in epic (parallel spawn)
 
 # Work on task
 bin/rudder task:start T042       # Set In Progress

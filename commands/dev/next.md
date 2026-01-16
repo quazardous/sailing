@@ -11,26 +11,22 @@ allowed-tools: Bash
 
 ---
 
-## Methods
+## Method
 
-### Quick (first available)
-
-```bash
-bin/rudder task:next [--json]
-```
-
-- Returns the first ready task
-- Minimal processing, fast
-
-### Smart (impact-aware, sorted)
+### Ready tasks (impact-sorted)
 
 ```bash
-bin/rudder deps:ready [--tag <tag>] [--limit 5] [--json]
+bin/rudder deps:ready [--epic ENNN] [--prd PRD-NNN] [--tag <tag>] [--limit 5] [--json]
 ```
 
-Returns tasks sorted by:
+Returns **all ready tasks** (unblocked, not started) sorted by:
 - **Impact**: number of downstream tasks unblocked (cascade potential)
 - **Critical path**: position in dependency chain (longest chains prioritized)
+
+**Use cases:**
+- `deps:ready --limit 1` → single best task
+- `deps:ready --epic E001` → ready tasks in epic (for parallel spawn)
+- `deps:ready` → full list for strategic planning
 
 ### Bottlenecks (blocking the most work)
 
@@ -38,7 +34,7 @@ Returns tasks sorted by:
 bin/rudder deps:critical [--prd PRD-NNN] [--limit 5]
 ```
 
-Returns tasks that block the most downstream work — graph-derived, not judgment.
+Returns incomplete tasks that block the most downstream work — graph-derived, not judgment.
 
 ---
 

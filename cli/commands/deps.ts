@@ -74,6 +74,7 @@ interface ReadyOptions {
   epic?: string;
   tag?: string[];
   limit?: number;
+  includeStarted?: boolean;
   json?: boolean;
 }
 
@@ -788,6 +789,7 @@ export function registerDepsCommands(program: Command): void {
     .option('--epic <id>', 'Filter by epic')
     .option('-t, --tag <tag>', 'Filter by tag (repeatable, AND logic)', (v, arr) => arr.concat(v), [])
     .option('-l, --limit <n>', 'Limit results', parseInt)
+    .option('--include-started', 'Include "In Progress" tasks (for resume)')
     .option('--json', 'JSON output')
     .action((options: ReadyOptions) => {
       // Role enforcement: agents don't query dependencies
@@ -833,7 +835,9 @@ export function registerDepsCommands(program: Command): void {
         }
 
         // Check both task blockers AND epic blockers
-        const taskReady = isStatusNotStarted(task.status) && blockersResolved(task, tasks);
+        const statusOk = isStatusNotStarted(task.status) ||
+                         (options.includeStarted && isStatusInProgress(task.status));
+        const taskReady = statusOk && blockersResolved(task, tasks);
         const epicReady = epicBlockersResolved(task.epic);
 
         if (taskReady && epicReady) {
@@ -861,9 +865,13 @@ export function registerDepsCommands(program: Command): void {
         if (limited.length === 0) {
           console.log('No ready tasks.');
         } else {
-          console.log('Ready tasks (sorted by impact):\n');
+          const header = options.includeStarted
+            ? 'Ready tasks + In Progress (sorted by impact):'
+            : 'Ready tasks (sorted by impact):';
+          console.log(`${header}\n`);
           limited.forEach((t, i) => {
-            console.log(`${i + 1}. ${t.id}: ${t.title}`);
+            const statusHint = isStatusInProgress(t.status) ? ' [In Progress]' : '';
+            console.log(`${i + 1}. ${t.id}: ${t.title}${statusHint}`);
             console.log(`   Impact: ${t.impact} tasks | Critical path: ${t.criticalPath}`);
           });
         }
