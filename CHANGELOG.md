@@ -4,6 +4,19 @@ All notable changes to the Sailing Framework will be documented in this file.
 
 <!-- NOTE: This is a USER changelog, not a commit log. Focus on user-visible features and benefits, not implementation details. -->
 
+## [1.10.0] - 2026-01-16
+
+### Added
+- `paths --show-defaults` flag to compare with default values
+- `agent:status --all` and `--since <duration>` for filtering agent list
+- `agent:gc` command to garbage collect old agents (TTL-based)
+- `docs/CONTRACTS.md` - Architecture contracts for AI agents
+
+### Changed
+- `agent:status` shows only "interesting" agents by default (use `--all` for full list)
+- `agent:status` displays PID and process state for active agents
+- Non-default paths highlighted in yellow
+
 ## [1.9.0] - 2026-01-15
 
 ### Added
