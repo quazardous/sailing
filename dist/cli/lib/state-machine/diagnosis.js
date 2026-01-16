@@ -57,19 +57,22 @@ export function diagnoseWorktreeState(worktreePath, projectRoot, baseBranch = 'm
         details.isGitWorktree = true;
     }
     catch (e) {
-        details.errors.push(`Cannot read .git file: ${e.message}`);
+        const message = e instanceof Error ? e.message : String(e);
+        details.errors.push(`Cannot read .git file: ${message}`);
         return { state: WorktreeState.NONE, details };
     }
     // Get current branch
     try {
-        details.branch = execSync('git branch --show-current', {
+        const branchOutput = execSync('git branch --show-current', {
             cwd: worktreePath,
             encoding: 'utf8',
             stdio: ['pipe', 'pipe', 'pipe']
-        }).trim();
+        });
+        details.branch = branchOutput.trim();
     }
     catch (e) {
-        details.errors.push(`Cannot get branch: ${e.message}`);
+        const message = e instanceof Error ? e.message : String(e);
+        details.errors.push(`Cannot get branch: ${message}`);
     }
     // Check for merge/rebase in progress
     try {
@@ -94,11 +97,12 @@ export function diagnoseWorktreeState(worktreePath, projectRoot, baseBranch = 'm
     }
     // Get status (staged, unstaged, conflicts)
     try {
-        const status = execSync('git status --porcelain', {
+        const statusOutput = execSync('git status --porcelain', {
             cwd: worktreePath,
             encoding: 'utf8',
             stdio: ['pipe', 'pipe', 'pipe']
-        }).trim();
+        });
+        const status = statusOutput.trim();
         if (status) {
             for (const line of status.split('\n')) {
                 if (!line)
@@ -126,15 +130,17 @@ export function diagnoseWorktreeState(worktreePath, projectRoot, baseBranch = 'm
             details.stagedFiles.length === 0;
     }
     catch (e) {
-        details.errors.push(`Cannot get status: ${e.message}`);
+        const message = e instanceof Error ? e.message : String(e);
+        details.errors.push(`Cannot get status: ${message}`);
     }
     // Check commits ahead/behind
     try {
-        const counts = execSync(`git rev-list --left-right --count ${baseBranch}...HEAD`, {
+        const countsOutput = execSync(`git rev-list --left-right --count ${baseBranch}...HEAD`, {
             cwd: worktreePath,
             encoding: 'utf8',
             stdio: ['pipe', 'pipe', 'pipe']
-        }).trim().split('\t');
+        });
+        const counts = countsOutput.trim().split('\t');
         details.behind = parseInt(counts[0], 10) || 0;
         details.ahead = parseInt(counts[1], 10) || 0;
         details.hasCommits = details.ahead > 0;

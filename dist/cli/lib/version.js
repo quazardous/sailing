@@ -5,7 +5,7 @@
 import fs from 'fs';
 import path from 'path';
 import { execaSync } from 'execa';
-import { loadComponents as loadComponentsConfig, getComponentsFile, findProjectRoot } from './core.js';
+import { loadComponents as loadComponentsConfig, getComponentsFile, findProjectRoot } from '../managers/core-manager.js';
 /**
  * Parse semver version string
  * @param {string} version - Version string (e.g., "1.2.3")

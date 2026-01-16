@@ -3,22 +3,81 @@
  */
 import fs from 'fs';
 import path from 'path';
-import { findProjectRoot, jsonOut } from '../../lib/core.js';
-import { execRudderSafe } from '../../lib/invoke.js';
-import { loadState } from '../../lib/state.js';
+import { findProjectRoot, jsonOut, getAgentsDir, getWorktreesDir } from '../../managers/core-manager.js';
+import { loadState } from '../../managers/state-manager.js';
+import { getAgentLifecycle } from '../../managers/agent-manager.js';
 import { normalizeId } from '../../lib/normalize.js';
-import { getAgentsBaseDir, getAgentDir, getProcessStats, formatDuration, checkAgentCompletion, getLogFilePath } from '../../lib/agent-utils.js';
-import { getTaskEpic } from '../../lib/index.js';
-import { loadNoiseFilters, matchesNoiseFilter, parseJsonLog } from '../../lib/diagnose.js';
+import { AgentUtils, getProcessStats, formatDuration } from '../../lib/agent-utils.js';
+import { WorktreeOps } from '../../lib/worktree.js';
+import { getTaskEpic } from '../../managers/artefacts-manager.js';
+import { getDiagnoseOps, matchesNoiseFilter, parseJsonLog } from '../../managers/diagnose-manager.js';
 import { summarizeEvent } from './diagnose.js';
+/**
+ * Parse duration string (e.g., "1h", "24h", "1d", "2d") to milliseconds
+ */
+function parseDuration(duration) {
+    const match = duration.match(/^(\d+)(h|d)$/);
+    if (!match) {
+        throw new Error(`Invalid duration format: ${duration}. Use format like "1h", "24h", "1d"`);
+    }
+    const value = parseInt(match[1], 10);
+    const unit = match[2];
+    if (unit === 'h')
+        return value * 60 * 60 * 1000;
+    if (unit === 'd')
+        return value * 24 * 60 * 60 * 1000;
+    return 0;
+}
+/**
+ * Check if an agent is "interesting" (needs attention)
+ */
+function isInterestingAgent(agentData, maxAge = 24 * 60 * 60 * 1000) {
+    // Active agents are always interesting
+    if (['dispatched', 'running'].includes(agentData.status))
+        return true;
+    // Ready to reap (complete but not reaped)
+    if (agentData.live_complete && agentData.status === 'dispatched')
+        return true;
+    // Failed/blocked/rejected are interesting
+    if (['blocked', 'failed', 'rejected'].includes(agentData.status))
+        return true;
+    // Has worktree not yet merged
+    if (agentData.worktree && !agentData.worktree_merged)
+        return true;
+    // Recently reaped/completed (within maxAge)
+    const reapedAt = agentData.reaped_at || agentData.completed_at;
+    if (reapedAt) {
+        const age = Date.now() - new Date(reapedAt).getTime();
+        if (age < maxAge)
+            return true;
+    }
+    return false;
+}
+/**
+ * Check if agent's worktree branch has been merged to main
+ */
+function checkWorktreeMerged(agentData, ops) {
+    if (!agentData.worktree?.branch)
+        return true; // No worktree = considered merged
+    const branch = agentData.worktree.branch;
+    // Check if branch exists
+    if (!ops.branchExists(branch)) {
+        return true; // Branch doesn't exist = already merged/deleted
+    }
+    // Check if branch is ancestor of HEAD (merged)
+    return ops.isAncestor(branch, 'HEAD');
+}
 export function registerMonitorCommands(agent) {
     // agent:status
     agent.command('status [task-id]')
         .description('Show agent status (all or specific task)')
+        .option('--all', 'Show all agents (including old reaped)')
+        .option('--since <duration>', 'Show agents from last duration (e.g., 1h, 24h, 2d)')
         .option('--json', 'JSON output')
         .action((taskId, options) => {
         const state = loadState();
         const agents = state.agents || {};
+        const agentUtils = new AgentUtils(getAgentsDir());
         if (taskId) {
             taskId = normalizeId(taskId);
             const agentData = agents[taskId];
@@ -26,19 +85,28 @@ export function registerMonitorCommands(agent) {
                 console.error(`No agent found for task: ${taskId}`);
                 process.exit(1);
             }
-            const completion = checkAgentCompletion(taskId);
+            const completion = agentUtils.checkCompletion(taskId, agentData);
             const liveStatus = completion.complete ? 'complete' : agentData.status;
+            // Check if process is actually running (only for active agents)
+            const isActive = ['dispatched', 'running'].includes(agentData.status);
+            const processInfo = (isActive && agentData.pid) ? getProcessStats(agentData.pid) : { running: false };
             if (options.json) {
                 jsonOut({
                     task_id: taskId,
                     ...agentData,
                     live_status: liveStatus,
+                    ...(isActive && { process_running: processInfo.running }),
                     ...completion
                 });
             }
             else {
                 console.log(`Agent: ${taskId}`);
                 console.log(`  Status: ${agentData.status}${completion.complete ? ' (complete)' : ''}`);
+                // Show PID only for active agents
+                if (agentData.pid && isActive) {
+                    const procState = processInfo.running ? 'running' : 'not running';
+                    console.log(`  PID: ${agentData.pid} (${procState})`);
+                }
                 console.log(`  Started: ${agentData.started_at}`);
                 console.log(`  Mission: ${agentData.mission_file}`);
                 console.log(`  Complete: ${completion.complete ? 'yes' : 'no'}`);
@@ -52,24 +120,43 @@ export function registerMonitorCommands(agent) {
             }
             return;
         }
-        // Show all agents with live completion status
-        const agentList = Object.entries(agents).map(([id, data]) => {
-            const completion = checkAgentCompletion(id);
+        const projectRoot = findProjectRoot();
+        const worktreeOps = new WorktreeOps(projectRoot, getWorktreesDir());
+        // Build agent list with live status info
+        let agentList = Object.entries(agents).map(([id, data]) => {
+            const completion = agentUtils.checkCompletion(id, data);
+            const worktreeMerged = checkWorktreeMerged(data, worktreeOps);
             return {
                 task_id: id,
                 ...data,
-                live_complete: completion.complete
+                live_complete: completion.complete,
+                worktree_merged: worktreeMerged
             };
         });
+        // Apply filters
+        if (options.since) {
+            const sinceMs = parseDuration(options.since);
+            const cutoff = Date.now() - sinceMs;
+            agentList = agentList.filter(a => {
+                const startedAt = a.spawned_at || a.started_at;
+                return startedAt && new Date(startedAt).getTime() >= cutoff;
+            });
+        }
+        else if (!options.all) {
+            // Default: only show interesting agents
+            agentList = agentList.filter(a => isInterestingAgent(a));
+        }
         if (options.json) {
             jsonOut(agentList);
             return;
         }
         if (agentList.length === 0) {
-            console.log('No active agents');
+            const hint = options.all ? '' : ' (use --all to show old agents)';
+            console.log(`No agents to show${hint}`);
             return;
         }
-        console.log('Active agents:\n');
+        const title = options.all ? 'All agents' : (options.since ? `Agents (since ${options.since})` : 'Agents (recent/active)');
+        console.log(`${title}:\n`);
         for (const agentData of agentList) {
             let status;
             if (agentData.live_complete) {
@@ -78,14 +165,22 @@ export function registerMonitorCommands(agent) {
             else if (agentData.status === 'dispatched') {
                 status = '●';
             }
-            else if (agentData.status === 'collected') {
+            else if (agentData.status === 'collected' || agentData.status === 'reaped') {
                 status = '✓';
             }
             else {
                 status = '✗';
             }
-            const completeNote = agentData.live_complete && agentData.status === 'dispatched' ? ' [ready to collect]' : '';
-            console.log(`  ${status} ${agentData.task_id}: ${agentData.status}${completeNote}`);
+            const completeNote = agentData.live_complete && agentData.status === 'dispatched' ? ' [ready to reap]' : '';
+            // Show worktree merge status
+            const worktreeNote = (agentData.worktree && !agentData.worktree_merged) ? ' [worktree not merged]' : '';
+            // Show PID and process state only for active agents
+            let pidInfo = '';
+            if (agentData.pid && ['dispatched', 'running'].includes(agentData.status)) {
+                const processInfo = getProcessStats(agentData.pid);
+                pidInfo = ` [PID ${agentData.pid}: ${processInfo.running ? 'running' : 'stopped'}]`;
+            }
+            console.log(`  ${status} ${agentData.task_id}: ${agentData.status}${completeNote}${worktreeNote}${pidInfo}`);
         }
     });
     // agent:list
@@ -96,9 +191,10 @@ export function registerMonitorCommands(agent) {
         .action((options) => {
         const state = loadState();
         const agents = state.agents || {};
+        const agentUtils = new AgentUtils(getAgentsDir());
         let agentList = Object.entries(agents).map(([id, info]) => {
             const agentData = info;
-            const completion = checkAgentCompletion(id);
+            const completion = agentUtils.checkCompletion(id, agentData);
             const liveComplete = completion.complete;
             return {
                 task_id: id,
@@ -163,11 +259,12 @@ export function registerMonitorCommands(agent) {
         const state = loadState();
         const agentInfo = state.agents?.[taskId];
         const projectRoot = findProjectRoot();
+        const agentUtils = new AgentUtils(getAgentsDir());
         if (!agentInfo) {
             console.error(`No agent found for task: ${taskId}`);
             process.exit(1);
         }
-        const initialCompletion = checkAgentCompletion(taskId);
+        const initialCompletion = agentUtils.checkCompletion(taskId, agentInfo);
         if (initialCompletion.complete) {
             if (options.json) {
                 jsonOut({ task_id: taskId, status: 'already_complete' });
@@ -176,13 +273,12 @@ export function registerMonitorCommands(agent) {
                 console.log(`${taskId} already completed`);
                 if (options.reap !== false) {
                     console.log(`\nReaping ${taskId}...`);
-                    const { stdout, stderr, exitCode } = execRudderSafe(`agent:reap ${taskId}`, { cwd: projectRoot });
-                    if (exitCode === 0) {
-                        if (stdout)
-                            console.log(stdout);
+                    const reapResult = await getAgentLifecycle(taskId).reap();
+                    if (reapResult.success) {
+                        console.log(`✓ Task ${taskId} → ${reapResult.taskStatus}`);
                     }
-                    else {
-                        console.error(`Reap failed: ${stderr}`);
+                    else if (reapResult.escalate) {
+                        console.error(`Reap failed: ${reapResult.escalate.reason}`);
                     }
                 }
             }
@@ -279,11 +375,12 @@ export function registerMonitorCommands(agent) {
                     }
                     process.exit(2);
                 }
-                const completion = checkAgentCompletion(taskId);
+                const currentState = loadState();
+                const currentAgentInfo = currentState.agents?.[taskId];
+                const completion = agentUtils.checkCompletion(taskId, currentAgentInfo);
                 if (completion.complete) {
                     completed = true;
-                    const currentState = loadState();
-                    exitCode = currentState.agents?.[taskId]?.exit_code ?? 0;
+                    exitCode = currentAgentInfo?.exit_code ?? 0;
                     resolve();
                 }
             }, 1000);
@@ -308,13 +405,12 @@ export function registerMonitorCommands(agent) {
         }
         if (exitCode === 0 && options.reap !== false) {
             console.log(`\nAuto-reaping ${taskId}...`);
-            const { stdout, stderr, exitCode: reapCode } = execRudderSafe(`agent:reap ${taskId}`, { cwd: projectRoot });
-            if (reapCode === 0) {
-                if (stdout)
-                    console.log(stdout);
+            const reapResult = await getAgentLifecycle(taskId).reap();
+            if (reapResult.success) {
+                console.log(`✓ Task ${taskId} → ${reapResult.taskStatus}`);
             }
-            else {
-                console.error(`Reap failed: ${stderr}`);
+            else if (reapResult.escalate) {
+                console.error(`Reap failed: ${reapResult.escalate.reason}`);
                 console.error(`Manual: bin/rudder agent:reap ${taskId}`);
             }
         }
@@ -334,10 +430,10 @@ export function registerMonitorCommands(agent) {
         .action(async (taskIds, options) => {
         const state = loadState();
         const agents = state.agents || {};
-        let waitFor = taskIds.length > 0
+        const waitFor = taskIds.length > 0
             ? taskIds.map(id => normalizeId(id))
             : Object.entries(agents)
-                .filter(([_, info]) => ['spawned', 'dispatched', 'running'].includes(info.status))
+                .filter(([_, info]) => ['spawned', 'dispatched', 'running'].includes((info).status))
                 .map(([id]) => id);
         if (waitFor.length === 0) {
             if (options.json) {
@@ -352,15 +448,19 @@ export function registerMonitorCommands(agent) {
             const mode = options.any ? 'any' : 'all';
             console.log(`Waiting for ${mode} of ${waitFor.length} agent(s): ${waitFor.join(', ')}`);
         }
+        const agentUtils = new AgentUtils(getAgentsDir());
         const startTime = Date.now();
         const timeoutMs = options.timeout * 1000;
         const completed = [];
-        const stateFile = path.join(getAgentsBaseDir(), '..', 'state.json');
-        const checkCompletion = () => {
+        const agentsDir = getAgentsDir();
+        const stateFile = path.join(agentsDir, '..', 'state.json');
+        const checkAllCompletion = () => {
+            const currentState = loadState();
             for (const taskId of waitFor) {
                 if (completed.includes(taskId))
                     continue;
-                const completion = checkAgentCompletion(taskId);
+                const agentInfo = currentState.agents?.[taskId];
+                const completion = agentUtils.checkCompletion(taskId, agentInfo);
                 if (completion.complete) {
                     completed.push(taskId);
                     if (!options.json) {
@@ -372,7 +472,7 @@ export function registerMonitorCommands(agent) {
             }
             return completed.length >= waitFor.length;
         };
-        if (checkCompletion()) {
+        if (checkAllCompletion()) {
             if (options.json) {
                 jsonOut({ status: 'complete', completed, elapsed_ms: Date.now() - startTime });
             }
@@ -418,7 +518,7 @@ export function registerMonitorCommands(agent) {
             };
             try {
                 watcher = fs.watch(stateFile, { persistent: true }, (eventType) => {
-                    if (eventType === 'change' && checkCompletion()) {
+                    if (eventType === 'change' && checkAllCompletion()) {
                         onComplete();
                     }
                 });
@@ -434,7 +534,7 @@ export function registerMonitorCommands(agent) {
                     onTimeout();
                     return;
                 }
-                if (checkCompletion()) {
+                if (checkAllCompletion()) {
                     onComplete();
                     return;
                 }
@@ -458,9 +558,10 @@ export function registerMonitorCommands(agent) {
         .option('--json', 'JSON output')
         .action((taskId, options) => {
         const normalizedId = normalizeId(taskId);
+        const agentUtils = new AgentUtils(getAgentsDir());
         // Events mode: show filtered JSON events from run.jsonlog
         if (options.events) {
-            const agentDir = getAgentDir(normalizedId);
+            const agentDir = agentUtils.getAgentDir(normalizedId);
             const jsonLogFile = path.join(agentDir, 'run.jsonlog');
             if (!fs.existsSync(jsonLogFile)) {
                 console.error(`JSON log file not found: ${jsonLogFile}`);
@@ -468,7 +569,7 @@ export function registerMonitorCommands(agent) {
             }
             const taskEpic = getTaskEpic(normalizedId);
             const epicId = taskEpic?.epicId || null;
-            const noiseFilters = options.raw ? [] : loadNoiseFilters(epicId);
+            const noiseFilters = options.raw ? [] : getDiagnoseOps().loadNoiseFilters(epicId);
             const { events, lines } = parseJsonLog(jsonLogFile);
             const limit = options.lines ?? 50;
             const output = [];
@@ -516,7 +617,7 @@ export function registerMonitorCommands(agent) {
             return;
         }
         // Raw text log file
-        const logFile = getLogFilePath(normalizedId);
+        const logFile = agentUtils.getLogFilePath(normalizedId);
         if (!fs.existsSync(logFile)) {
             console.error(`No log file for ${taskId}`);
             process.exit(1);

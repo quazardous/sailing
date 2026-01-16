@@ -210,11 +210,11 @@ export function createMission(params) {
             dev_md: params.dev_md,
             epic_file: params.epic_file,
             task_file: params.task_file,
-            memory: params.memory || null,
-            toolset: params.toolset || null
+            memory: params.memory ?? null,
+            toolset: params.toolset ?? null
         },
-        constraints: params.constraints || {},
-        timeout: params.timeout || 0
+        constraints: params.constraints ?? {},
+        timeout: params.timeout ?? 0
     };
 }
 /**
@@ -227,10 +227,10 @@ export function createResult(params) {
         version: PROTOCOL_VERSION,
         task_id: params.task_id,
         status: params.status,
-        files_modified: params.files_modified || [],
-        log: params.log || [],
-        issues: params.issues || [],
-        completed_at: params.completed_at || new Date().toISOString()
+        files_modified: params.files_modified ?? [],
+        log: params.log ?? [],
+        issues: params.issues ?? [],
+        completed_at: params.completed_at ?? new Date().toISOString()
     };
 }
 /**

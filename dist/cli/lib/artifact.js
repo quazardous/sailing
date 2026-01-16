@@ -13,11 +13,9 @@ import fs from 'fs';
 export function parseMarkdownSections(content) {
     const lines = content.split('\n');
     let frontmatter = '';
-    let inFrontmatter = false;
     let frontmatterEnd = 0;
     // Extract frontmatter
     if (lines[0] === '---') {
-        inFrontmatter = true;
         for (let i = 1; i < lines.length; i++) {
             if (lines[i] === '---') {
                 frontmatterEnd = i + 1;
@@ -105,7 +103,7 @@ export function applyOp(sections, order, op) {
             if (!sections.has(op.section)) {
                 return { success: false, error: `Section not found: ${op.section}` };
             }
-            sections.set(op.section, op.content);
+            sections.set(op.section, op.content ?? '');
             return { success: true };
         }
         case 'append': {
@@ -114,7 +112,7 @@ export function applyOp(sections, order, op) {
             }
             const current = sections.get(op.section);
             const separator = current && !current.endsWith('\n') ? '\n' : '';
-            sections.set(op.section, current + separator + op.content);
+            sections.set(op.section, (current ?? '') + separator + (op.content ?? ''));
             return { success: true };
         }
         case 'prepend': {
@@ -122,17 +120,17 @@ export function applyOp(sections, order, op) {
                 return { success: false, error: `Section not found: ${op.section}` };
             }
             const current = sections.get(op.section);
-            sections.set(op.section, op.content + (current ? '\n' + current : ''));
+            sections.set(op.section, (op.content ?? '') + (current ? '\n' + current : ''));
             return { success: true };
         }
         case 'check': {
-            return toggleCheckbox(sections, op.section, op.item, true);
+            return toggleCheckbox(sections, op.section, op.item ?? '', true);
         }
         case 'uncheck': {
-            return toggleCheckbox(sections, op.section, op.item, false);
+            return toggleCheckbox(sections, op.section, op.item ?? '', false);
         }
         case 'toggle': {
-            return toggleCheckbox(sections, op.section, op.item, 'toggle');
+            return toggleCheckbox(sections, op.section, op.item ?? '', 'toggle');
         }
         case 'delete': {
             if (!sections.has(op.section)) {
@@ -148,7 +146,7 @@ export function applyOp(sections, order, op) {
             if (sections.has(op.section)) {
                 return { success: false, error: `Section already exists: ${op.section}` };
             }
-            sections.set(op.section, op.content || '');
+            sections.set(op.section, op.content ?? '');
             if (op.after && order.includes(op.after)) {
                 const idx = order.indexOf(op.after);
                 order.splice(idx + 1, 0, op.section);
@@ -175,9 +173,9 @@ function toggleCheckbox(sections, sectionName, itemText, checked) {
         return { success: false, error: `Section not found: ${sectionName}` };
     }
     const content = sections.get(sectionName);
-    const lines = content.split('\n');
+    const lines = (content ?? '').split('\n');
     let found = false;
-    const updatedLines = lines.map(line => {
+    const updatedLines = lines.map((line) => {
         // Match checkbox pattern: - [ ] or - [x] or - [X]
         const checkboxMatch = line.match(/^(\s*-\s*)\[([ xX])\](\s*.*)$/);
         if (checkboxMatch) {
@@ -219,7 +217,7 @@ export function applyOps(sections, order, ops) {
         if (result.success) {
             applied++;
         }
-        else {
+        else if (result.error) {
             errors.push(result.error);
         }
     }
@@ -237,7 +235,7 @@ export function applyOps(sections, order, ops) {
 export function parseSearchReplace(input) {
     const ops = [];
     // Allow optional indentation around markers to be forgiving with indented heredocs
-    const blockRegex = /^\s*<<<<<<< SEARCH\s*\n([\s\S]*?)\n^\s*=======\s*\n([\s\S]*?)\n^\s*>>>>>>> REPLACE\s*$/gms;
+    const blockRegex = /^\s*<<<<<<< SEARCH\s*\n(.*?)\n^\s*=======\s*\n(.*?)\n^\s*>>>>>>> REPLACE\s*$/gms;
     let match;
     while ((match = blockRegex.exec(input)) !== null) {
         const [, searchBlock, replaceBlock] = match;
@@ -263,7 +261,7 @@ export function applySearchReplace(content, search, replace) {
     const normalizedReplace = replace.replace(/\r\n/g, '\n').trim();
     if (!normalizedContent.includes(normalizedSearch)) {
         // Try fuzzy match (ignore leading/trailing whitespace per line)
-        const searchLines = normalizedSearch.split('\n').map(l => l.trim());
+        const searchLines = normalizedSearch.split('\n').map((l) => l.trim());
         const contentLines = normalizedContent.split('\n');
         let startIdx = -1;
         for (let i = 0; i <= contentLines.length - searchLines.length; i++) {
@@ -283,12 +281,12 @@ export function applySearchReplace(content, search, replace) {
             return { success: false, error: 'SEARCH block not found in content' };
         }
         // Replace with proper indentation preserved from first line
-        const indent = contentLines[startIdx].match(/^(\s*)/)[1];
+        const indentMatch = contentLines[startIdx].match(/^(\s*)/);
+        const indent = indentMatch ? indentMatch[1] : '';
         const replaceLines = normalizedReplace.split('\n').map((line, idx) => {
             if (idx === 0)
                 return indent + line.trim();
             // Preserve relative indentation
-            const lineIndent = line.match(/^(\s*)/)[1];
             return indent + line;
         });
         contentLines.splice(startIdx, searchLines.length, ...replaceLines);
@@ -312,15 +310,15 @@ export function editArtifact(filePath, ops) {
     const errors = [];
     let applied = 0;
     // Handle search_replace ops on raw content first
-    const searchReplaceOps = ops.filter(op => op.op === 'search_replace');
-    const sectionOps = ops.filter(op => op.op !== 'search_replace');
+    const searchReplaceOps = ops.filter((op) => op.op === 'search_replace');
+    const sectionOps = ops.filter((op) => op.op !== 'search_replace');
     for (const op of searchReplaceOps) {
         const result = applySearchReplace(content, op.search, op.replace);
-        if (result.success) {
+        if (result.success && result.content) {
             content = result.content;
             applied++;
         }
-        else {
+        else if (result.error) {
             errors.push(result.error);
         }
     }
@@ -387,7 +385,7 @@ export const SECTION_OPS = ['replace', 'append', 'prepend', 'delete', 'sed', 'ch
  */
 export function parseSedCommands(content) {
     const commands = [];
-    const lines = content.split('\n').filter(l => l.trim());
+    const lines = content.split('\n').filter((l) => l.trim());
     for (const line of lines) {
         // Match s/search/replace/ or s/search/replace/g
         // Support different delimiters: s|search|replace| or s#search#replace#
@@ -415,7 +413,7 @@ export function applySedCommands(content, commands) {
             const regex = new RegExp(cmd.search, cmd.global ? 'g' : '');
             result = result.replace(regex, cmd.replace);
         }
-        catch (e) {
+        catch {
             // If regex is invalid, fall back to literal string replacement
             if (cmd.global) {
                 result = result.split(cmd.search).join(cmd.replace);
@@ -453,12 +451,12 @@ export function parseMultiSectionContent(content, defaultOp = 'replace') {
                     content: currentContent.join('\n').trim()
                 };
                 if (currentOp === 'sed') {
-                    op.sedCommands = parseSedCommands(op.content || '');
+                    op.sedCommands = parseSedCommands(op.content ?? '');
                 }
                 ops.push(op);
             }
             currentSection = match[1].trim();
-            currentOp = match[2] || defaultOp;
+            currentOp = match[2] ?? defaultOp;
             currentContent = [];
         }
         else if (currentSection) {
@@ -473,7 +471,7 @@ export function parseMultiSectionContent(content, defaultOp = 'replace') {
             content: currentContent.join('\n').trim()
         };
         if (currentOp === 'sed') {
-            op.sedCommands = parseSedCommands(op.content || '');
+            op.sedCommands = parseSedCommands(op.content ?? '');
         }
         ops.push(op);
     }
@@ -487,8 +485,8 @@ export function parseMultiSectionContent(content, defaultOp = 'replace') {
  */
 export function parseCheckboxItems(content) {
     return content.split('\n')
-        .map(l => l.replace(/^-\s*\[[ xX]\]\s*/, '').trim())
-        .filter(l => l.length > 0);
+        .map((l) => l.replace(/^-\s*\[[ xX]\]\s*/, '').trim())
+        .filter((l) => l.length > 0);
 }
 /**
  * Process multi-section ops (expand sed, patch, check operations)
@@ -500,7 +498,7 @@ export function processMultiSectionOps(filePath, ops) {
     const expandedOps = [];
     const errors = [];
     for (const op of ops) {
-        if (op.op === 'sed' && op.sedCommands?.length > 0) {
+        if (op.op === 'sed' && op.sedCommands && op.sedCommands.length > 0) {
             const sectionContent = getSection(filePath, op.section);
             if (sectionContent === null) {
                 errors.push(`Section not found for sed: ${op.section}`);
@@ -513,7 +511,7 @@ export function processMultiSectionOps(filePath, ops) {
             });
         }
         else if (op.op === 'patch') {
-            const patches = parseSearchReplace(op.content);
+            const patches = parseSearchReplace(op.content ?? '');
             if (patches.length === 0) {
                 errors.push(`No SEARCH/REPLACE blocks found for patch: ${op.section}`);
                 continue;
@@ -527,10 +525,10 @@ export function processMultiSectionOps(filePath, ops) {
             for (const patch of patches) {
                 const result = applySearchReplace(sectionContent, patch.search, patch.replace);
                 if (!result.success) {
-                    patchError = `Patch failed on ${op.section}: ${result.error}`;
+                    patchError = `Patch failed on ${op.section}: ${result.error ?? 'unknown error'}`;
                     break;
                 }
-                sectionContent = result.content;
+                sectionContent = result.content ?? '';
             }
             if (patchError) {
                 errors.push(patchError);
@@ -543,7 +541,7 @@ export function processMultiSectionOps(filePath, ops) {
             });
         }
         else if (['check', 'uncheck', 'toggle'].includes(op.op)) {
-            for (const item of parseCheckboxItems(op.content)) {
+            for (const item of parseCheckboxItems(op.content ?? '')) {
                 expandedOps.push({
                     op: op.op,
                     section: op.section,

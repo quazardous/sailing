@@ -3,11 +3,11 @@
  */
 import fs from 'fs';
 import path from 'path';
-import { findPrdDirs, findFiles, loadFile, saveFile, jsonOut } from '../lib/core.js';
+import { loadFile, saveFile, jsonOut } from '../managers/core-manager.js';
 import { normalizeId, extractTaskId, matchesPrdDir, parentContainsEpic } from '../lib/normalize.js';
-import { getEpic } from '../lib/index.js';
+import { getAllEpics } from '../managers/artefacts-manager.js';
 import { STATUS, normalizeStatus, isStatusDone, isStatusNotStarted, isStatusInProgress, isStatusCancelled, statusSymbol } from '../lib/lexicon.js';
-import { buildDependencyGraph, detectCycles, findRoots, blockersResolved, longestPath, countTotalUnblocked, getAncestors, getDescendants } from '../lib/graph.js';
+import { buildDependencyGraph, detectCycles, findRoots, blockersResolved, longestPath, countTotalUnblocked, getAncestors, getDescendants } from '../managers/graph-manager.js';
 import { addDynamicHelp, withModifies } from '../lib/help.js';
 /**
  * Check if ID is an epic (ENNN) vs task (TNNN)
@@ -16,39 +16,25 @@ function isEpicId(id) {
     return /^E\d+$/i.test(id);
 }
 /**
- * Find an epic file by ID (via index.ts)
- * @returns {{ file: string, prdDir: string, data: object } | null}
- */
-function findEpicFile(epicId) {
-    const epic = getEpic(epicId);
-    if (!epic)
-        return null;
-    const fileData = loadFile(epic.file);
-    return { file: epic.file, prdDir: epic.prdDir, data: fileData };
-}
-/**
  * Build epic dependency map
  * @returns {Map<string, { id, file, status, blockedBy, prdDir }>}
  */
 function buildEpicDependencyMap() {
     const epics = new Map();
-    for (const prdDir of findPrdDirs()) {
-        const epicsDir = path.join(prdDir, 'epics');
-        const files = findFiles(epicsDir, /^E\d+.*\.md$/);
-        for (const f of files) {
-            const file = loadFile(f);
-            if (!file?.data?.id)
-                continue;
-            const id = normalizeId(file.data.id);
-            const blockedBy = (file.data.blocked_by || []).map(b => normalizeId(b));
-            epics.set(id, {
-                id,
-                file: f,
-                status: file.data.status || 'Not Started',
-                blockedBy,
-                prdDir
-            });
-        }
+    // Use artefacts.ts contract - single entry point for epic access
+    for (const epicEntry of getAllEpics()) {
+        const data = epicEntry.data;
+        if (!data?.id)
+            continue;
+        const id = normalizeId(data.id);
+        const blockedBy = (data.blocked_by || []).map(b => normalizeId(b));
+        epics.set(id, {
+            id,
+            file: epicEntry.file,
+            status: data.status || 'Not Started',
+            blockedBy,
+            prdDir: epicEntry.prdDir
+        });
     }
     return epics;
 }
@@ -106,7 +92,7 @@ export function registerDepsCommands(program) {
         .option('--json', 'JSON output')
         .action((taskId, options) => {
         const { tasks, blocks } = buildDependencyGraph();
-        const maxDepth = options.depth || Infinity;
+        const maxDepth = (options.depth) || Infinity;
         if (taskId) {
             const id = normalizeId(taskId);
             const task = tasks.get(id);
@@ -287,7 +273,7 @@ export function registerDepsCommands(program) {
                         message: `${id}: blocked_by "${raw}" should be "${extracted}"`
                     });
                     if (options.fix) {
-                        fixes.push({ task: id, file: task.file, action: 'normalize', raw, normalized: extracted });
+                        fixes.push({ task: id, file: task.file, action: 'normalize', raw: raw, normalized: extracted });
                     }
                 }
             }
@@ -409,7 +395,7 @@ export function registerDepsCommands(program) {
         }
         // 10. Epic/Task consistency
         const tasksByEpic = new Map();
-        for (const [id, task] of tasks) {
+        for (const [, task] of tasks) {
             if (prdFilter && !task.prd?.includes(prdFilter))
                 continue;
             const epicMatch = task.parent?.match(/E(\d+)/i);
@@ -417,56 +403,51 @@ export function registerDepsCommands(program) {
                 const epicId = normalizeId(`E${epicMatch[1]}`);
                 if (!tasksByEpic.has(epicId))
                     tasksByEpic.set(epicId, []);
-                tasksByEpic.get(epicId).push(task);
+                (tasksByEpic.get(epicId)).push(task);
             }
         }
-        for (const prdDir of findPrdDirs()) {
+        // Use artefacts.ts contract - single entry point for epic access
+        for (const epicEntry of getAllEpics()) {
             // Skip PRDs not matching filter
-            if (prdFilter && !matchesPrdDir(prdDir, options.prd))
+            if (prdFilter && !matchesPrdDir(epicEntry.prdDir, options.prd))
                 continue;
-            const epicDir = path.join(prdDir, 'epics');
-            if (!fs.existsSync(epicDir))
+            const epicId = normalizeId(epicEntry.data?.id);
+            if (!epicId)
                 continue;
-            for (const ef of findFiles(epicDir, /^E\d+.*\.md$/)) {
-                const epicFile = loadFile(ef);
-                if (!epicFile?.data?.id)
-                    continue;
-                const epicId = normalizeId(epicFile.data.id);
-                const epicStatus = epicFile.data.status || 'Unknown';
-                const epicTasks = tasksByEpic.get(epicId) || [];
-                if (epicTasks.length === 0)
-                    continue;
-                const allDone = epicTasks.every(t => isStatusDone(t.status) || isStatusCancelled(t.status));
-                const anyInProgress = epicTasks.some(t => isStatusInProgress(t.status));
-                if (isStatusNotStarted(epicStatus) && (anyInProgress || allDone)) {
-                    warnings.push({
-                        type: 'epic_status_mismatch',
-                        epic: epicId,
-                        message: `${epicId}: Status is "Not Started" but has tasks in progress or done`
-                    });
-                    if (options.fix) {
-                        const newStatus = allDone ? 'Done' : 'In Progress';
-                        fixes.push({ epic: epicId, file: ef, action: 'update_epic_status', newStatus });
-                    }
+            const epicStatus = (epicEntry.data?.status) || 'Unknown';
+            const epicTasks = (tasksByEpic.get(epicId) || []);
+            if (epicTasks.length === 0)
+                continue;
+            const allDone = epicTasks.every(t => isStatusDone(t.status) || isStatusCancelled(t.status));
+            const anyInProgress = epicTasks.some(t => isStatusInProgress(t.status));
+            if (isStatusNotStarted(epicStatus) && (anyInProgress || allDone)) {
+                warnings.push({
+                    type: 'epic_status_mismatch',
+                    epic: epicId,
+                    message: `${epicId}: Status is "Not Started" but has tasks in progress or done`
+                });
+                if (options.fix) {
+                    const newStatus = allDone ? 'Done' : 'In Progress';
+                    fixes.push({ epic: epicId, file: epicEntry.file, action: 'update_epic_status', newStatus });
                 }
-                if (isStatusInProgress(epicStatus) && allDone) {
-                    warnings.push({
-                        type: 'epic_not_done',
-                        epic: epicId,
-                        message: `${epicId}: All ${epicTasks.length} tasks done but epic still "In Progress"`
-                    });
-                    if (options.fix) {
-                        fixes.push({ epic: epicId, file: ef, action: 'update_epic_status', newStatus: 'Done' });
-                    }
+            }
+            if (isStatusInProgress(epicStatus) && allDone) {
+                warnings.push({
+                    type: 'epic_not_done',
+                    epic: epicId,
+                    message: `${epicId}: All ${epicTasks.length} tasks done but epic still "In Progress"`
+                });
+                if (options.fix) {
+                    fixes.push({ epic: epicId, file: epicEntry.file, action: 'update_epic_status', newStatus: 'Done' });
                 }
-                if (isStatusDone(epicStatus) && !allDone) {
-                    const notDone = epicTasks.filter(t => !isStatusDone(t.status) && !isStatusCancelled(t.status));
-                    errors.push({
-                        type: 'epic_done_prematurely',
-                        epic: epicId,
-                        message: `${epicId}: Marked "Done" but ${notDone.length} tasks incomplete`
-                    });
-                }
+            }
+            if (isStatusDone(epicStatus) && !allDone) {
+                const notDone = (epicTasks).filter(t => !isStatusDone(t.status) && !isStatusCancelled(t.status));
+                errors.push({
+                    type: 'epic_done_prematurely',
+                    epic: epicId,
+                    message: `${epicId}: Marked "Done" but ${notDone.length} tasks incomplete`
+                });
             }
         }
         // Apply fixes
@@ -812,6 +793,8 @@ export function registerDepsCommands(program) {
                         continue;
                     }
                     const file = loadFile(target.file);
+                    if (!file)
+                        continue;
                     if (!Array.isArray(file.data.blocked_by))
                         file.data.blocked_by = [];
                     if (!file.data.blocked_by.includes(id)) {
@@ -824,7 +807,11 @@ export function registerDepsCommands(program) {
             if (options.blockedBy) {
                 // Add blockers to this epic
                 const epic = epics.get(id);
+                if (!epic)
+                    return;
                 const file = loadFile(epic.file);
+                if (!file)
+                    return;
                 if (!Array.isArray(file.data.blocked_by))
                     file.data.blocked_by = [];
                 for (const blockerId of options.blockedBy) {
@@ -853,6 +840,8 @@ export function registerDepsCommands(program) {
                 process.exit(1);
             }
             const task = tasks.get(id);
+            if (!task)
+                return;
             if (options.blocks) {
                 // Add this task as a blocker to others
                 for (const targetId of options.blocks) {
@@ -867,6 +856,8 @@ export function registerDepsCommands(program) {
                         continue;
                     }
                     const file = loadFile(target.file);
+                    if (!file)
+                        continue;
                     if (!Array.isArray(file.data.blocked_by))
                         file.data.blocked_by = [];
                     if (!file.data.blocked_by.includes(id)) {
@@ -879,6 +870,8 @@ export function registerDepsCommands(program) {
             if (options.blockedBy) {
                 // Add blockers to this task
                 const file = loadFile(task.file);
+                if (!file)
+                    return;
                 if (!Array.isArray(file.data.blocked_by))
                     file.data.blocked_by = [];
                 for (const blockerId of options.blockedBy) {
@@ -932,7 +925,7 @@ export function registerDepsCommands(program) {
             const epicBlockers = epic.blockedBy.map(bid => {
                 const b = epics.get(bid);
                 return b ? { id: bid, status: b.status, done: isStatusDone(b.status) } : null;
-            }).filter(Boolean);
+            }).filter((b) => b !== null);
             const epicBlocks = [...epics.values()]
                 .filter(e => e.blockedBy.includes(epicId))
                 .map(e => ({ id: e.id, status: e.status }));

@@ -27,7 +27,7 @@ import { fileURLToPath } from 'url';
 import { spawn, spawnSync } from 'child_process';
 import { execaSync } from 'execa';
 import net from 'net';
-import { setScriptDir, setProjectRoot, findProjectRoot, getPath } from './lib/core.js';
+import { setScriptDir, setProjectRoot, findProjectRoot, getPath } from './managers/core-manager.js';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 // Set script dir for project detection
 setScriptDir(__dirname);
@@ -113,7 +113,7 @@ if (!projectRoot) {
     process.exit(1);
 }
 // Get haven path and config
-import { getAgentConfig } from './lib/config.js';
+import { getAgentConfig } from './managers/core-manager.js';
 const havenPath = getPath('haven');
 const agentConfig = getAgentConfig();
 const mcpMode = usePort ? 'port' : (agentConfig.mcp_mode || 'socket');

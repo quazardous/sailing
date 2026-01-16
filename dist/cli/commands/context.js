@@ -1,6 +1,20 @@
-import { jsonOut } from '../lib/core.js';
+/**
+ * Context commands for rudder CLI
+ * Provides optimized prompting context based on roles
+ *
+ * Uses compose.ts lib for context composition (SINGLE SOURCE OF TRUTH).
+ *
+ * Resolution flow:
+ *   context:load <op> →
+ *     1. operations[op].role → roles[role]
+ *     2. roles[role].base_sets → fragments
+ *     3. matrix[op] → additional fragments
+ *     4. roles[role].inject → project files
+ *     5. if roles[role].workflow → orchestration[op]
+ */
+import { jsonOut } from '../managers/core-manager.js';
 import { addDynamicHelp } from '../lib/help.js';
-import { loadWorkflowsConfig, loadFragment, composeContext, buildAgentSpawnPrompt } from '../lib/compose.js';
+import { loadWorkflowsConfig, loadFragment, composeContext, buildAgentSpawnPrompt } from '../managers/compose-manager.js';
 /**
  * List available operations grouped by role
  */

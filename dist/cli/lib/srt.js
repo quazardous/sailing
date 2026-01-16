@@ -9,7 +9,7 @@ import fs from 'fs';
 import path from 'path';
 import os from 'os';
 import { fileURLToPath } from 'url';
-import { ensureDir } from './paths.js';
+import { ensureDir } from './fs-utils.js';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 /**
  * Process a stream-json line and return condensed output
@@ -41,7 +41,7 @@ export function processStreamJsonLine(line) {
                 // Only show text if no tool use (final answer)
                 if (text.length && !toolUses.length) {
                     const preview = text[0].text?.slice(0, 100)?.replace(/\n/g, ' ') || '';
-                    parts.push(`[TEXT] ${preview}${text[0].text?.length > 100 ? '...' : ''}`);
+                    parts.push(`[TEXT] ${preview}${(text[0].text?.length || 0) > 100 ? '...' : ''}`);
                 }
                 return parts.length ? parts.join('\n') : null;
             }
@@ -91,9 +91,12 @@ export function findMcpServerPath(projectRoot) {
  */
 export function getAvailablePort() {
     return new Promise((resolve, reject) => {
-        const server = require('net').createServer();
+        // Dynamic require needed for net module in this context
+        const net = require('net');
+        const server = net.createServer();
         server.listen(0, '127.0.0.1', () => {
-            const port = server.address().port;
+            const addr = server.address();
+            const port = typeof addr === 'object' && addr !== null ? addr.port : 0;
             server.close(() => resolve(port));
         });
         server.on('error', reject);
@@ -129,20 +132,20 @@ export function checkMcpServer(havenDir) {
             throw new Error('Stale PID file');
         }
     }
-    catch (e) {
+    catch {
         // Process not running, clean up stale files
         try {
             fs.unlinkSync(socketPath);
         }
-        catch { }
+        catch { /* ignore */ }
         try {
             fs.unlinkSync(pidFile);
         }
-        catch { }
+        catch { /* ignore */ }
         try {
             fs.unlinkSync(portFile);
         }
-        catch { }
+        catch { /* ignore */ }
         return { running: false };
     }
 }
@@ -456,7 +459,8 @@ export function spawnClaudeWithSrt(options) {
     // -p without argument: read prompt from stdin
     claudeArgs.push('-p');
     // Build final command
-    let command, finalArgs;
+    let command;
+    let finalArgs;
     if (sandbox) {
         command = 'srt';
         finalArgs = [];

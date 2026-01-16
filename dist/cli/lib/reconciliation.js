@@ -7,9 +7,10 @@
  * TODO[P3]: Separate reporting/diagnostics from mutation to ease gradual TS migration.
  */
 import { execSync } from 'child_process';
-import { findProjectRoot } from './core.js';
-import { loadState } from './state.js';
-import { getMainBranch, getBranchName, getPrdBranchName, getEpicBranchName, branchExists, getBranchDivergence, syncBranch, listAgentWorktrees } from './worktree.js';
+import { findProjectRoot } from '../managers/core-manager.js';
+import { loadState } from '../managers/state-manager.js';
+import { getBranchName, getPrdBranchName, getEpicBranchName, branchExists, getBranchDivergence, syncBranch, listAgentWorktrees } from '../managers/worktree-manager.js';
+import { getMainBranch } from '../managers/core-manager.js';
 /**
  * Branch States
  */

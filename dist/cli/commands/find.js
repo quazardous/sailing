@@ -1,194 +1,194 @@
+/**
+ * Find command - search entities with filters and execute commands
+ *
+ * Examples:
+ *   rudder find task --epic E001 --status "In Progress"
+ *   rudder find task --blocked --exec "task:update {} --status Blocked"
+ *   rudder find epic --prd PRD-001 --no-story --exec "epic:show {}"
+ */
 import { execSync } from 'child_process';
-import { findProjectRoot, jsonOut, findPrdDirs, findFiles, loadFile } from '../lib/core.js';
+import path from 'path';
+import { findProjectRoot, jsonOut } from '../managers/core-manager.js';
 import { normalizeId, parentContainsEpic } from '../lib/normalize.js';
+import { getAllEpics, getAllTasks, getAllPrds, getAllStories, getPrd } from '../managers/artefacts-manager.js';
 /**
  * Find PRDs matching filters
+ * Uses artefacts.ts contract
  */
 function findPrds(filters) {
-    const prdDirs = findPrdDirs();
     const results = [];
-    for (const dir of prdDirs) {
-        const prdFile = findFiles(dir, 'prd.md')[0];
-        if (!prdFile)
-            continue;
-        const file = loadFile(prdFile);
-        const data = file.data || {};
-        const id = data.id || dir.match(/PRD-\d+/i)?.[0];
-        if (!matchesFilters(data, filters, 'prd'))
+    for (const prdEntry of getAllPrds()) {
+        const data = prdEntry.data || {};
+        if (!matchesFilters(data, filters))
             continue;
         results.push({
-            id: normalizeId(id),
+            id: normalizeId(prdEntry.id),
             title: data.title,
             status: data.status,
-            file: prdFile
+            file: prdEntry.file
         });
     }
     return results;
 }
 /**
  * Find epics matching filters
+ * Uses artefacts.ts contract
  */
 function findEpics(filters) {
-    const prdDirs = findPrdDirs();
     const results = [];
-    // Filter by PRD if specified
-    const targetPrds = filters.prd
-        ? prdDirs.filter(d => d.toLowerCase().includes(normalizeId(filters.prd).toLowerCase()))
-        : prdDirs;
-    for (const prdDir of targetPrds) {
-        const epicsDir = `${prdDir}/epics`;
-        const epicFiles = findFiles(epicsDir, /^E\d+.*\.md$/);
-        for (const epicFile of epicFiles) {
-            const file = loadFile(epicFile);
-            if (!file?.data)
+    for (const epicEntry of getAllEpics()) {
+        // Filter by PRD if specified
+        if (filters.prd) {
+            const prdDir = epicEntry.prdDir.toLowerCase();
+            if (!prdDir.includes(normalizeId(filters.prd).toLowerCase()))
                 continue;
-            const data = file.data;
-            if (!matchesFilters(data, filters, 'epic'))
-                continue;
-            results.push({
-                id: normalizeId(data.id),
-                title: data.title,
-                status: data.status,
-                parent: data.parent,
-                stories: data.stories || [],
-                file: epicFile
-            });
         }
+        const data = epicEntry.data;
+        if (!data)
+            continue;
+        if (!matchesFilters(data, filters))
+            continue;
+        results.push({
+            id: normalizeId(data.id),
+            title: data.title,
+            status: data.status,
+            parent: data.parent,
+            stories: data.stories || [],
+            file: epicEntry.file
+        });
     }
     return results;
 }
 /**
  * Find tasks matching filters
+ * Uses artefacts.ts contract
  */
 function findTasks(filters) {
-    const prdDirs = findPrdDirs();
     const results = [];
-    // Filter by PRD if specified
-    const targetPrds = filters.prd
-        ? prdDirs.filter(d => d.toLowerCase().includes(normalizeId(filters.prd).toLowerCase()))
-        : prdDirs;
-    for (const prdDir of targetPrds) {
-        const tasksDir = `${prdDir}/tasks`;
-        const taskFiles = findFiles(tasksDir, /^T\d+.*\.md$/);
-        for (const taskFile of taskFiles) {
-            const file = loadFile(taskFile);
-            if (!file?.data)
+    for (const taskEntry of getAllTasks()) {
+        // Filter by PRD if specified
+        if (filters.prd) {
+            const prdDir = path.dirname(path.dirname(taskEntry.file)).toLowerCase();
+            if (!prdDir.includes(normalizeId(filters.prd).toLowerCase()))
                 continue;
-            const data = file.data;
-            // Filter by epic (format-agnostic: E1 matches E001 in parent)
-            if (filters.epic) {
-                if (!parentContainsEpic(data.parent, filters.epic))
-                    continue;
-            }
-            if (!matchesFilters(data, filters, 'task'))
-                continue;
-            results.push({
-                id: normalizeId(data.id),
-                title: data.title,
-                status: data.status,
-                parent: data.parent,
-                assignee: data.assignee,
-                blocked_by: data.blocked_by || [],
-                stories: data.stories || [],
-                file: taskFile
-            });
         }
+        const data = taskEntry.data;
+        if (!data)
+            continue;
+        // Filter by epic (format-agnostic: E1 matches E001 in parent)
+        if (filters.epic) {
+            if (!parentContainsEpic(data.parent, filters.epic))
+                continue;
+        }
+        if (!matchesFilters(data, filters))
+            continue;
+        results.push({
+            id: normalizeId(data.id),
+            title: data.title,
+            status: data.status,
+            parent: data.parent,
+            assignee: data.assignee,
+            blocked_by: data.blocked_by || [],
+            stories: data.stories || [],
+            file: taskEntry.file
+        });
     }
     return results;
 }
 /**
  * Find stories matching filters
+ * Uses artefacts.ts contract
  */
 function findStories(filters) {
-    const prdDirs = findPrdDirs();
     const results = [];
-    // Filter by PRD if specified
-    const targetPrds = filters.prd
-        ? prdDirs.filter(d => d.toLowerCase().includes(normalizeId(filters.prd).toLowerCase()))
-        : prdDirs;
-    for (const prdDir of targetPrds) {
-        const storiesDir = `${prdDir}/stories`;
-        const storyFiles = findFiles(storiesDir, /^S\d+.*\.md$/);
-        for (const storyFile of storyFiles) {
-            const file = loadFile(storyFile);
-            if (!file?.data)
-                continue;
-            const data = file.data;
-            if (!matchesFilters(data, filters, 'story'))
-                continue;
-            results.push({
-                id: normalizeId(data.id),
-                title: data.title,
-                type: data.type,
-                parent_story: data.parent_story,
-                file: storyFile
-            });
+    // Get stories, optionally filtered by PRD
+    let storyEntries = getAllStories();
+    if (filters.prd) {
+        const prd = getPrd(filters.prd);
+        if (prd) {
+            storyEntries = storyEntries.filter(s => s.prdDir === prd.dir);
         }
+        else {
+            // Fallback: filter by prdDir path containing prd filter
+            storyEntries = storyEntries.filter(s => s.prdDir.toLowerCase().includes(normalizeId(filters.prd).toLowerCase()));
+        }
+    }
+    for (const storyEntry of storyEntries) {
+        const data = storyEntry.data || {};
+        if (!matchesFilters(data, filters))
+            continue;
+        results.push({
+            id: normalizeId(data.id || storyEntry.id),
+            title: data.title,
+            type: data.type,
+            parent_story: data.parent_story,
+            file: storyEntry.file
+        });
     }
     return results;
 }
 /**
  * Check if entity matches all filters
  */
-function matchesFilters(data, filters, entityType) {
+function matchesFilters(data, filters) {
     // Status filter
     if (filters.status) {
-        const status = (data.status || '').toLowerCase();
+        const status = String(data.status || '').toLowerCase();
         const target = filters.status.toLowerCase();
         if (!status.includes(target))
             return false;
     }
     // Tag filter
     if (filters.tag) {
-        const tags = data.tags || [];
+        const tags = (data.tags || []);
         if (!tags.some(t => t.toLowerCase() === filters.tag.toLowerCase()))
             return false;
     }
     // Assignee filter
     if (filters.assignee) {
-        const assignee = (data.assignee || '').toLowerCase();
+        const assignee = String(data.assignee || '').toLowerCase();
         if (!assignee.includes(filters.assignee.toLowerCase()))
             return false;
     }
     // Blocked filter (has blockers)
     if (filters.blocked) {
-        const blockers = data.blocked_by || [];
+        const blockers = (data.blocked_by || []);
         if (blockers.length === 0)
             return false;
     }
     // Unblocked filter (no blockers)
     if (filters.unblocked) {
-        const blockers = data.blocked_by || [];
+        const blockers = (data.blocked_by || []);
         if (blockers.length > 0)
             return false;
     }
     // Has story filter
     if (filters.hasStory) {
-        const stories = data.stories || [];
+        const stories = (data.stories || []);
         if (stories.length === 0)
             return false;
     }
     // No story filter
     if (filters.noStory) {
-        const stories = data.stories || [];
+        const stories = (data.stories || []);
         if (stories.length > 0)
             return false;
     }
     // Type filter (for stories)
     if (filters.type) {
-        const type = (data.type || '').toLowerCase();
+        const type = String(data.type || '').toLowerCase();
         if (type !== filters.type.toLowerCase())
             return false;
     }
     // Milestone filter
     if (filters.milestone) {
-        const milestone = data.milestone || '';
+        const milestone = String(data.milestone || '');
         if (!milestone.includes(filters.milestone))
             return false;
     }
     // Target version filter
     if (filters.targetVersion) {
-        const versions = data.target_versions || {};
+        const versions = (data.target_versions || {});
         const [comp, ver] = filters.targetVersion.split(':');
         if (ver) {
             if (versions[comp] !== ver)
@@ -232,7 +232,10 @@ function executeForEach(results, cmdTemplate, options) {
             successes.push({ id: result.id, output: output.trim() });
         }
         catch (e) {
-            const error = e.stderr?.trim() || e.message;
+            const errorObj = e;
+            const stderr = errorObj.stderr ? String(errorObj.stderr).trim() : '';
+            const message = errorObj.message || '';
+            const error = stderr || message;
             if (!options.quiet) {
                 console.error(`${result.id}: FAILED - ${error}`);
             }

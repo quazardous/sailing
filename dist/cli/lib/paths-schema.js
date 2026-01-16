@@ -127,6 +127,30 @@ export const PATHS_SCHEMA = {
         default: '${haven}/db',
         description: 'Database files (agents.json, runs.json)',
         category: 'isolation'
+    },
+    // Haven root
+    haven: {
+        default: '${haven}',
+        description: 'Haven directory root',
+        category: 'isolation'
+    },
+    // Config files (no haven profile - always in project)
+    config: {
+        default: '.sailing/config.yaml',
+        description: 'Sailing configuration',
+        category: 'state'
+    },
+    // SRT settings
+    srtConfig: {
+        default: '${haven}/srt-settings.json',
+        description: 'SRT runtime settings',
+        category: 'isolation'
+    },
+    // Diagnostics
+    diagnostics: {
+        default: '${haven}/diagnostics',
+        description: 'Diagnostic logs',
+        category: 'isolation'
     }
 };
 /**

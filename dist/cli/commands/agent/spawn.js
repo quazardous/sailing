@@ -4,24 +4,23 @@
 import fs from 'fs';
 import path from 'path';
 import yaml from 'js-yaml';
-import { findProjectRoot, loadFile, jsonOut } from '../../lib/core.js';
-import { execRudderSafe } from '../../lib/invoke.js';
+import { findProjectRoot, loadFile, jsonOut, resolvePlaceholders, getAgentConfig, ensureDir, getAgentsDir, getPathsInfo } from '../../managers/core-manager.js';
 import { getGit } from '../../lib/git.js';
-import { resolvePlaceholders } from '../../lib/paths.js';
+import { create as createPr } from '../../managers/pr-manager.js';
+import { AgentRunManager } from '../../lib/agent-run.js';
+import { getAgentLifecycle } from '../../managers/agent-manager.js';
 import { createMission } from '../../lib/agent-schema.js';
-import { loadState, saveState, updateStateAtomic } from '../../lib/state.js';
+import { loadState, saveState, updateStateAtomic } from '../../managers/state-manager.js';
 import { withModifies } from '../../lib/help.js';
-import { getAgentConfig } from '../../lib/config.js';
-import { buildAgentSpawnPrompt } from '../../lib/compose.js';
-import { createWorktree, getWorktreePath, getBranchName, worktreeExists, removeWorktree, ensureBranchHierarchy, syncParentBranch, getParentBranch, getMainBranch } from '../../lib/worktree.js';
+import { buildAgentSpawnPrompt } from '../../managers/compose-manager.js';
+import { createWorktree, getWorktreePath, getBranchName, worktreeExists, removeWorktree, ensureBranchHierarchy, syncParentBranch, getParentBranch, getMainBranch } from '../../managers/worktree-manager.js';
 import { spawnClaude, getLogFilePath } from '../../lib/claude.js';
 import { checkMcpServer } from '../../lib/srt.js';
-import { extractPrdId, extractEpicId, getPrdBranching, findDevMd, findToolset } from '../../lib/entities.js';
-import { getTask, getEpic, getMemoryFile } from '../../lib/index.js';
-import { normalizeId } from '../../lib/normalize.js';
-import { getAgentDir, getProcessStats, formatDuration } from '../../lib/agent-utils.js';
-import { ensureDir } from '../../lib/paths.js';
-import { analyzeLog, printDiagnoseResult } from '../../lib/diagnose.js';
+import { extractPrdId, extractEpicId, normalizeId } from '../../lib/normalize.js';
+import { findDevMd, findToolset } from '../../managers/core-manager.js';
+import { getTask, getEpic, getMemoryFile, getPrdBranching } from '../../managers/artefacts-manager.js';
+import { AgentUtils, getProcessStats, formatDuration } from '../../lib/agent-utils.js';
+import { getDiagnoseOps, printDiagnoseResult } from '../../managers/diagnose-manager.js';
 export function registerSpawnCommand(agent) {
     withModifies(agent.command('spawn <task-id>'), ['task', 'git', 'state'])
         .description('Spawn agent to execute task (creates worktree, spawns Claude)')
@@ -215,7 +214,10 @@ export function registerSpawnCommand(agent) {
             }
         }
         // Determine agent directory
-        const agentDir = ensureDir(getAgentDir(taskId));
+        const agentsDir = getAgentsDir();
+        const agentUtils = new AgentUtils(agentsDir);
+        const runManager = new AgentRunManager(agentsDir);
+        const agentDir = ensureDir(agentUtils.getAgentDir(taskId));
         // Determine if worktree should be created (agentConfig loaded at function start)
         let useWorktree = agentConfig.use_worktrees;
         if (options.worktree === true)
@@ -402,29 +404,30 @@ export function registerSpawnCommand(agent) {
         }
         // Pre-claim task before spawning agent
         {
-            const { stderr, exitCode } = execRudderSafe(`assign:claim ${taskId} --role agent --json`, { cwd: projectRoot });
-            if (exitCode === 0) {
+            const claimResult = runManager.claim(taskId, 'task');
+            if (claimResult.success) {
                 if (!options.json) {
-                    console.log(`Task ${taskId} claimed`);
+                    if (claimResult.alreadyClaimed) {
+                        console.log(`Task ${taskId} resuming (already claimed)`);
+                    }
+                    else {
+                        console.log(`Task ${taskId} claimed`);
+                    }
                 }
             }
-            else if (stderr.includes('already claimed')) {
-                if (!options.json) {
-                    console.log(`Task ${taskId} resuming (already claimed)`);
-                }
-            }
-            else if (stderr) {
-                console.error(`Warning: Claim issue: ${stderr}`);
+            else if (claimResult.error) {
+                console.error(`Warning: Claim issue: ${claimResult.error}`);
             }
         }
         // Write mission file (for debug/trace)
         fs.writeFileSync(missionFile, yaml.dump(mission));
         // Get log file path
-        const logFile = getLogFilePath(taskId);
+        const logFile = getLogFilePath(getAgentsDir(), taskId);
         // Spawn Claude with bootstrap prompt
         const shouldWait = options.wait !== false;
         const isQuiet = options.verbose !== true;
         const shouldLog = options.log !== false && shouldWait && !isQuiet;
+        const paths = getPathsInfo();
         const spawnResult = await spawnClaude({
             prompt: bootstrapPrompt,
             cwd,
@@ -433,7 +436,13 @@ export function registerSpawnCommand(agent) {
             agentDir,
             taskId,
             projectRoot,
-            quietMode: !shouldLog
+            quietMode: !shouldLog,
+            // Pass config values explicitly
+            riskyMode: agentConfig.risky_mode,
+            sandbox: agentConfig.sandbox,
+            maxBudgetUsd: agentConfig.max_budget_usd,
+            watchdogTimeout: agentConfig.watchdog_timeout,
+            baseSrtConfigPath: paths.srtConfig?.absolute
         });
         // Update state atomically
         const agentEntry = {
@@ -489,30 +498,39 @@ export function registerSpawnCommand(agent) {
             });
             // Auto-release if agent exited successfully with work done
             if (code === 0 && (dirtyWorktree || commitsAhead > 0)) {
-                const { stdout, stderr, exitCode } = execRudderSafe(`assign:release ${taskId} --json`, { cwd: projectRoot });
-                if (exitCode === 0) {
+                const releaseResult = runManager.release(taskId);
+                if (releaseResult.success && !releaseResult.notClaimed) {
                     console.log(`✓ Auto-released ${taskId} (agent didn't call assign:release)`);
                 }
-                else if (!stderr.includes('not claimed') && !stdout.includes('not claimed')) {
-                    console.error(`⚠ Auto-release failed for ${taskId}: ${stderr}`);
+                else if (!releaseResult.success) {
+                    console.error(`⚠ Auto-release failed for ${taskId}: ${releaseResult.error}`);
                 }
             }
             // Auto-create PR if enabled and agent completed successfully
             if (code === 0 && agentConfig.auto_pr && updatedState.agents?.[taskId]?.worktree) {
-                const draftFlag = agentConfig.pr_draft ? '--draft' : '';
-                const { stderr, exitCode } = execRudderSafe(`worktree pr ${taskId} ${draftFlag} --json`, { cwd: projectRoot });
-                if (exitCode === 0) {
-                    console.log(`Auto-PR created for ${taskId}`);
+                const agentInfo = updatedState.agents[taskId];
+                const prResult = await createPr(taskId, {
+                    cwd: projectRoot,
+                    title: agentInfo.task_title ? `${taskId}: ${agentInfo.task_title}` : undefined,
+                    draft: agentConfig.pr_draft,
+                    epicId: agentInfo.epic_id,
+                    prdId: agentInfo.prd_id
+                });
+                if ('url' in prResult) {
+                    updatedState.agents[taskId].pr_url = prResult.url;
+                    updatedState.agents[taskId].pr_created_at = new Date().toISOString();
+                    saveState(updatedState);
+                    console.log(`Auto-PR created for ${taskId}: ${prResult.url}`);
                 }
                 else {
-                    console.error(`Auto-PR failed for ${taskId}: ${stderr}`);
+                    console.error(`Auto-PR failed for ${taskId}: ${prResult.error}`);
                 }
             }
             // Auto-diagnose after agent run
             if (agentConfig.auto_diagnose !== false) {
-                const diagLogFile = path.join(getAgentDir(taskId), 'run.jsonlog');
+                const diagLogFile = path.join(agentUtils.getAgentDir(taskId), 'run.jsonlog');
                 if (fs.existsSync(diagLogFile)) {
-                    const result = analyzeLog(diagLogFile, epicId);
+                    const result = getDiagnoseOps().analyzeLog(diagLogFile, epicId);
                     if (result.errors.length > 0) {
                         console.log(`\n--- Diagnostic Report ---`);
                         printDiagnoseResult(taskId, result);
@@ -689,15 +707,17 @@ export function registerSpawnCommand(agent) {
         if (exitCode === 0) {
             if (!isQuiet)
                 console.log(`\nAuto-reaping ${taskId}...`);
-            const { stdout, stderr, exitCode: reapCode } = execRudderSafe(`agent:reap ${taskId}${!isQuiet ? ' --verbose' : ''}`, { cwd: projectRoot });
-            if (reapCode === 0) {
-                if (!isQuiet && stdout)
-                    console.log(stdout);
+            const reapResult = await getAgentLifecycle(taskId).reap({ verbose: !isQuiet });
+            if (reapResult.success) {
+                if (!isQuiet) {
+                    console.log(`✓ Merged ${taskId}${reapResult.cleanedUp ? ' (cleaned up)' : ''}`);
+                    console.log(`✓ Task ${taskId} → ${reapResult.taskStatus}`);
+                }
                 if (isQuiet)
                     console.log(`${taskId}: ✓ reaped`);
             }
-            else {
-                console.error(`Reap failed: ${stderr}`);
+            else if (reapResult.escalate) {
+                console.error(`Reap failed: ${reapResult.escalate.reason}`);
                 console.error(`Manual: bin/rudder agent:reap ${taskId}`);
             }
         }

@@ -3,16 +3,16 @@
  */
 import fs from 'fs';
 import path from 'path';
-import { findPrdDirs, findFiles, loadFile, saveFile, toKebab, jsonOut, getPrdsDir, stripComments } from '../lib/core.js';
+import { findPrdDirs, loadFile, saveFile, toKebab, jsonOut, getPrdsDir, stripComments } from '../managers/core-manager.js';
 import { matchesPrdDir } from '../lib/normalize.js';
 import { STATUS, normalizeStatus, statusSymbol } from '../lib/lexicon.js';
-import { nextId } from '../lib/state.js';
+import { nextId } from '../managers/state-manager.js';
 import { parseUpdateOptions } from '../lib/update.js';
 import { addDynamicHelp, withModifies } from '../lib/help.js';
-import { formatId } from '../lib/config.js';
+import { formatId } from '../managers/core-manager.js';
 import { parseSearchReplace, editArtifact, parseMultiSectionContent, processMultiSectionOps } from '../lib/artifact.js';
-import { getPrd } from '../lib/index.js';
-import { createPrdMemoryFile } from '../lib/memory.js';
+import { getPrd, getEpicsForPrd, getTasksForPrd, getAllPrds } from '../managers/artefacts-manager.js';
+import { createPrdMemoryFile } from '../managers/memory-manager.js';
 /**
  * Register PRD commands
  */
@@ -31,41 +31,36 @@ export function registerPrdCommands(program) {
         .option('--json', 'JSON output')
         .action((options) => {
         const prds = [];
-        for (const prdDir of findPrdDirs()) {
-            const prdFile = path.join(prdDir, 'prd.md');
-            const file = loadFile(prdFile);
-            if (!file?.data)
-                continue;
+        for (const prdEntry of getAllPrds()) {
+            const data = prdEntry.data;
             // Status filter
             if (options.status) {
                 const targetStatus = normalizeStatus(options.status, 'prd');
-                const prdStatus = normalizeStatus(file.data.status, 'prd');
+                const prdStatus = normalizeStatus(data.status, 'prd');
                 if (targetStatus !== prdStatus)
                     continue;
             }
             // Tag filter (AND logic)
-            if (options.tag?.length > 0) {
-                const prdTags = file.data.tags || [];
-                const allTagsMatch = options.tag.every(t => prdTags.includes(t));
+            if (options.tag && options.tag.length > 0) {
+                const prdTags = data.tags || [];
+                const allTagsMatch = options.tag.every((t) => prdTags.includes(t));
                 if (!allTagsMatch)
                     continue;
             }
-            // Count epics and tasks
-            const epicsDir = path.join(prdDir, 'epics');
-            const tasksDir = path.join(prdDir, 'tasks');
-            const epicCount = findFiles(epicsDir, /^E\d+.*\.md$/).length;
-            const taskCount = findFiles(tasksDir, /^T\d+.*\.md$/).length;
-            const prdEntry = {
-                id: file.data.id || path.basename(prdDir).match(/PRD-\d+/)?.[0],
-                title: file.data.title || '',
-                status: file.data.status || 'Unknown',
-                parent: file.data.parent || '',
+            // Count epics and tasks (artefacts.ts contract)
+            const epicCount = getEpicsForPrd(prdEntry.num).length;
+            const taskCount = getTasksForPrd(prdEntry.num).length;
+            const result = {
+                id: data.id || prdEntry.id,
+                title: data.title || '',
+                status: data.status || 'Unknown',
+                parent: data.parent || '',
                 epics: epicCount,
                 tasks: taskCount
             };
             if (options.path)
-                prdEntry.dir = prdDir;
-            prds.push(prdEntry);
+                result.dir = prdEntry.dir;
+            prds.push(result);
         }
         // Sort by ID
         prds.sort((a, b) => {
@@ -97,7 +92,7 @@ export function registerPrdCommands(program) {
     prd.command('show <id>')
         .description('Show PRD details (epics, tasks by status)')
         .option('--raw', 'Dump raw markdown')
-        .option('--comments', 'Include template comments (stripped by default)')
+        .option('--strip-comments', 'Strip template comments from output')
         .option('--path', 'Include file path (discouraged)')
         .option('--json', 'JSON output')
         .action((id, options) => {
@@ -112,7 +107,7 @@ export function registerPrdCommands(program) {
             if (options.path)
                 console.log(`# File: ${prdFile}\n`);
             const content = fs.readFileSync(prdFile, 'utf8');
-            console.log(options.comments ? content : stripComments(content));
+            console.log(options.stripComments ? stripComments(content) : content);
             return;
         }
         const file = loadFile(prdFile);
@@ -120,17 +115,16 @@ export function registerPrdCommands(program) {
             console.error(`PRD file not found: ${prdFile}`);
             process.exit(1);
         }
-        // Count epics and tasks
-        const epicsDir = path.join(prdDir, 'epics');
-        const tasksDir = path.join(prdDir, 'tasks');
-        const epics = findFiles(epicsDir, /^E\d+.*\.md$/).map(f => {
-            const ef = loadFile(f);
-            return { id: ef?.data?.id, title: ef?.data?.title, status: ef?.data?.status };
-        });
-        const tasks = findFiles(tasksDir, /^T\d+.*\.md$/).map(f => {
-            const tf = loadFile(f);
-            return { id: tf?.data?.id, status: tf?.data?.status };
-        });
+        // Get epics and tasks (artefacts.ts contract)
+        const epics = getEpicsForPrd(id).map(e => ({
+            id: e.data?.id,
+            title: e.data?.title,
+            status: e.data?.status
+        }));
+        const tasks = getTasksForPrd(id).map(t => ({
+            id: t.data?.id,
+            status: t.data?.status
+        }));
         const tasksByStatus = {};
         tasks.forEach(t => {
             const status = t.status || 'Unknown';
@@ -191,8 +185,8 @@ export function registerPrdCommands(program) {
             tags: []
         };
         // Add tags if specified (slugified to kebab-case)
-        if (options.tag?.length > 0) {
-            data.tags = options.tag.map(t => toKebab(t));
+        if (options.tag && options.tag.length > 0) {
+            data.tags = options.tag.map((t) => toKebab(t));
         }
         const body = `\n# ${id}: ${title}\n\n## Problem Statement\n\n[Describe the problem]\n\n## Goals\n\n- [Goal 1]\n\n## Non-Goals\n\n- [Non-goal 1]\n\n## Solution Overview\n\n[High-level approach]\n`;
         const prdFile = path.join(prdDir, 'prd.md');
@@ -213,6 +207,13 @@ export function registerPrdCommands(program) {
                 console.log(`File: ${prdFile}`);
             console.log(`\n${'─'.repeat(60)}\n`);
             console.log(fs.readFileSync(prdFile, 'utf8'));
+            console.log(`${'─'.repeat(60)}`);
+            console.log(`\nEdit with CLI:`);
+            console.log(`  rudder prd:edit ${id} <<EOF`);
+            console.log(`  ## Problem Statement`);
+            console.log(`  Your problem description here...`);
+            console.log(`  EOF`);
+            console.log(`\nMore: rudder prd:edit --help`);
         }
     });
     // prd:update
@@ -237,7 +238,7 @@ export function registerPrdCommands(program) {
         const opts = {
             status: options.status,
             title: options.title,
-            set: options.set?.length ? options.set : null
+            set: options.set && options.set.length > 0 ? options.set : null
         };
         const { updated, data } = parseUpdateOptions(opts, file.data, 'prd');
         if (updated) {
@@ -276,7 +277,7 @@ export function registerPrdCommands(program) {
             file.data.milestones = [];
         }
         // Find or create milestone
-        let milestone = file.data.milestones.find(m => m.id === milestoneId);
+        let milestone = file.data.milestones.find((m) => m.id === milestoneId);
         if (!milestone) {
             milestone = { id: milestoneId, epics: [] };
             file.data.milestones.push(milestone);
@@ -290,7 +291,7 @@ export function registerPrdCommands(program) {
         const removed = [];
         const skipped = [];
         // Add epics
-        for (const epic of options.addEpic || []) {
+        for (const epic of (options.addEpic || [])) {
             const epicId = epic.toUpperCase();
             if (milestone.epics.includes(epicId)) {
                 skipped.push(epicId);
@@ -302,7 +303,7 @@ export function registerPrdCommands(program) {
             }
         }
         // Remove epics
-        for (const epic of options.removeEpic || []) {
+        for (const epic of (options.removeEpic || [])) {
             const epicId = epic.toUpperCase();
             const idx = milestone.epics.indexOf(epicId);
             if (idx >= 0) {
@@ -476,7 +477,7 @@ See: bin/rudder artifact edit --help for full documentation
             }
         }
         // Track original ops for output
-        const originalOps = ops.map(o => ({ op: o.op, section: o.section }));
+        const originalOps = ops.map((o) => ({ op: o.op, section: o.section }));
         // Process special operations (sed, patch, check, etc.)
         const { expandedOps, errors: processErrors } = processMultiSectionOps(prdPath, ops);
         if (processErrors.length > 0) {
@@ -493,7 +494,9 @@ See: bin/rudder artifact edit --help for full documentation
             }
             else {
                 const byOp = {};
-                originalOps.forEach(o => { byOp[o.op] = (byOp[o.op] || 0) + 1; });
+                originalOps.forEach((o) => {
+                    byOp[o.op] = (byOp[o.op] || 0) + 1;
+                });
                 const summary = Object.entries(byOp).map(([op, n]) => `${op}:${n}`).join(', ');
                 console.log(`✓ ${originalOps.length} sections in ${id} (${summary})`);
             }

@@ -15,7 +15,7 @@
 import fs from 'fs';
 import path from 'path';
 import nunjucks from 'nunjucks';
-import { getSailingRepoRoot, isDevInstall, getPath } from './core.js';
+import { getSailingRepoRoot, isDevInstall, getPath } from '../managers/core-manager.js';
 /**
  * Get templates directory path (prompting/templates)
  * Uses same logic as getPrompting() from core.ts

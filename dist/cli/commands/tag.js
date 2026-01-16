@@ -1,8 +1,8 @@
 /**
  * Tag commands for rudder CLI
  */
-import path from 'path';
-import { findPrdDirs, findFiles, loadFile, jsonOut } from '../lib/core.js';
+import { findPrdDirs, loadFile, jsonOut } from '../managers/core-manager.js';
+import { getAllEpics, getAllTasks } from '../managers/artefacts-manager.js';
 import { addDynamicHelp } from '../lib/help.js';
 /**
  * Register tag commands
@@ -28,28 +28,24 @@ export function registerTagCommands(program) {
                 counts.total++;
             }
         };
-        // Scan all PRDs
+        // Scan all PRDs (use artefacts.ts contract)
         for (const prdDir of findPrdDirs()) {
-            const prdFile = path.join(prdDir, 'prd.md');
+            const prdFile = `${prdDir}/prd.md`;
             const prd = loadFile(prdFile);
             if (prd?.data?.tags) {
                 addTags(prd.data.tags, 'prd');
             }
-            // Scan epics
-            const epicsDir = path.join(prdDir, 'epics');
-            for (const epicFile of findFiles(epicsDir, /^E\d+.*\.md$/)) {
-                const epic = loadFile(epicFile);
-                if (epic?.data?.tags) {
-                    addTags(epic.data.tags, 'epic');
-                }
+        }
+        // Scan all epics (artefacts.ts contract)
+        for (const epicEntry of getAllEpics()) {
+            if (epicEntry.data?.tags) {
+                addTags(epicEntry.data.tags, 'epic');
             }
-            // Scan tasks
-            const tasksDir = path.join(prdDir, 'tasks');
-            for (const taskFile of findFiles(tasksDir, /^T\d+.*\.md$/)) {
-                const task = loadFile(taskFile);
-                if (task?.data?.tags) {
-                    addTags(task.data.tags, 'task');
-                }
+        }
+        // Scan all tasks (artefacts.ts contract)
+        for (const taskEntry of getAllTasks()) {
+            if (taskEntry.data?.tags) {
+                addTags(taskEntry.data.tags, 'task');
             }
         }
         // Sort by total count descending

@@ -1,32 +1,27 @@
 /**
  * Claude Subprocess Management
  *
- * Spawns Claude Code as subprocess with appropriate flags based on config.
- * Uses srt.js for actual spawning.
+ * PURE LIB: No config access, no manager imports.
+ * All config values must be passed as parameters.
  */
 import path from 'path';
 import fs from 'fs';
-import { getAgentConfig } from './config.js';
-import { getAgentsDir, getPathsInfo } from './core.js';
 import { spawnClaudeWithSrt, generateSrtConfig, generateAgentMcpConfig, checkMcpServer, startSocatBridge } from './srt.js';
-// Alias for internal use
-const getAgentsBaseDir = getAgentsDir;
 /**
  * Generate agent-specific srt config
  * When using external MCP (sandbox mode), agent only needs worktree write access
  * MCP server runs outside sandbox and handles all sailing operations
- * @param {object} options - Options
- * @param {string} options.agentDir - Agent directory path
- * @param {string} options.cwd - Working directory (worktree)
- * @param {string} options.logFile - Log file path
- * @param {string} options.taskId - Task ID (to identify current worktree)
- * @param {boolean} [options.externalMcp=false] - If true, only allow worktree writes (MCP handles haven)
- * @param {string} [options.mcpSocket] - MCP Unix socket path to bind-mount into sandbox
- * @returns {string} Path to generated srt config
+ * @param options.agentDir - Agent directory path
+ * @param options.cwd - Working directory (worktree)
+ * @param options.logFile - Log file path
+ * @param options.taskId - Task ID (to identify current worktree)
+ * @param options.baseSrtConfigPath - Base srt config path (optional)
+ * @param options.externalMcp - If true, only allow worktree writes (MCP handles haven)
+ * @param options.mcpSocket - MCP Unix socket path to bind-mount into sandbox
+ * @returns Path to generated srt config
  */
 export function generateAgentSrtConfig(options) {
-    const { agentDir, cwd, logFile, taskId, externalMcp = false, mcpSocket } = options;
-    const paths = getPathsInfo();
+    const { agentDir, cwd, logFile, taskId, baseSrtConfigPath, externalMcp = false, mcpSocket } = options;
     // Base write paths: worktree + log directory
     const additionalWritePaths = [
         cwd, // Worktree directory
@@ -73,7 +68,7 @@ export function generateAgentSrtConfig(options) {
     // This allows the agent to connect to MCP server via Unix socket
     const isLinux = process.platform === 'linux';
     return generateSrtConfig({
-        baseConfigPath: paths.srtConfig?.absolute,
+        baseConfigPath: baseSrtConfigPath,
         outputPath: path.join(agentDir, 'srt-settings.json'),
         additionalWritePaths,
         additionalDenyReadPaths,
@@ -94,26 +89,13 @@ function getHavenDir(agentDir) {
 }
 /**
  * Spawn Claude subprocess
- * @param {object} options - Spawn options
- * @param {string} options.prompt - The prompt to send to Claude
- * @param {string} options.cwd - Working directory (worktree path)
- * @param {string} options.logFile - Path to log file for stdout/stderr
- * @param {string} [options.agentDir] - Agent directory (for srt config generation)
- * @param {string} [options.taskId] - Task ID (for logging, not MCP restriction)
- * @param {string} [options.projectRoot] - Project root for MCP server
- * @param {number} [options.timeout] - Timeout in seconds
- * @param {boolean} [options.riskyMode] - Override risky_mode config
- * @param {boolean} [options.sandbox] - Override sandbox config
- * @param {boolean|string} [options.stderrToFile] - Redirect stderr to file only (true=logFile, string=custom path)
- * @param {boolean} [options.quietMode] - Suppress all console output (stdout+stderr to file only)
- * @returns {Promise<SpawnClaudeResult>}
+ * Config values (riskyMode, sandbox, maxBudgetUsd, watchdogTimeout, baseSrtConfigPath) should be passed explicitly.
  */
-export async function spawnClaude(options) {
-    const { prompt, cwd, logFile, timeout, agentDir, taskId, projectRoot, stderrToFile, quietMode } = options;
-    const config = getAgentConfig();
-    const paths = getPathsInfo();
-    const riskyMode = options.riskyMode ?? config.risky_mode;
-    const sandbox = options.sandbox ?? config.sandbox;
+export function spawnClaude(options) {
+    const { prompt, cwd, logFile, timeout, agentDir, taskId, projectRoot, stderrToFile, quietMode, baseSrtConfigPath } = options;
+    // Config values must be passed explicitly (no defaults from config)
+    const riskyMode = options.riskyMode ?? false;
+    const sandbox = options.sandbox ?? false;
     // When sandbox is enabled with agent context, use external MCP
     // MCP server runs OUTSIDE sandbox at haven level, agent connects via Unix socket
     const useExternalMcp = sandbox && agentDir && projectRoot;
@@ -203,12 +185,13 @@ export async function spawnClaude(options) {
                 cwd,
                 logFile,
                 taskId,
+                baseSrtConfigPath,
                 externalMcp: !!mcpSocket, // Strict sandbox if external MCP is active
                 mcpSocket // Pass socket for macOS allowUnixSockets
             });
         }
-        else if (paths.srtConfig?.absolute) {
-            srtConfigPath = paths.srtConfig.absolute;
+        else if (baseSrtConfigPath) {
+            srtConfigPath = baseSrtConfigPath;
         }
     }
     // Setup output handlers for quiet mode
@@ -226,9 +209,9 @@ export async function spawnClaude(options) {
     // Sandbox HOME isolation: use agentDir/home to isolate Claude's config
     // Required to prevent race conditions when spawning multiple agents in parallel
     const sandboxHome = sandbox && agentDir ? path.join(agentDir, 'home') : null;
-    // Get budget and watchdog from config
-    const maxBudgetUsd = config.max_budget_usd;
-    const watchdogTimeout = config.watchdog_timeout;
+    // Budget and watchdog from options
+    const maxBudgetUsd = options.maxBudgetUsd;
+    const watchdogTimeout = options.watchdogTimeout;
     const result = spawnClaudeWithSrt({
         prompt,
         cwd,
@@ -320,9 +303,10 @@ export function buildPromptFromMission(mission) {
 }
 /**
  * Get log file path for a task
- * @param {string} taskId - Task ID
- * @returns {string} Absolute path to log file
+ * @param agentsDir - Agents directory path
+ * @param taskId - Task ID
+ * @returns Absolute path to log file
  */
-export function getLogFilePath(taskId) {
-    return path.join(getAgentsBaseDir(), taskId, 'run.log');
+export function getLogFilePath(agentsDir, taskId) {
+    return path.join(agentsDir, taskId, 'run.log');
 }

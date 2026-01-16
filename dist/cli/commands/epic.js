@@ -3,15 +3,16 @@
  */
 import fs from 'fs';
 import path from 'path';
-import { findPrdDirs, findFiles, loadFile, saveFile, toKebab, loadTemplate, jsonOut, getMemoryDir, stripComments } from '../lib/core.js';
-import { normalizeId, matchesPrdDir, parentContainsEpic } from '../lib/normalize.js';
+import { findPrdDirs, loadFile, saveFile, toKebab, loadTemplate, jsonOut, getMemoryDir, stripComments } from '../managers/core-manager.js';
+import { normalizeId, matchesPrdDir } from '../lib/normalize.js';
 import { STATUS, normalizeStatus, statusSymbol } from '../lib/lexicon.js';
-import { nextId } from '../lib/state.js';
+import { nextId } from '../managers/state-manager.js';
 import { parseUpdateOptions } from '../lib/update.js';
 import { addDynamicHelp, withModifies } from '../lib/help.js';
-import { formatId } from '../lib/config.js';
+import { formatId } from '../managers/core-manager.js';
 import { parseSearchReplace, editArtifact, parseMultiSectionContent, processMultiSectionOps } from '../lib/artifact.js';
-import { getEpic } from '../lib/index.js';
+import { getEpic, getAllEpics, getTasksForEpic } from '../managers/artefacts-manager.js';
+import { getEpicMemory } from '../managers/memory-manager.js';
 /**
  * Find an epic file by ID (format-agnostic via index library)
  * Returns { file, prdDir } for compatibility with existing code
@@ -42,48 +43,42 @@ export function registerEpicCommands(program) {
         .action((prdArg, options) => {
         const prd = prdArg || options.prd;
         const epics = [];
-        for (const prdDir of findPrdDirs()) {
-            if (prd && !matchesPrdDir(prdDir, prd))
+        // Use artefacts.ts contract - single entry point
+        for (const epicEntry of getAllEpics()) {
+            // PRD filter
+            if (prd && !matchesPrdDir(epicEntry.prdDir, prd))
                 continue;
-            const prdName = path.basename(prdDir);
-            const epicsDir = path.join(prdDir, 'epics');
-            findFiles(epicsDir, /^E\d+.*\.md$/).forEach(f => {
-                const file = loadFile(f);
-                if (!file?.data)
-                    return;
-                // Status filter
-                if (options.status) {
-                    const targetStatus = normalizeStatus(options.status, 'epic');
-                    const epicStatus = normalizeStatus(file.data.status, 'epic');
-                    if (targetStatus !== epicStatus)
-                        return;
-                }
-                // Tag filter (AND logic)
-                if (options.tag?.length > 0) {
-                    const epicTags = file.data.tags || [];
-                    const allTagsMatch = options.tag.every(t => epicTags.includes(t));
-                    if (!allTagsMatch)
-                        return;
-                }
-                // Count tasks (format-agnostic parent matching)
-                const tasksDir = path.join(prdDir, 'tasks');
-                const taskCount = findFiles(tasksDir, /^T\d+.*\.md$/)
-                    .filter(t => {
-                    const tf = loadFile(t);
-                    return parentContainsEpic(tf?.data?.parent, file.data.id);
-                }).length;
-                const epicEntry = {
-                    id: file.data.id,
-                    title: file.data.title || '',
-                    status: file.data.status || 'Unknown',
-                    parent: file.data.parent || '',
-                    prd: prdName,
-                    tasks: taskCount
-                };
-                if (options.path)
-                    epicEntry.file = f;
-                epics.push(epicEntry);
-            });
+            const data = epicEntry.data;
+            if (!data)
+                continue;
+            // Status filter
+            if (options.status) {
+                const targetStatus = normalizeStatus(options.status, 'epic');
+                const epicStatus = normalizeStatus(data.status, 'epic');
+                if (targetStatus !== epicStatus)
+                    continue;
+            }
+            // Tag filter (AND logic)
+            if (options.tag?.length > 0) {
+                const epicTags = data.tags || [];
+                const allTagsMatch = options.tag.every((t) => epicTags.includes(t));
+                if (!allTagsMatch)
+                    continue;
+            }
+            // Count tasks (artefacts.ts contract)
+            const taskCount = getTasksForEpic(epicEntry.id).length;
+            const prdName = path.basename(epicEntry.prdDir);
+            const epicResult = {
+                id: data.id,
+                title: data.title || '',
+                status: data.status || 'Unknown',
+                parent: data.parent || '',
+                prd: prdName,
+                tasks: taskCount
+            };
+            if (options.path)
+                epicResult.file = epicEntry.file;
+            epics.push(epicResult);
         }
         // Sort by ID
         epics.sort((a, b) => {
@@ -117,7 +112,7 @@ export function registerEpicCommands(program) {
         .description('Show epic details (tasks count by status)')
         .option('--role <role>', 'Role context: agent blocked, skill/coordinator allowed')
         .option('--raw', 'Dump raw markdown')
-        .option('--comments', 'Include template comments (stripped by default)')
+        .option('--strip-comments', 'Strip template comments from output')
         .option('--path', 'Include file path (discouraged)')
         .option('--json', 'JSON output')
         .action((id, options) => {
@@ -138,19 +133,16 @@ export function registerEpicCommands(program) {
             if (options.path)
                 console.log(`# File: ${epicFile}\n`);
             const content = fs.readFileSync(epicFile, 'utf8');
-            console.log(options.comments ? content : stripComments(content));
+            console.log(options.stripComments ? stripComments(content) : content);
             return;
         }
         const file = loadFile(epicFile);
         const epicIdNorm = normalizeId(file.data.id);
-        // Get task summary (format-agnostic parent matching)
-        const tasksDir = path.join(prdDir, 'tasks');
-        const tasks = findFiles(tasksDir, /^T\d+.*\.md$/)
-            .map(t => {
-            const tf = loadFile(t);
-            return { id: tf?.data?.id, status: tf?.data?.status, parent: tf?.data?.parent };
-        })
-            .filter(t => parentContainsEpic(t.parent, epicIdNorm));
+        // Get task summary (artefacts.ts contract)
+        const tasks = getTasksForEpic(epicIdNorm).map(t => ({
+            id: t.data?.id,
+            status: t.data?.status
+        }));
         const tasksByStatus = {};
         tasks.forEach(t => {
             const status = t.status || 'Unknown';
@@ -214,15 +206,15 @@ export function registerEpicCommands(program) {
         };
         // Add stories if specified
         if (options.story?.length > 0) {
-            data.stories = options.story.map(s => normalizeId(s));
+            data.stories = options.story.map((s) => normalizeId(s));
         }
         // Add tags if specified (slugified to kebab-case)
         if (options.tag?.length > 0) {
-            data.tags = options.tag.map(t => toKebab(t));
+            data.tags = options.tag.map((t) => toKebab(t));
         }
         // Add target versions if specified
         if (options.targetVersion?.length > 0) {
-            options.targetVersion.forEach(tv => {
+            options.targetVersion.forEach((tv) => {
                 const [comp, ver] = tv.split(':');
                 if (comp && ver)
                     data.target_versions[comp] = ver;
@@ -273,6 +265,13 @@ updated: '${new Date().toISOString()}'
                 console.log(`File: ${epicPath}`);
             console.log(`\n${'─'.repeat(60)}\n`);
             console.log(fs.readFileSync(epicPath, 'utf8'));
+            console.log(`${'─'.repeat(60)}`);
+            console.log(`\nEdit with CLI:`);
+            console.log(`  rudder epic:edit ${id} <<EOF`);
+            console.log(`  ## Description`);
+            console.log(`  Your epic description here...`);
+            console.log(`  EOF`);
+            console.log(`\nMore: rudder epic:edit --help`);
         }
     });
     // epic:update
@@ -333,27 +332,24 @@ updated: '${new Date().toISOString()}'
         .description('Show epic log content')
         .action((id) => {
         const epicId = normalizeId(id);
-        const epicLogFile = path.join(getMemoryDir(), `${epicId}.log`);
-        if (!fs.existsSync(epicLogFile)) {
+        const content = getEpicMemory(epicId).getLogContent();
+        if (!content) {
             console.log(`No logs for ${epicId}`);
             return;
         }
-        const content = fs.readFileSync(epicLogFile, 'utf8');
-        console.log(content.trim());
+        console.log(content);
     });
     // epic:clean-logs
     withModifies(epic.command('clean-logs <id>'), ['epic'])
         .description('Delete epic log file')
-        .option('--path', 'Show file path (discouraged)')
-        .action((id, options) => {
+        .action((id) => {
         const epicId = normalizeId(id);
-        const epicLogFile = path.join(getMemoryDir(), `${epicId}.log`);
-        if (!fs.existsSync(epicLogFile)) {
+        const deleted = getEpicMemory(epicId).deleteLog();
+        if (!deleted) {
             console.log(`No logs for ${epicId}`);
             return;
         }
-        fs.unlinkSync(epicLogFile);
-        console.log(options.path ? `Deleted: ${epicLogFile}` : `Deleted logs for ${epicId}`);
+        console.log(`Deleted logs for ${epicId}`);
     });
     // epic:merge-logs
     withModifies(epic.command('merge-logs <id>'), ['epic'])
@@ -361,69 +357,16 @@ updated: '${new Date().toISOString()}'
         .option('--keep', 'Keep task logs after merge (don\'t delete)')
         .action((id, options) => {
         const epicId = normalizeId(id);
-        // Find all tasks for this epic (format-agnostic parent matching)
-        const tasksForEpic = [];
-        for (const prdDir of findPrdDirs()) {
-            const tasksDir = path.join(prdDir, 'tasks');
-            findFiles(tasksDir, /^T\d+.*\.md$/).forEach(f => {
-                const file = loadFile(f);
-                if (!file?.data)
-                    return;
-                if (parentContainsEpic(file.data.parent, epicId)) {
-                    tasksForEpic.push({
-                        id: normalizeId(file.data.id),
-                        title: file.data.title
-                    });
-                }
-            });
-        }
-        if (tasksForEpic.length === 0) {
-            console.log(`No tasks found for ${epicId}`);
-            return;
-        }
-        // Ensure memory directory exists
-        const memDir = getMemoryDir();
-        if (!fs.existsSync(memDir)) {
-            fs.mkdirSync(memDir, { recursive: true });
-        }
-        const epicLogFile = path.join(memDir, `${epicId}.log`);
-        let flushedCount = 0;
-        let totalEntries = 0;
-        // Process each task log
-        let deletedEmpty = 0;
-        for (const task of tasksForEpic) {
-            const taskLogFile = path.join(memDir, `${task.id}.log`);
-            if (!fs.existsSync(taskLogFile))
-                continue;
-            const content = fs.readFileSync(taskLogFile, 'utf8').trim();
-            // Delete empty logs
-            if (!content) {
-                if (!options.keep) {
-                    fs.unlinkSync(taskLogFile);
-                    deletedEmpty++;
-                }
-                continue;
-            }
-            const entries = content.split('\n').length;
-            totalEntries += entries;
-            // Append to epic log with task header
-            const header = `\n### ${task.id}: ${task.title}\n`;
-            fs.appendFileSync(epicLogFile, header + content + '\n');
-            flushedCount++;
-            // Clear task log unless --keep
-            if (!options.keep) {
-                fs.unlinkSync(taskLogFile);
-            }
-        }
-        if (flushedCount === 0 && deletedEmpty === 0) {
+        const result = getEpicMemory(epicId).mergeTaskLogs({ keep: options.keep });
+        if (result.flushedCount === 0 && result.deletedEmpty === 0) {
             console.log(`No task logs to flush for ${epicId}`);
         }
         else {
-            if (flushedCount > 0) {
-                console.log(`Flushed ${totalEntries} entries from ${flushedCount} tasks to ${epicId}.log`);
+            if (result.flushedCount > 0) {
+                console.log(`Flushed ${result.totalEntries} entries from ${result.flushedCount} tasks to ${epicId}.log`);
             }
-            if (deletedEmpty > 0) {
-                console.log(`Deleted ${deletedEmpty} empty log files`);
+            if (result.deletedEmpty > 0) {
+                console.log(`Deleted ${result.deletedEmpty} empty log files`);
             }
         }
     });
@@ -627,14 +570,14 @@ See: bin/rudder artifact edit --help for full documentation
             opType = 'append';
         if (options.prepend)
             opType = 'prepend';
-        let ops = options.section
+        const ops = options.section
             ? [{ op: opType, section: options.section, content }]
             : parseMultiSectionContent(content, opType);
         if (ops.length === 0) {
             console.error('No sections found. Use --section or format stdin with ## headers');
             process.exit(1);
         }
-        const originalOps = ops.map(o => ({ op: o.op, section: o.section }));
+        const originalOps = ops.map((o) => ({ op: o.op, section: o.section }));
         const { expandedOps, errors: processErrors } = processMultiSectionOps(epicPath, ops);
         if (processErrors.length > 0) {
             processErrors.forEach(e => console.error(e));
@@ -650,7 +593,7 @@ See: bin/rudder artifact edit --help for full documentation
             }
             else {
                 const byOp = {};
-                originalOps.forEach(o => { byOp[o.op] = (byOp[o.op] || 0) + 1; });
+                originalOps.forEach((o) => { byOp[o.op] = (byOp[o.op] || 0) + 1; });
                 const summary = Object.entries(byOp).map(([op, n]) => `${op}:${n}`).join(', ');
                 console.log(`✓ ${originalOps.length} sections in ${normalizeId(id)} (${summary})`);
             }

@@ -4,16 +4,16 @@
  */
 import fs from 'fs';
 import { execSync } from 'child_process';
-import { findProjectRoot, loadFile, jsonOut } from '../lib/core.js';
-import { loadState } from '../lib/state.js';
-import { getAgentConfig, getGitConfig } from '../lib/config.js';
+import { findProjectRoot, loadFile, jsonOut } from '../managers/core-manager.js';
+import { loadState } from '../managers/state-manager.js';
+import { getAgentConfig } from '../managers/core-manager.js';
 import { addDynamicHelp } from '../lib/help.js';
-import { getBranchName, getParentBranch, getBranchHierarchy, getMainBranch } from '../lib/worktree.js';
-import { extractPrdId, extractEpicId, getPrdBranching } from '../lib/entities.js';
-import { getTask } from '../lib/index.js';
-import { diagnose as diagnoseReconciliation, BranchState } from '../lib/reconciliation.js';
+import { getBranchName, getParentBranch, getBranchHierarchy, getMainBranch } from '../managers/worktree-manager.js';
+import { extractPrdId, extractEpicId } from '../lib/normalize.js';
+import { getTask, getPrdBranching } from '../managers/artefacts-manager.js';
+import { diagnose as diagnoseReconciliation, BranchState } from '../managers/reconciliation-manager.js';
 import { getGit } from '../lib/git.js';
-import { buildConflictMatrix } from '../lib/conflicts.js';
+import { buildConflictMatrix } from '../managers/conflict-manager.js';
 /**
  * Check if git repo is ready for spawn
  */
@@ -54,7 +54,7 @@ async function checkGitState(projectRoot) {
  * @param {boolean} options.forMerge - If true, conflicts are warnings not blockers
  */
 function checkBranchState(context, projectRoot, options = {}) {
-    const { prdId, epicId, branching } = context;
+    const { prdId, branching } = context;
     const { forMerge = false } = options;
     const issues = [];
     const warnings = [];
@@ -144,7 +144,7 @@ function checkDependencies(taskId) {
                 return {
                     ready: false,
                     issues: [`Blocked by: ${blocking.map(b => b.id).join(', ')}`],
-                    blocking
+                    blocking: blocking
                 };
             }
         }
@@ -164,7 +164,6 @@ async function checkConflicts(taskId) {
         return { ready: true, issues: [], conflicts: [] };
     }
     // Check if any conflict involves this task's files
-    const taskFiles = matrix.filesByAgent?.[taskId] || [];
     const potentialConflicts = [];
     for (const conflict of matrix.conflicts) {
         if (conflict.agents.includes(taskId)) {
@@ -184,9 +183,6 @@ async function checkConflicts(taskId) {
     }
     return { ready: true, issues: [], conflicts: [] };
 }
-/**
- * Register spawn commands
- */
 export function registerSpawnCommands(program) {
     const spawn = program.command('spawn')
         .description('Spawn preflight and postflight checks');
@@ -202,11 +198,10 @@ export function registerSpawnCommands(program) {
             console.error('⚠️  DEPRECATED: spawn:preflight is deprecated.');
             console.error('   agent:spawn now handles pre-flight checks automatically.\n');
         }
-        taskId = taskId.toUpperCase();
+        taskId = (taskId.toUpperCase());
         if (!taskId.startsWith('T'))
             taskId = 'T' + taskId;
         const projectRoot = findProjectRoot();
-        const gitConfig = getGitConfig();
         const agentConfig = getAgentConfig();
         // Find task and extract context
         const taskFile = getTask(taskId)?.file;
@@ -224,17 +219,17 @@ export function registerSpawnCommands(program) {
         const epicId = extractEpicId(task.data.parent);
         const branching = prdId ? getPrdBranching(prdId) : 'flat';
         const context = { prdId, epicId, branching };
-        const forMerge = options.forMerge || false;
+        const forMerge = (options.forMerge || false);
         // Run all checks
         const gitCheck = await checkGitState(projectRoot);
-        const branchCheck = checkBranchState(context, projectRoot, { forMerge });
+        const branchCheck = checkBranchState(context, projectRoot, { forMerge: forMerge });
         const depsCheck = checkDependencies(taskId);
         const conflictCheck = await checkConflicts(taskId);
         // Aggregate results
         const allIssues = [
             ...gitCheck.issues,
             ...branchCheck.issues,
-            ...depsCheck.issues,
+            ...(depsCheck.issues),
             ...conflictCheck.issues
         ];
         const allActions = [
@@ -250,8 +245,8 @@ export function registerSpawnCommands(program) {
         const hasWarnings = allWarnings.length > 0;
         const result = {
             ready,
-            taskId,
-            forMerge,
+            taskId: taskId,
+            forMerge: forMerge,
             context: {
                 prdId,
                 epicId,
@@ -319,7 +314,7 @@ export function registerSpawnCommands(program) {
             console.error('⚠️  DEPRECATED: spawn:postflight is deprecated. Use agent:reap instead.');
             console.error('   agent:reap handles wait, merge, cleanup, and status update.\n');
         }
-        taskId = taskId.toUpperCase();
+        taskId = (taskId.toUpperCase());
         if (!taskId.startsWith('T'))
             taskId = 'T' + taskId;
         const projectRoot = findProjectRoot();
@@ -343,7 +338,6 @@ export function registerSpawnCommands(program) {
         // Check worktree state
         const branch = getBranchName(taskId);
         const parentBranch = getParentBranch(taskId, { prdId, epicId, branching });
-        const mainBranch = getMainBranch();
         let hasChanges = false;
         let commitCount = 0;
         let conflictDetected = false;
@@ -436,14 +430,14 @@ export function registerSpawnCommands(program) {
             }
         }
         const result = {
-            taskId,
+            taskId: taskId,
             agentStatus: agentInfo.status,
             hasChanges,
             commitCount,
             conflictDetected,
-            nextAction,
-            actions,
-            cascade,
+            nextAction: nextAction,
+            actions: actions,
+            cascade: cascade,
             context: {
                 prdId,
                 epicId,

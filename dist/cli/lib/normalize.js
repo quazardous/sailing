@@ -1,37 +1,100 @@
 /**
- * ID normalization utilities
+ * ID normalization and extraction utilities
  * Handles flexible ID formats: T1, T01, T00001, E1, E0001, S1, S0001, PRD-1, PRD-001
  *
  * Canonical format uses configured digits (default: 3)
+ *
+ * Pure string operations only - no I/O, no config.
  */
 import path from 'path';
-import { formatId } from './config.js';
+// Default digit configuration
+const DEFAULT_DIGITS = {
+    prd: 3,
+    epic: 3,
+    task: 3,
+    story: 3
+};
+// ============================================================================
+// Pure ID Formatting
+// ============================================================================
 /**
- * Normalize entity IDs to canonical format
- * Accepts any number of digits, outputs configured padding
+ * Format an ID with specified digits (pure function)
+ * @param prefix - ID prefix (e.g., 'PRD-', 'E', 'T', 'S')
+ * @param num - Numeric part of the ID
+ * @param digits - Number of digits to pad to
  */
-export function normalizeId(id) {
+export function formatIdWith(prefix, num, digits) {
+    return `${prefix}${String(num).padStart(digits, '0')}`;
+}
+/**
+ * Format ID using digit config (pure function)
+ */
+export function formatIdFrom(prefix, num, config = DEFAULT_DIGITS) {
+    const digitMap = {
+        'PRD-': config.prd,
+        'E': config.epic,
+        'T': config.task,
+        'S': config.story
+    };
+    const digits = digitMap[prefix] || 3;
+    return formatIdWith(prefix, num, digits);
+}
+// ============================================================================
+// ID Extraction (from parent fields, strings)
+// ============================================================================
+/**
+ * Extract PRD ID from parent field or string
+ * @param parent - Parent field (e.g., "PRD-001 / E002") or any string containing PRD ID
+ * @returns PRD ID or null
+ */
+export function extractPrdId(parent) {
+    if (!parent)
+        return null;
+    const match = parent.match(/PRD-\d+/);
+    return match ? match[0] : null;
+}
+/**
+ * Extract Epic ID from parent field or string
+ * @param parent - Parent field (e.g., "PRD-001 / E002") or any string containing Epic ID
+ * @returns Epic ID or null
+ */
+export function extractEpicId(parent) {
+    if (!parent)
+        return null;
+    const match = parent.match(/E\d+/);
+    return match ? match[0] : null;
+}
+// ============================================================================
+// ID Normalization
+// ============================================================================
+/**
+ * Normalize entity IDs to canonical format (pure function)
+ * Accepts any number of digits, outputs configured padding
+ * @param id - ID to normalize
+ * @param digitConfig - Optional digit configuration (defaults to 3 digits each)
+ */
+export function normalizeId(id, digitConfig = DEFAULT_DIGITS) {
     if (!id)
         return id ?? null;
     // PRD format
     const prdMatch = id.match(/^PRD-?(\d+)$/i);
     if (prdMatch) {
-        return formatId('PRD-', parseInt(prdMatch[1], 10));
+        return formatIdFrom('PRD-', parseInt(prdMatch[1], 10), digitConfig);
     }
     // Epic format
     const epicMatch = id.match(/^E(\d+)$/i);
     if (epicMatch) {
-        return formatId('E', parseInt(epicMatch[1], 10));
+        return formatIdFrom('E', parseInt(epicMatch[1], 10), digitConfig);
     }
     // Task format
     const taskMatch = id.match(/^T(\d+)$/i);
     if (taskMatch) {
-        return formatId('T', parseInt(taskMatch[1], 10));
+        return formatIdFrom('T', parseInt(taskMatch[1], 10), digitConfig);
     }
     // Story format
     const storyMatch = id.match(/^S(\d+)$/i);
     if (storyMatch) {
-        return formatId('S', parseInt(storyMatch[1], 10));
+        return formatIdFrom('S', parseInt(storyMatch[1], 10), digitConfig);
     }
     return id;
 }
@@ -39,8 +102,8 @@ export function normalizeId(id) {
  * Check if a filename matches a normalized ID
  * e.g., matchesId("T002-some-task.md", "T2") => true
  */
-export function matchesId(filename, rawId) {
-    const normalizedInput = normalizeId(rawId);
+export function matchesId(filename, rawId, digitConfig = DEFAULT_DIGITS) {
+    const normalizedInput = normalizeId(rawId, digitConfig);
     if (!normalizedInput)
         return false;
     const basename = path.basename(filename, '.md');
@@ -48,7 +111,7 @@ export function matchesId(filename, rawId) {
     const filenameIdMatch = basename.match(/^(T\d+|E\d+|S\d+|PRD-\d+)/i);
     if (!filenameIdMatch)
         return false;
-    const normalizedFilename = normalizeId(filenameIdMatch[1]);
+    const normalizedFilename = normalizeId(filenameIdMatch[1], digitConfig);
     return normalizedFilename === normalizedInput;
 }
 /**
@@ -56,14 +119,14 @@ export function matchesId(filename, rawId) {
  * e.g., matchesPrdDir("PRD-001-foundation", "PRD-1") => true
  * Also accepts partial name match: "foundation" matches "PRD-001-foundation"
  */
-export function matchesPrdDir(dirname, rawId) {
+export function matchesPrdDir(dirname, rawId, digitConfig = DEFAULT_DIGITS) {
     const basename = path.basename(dirname);
     // Try normalized PRD ID match first (PRD-1 → PRD-001)
     const inputIdMatch = rawId.match(/^PRD-?(\d+)/i);
     if (inputIdMatch) {
         const dirIdMatch = basename.match(/^(PRD-\d+)/i);
         if (dirIdMatch) {
-            return normalizeId(dirIdMatch[1]) === normalizeId(rawId);
+            return normalizeId(dirIdMatch[1], digitConfig) === normalizeId(rawId, digitConfig);
         }
     }
     // Fall back to substring match (e.g., "foundation", "quarkernel")
@@ -73,9 +136,9 @@ export function matchesPrdDir(dirname, rawId) {
  * Extract task ID from blocked_by entry (handles "T002 (description)" format)
  * Always returns normalized format (T001, not T1)
  */
-export function extractTaskId(blockerEntry) {
+export function extractTaskId(blockerEntry, digitConfig = DEFAULT_DIGITS) {
     const match = blockerEntry.match(/^(T\d+)/i);
-    return match ? normalizeId(match[1]) : null;
+    return match ? normalizeId(match[1], digitConfig) : null;
 }
 /**
  * Determine entity type from ID

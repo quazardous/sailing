@@ -6,7 +6,7 @@ import fs from 'fs';
 import path from 'path';
 import os from 'os';
 import { execaSync } from 'execa';
-import { getPathsInfo } from '../lib/core.js';
+import { getPathsInfo } from '../managers/core-manager.js';
 import { spawnClaudeWithSrt, generateSrtConfig, loadBaseSrtConfig } from '../lib/srt.js';
 /**
  * Detect OS and required dependencies
@@ -98,7 +98,7 @@ function checkSrt() {
 /**
  * sandbox:check - Check srt installation and dependencies
  */
-function sandboxCheck(args, options) {
+function sandboxCheck() {
     const status = checkSrt();
     console.log('Sandbox Runtime Status\n');
     console.log('='.repeat(50));
@@ -179,7 +179,7 @@ function sandboxInit(args, options) {
 /**
  * sandbox:show - Show current config
  */
-function sandboxShow(args, options) {
+function sandboxShow() {
     const paths = getPathsInfo();
     if (!paths.srtConfig || !fs.existsSync(paths.srtConfig.absolute)) {
         console.log('No srt config found. Run: rudder sandbox:init');
@@ -199,7 +199,7 @@ export function registerSandboxCommands(program) {
     sandbox
         .command('check')
         .description('Check srt installation and dependencies')
-        .action((options) => sandboxCheck([], options));
+        .action(() => { sandboxCheck(); });
     sandbox
         .command('init')
         .description('Initialize srt config for this project')
@@ -208,7 +208,7 @@ export function registerSandboxCommands(program) {
     sandbox
         .command('show')
         .description('Show current srt config')
-        .action((options) => sandboxShow([], options));
+        .action(() => sandboxShow());
     // sandbox:run - proxy to claude with sandbox
     sandbox
         .command('run [prompt...]')
@@ -230,7 +230,7 @@ export function registerSandboxCommands(program) {
             console.error(`Created temp workdir: ${cwd}`);
         }
         // Get prompt from args or option
-        let prompt = options.prompt || promptArgs.join(' ');
+        let prompt = options.prompt || (promptArgs).join(' ');
         // If no prompt, try to read from stdin
         if (!prompt) {
             // Check if stdin has data (not a TTY)
@@ -257,7 +257,7 @@ export function registerSandboxCommands(program) {
         // Build extra args
         const extraArgs = [];
         if (options.claudeArgs) {
-            extraArgs.push(...options.claudeArgs.split(/\s+/));
+            extraArgs.push(...(options.claudeArgs).split(/\s+/));
         }
         // Session log file
         const sessionLog = path.join(cwd, 'session.log');

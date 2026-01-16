@@ -33,8 +33,8 @@
  */
 import { program } from 'commander';
 import path from 'path';
-import { setProjectRoot, setScriptDir, setPathOverrides, parsePathOverride } from './lib/core.js';
-import { setConfigOverrides, parseConfigOverride, validateConfigCoherence } from './lib/config.js';
+import { setProjectRoot, setScriptDir, setPathOverrides, parsePathOverride } from './managers/core-manager.js';
+import { setConfigOverrides, parseConfigOverride, validateConfigCoherence } from './managers/core-manager.js';
 // Set script directory for project root detection
 setScriptDir(import.meta.dirname);
 // Check for --root flag or SAILING_PROJECT env BEFORE parsing
@@ -121,7 +121,7 @@ if (Object.keys(pathOverrides).length > 0) {
     setPathOverrides(pathOverrides);
 }
 // Now import version (which uses core.js and needs project root set)
-import { getCliVersion } from './lib/version.js';
+import { getCliVersion } from './managers/version-manager.js';
 import { registerPrdCommands } from './commands/prd.js';
 import { registerEpicCommands } from './commands/epic.js';
 import { registerTaskCommands } from './commands/task.js';

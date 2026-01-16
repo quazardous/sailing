@@ -4,26 +4,25 @@
  */
 import fs from 'fs';
 import path from 'path';
-import { jsonOut } from '../lib/core.js';
-import { getAgentsDb, getRunsDb, getAgent, getAllAgents, deleteAgent, clearAllAgents, getRunsForTask, migrateFromStateJson } from '../lib/db.js';
-import { resolvePlaceholders } from '../lib/paths.js';
+import { jsonOut, resolvePlaceholders } from '../managers/core-manager.js';
+import { getDbOps } from '../managers/db-manager.js';
 import { addDynamicHelp, withModifies } from '../lib/help.js';
 /**
  * Register database commands
  */
 export function registerDbCommands(program) {
-    const db = program.command('db')
-        .description('Database management (NeDB JSON files)');
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+    const db = program.command('db');
+    db.description('Database management (NeDB JSON files)');
     addDynamicHelp(db, { entityType: 'db' });
     // db:status - show database info
     db.command('status')
         .description('Show database status and collection counts')
         .option('--json', 'JSON output')
-        .action(async (options) => {
-        const agents = await getAllAgents();
-        const agentsDb = getAgentsDb();
-        const runsDb = getRunsDb();
-        const runs = await runsDb.find({});
+        .action((options) => {
+        const db = getDbOps();
+        const agents = db.getAllAgents();
+        const runs = db.getRunsDb().find({});
         const statusCounts = {};
         agents.forEach(a => {
             statusCounts[a.status] = (statusCounts[a.status] || 0) + 1;
@@ -49,8 +48,8 @@ export function registerDbCommands(program) {
         .alias('list')
         .description('List all agents')
         .option('--status <status>', 'Filter by status')
-        .action(async (options) => {
-        const agents = await getAllAgents({ status: options.status });
+        .action((options) => {
+        const agents = getDbOps().getAllAgents({ status: options.status });
         if (options.json) {
             jsonOut(agents);
         }
@@ -70,11 +69,12 @@ export function registerDbCommands(program) {
     db.command('agent <task-id>')
         .description('Show agent details')
         .option('--json', 'JSON output')
-        .action(async (taskId, options) => {
+        .action((taskId, options) => {
         taskId = taskId.toUpperCase();
         if (!taskId.startsWith('T'))
             taskId = 'T' + taskId;
-        const agent = await getAgent(taskId);
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+        const agent = getDbOps().getAgent(taskId);
         if (!agent) {
             console.error(`Agent not found: ${taskId}`);
             process.exit(1);
@@ -113,12 +113,14 @@ export function registerDbCommands(program) {
         taskId = taskId.toUpperCase();
         if (!taskId.startsWith('T'))
             taskId = 'T' + taskId;
-        const agent = await getAgent(taskId);
+        const db = getDbOps();
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+        const agent = db.getAgent(taskId);
         if (!agent) {
             console.error(`Agent not found: ${taskId}`);
             process.exit(1);
         }
-        await deleteAgent(taskId);
+        await db.deleteAgent(taskId);
         console.log(`Deleted: ${taskId}`);
     });
     // db:clear - clear all agents
@@ -130,18 +132,18 @@ export function registerDbCommands(program) {
             console.error('Use --confirm to clear all agents');
             process.exit(1);
         }
-        const count = await clearAllAgents();
+        const count = await getDbOps().clearAllAgents();
         console.log(`Cleared ${count} agent(s)`);
     });
     // db:runs - show runs for a task
     db.command('runs <task-id>')
         .description('Show run history for a task')
         .option('--json', 'JSON output')
-        .action(async (taskId, options) => {
+        .action((taskId, options) => {
         taskId = taskId.toUpperCase();
         if (!taskId.startsWith('T'))
             taskId = 'T' + taskId;
-        const runs = await getRunsForTask(taskId);
+        const runs = getDbOps().getRunsForTask(taskId);
         if (options.json) {
             jsonOut(runs);
         }
@@ -171,6 +173,7 @@ export function registerDbCommands(program) {
             console.log('No haven state.json found');
             return;
         }
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
         const state = JSON.parse(fs.readFileSync(stateFile, 'utf8'));
         if (!state.agents || Object.keys(state.agents).length === 0) {
             console.log('No agents in state.json to migrate');
@@ -185,7 +188,7 @@ export function registerDbCommands(program) {
             });
             return;
         }
-        const migrated = await migrateFromStateJson(state.agents);
+        const migrated = await getDbOps().migrateFromStateJson(state.agents);
         console.log(`Migrated ${migrated} agent(s) to jsondb`);
         // Remove agents from state.json (keep counters)
         delete state.agents;
@@ -196,10 +199,13 @@ export function registerDbCommands(program) {
     withModifies(db.command('compact'), ['state'])
         .description('Compact database files (remove deleted entries)')
         .action(async () => {
-        const agentsDb = getAgentsDb();
-        const runsDb = getRunsDb();
-        await agentsDb.compactDatafile();
-        await runsDb.compactDatafile();
+        const db = getDbOps();
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-assignment
+        const agentsDb = db.getAgentsDb();
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-assignment
+        const runsDb = db.getRunsDb();
+        await agentsDb.compactDatafile?.();
+        await runsDb.compactDatafile?.();
         console.log('Compacted: agents.json, runs.json');
     });
 }

@@ -21,7 +21,7 @@ import os from 'os';
 import crypto from 'crypto';
 import { execaSync } from 'execa';
 import yaml from 'js-yaml';
-import { findProjectRoot } from './core.js';
+import { findProjectRoot } from '../managers/core-manager.js';
 // Cache for resolved paths
 const _cache = new Map();
 let _projectHash = null;

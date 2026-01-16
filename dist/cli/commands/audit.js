@@ -4,11 +4,11 @@
  * Verify status consistency across tasks/epics/PRDs and fix inconsistencies.
  * Uses existing index functions from lib/index.ts for entity discovery.
  */
-import { loadFile, saveFile, jsonOut } from '../lib/core.js';
+import { loadFile, saveFile, jsonOut } from '../managers/core-manager.js';
 import { normalizeId } from '../lib/normalize.js';
 import { isStatusDone, isStatusCancelled, isStatusInProgress, isStatusNotStarted, isStatusAutoDone, statusSymbol } from '../lib/lexicon.js';
 import { addDynamicHelp } from '../lib/help.js';
-import { buildTaskIndex, buildEpicIndex, buildPrdIndex } from '../lib/index.js';
+import { buildTaskIndex, buildEpicIndex, buildPrdIndex } from '../managers/artefacts-manager.js';
 // New status: Auto-Done = all children done, awaiting manual validation
 const STATUS_AUTO_DONE = 'Auto-Done';
 /**

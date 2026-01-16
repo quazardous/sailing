@@ -4,7 +4,7 @@
  */
 import fs from 'fs';
 import path from 'path';
-import { findProjectRoot, loadPathsConfig, jsonOut } from '../lib/core.js';
+import { findProjectRoot, loadPathsConfig, jsonOut } from '../managers/core-manager.js';
 import { addDynamicHelp } from '../lib/help.js';
 // Base sailing permissions (path-independent)
 const BASE_PERMISSIONS = [
@@ -29,7 +29,7 @@ function getSailingPermissions() {
     const perms = [...BASE_PERMISSIONS];
     // Add Read permission for the sailing directory
     // Use artefacts path as base (e.g., 'sailing' or '.sailing/artefacts')
-    const artefactsPath = config.paths.artefacts || '.sailing/artefacts';
+    const artefactsPath = (config.paths.artefacts || '.sailing/artefacts');
     const sailingBase = artefactsPath.split('/')[0]; // Get first segment
     perms.push(`Read(${sailingBase}/**)`);
     return perms;
@@ -50,7 +50,7 @@ function loadSettings() {
         try {
             return JSON.parse(fs.readFileSync(settingsPath, 'utf8'));
         }
-        catch (e) {
+        catch {
             console.error(`Warning: Could not parse ${settingsPath}, creating new`);
         }
     }
@@ -126,7 +126,7 @@ export function registerPermissionsCommands(program) {
         .action((options) => {
         const settings = loadSettings();
         if (!settings.permissions)
-            settings.permissions = {};
+            settings.permissions = { allow: [] };
         if (!Array.isArray(settings.permissions.allow))
             settings.permissions.allow = [];
         const existing = settings.permissions.allow;

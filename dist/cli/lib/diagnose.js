@@ -1,47 +1,15 @@
 /**
  * Diagnose library - Filter and analyze agent run logs
+ *
+ * PURE LIB: No config access, no manager imports.
+ * DiagnoseOps class encapsulates operations needing baseDiagnosticsDir.
  */
 import fs from 'fs';
 import path from 'path';
 import yaml from 'js-yaml';
-import { getPath } from './core.js';
-/**
- * Get diagnostics directory for an epic
- */
-export function getDiagnosticsDir(epicId) {
-    const baseDir = getPath('diagnostics');
-    if (epicId) {
-        return path.join(baseDir, epicId);
-    }
-    return path.join(baseDir, 'global');
-}
-/**
- * Load noise filters for an epic
- */
-export function loadNoiseFilters(epicId) {
-    const dir = getDiagnosticsDir(epicId);
-    const filtersFile = path.join(dir, 'noise-filters.yaml');
-    if (!fs.existsSync(filtersFile)) {
-        return [];
-    }
-    try {
-        const content = fs.readFileSync(filtersFile, 'utf8');
-        const data = yaml.load(content);
-        return data?.filters || [];
-    }
-    catch {
-        return [];
-    }
-}
-/**
- * Save noise filters for an epic
- */
-export function saveNoiseFilters(epicId, filters) {
-    const dir = getDiagnosticsDir(epicId);
-    fs.mkdirSync(dir, { recursive: true });
-    const filtersFile = path.join(dir, 'noise-filters.yaml');
-    fs.writeFileSync(filtersFile, yaml.dump({ filters }));
-}
+// ============================================================================
+// Pure Functions (no context needed)
+// ============================================================================
 /**
  * Check if an event matches a noise filter
  */
@@ -97,70 +65,6 @@ export function truncateError(msg, maxLen = 500) {
     return `${firstPart} [...] ${lastPart}`;
 }
 /**
- * Analyze log file and return errors (main function for post-run analysis)
- */
-export function analyzeLog(logFile, epicId, maxLineLen = 500) {
-    if (!fs.existsSync(logFile)) {
-        return {
-            task_id: '',
-            epic_id: epicId,
-            total_events: 0,
-            filtered_noise: 0,
-            errors: []
-        };
-    }
-    const noiseFilters = loadNoiseFilters(epicId);
-    const { events, lines } = parseJsonLog(logFile);
-    const errors = [];
-    let filtered = 0;
-    for (let i = 0; i < events.length; i++) {
-        const event = events[i];
-        const line = lines[i];
-        // Check noise filters
-        let isNoise = false;
-        for (const filter of noiseFilters) {
-            if (matchesNoiseFilter(line, event, filter)) {
-                isNoise = true;
-                filtered++;
-                break;
-            }
-        }
-        if (isNoise)
-            continue;
-        // Detect potential errors in tool results
-        if (event.tool_use_result) {
-            const result = event.tool_use_result;
-            const stderr = result.stderr || '';
-            const stdout = result.stdout || '';
-            if (stderr && stderr.length > 10) {
-                errors.push(`L${i + 1}: ${truncateError(stderr, maxLineLen)}`);
-            }
-            else if (stdout.includes('Exception') || stdout.includes('Error:') || stdout.includes('error:')) {
-                errors.push(`L${i + 1}: ${truncateError(stdout, maxLineLen)}`);
-            }
-        }
-        // Check is_error in tool results
-        if (event.type === 'user' && event.message?.content) {
-            const content = event.message.content;
-            if (Array.isArray(content)) {
-                for (const c of content) {
-                    if (c.is_error === true) {
-                        const msg = typeof c.content === 'string' ? c.content : JSON.stringify(c.content);
-                        errors.push(`L${i + 1}: ${truncateError(msg, maxLineLen)}`);
-                    }
-                }
-            }
-        }
-    }
-    return {
-        task_id: '',
-        epic_id: epicId,
-        total_events: events.length,
-        filtered_noise: filtered,
-        errors
-    };
-}
-/**
  * Print diagnose result to console
  */
 export function printDiagnoseResult(taskId, result, maxErrors = 10) {
@@ -175,5 +79,118 @@ export function printDiagnoseResult(taskId, result, maxErrors = 10) {
         if (result.errors.length > maxErrors) {
             console.log(`  ... and ${result.errors.length - maxErrors} more`);
         }
+    }
+}
+// ============================================================================
+// DiagnoseOps Class - POO Encapsulation
+// ============================================================================
+/**
+ * Diagnose operations class with injected baseDiagnosticsDir.
+ * Manages noise filters and log analysis.
+ */
+export class DiagnoseOps {
+    baseDiagnosticsDir;
+    constructor(baseDiagnosticsDir) {
+        this.baseDiagnosticsDir = baseDiagnosticsDir;
+    }
+    /**
+     * Get diagnostics directory for an epic
+     */
+    getDiagnosticsDir(epicId) {
+        if (epicId) {
+            return path.join(this.baseDiagnosticsDir, epicId);
+        }
+        return path.join(this.baseDiagnosticsDir, 'global');
+    }
+    /**
+     * Load noise filters for an epic
+     */
+    loadNoiseFilters(epicId) {
+        const dir = this.getDiagnosticsDir(epicId);
+        const filtersFile = path.join(dir, 'noise-filters.yaml');
+        if (!fs.existsSync(filtersFile)) {
+            return [];
+        }
+        try {
+            const content = fs.readFileSync(filtersFile, 'utf8');
+            const data = yaml.load(content);
+            return data?.filters || [];
+        }
+        catch {
+            return [];
+        }
+    }
+    /**
+     * Save noise filters for an epic
+     */
+    saveNoiseFilters(epicId, filters) {
+        const dir = this.getDiagnosticsDir(epicId);
+        fs.mkdirSync(dir, { recursive: true });
+        const filtersFile = path.join(dir, 'noise-filters.yaml');
+        fs.writeFileSync(filtersFile, yaml.dump({ filters }));
+    }
+    /**
+     * Analyze log file and return errors (main function for post-run analysis)
+     */
+    analyzeLog(logFile, epicId, maxLineLen = 500) {
+        if (!fs.existsSync(logFile)) {
+            return {
+                task_id: '',
+                epic_id: epicId,
+                total_events: 0,
+                filtered_noise: 0,
+                errors: []
+            };
+        }
+        const noiseFilters = this.loadNoiseFilters(epicId);
+        const { events, lines } = parseJsonLog(logFile);
+        const errors = [];
+        let filtered = 0;
+        for (let i = 0; i < events.length; i++) {
+            const event = events[i];
+            const line = lines[i];
+            // Check noise filters
+            let isNoise = false;
+            for (const filter of noiseFilters) {
+                if (matchesNoiseFilter(line, event, filter)) {
+                    isNoise = true;
+                    filtered++;
+                    break;
+                }
+            }
+            if (isNoise)
+                continue;
+            // Detect potential errors in tool results
+            if (event.tool_use_result) {
+                const result = event.tool_use_result;
+                const stderr = result.stderr || '';
+                const stdout = result.stdout || '';
+                if (stderr && stderr.length > 10) {
+                    errors.push(`L${i + 1}: ${truncateError(stderr, maxLineLen)}`);
+                }
+                else if (stdout.includes('Exception') || stdout.includes('Error:') || stdout.includes('error:')) {
+                    errors.push(`L${i + 1}: ${truncateError(stdout, maxLineLen)}`);
+                }
+            }
+            // Check is_error in tool results
+            if (event.type === 'user' && event.message?.content) {
+                const content = event.message.content;
+                if (Array.isArray(content)) {
+                    for (const c of content) {
+                        if (c.is_error === true) {
+                            const msg = typeof c.content === 'string' ? c.content : JSON.stringify(c.content);
+                            errors.push(`L${i + 1}: ${truncateError(msg, maxLineLen)}`);
+                        }
+                    }
+                }
+            }
+        }
+        return {
+            task_id: '',
+            epic_id: epicId,
+            total_events: events.length,
+            filtered_noise: filtered,
+            errors
+        };
     }
 }

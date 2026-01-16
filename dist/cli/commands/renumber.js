@@ -12,11 +12,11 @@
  */
 import fs from 'fs';
 import path from 'path';
-import { findPrdDirs, findFiles, loadFile, saveFile, getMemoryDir, jsonOut } from '../lib/core.js';
+import { findPrdDirs, loadFile, saveFile, getMemoryDir, jsonOut } from '../managers/core-manager.js';
 import { normalizeId, extractNumericKey, getEntityType } from '../lib/normalize.js';
-import { formatId } from '../lib/config.js';
-import { buildMemoryIndex } from '../lib/index.js';
-import { nextId, peekNextId } from '../lib/state.js';
+import { formatId } from '../managers/core-manager.js';
+import { buildMemoryIndex, getAllEpics, getAllTasks } from '../managers/artefacts-manager.js';
+import { nextId, peekNextId } from '../managers/state-manager.js';
 /**
  * Get creation date from frontmatter or file mtime
  */
@@ -30,75 +30,70 @@ function getCreationDate(filePath) {
 /**
  * Build index of all epics grouped by numeric key
  * Returns Map<numericKey, Array<{id, file, prdDir, prdId, created}>>
+ * Uses artefacts.ts contract for epic access
  */
-function buildEpicIndex() {
+function buildEpicIndexForDuplicates() {
     const index = new Map();
-    for (const prdDir of findPrdDirs()) {
-        const epicsDir = path.join(prdDir, 'epics');
-        if (!fs.existsSync(epicsDir))
+    for (const epicEntry of getAllEpics()) {
+        const data = epicEntry.data;
+        if (!data?.id)
             continue;
-        const prdDirName = path.basename(prdDir);
+        const id = data.id;
+        const key = extractNumericKey(id);
+        if (!key)
+            continue;
+        const prdDirName = path.basename(epicEntry.prdDir);
         const prdId = prdDirName.match(/^PRD-\d+/)?.[0] || prdDirName;
-        for (const file of findFiles(epicsDir, /^E\d+.*\.md$/)) {
-            const data = loadFile(file);
-            if (!data?.data?.id)
-                continue;
-            const id = data.data.id;
-            const key = extractNumericKey(id);
-            if (!key)
-                continue;
-            const entry = {
-                id,
-                file,
-                prdDir,
-                prdId,
-                created: getCreationDate(file)
-            };
-            if (!index.has(key)) {
-                index.set(key, []);
-            }
-            index.get(key).push(entry);
+        const entry = {
+            id,
+            file: epicEntry.file,
+            prdDir: epicEntry.prdDir,
+            prdId,
+            created: getCreationDate(epicEntry.file)
+        };
+        if (!index.has(key)) {
+            index.set(key, []);
         }
+        index.get(key).push(entry);
     }
     return index;
 }
 /**
  * Build index of all tasks grouped by numeric key
  * Returns Map<numericKey, Array<{id, file, prdDir, prdId, epicId, created}>>
+ * Uses artefacts.ts contract for task access
  */
-function buildTaskIndex() {
+function buildTaskIndexForDuplicates() {
     const index = new Map();
-    for (const prdDir of findPrdDirs()) {
-        const tasksDir = path.join(prdDir, 'tasks');
-        if (!fs.existsSync(tasksDir))
+    for (const taskEntry of getAllTasks()) {
+        const data = taskEntry.data;
+        if (!data?.id)
             continue;
+        const id = data.id;
+        const key = extractNumericKey(id);
+        if (!key)
+            continue;
+        // Extract prdDir from task file path
+        const tasksDir = path.dirname(taskEntry.file);
+        const prdDir = path.dirname(tasksDir);
         const prdDirName = path.basename(prdDir);
         const prdId = prdDirName.match(/^PRD-\d+/)?.[0] || prdDirName;
-        for (const file of findFiles(tasksDir, /^T\d+.*\.md$/)) {
-            const data = loadFile(file);
-            if (!data?.data?.id)
-                continue;
-            const id = data.data.id;
-            const key = extractNumericKey(id);
-            if (!key)
-                continue;
-            // Extract epic from parent field
-            const parent = data.data.parent || '';
-            const epicMatch = parent.match(/E\d+/i);
-            const epicId = epicMatch ? epicMatch[0].toUpperCase() : null;
-            const entry = {
-                id,
-                file,
-                prdDir,
-                prdId,
-                epicId,
-                created: getCreationDate(file)
-            };
-            if (!index.has(key)) {
-                index.set(key, []);
-            }
-            index.get(key).push(entry);
+        // Extract epic from parent field
+        const parent = (data.parent) || '';
+        const epicMatch = parent.match(/E\d+/i);
+        const epicId = epicMatch ? epicMatch[0].toUpperCase() : null;
+        const entry = {
+            id,
+            file: taskEntry.file,
+            prdDir,
+            prdId,
+            epicId,
+            created: getCreationDate(taskEntry.file)
+        };
+        if (!index.has(key)) {
+            index.set(key, []);
         }
+        index.get(key).push(entry);
     }
     return index;
 }
@@ -111,7 +106,7 @@ function findDuplicates(index) {
     for (const [key, items] of index) {
         if (items.length > 1) {
             // Sort by creation date (oldest first)
-            items.sort((a, b) => a.created - b.created);
+            items.sort((a, b) => a.created.getTime() - b.created.getTime());
             duplicates.push({ key, items });
         }
     }
@@ -129,8 +124,6 @@ function getNextAvailableId(type) {
 }
 /**
  * Preview next available ID without incrementing counter (for --check)
- * @param {string} type - 'E' or 'T'
- * @param {number} offset - How many IDs ahead (for multiple renames)
  */
 function previewNextId(type, offset = 0) {
     const counterName = type === 'E' ? 'epic' : 'task';
@@ -139,16 +132,11 @@ function previewNextId(type, offset = 0) {
 }
 /**
  * Rename an epic file and update all references
- * @param {string} epicFile - Path to epic file
- * @param {string} newId - New epic ID (e.g., E042)
- * @param {string} scope - 'prd' | 'epic' | 'project'
- * @param {string} prdDir - PRD directory containing the epic
  */
 function renameEpic(epicFile, newId, scope, prdDir) {
     const data = loadFile(epicFile);
-    const oldId = data.data.id;
+    const oldId = data?.data?.id;
     const oldKey = extractNumericKey(oldId);
-    const newKey = extractNumericKey(newId);
     const results = {
         renamed: null,
         refsUpdated: [],
@@ -167,53 +155,56 @@ function renameEpic(epicFile, newId, scope, prdDir) {
     fs.renameSync(epicFile, newEpicFile);
     results.renamed = { from: epicFile, to: newEpicFile };
     // 2. Update task references (parent field, blocked_by)
+    // Use artefacts.ts contract with scope filtering
     const scopeDirs = getScopeDirs(scope, prdDir);
-    for (const dir of scopeDirs) {
-        const tasksDir = path.join(dir, 'tasks');
-        if (!fs.existsSync(tasksDir))
+    const scopeDirSet = new Set(scopeDirs);
+    for (const taskEntry of getAllTasks()) {
+        // Filter by scope
+        const taskPrdDir = path.dirname(path.dirname(taskEntry.file));
+        if (!scopeDirSet.has(taskPrdDir))
             continue;
-        for (const taskFile of findFiles(tasksDir, /^T\d+.*\.md$/)) {
-            const taskData = loadFile(taskFile);
-            if (!taskData?.data)
-                continue;
-            let modified = false;
-            // Update parent field
-            if (taskData.data.parent) {
-                const newParent = updateEpicRef(taskData.data.parent, oldId, newId);
-                if (newParent !== taskData.data.parent) {
-                    taskData.data.parent = newParent;
-                    modified = true;
-                }
-            }
-            // Update blocked_by
-            if (taskData.data.blocked_by) {
-                const newBlockedBy = taskData.data.blocked_by.map(ref => updateEpicRef(ref, oldId, newId));
-                if (JSON.stringify(newBlockedBy) !== JSON.stringify(taskData.data.blocked_by)) {
-                    taskData.data.blocked_by = newBlockedBy;
-                    modified = true;
-                }
-            }
-            if (modified) {
-                saveFile(taskFile, taskData.data, taskData.body || '');
-                results.refsUpdated.push(taskFile);
+        const taskData = loadFile(taskEntry.file);
+        if (!taskData?.data)
+            continue;
+        let modified = false;
+        // Update parent field
+        if (taskData.data.parent) {
+            const newParent = updateEpicRef(taskData.data.parent, oldId, newId);
+            if (newParent !== taskData.data.parent) {
+                taskData.data.parent = newParent;
+                modified = true;
             }
         }
-        // Update epic blocked_by references
-        const epicsDir = path.join(dir, 'epics');
-        if (fs.existsSync(epicsDir)) {
-            for (const otherEpicFile of findFiles(epicsDir, /^E\d+.*\.md$/)) {
-                if (otherEpicFile === newEpicFile)
-                    continue;
-                const otherData = loadFile(otherEpicFile);
-                if (!otherData?.data?.blocked_by)
-                    continue;
-                const newBlockedBy = otherData.data.blocked_by.map(ref => updateEpicRef(ref, oldId, newId));
-                if (JSON.stringify(newBlockedBy) !== JSON.stringify(otherData.data.blocked_by)) {
-                    otherData.data.blocked_by = newBlockedBy;
-                    saveFile(otherEpicFile, otherData.data, otherData.body || '');
-                    results.refsUpdated.push(otherEpicFile);
-                }
+        // Update blocked_by
+        if (taskData.data.blocked_by) {
+            const blockedBy = taskData.data.blocked_by;
+            const newBlockedBy = blockedBy.map((ref) => updateEpicRef(ref, oldId, newId));
+            if (JSON.stringify(newBlockedBy) !== JSON.stringify(blockedBy)) {
+                taskData.data.blocked_by = newBlockedBy;
+                modified = true;
             }
+        }
+        if (modified) {
+            saveFile(taskEntry.file, taskData.data, taskData.body || '');
+            results.refsUpdated.push(taskEntry.file);
+        }
+    }
+    // Update epic blocked_by references (artefacts.ts contract)
+    for (const otherEpicEntry of getAllEpics()) {
+        // Filter by scope
+        if (!scopeDirSet.has(otherEpicEntry.prdDir))
+            continue;
+        if (otherEpicEntry.file === newEpicFile)
+            continue;
+        const otherData = loadFile(otherEpicEntry.file);
+        if (!otherData?.data?.blocked_by)
+            continue;
+        const blockedBy = otherData.data.blocked_by;
+        const newBlockedBy = blockedBy.map((ref) => updateEpicRef(ref, oldId, newId));
+        if (JSON.stringify(newBlockedBy) !== JSON.stringify(blockedBy)) {
+            otherData.data.blocked_by = newBlockedBy;
+            saveFile(otherEpicEntry.file, otherData.data, otherData.body || '');
+            results.refsUpdated.push(otherEpicEntry.file);
         }
     }
     // 3. Rename memory file if exists
@@ -239,15 +230,10 @@ function renameEpic(epicFile, newId, scope, prdDir) {
 }
 /**
  * Rename a task file and update all references
- * @param {string} taskFile - Path to task file
- * @param {string} newId - New task ID (e.g., T042)
- * @param {string} scope - 'prd' | 'epic' | 'project'
- * @param {string} prdDir - PRD directory containing the task
- * @param {string} epicId - Epic ID of the task (for epic scope)
  */
 function renameTask(taskFile, newId, scope, prdDir, epicId) {
     const data = loadFile(taskFile);
-    const oldId = data.data.id;
+    const oldId = data?.data?.id;
     const results = {
         renamed: null,
         refsUpdated: [],
@@ -264,32 +250,33 @@ function renameTask(taskFile, newId, scope, prdDir, epicId) {
     // Rename file
     fs.renameSync(taskFile, newTaskFile);
     results.renamed = { from: taskFile, to: newTaskFile };
-    // 2. Update blocked_by references in other tasks
-    const scopeDirs = getScopeDirs(scope, prdDir, epicId);
-    for (const dir of scopeDirs) {
-        const tasksDir = path.join(dir, 'tasks');
-        if (!fs.existsSync(tasksDir))
+    // 2. Update blocked_by references in other tasks (artefacts.ts contract)
+    const scopeDirs = getScopeDirs(scope, prdDir);
+    const scopeDirSet = new Set(scopeDirs);
+    for (const otherTaskEntry of getAllTasks()) {
+        // Filter by scope
+        const otherPrdDir = path.dirname(path.dirname(otherTaskEntry.file));
+        if (!scopeDirSet.has(otherPrdDir))
             continue;
-        for (const otherTaskFile of findFiles(tasksDir, /^T\d+.*\.md$/)) {
-            if (otherTaskFile === newTaskFile)
+        if (otherTaskEntry.file === newTaskFile)
+            continue;
+        const otherData = loadFile(otherTaskEntry.file);
+        if (!otherData?.data?.blocked_by)
+            continue;
+        // Filter by epic scope if needed
+        if (scope === 'epic' && epicId) {
+            const otherParent = otherData.data.parent || '';
+            const otherEpicMatch = otherParent.match(/E\d+/i);
+            const otherEpicId = otherEpicMatch ? otherEpicMatch[0].toUpperCase() : null;
+            if (extractNumericKey(otherEpicId) !== extractNumericKey(epicId))
                 continue;
-            const otherData = loadFile(otherTaskFile);
-            if (!otherData?.data?.blocked_by)
-                continue;
-            // Filter by epic scope if needed
-            if (scope === 'epic' && epicId) {
-                const otherParent = otherData.data.parent || '';
-                const otherEpicMatch = otherParent.match(/E\d+/i);
-                const otherEpicId = otherEpicMatch ? otherEpicMatch[0].toUpperCase() : null;
-                if (extractNumericKey(otherEpicId) !== extractNumericKey(epicId))
-                    continue;
-            }
-            const newBlockedBy = otherData.data.blocked_by.map(ref => updateTaskRef(ref, oldId, newId));
-            if (JSON.stringify(newBlockedBy) !== JSON.stringify(otherData.data.blocked_by)) {
-                otherData.data.blocked_by = newBlockedBy;
-                saveFile(otherTaskFile, otherData.data, otherData.body || '');
-                results.refsUpdated.push(otherTaskFile);
-            }
+        }
+        const blockedBy = otherData.data.blocked_by;
+        const newBlockedBy = blockedBy.map((ref) => updateTaskRef(ref, oldId, newId));
+        if (JSON.stringify(newBlockedBy) !== JSON.stringify(blockedBy)) {
+            otherData.data.blocked_by = newBlockedBy;
+            saveFile(otherTaskEntry.file, otherData.data, otherData.body || '');
+            results.refsUpdated.push(otherTaskEntry.file);
         }
     }
     return results;
@@ -297,7 +284,7 @@ function renameTask(taskFile, newId, scope, prdDir, epicId) {
 /**
  * Get directories to search based on scope
  */
-function getScopeDirs(scope, prdDir, epicId = null) {
+function getScopeDirs(scope, prdDir) {
     if (scope === 'project') {
         return findPrdDirs();
     }
@@ -326,7 +313,7 @@ function updateTaskRef(str, oldId, newId) {
  * Parse a path like "PRD-001/E001" or "PRD-001/T042"
  */
 function parsePath(pathStr) {
-    const match = pathStr.match(/^(PRD-?\d+)\/(E|T)(\d+[a-z]?)$/i);
+    const match = pathStr.match(/^(PRD-?\d+)\/([ET])(\d+[a-z]?)$/i);
     if (!match)
         return null;
     const prdId = normalizeId(match[1]);
@@ -340,7 +327,7 @@ function parsePath(pathStr) {
 function findByPath(pathStr, epicIndex, taskIndex) {
     const parsed = parsePath(pathStr);
     if (!parsed)
-        return null;
+        return undefined;
     const index = parsed.type === 'E' ? epicIndex : taskIndex;
     const key = extractNumericKey(parsed.id);
     const items = index.get(key) || [];
@@ -350,7 +337,7 @@ function findByPath(pathStr, epicIndex, taskIndex) {
  * Register renumber commands
  */
 export function registerRenumberCommands(program) {
-    const renumber = program
+    program
         .command('renumber')
         .description('Detect and fix duplicate epic/task IDs')
         .option('--check', 'Only check for duplicates, don\'t fix')
@@ -362,8 +349,8 @@ export function registerRenumberCommands(program) {
         .argument('[target]', 'ID to fix (e.g., E001) or path to rename (e.g., PRD-002/E001)')
         .argument('[newId]', 'New ID for manual rename (e.g., E042)')
         .action((target, newId, options) => {
-        const epicIndex = buildEpicIndex();
-        const taskIndex = buildTaskIndex();
+        const epicIndex = buildEpicIndexForDuplicates();
+        const taskIndex = buildTaskIndexForDuplicates();
         const epicDupes = findDuplicates(epicIndex);
         const taskDupes = findDuplicates(taskIndex);
         // Detect target type early
@@ -570,7 +557,6 @@ export function registerRenumberCommands(program) {
             }
             if (options.fix) {
                 const dupes = type === 'epic' ? filteredEpicDupes : filteredTaskDupes;
-                const index = type === 'epic' ? epicIndex : taskIndex;
                 if (dupes.length === 0) {
                     console.log(`✓ No duplicates for ${target}`);
                     return;
@@ -590,29 +576,38 @@ export function registerRenumberCommands(program) {
                         if (item === keepItem)
                             continue;
                         const prefix = type === 'epic' ? 'E' : 'T';
-                        const newId = getNextAvailableId(prefix);
+                        const assignedNewId = getNextAvailableId(prefix);
                         let results;
                         if (type === 'epic') {
-                            results = renameEpic(item.file, newId, options.scope, item.prdDir);
+                            results = renameEpic(item.file, assignedNewId, options.scope ?? 'prd', item.prdDir);
                         }
                         else {
-                            results = renameTask(item.file, newId, options.scope, item.prdDir, item.epicId);
+                            results = renameTask(item.file, assignedNewId, options.scope ?? 'prd', item.prdDir, item.epicId);
                         }
-                        // Update index
-                        index.set(extractNumericKey(newId), [{
-                                ...item,
-                                id: newId,
-                                file: results.renamed.to
-                            }]);
+                        // Update index - use type-specific handling
+                        if (type === 'epic') {
+                            epicIndex.set(extractNumericKey(assignedNewId), [{
+                                    ...item,
+                                    id: assignedNewId,
+                                    file: results.renamed?.to ?? item.file
+                                }]);
+                        }
+                        else {
+                            taskIndex.set(extractNumericKey(assignedNewId), [{
+                                    ...item,
+                                    id: assignedNewId,
+                                    file: results.renamed?.to ?? item.file
+                                }]);
+                        }
                         allResults.push({
                             type,
                             oldId: item.id,
-                            newId,
+                            newId: assignedNewId,
                             prd: item.prdId,
                             ...results
                         });
                         if (!options.json) {
-                            console.log(`✓ ${item.prdId}/${item.id} → ${newId}`);
+                            console.log(`✓ ${item.prdId}/${item.id} → ${assignedNewId}`);
                         }
                     }
                 }

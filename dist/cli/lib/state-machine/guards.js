@@ -13,7 +13,7 @@ export const guards = {
     /**
      * Check git is installed
      */
-    hasGit: (ctx) => {
+    hasGit: (_ctx) => {
         try {
             execSync('git --version', { stdio: 'pipe' });
             return { ok: true };
@@ -86,7 +86,7 @@ export const guards = {
             return { ok: true };
         }
         catch (e) {
-            return { ok: false, error: e.message };
+            return { ok: false, error: e instanceof Error ? e.message : String(e) };
         }
     },
     /**
@@ -123,7 +123,7 @@ export const guards = {
             return { ok: true };
         }
         catch (e) {
-            return { ok: false, error: e.message };
+            return { ok: false, error: e instanceof Error ? e.message : String(e) };
         }
     },
     /**
@@ -138,9 +138,9 @@ export const guards = {
 };
 /**
  * Run a list of guards
- * @param {string[]} guardNames - Names of guards to run
- * @param {object} ctx - Context object
- * @returns {{ ok: boolean, errors: string[] }}
+ * @param guardNames - Names of guards to run
+ * @param ctx - Context object
+ * @returns Result with ok status and any errors
  */
 export function runGuards(guardNames, ctx) {
     const errors = [];

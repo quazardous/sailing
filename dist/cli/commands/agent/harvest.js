@@ -5,18 +5,19 @@ import fs from 'fs';
 import path from 'path';
 import yaml from 'js-yaml';
 import { execSync } from 'child_process';
-import { findProjectRoot, jsonOut } from '../../lib/core.js';
-import { execRudderSafe } from '../../lib/invoke.js';
+import { findProjectRoot, jsonOut, loadFile, saveFile, getAgentsDir } from '../../managers/core-manager.js';
+import { parseUpdateOptions } from '../../lib/update.js';
+import { getAgentLifecycle } from '../../managers/agent-manager.js';
 import { getGit } from '../../lib/git.js';
 import { validateResult } from '../../lib/agent-schema.js';
-import { loadState, saveState } from '../../lib/state.js';
+import { loadState, saveState } from '../../managers/state-manager.js';
 import { withModifies } from '../../lib/help.js';
-import { getAgentConfig } from '../../lib/config.js';
-import { removeWorktree } from '../../lib/worktree.js';
-import { getTaskEpic } from '../../lib/index.js';
+import { getAgentConfig } from '../../managers/core-manager.js';
+import { removeWorktree } from '../../managers/worktree-manager.js';
+import { getTask, getTaskEpic } from '../../managers/artefacts-manager.js';
 import { normalizeId } from '../../lib/normalize.js';
-import { getAgentDir, checkAgentCompletion } from '../../lib/agent-utils.js';
-import { analyzeLog, printDiagnoseResult } from '../../lib/diagnose.js';
+import { AgentUtils } from '../../lib/agent-utils.js';
+import { getDiagnoseOps, printDiagnoseResult } from '../../managers/diagnose-manager.js';
 export function registerHarvestCommands(agent) {
     // agent:reap
     withModifies(agent.command('reap <task-id>'), ['task', 'git', 'state'])
@@ -38,6 +39,8 @@ export function registerHarvestCommands(agent) {
         const agentInfo = state.agents?.[taskId];
         const projectRoot = findProjectRoot();
         const config = getAgentConfig();
+        const agentsDir = getAgentsDir();
+        const agentUtils = new AgentUtils(agentsDir);
         const escalate = (reason, nextSteps) => {
             if (options.json) {
                 jsonOut({ task_id: taskId, status: 'blocked', reason, next_steps: nextSteps });
@@ -66,7 +69,7 @@ export function registerHarvestCommands(agent) {
                 const startTime = Date.now();
                 const timeoutMs = options.timeout * 1000;
                 while (true) {
-                    const completion = checkAgentCompletion(taskId);
+                    const completion = agentUtils.checkCompletion(taskId, agentInfo);
                     if (completion.complete)
                         break;
                     if (Date.now() - startTime > timeoutMs) {
@@ -84,7 +87,7 @@ export function registerHarvestCommands(agent) {
             }
             catch { /* not running */ }
         }
-        const completion = checkAgentCompletion(taskId);
+        const completion = agentUtils.checkCompletion(taskId, agentInfo);
         if (!completion.complete) {
             escalate(`Agent ${taskId} did not complete`, [
                 `agent:status ${taskId}    # Check status`,
@@ -92,7 +95,7 @@ export function registerHarvestCommands(agent) {
             ]);
         }
         let resultStatus = 'completed';
-        const agentDir = getAgentDir(taskId);
+        const agentDir = agentUtils.getAgentDir(taskId);
         const resultFile = path.join(agentDir, 'result.yaml');
         if (fs.existsSync(resultFile)) {
             try {
@@ -180,14 +183,19 @@ export function registerHarvestCommands(agent) {
             }
         }
         const taskStatus = resultStatus === 'completed' ? 'Done' : 'Blocked';
-        const { stderr, exitCode } = execRudderSafe(`task:update ${taskId} --status "${taskStatus}"`, { cwd: projectRoot });
-        if (exitCode === 0) {
-            if (!options.json)
-                console.log(`✓ Task ${taskId} → ${taskStatus}`);
+        const taskFile = getTask(taskId)?.file;
+        if (taskFile) {
+            const file = loadFile(taskFile);
+            const { updated, data } = parseUpdateOptions({ status: taskStatus }, file.data, 'task');
+            if (updated) {
+                saveFile(taskFile, data, file.body);
+                if (!options.json)
+                    console.log(`✓ Task ${taskId} → ${taskStatus}`);
+            }
         }
         else {
             if (!options.json)
-                console.error(`Warning: Could not update task status: ${stderr}`);
+                console.error(`Warning: Could not find task file for ${taskId}`);
         }
         state.agents[taskId] = {
             ...agentInfo,
@@ -211,9 +219,16 @@ export function registerHarvestCommands(agent) {
             if (fs.existsSync(logFile)) {
                 const taskEpic = getTaskEpic(taskId);
                 const epicIdForLog = taskEpic?.epicId || null;
-                const logResult = analyzeLog(logFile, epicIdForLog);
-                console.log('\n--- Agent Run Analysis ---');
-                printDiagnoseResult(taskId, logResult);
+                const logResult = getDiagnoseOps().analyzeLog(logFile, epicIdForLog);
+                if (logResult.errors.length > 0) {
+                    console.log('\n--- Agent Run Analysis ---');
+                    console.log('Review errors below:');
+                    console.log('  - If critical/unrecoverable → STOP and escalate');
+                    console.log('  - If fixable → handle the issue');
+                    console.log(`  - If false positive → rudder agent:log-noise-add-filter <filter-id> ${epicIdForLog || 'global'} --contains "pattern"`);
+                    console.log('');
+                    printDiagnoseResult(taskId, logResult);
+                }
             }
         }
     });
@@ -229,6 +244,7 @@ export function registerHarvestCommands(agent) {
         taskId = normalizeId(taskId);
         const state = loadState();
         const agentInfo = state.agents?.[taskId];
+        const agentUtilsMerge = new AgentUtils(getAgentsDir());
         if (!agentInfo) {
             console.error(`No agent found for task: ${taskId}`);
             process.exit(1);
@@ -237,7 +253,7 @@ export function registerHarvestCommands(agent) {
             console.error(`Task ${taskId} was not dispatched with worktree mode`);
             process.exit(1);
         }
-        const completion = checkAgentCompletion(taskId);
+        const completion = agentUtilsMerge.checkCompletion(taskId, agentInfo);
         if (!completion.complete) {
             console.error(`Agent ${taskId} has not completed`);
             process.exit(1);
@@ -339,11 +355,12 @@ export function registerHarvestCommands(agent) {
         taskId = normalizeId(taskId);
         const state = loadState();
         const agentInfo = state.agents?.[taskId];
+        const agentUtilsCollect = new AgentUtils(getAgentsDir());
         if (!agentInfo) {
             console.error(`No agent found for task: ${taskId}`);
             process.exit(1);
         }
-        const agentDir = getAgentDir(taskId);
+        const agentDir = agentUtilsCollect.getAgentDir(taskId);
         const resultFile = path.join(agentDir, 'result.yaml');
         if (!fs.existsSync(resultFile)) {
             console.error(`Result file not found: ${resultFile}`);
@@ -389,9 +406,11 @@ export function registerHarvestCommands(agent) {
         const state = loadState();
         const agents = state.agents || {};
         const projectRoot = findProjectRoot();
-        let toReap = taskIds.length > 0 ? taskIds.map(id => normalizeId(id)) : Object.keys(agents);
+        const agentUtilsReapAll = new AgentUtils(getAgentsDir());
+        const toReap = taskIds.length > 0 ? taskIds.map(id => normalizeId(id)) : Object.keys(agents);
         const completed = toReap.filter(taskId => {
-            const completion = checkAgentCompletion(taskId);
+            const agentInfo = agents[taskId];
+            const completion = agentUtilsReapAll.checkCompletion(taskId, agentInfo);
             return completion.complete;
         });
         if (completed.length === 0) {
@@ -407,16 +426,17 @@ export function registerHarvestCommands(agent) {
             console.log(`Reaping ${completed.length} agent(s)...`);
         const results = [];
         for (const taskId of completed) {
-            const { stderr, exitCode } = execRudderSafe(`agent:reap ${taskId} --json`, { cwd: projectRoot });
-            if (exitCode === 0) {
-                results.push({ task_id: taskId, status: 'reaped' });
+            const reapResult = await getAgentLifecycle(taskId).reap();
+            if (reapResult.success) {
+                results.push({ task_id: taskId, status: 'reaped', task_status: reapResult.taskStatus });
                 if (!options.json)
-                    console.log(`  ✓ ${taskId} reaped`);
+                    console.log(`  ✓ ${taskId} reaped → ${reapResult.taskStatus}`);
             }
             else {
-                results.push({ task_id: taskId, status: 'failed', error: stderr.slice(0, 100) });
+                const errorMsg = reapResult.escalate?.reason || 'unknown error';
+                results.push({ task_id: taskId, status: 'failed', error: errorMsg.slice(0, 100) });
                 if (!options.json)
-                    console.error(`  ✗ ${taskId} failed: ${stderr.slice(0, 50)}`);
+                    console.error(`  ✗ ${taskId} failed: ${errorMsg.slice(0, 50)}`);
             }
         }
         if (options.json) {

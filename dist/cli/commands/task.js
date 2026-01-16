@@ -3,29 +3,26 @@
  */
 import fs from 'fs';
 import path from 'path';
-import { findPrdDirs, findFiles, loadFile, saveFile, toKebab, loadTemplate, jsonOut, getMemoryDir, stripComments } from '../lib/core.js';
-import { execRudderSafe } from '../lib/invoke.js';
+import { findPrdDirs, loadFile, saveFile, toKebab, loadTemplate, jsonOut, getMemoryDir, stripComments } from '../managers/core-manager.js';
 import { normalizeId, matchesPrdDir, parentContainsEpic } from '../lib/normalize.js';
-import { getTask, getEpic, getEpicPrd } from '../lib/index.js';
-import { getHierarchicalMemory, ensureMemoryDir } from '../lib/memory.js';
-import { STATUS, normalizeStatus, isStatusDone, isStatusNotStarted, isStatusCancelled, isStatusAutoDone, statusSymbol } from '../lib/lexicon.js';
-import { buildDependencyGraph, blockersResolved } from '../lib/graph.js';
-import { nextId } from '../lib/state.js';
+import { getTask, getEpic, getEpicPrd, getAllTasks, getAllEpics } from '../managers/artefacts-manager.js';
+import { getHierarchicalMemory, ensureMemoryDir, hasPendingMemoryLogs } from '../managers/memory-manager.js';
+import { STATUS, normalizeStatus, isStatusDone, isStatusNotStarted, isStatusCancelled, statusSymbol } from '../lib/lexicon.js';
+import { buildDependencyGraph, blockersResolved } from '../managers/graph-manager.js';
+import { nextId } from '../managers/state-manager.js';
 import { parseUpdateOptions, addLogEntry } from '../lib/update.js';
 import { addDynamicHelp, withModifies } from '../lib/help.js';
-import { formatId } from '../lib/config.js';
+import { formatId } from '../managers/core-manager.js';
+import { escalateOnTaskStart, cascadeTaskCompletion } from '../managers/status-manager.js';
 import { parseSearchReplace, editArtifact, parseMultiSectionContent, processMultiSectionOps } from '../lib/artifact.js';
+// ============================================================================
+// Helper Functions
+// ============================================================================
 /**
  * Find a task file by ID (format-agnostic via index.ts)
  */
 function findTaskFile(taskId) {
     return getTask(taskId)?.file || null;
-}
-/**
- * Find an epic file by ID (format-agnostic via index.ts)
- */
-function findEpicFile(epicId) {
-    return getEpic(epicId)?.file || null;
 }
 /**
  * Find PRD directory containing an epic (via index.ts)
@@ -41,6 +38,9 @@ function findEpicParent(epicId) {
         prdId: prdInfo?.prdId || 'unknown'
     };
 }
+// ============================================================================
+// Command Registration
+// ============================================================================
 /**
  * Register task commands
  */
@@ -64,54 +64,57 @@ export function registerTaskCommands(program) {
         .action((prdArg, options) => {
         const prd = prdArg || options.prd;
         const tasks = [];
-        for (const prdDir of findPrdDirs()) {
+        // Use artefacts.ts contract - single entry point
+        for (const taskEntry of getAllTasks()) {
+            // Extract prdDir from task file path
+            const tasksDir = path.dirname(taskEntry.file);
+            const prdDir = path.dirname(tasksDir);
+            const prdName = path.basename(prdDir);
+            // PRD filter
             if (prd && !matchesPrdDir(prdDir, prd))
                 continue;
-            const prdName = path.basename(prdDir);
-            findFiles(path.join(prdDir, 'tasks'), /^T\d+.*\.md$/).forEach(f => {
-                const file = loadFile(f);
-                if (!file?.data)
-                    return;
-                // Status filter
-                if (options.status) {
-                    const targetStatus = normalizeStatus(options.status, 'task');
-                    const taskStatus = normalizeStatus(file.data.status, 'task');
-                    if (targetStatus !== taskStatus)
-                        return;
-                }
-                // Epic filter (format-agnostic: E1 matches E001 in parent)
-                if (options.epic) {
-                    if (!parentContainsEpic(file.data.parent, options.epic))
-                        return;
-                }
-                // Assignee filter
-                if (options.assignee) {
-                    const assignee = (file.data.assignee || '').toLowerCase();
-                    if (!assignee.includes(options.assignee.toLowerCase()))
-                        return;
-                }
-                // Tag filter (AND logic - all specified tags must be present)
-                if (options.tag?.length > 0) {
-                    const taskTags = file.data.tags || [];
-                    const allTagsMatch = options.tag.every(t => taskTags.includes(t));
-                    if (!allTagsMatch)
-                        return;
-                }
-                const taskEntry = {
-                    id: file.data.id || path.basename(f, '.md').match(/^T\d+/)?.[0],
-                    title: file.data.title || '',
-                    status: file.data.status || 'Unknown',
-                    parent: file.data.parent || '',
-                    assignee: file.data.assignee || 'unassigned',
-                    effort: file.data.effort || null,
-                    priority: file.data.priority || 'normal',
-                    blocked_by: file.data.blocked_by || [],
-                    prd: prdName
-                };
-                if (options.path)
-                    taskEntry.file = f;
-                tasks.push(taskEntry);
-            });
+            const data = taskEntry.data;
+            if (!data)
+                continue;
+            // Status filter
+            if (options.status) {
+                const targetStatus = normalizeStatus(options.status, 'task');
+                const taskStatus = normalizeStatus(data.status, 'task');
+                if (targetStatus !== taskStatus)
+                    continue;
+            }
+            // Epic filter (format-agnostic: E1 matches E001 in parent)
+            if (options.epic) {
+                if (!parentContainsEpic(data.parent, options.epic))
+                    continue;
+            }
+            // Assignee filter
+            if (options.assignee) {
+                const assignee = ((data.assignee) || '').toLowerCase();
+                if (!assignee.includes(options.assignee.toLowerCase()))
+                    continue;
+            }
+            // Tag filter (AND logic - all specified tags must be present)
+            if (options.tag && options.tag.length > 0) {
+                const taskTags = (data.tags) || [];
+                const allTagsMatch = options.tag.every((t) => taskTags.includes(t));
+                if (!allTagsMatch)
+                    continue;
+            }
+            const taskResult = {
+                id: (data.id) || taskEntry.id,
+                title: (data.title) || '',
+                status: (data.status) || 'Unknown',
+                parent: (data.parent) || '',
+                assignee: (data.assignee) || 'unassigned',
+                effort: (data.effort) || null,
+                priority: data.priority || 'normal',
+                blocked_by: (data.blocked_by) || [],
+                prd: prdName
+            };
+            if (options.path)
+                taskResult.file = taskEntry.file;
+            tasks.push(taskResult);
         }
         // Ready filter (unblocked AND not done/cancelled)
         let filtered = tasks;
@@ -156,7 +159,7 @@ export function registerTaskCommands(program) {
         .description('Show task details (blockers, dependents, ready status)')
         .option('--role <role>', 'Role context: agent (minimal), skill/coordinator (full)')
         .option('--raw', 'Dump raw markdown')
-        .option('--comments', 'Include template comments (stripped by default)')
+        .option('--strip-comments', 'Strip template comments from output')
         .option('--path', 'Include file path (discouraged)')
         .option('--json', 'JSON output')
         .action((id, options) => {
@@ -170,18 +173,19 @@ export function registerTaskCommands(program) {
             if (options.path)
                 console.log(`# File: ${taskFile}\n`);
             const content = fs.readFileSync(taskFile, 'utf8');
-            console.log(options.comments ? content : stripComments(content));
+            console.log(options.stripComments ? stripComments(content) : content);
             return;
         }
         const file = loadFile(taskFile);
+        const fileData = file?.data;
         const isAgentRole = options.role === 'agent';
         // Agent role: minimal output (just what's needed to execute)
         if (isAgentRole) {
             const result = {
-                id: file.data.id,
-                title: file.data.title,
-                status: file.data.status,
-                parent: file.data.parent
+                id: fileData?.id || '',
+                title: fileData?.title || '',
+                status: fileData?.status || '',
+                parent: fileData?.parent || ''
             };
             if (options.path)
                 result.file = taskFile;
@@ -189,15 +193,15 @@ export function registerTaskCommands(program) {
                 jsonOut(result);
             }
             else {
-                console.log(`# ${file.data.id}: ${file.data.title}\n`);
-                console.log(`Status: ${file.data.status}`);
-                console.log(`Parent: ${file.data.parent || '-'}`);
-                console.log(`\n→ Use task:show-memory ${file.data.id} for Agent Context`);
+                console.log(`# ${result.id}: ${result.title}\n`);
+                console.log(`Status: ${result.status}`);
+                console.log(`Parent: ${result.parent || '-'}`);
+                console.log(`\n→ Use task:show-memory ${result.id} for Agent Context`);
                 if (options.path) {
                     console.log(`→ Use Read tool on ${taskFile} for full deliverables`);
                 }
                 else {
-                    console.log(`→ Use task:show ${file.data.id} --raw for full deliverables`);
+                    console.log(`→ Use task:show ${result.id} --raw for full deliverables`);
                 }
             }
             return;
@@ -209,10 +213,10 @@ export function registerTaskCommands(program) {
         const dependents = blocks.get(normalizedId) || [];
         const isReady = task ? blockersResolved(task, tasks) : false;
         const result = {
-            ...file.data,
+            ...fileData,
             blockers: task?.blockedBy || [],
             dependents,
-            ready: isReady && !isStatusDone(file.data.status)
+            ready: isReady && !isStatusDone(fileData?.status || '')
         };
         if (options.path)
             result.file = taskFile;
@@ -220,12 +224,12 @@ export function registerTaskCommands(program) {
             jsonOut(result);
         }
         else {
-            console.log(`# ${file.data.id}: ${file.data.title}\n`);
-            console.log(`Status: ${file.data.status}`);
-            console.log(`Assignee: ${file.data.assignee || 'unassigned'}`);
-            console.log(`Effort: ${file.data.effort || '-'}`);
-            console.log(`Priority: ${file.data.priority || 'normal'}`);
-            console.log(`Parent: ${file.data.parent || '-'}`);
+            console.log(`# ${fileData?.id}: ${fileData?.title}\n`);
+            console.log(`Status: ${fileData?.status}`);
+            console.log(`Assignee: ${fileData?.assignee || 'unassigned'}`);
+            console.log(`Effort: ${fileData?.effort || '-'}`);
+            console.log(`Priority: ${fileData?.priority || 'normal'}`);
+            console.log(`Parent: ${fileData?.parent || '-'}`);
             if (task?.blockedBy?.length > 0) {
                 console.log(`\nBlocked by: ${task.blockedBy.join(', ')}`);
             }
@@ -248,7 +252,9 @@ export function registerTaskCommands(program) {
         .option('--path', 'Show file path')
         .option('--json', 'JSON output')
         .action((parent, title, options) => {
-        let prdDir, epicPart, prdId;
+        let prdDir;
+        let epicPart;
+        let prdId;
         // Check if parent is just an epic ID (e.g., E0076)
         const epicOnlyMatch = parent.match(/^E\d+$/i);
         if (epicOnlyMatch) {
@@ -335,6 +341,13 @@ export function registerTaskCommands(program) {
                 console.log(`File: ${taskPath}`);
             console.log(`\n${'─'.repeat(60)}\n`);
             console.log(fs.readFileSync(taskPath, 'utf8'));
+            console.log(`${'─'.repeat(60)}`);
+            console.log(`\nEdit with CLI:`);
+            console.log(`  rudder task:edit ${id} <<EOF`);
+            console.log(`  ## Description`);
+            console.log(`  Your task description here...`);
+            console.log(`  EOF`);
+            console.log(`\nMore: rudder task:edit --help`);
         }
     });
     // task:update
@@ -363,11 +376,12 @@ export function registerTaskCommands(program) {
             process.exit(1);
         }
         const file = loadFile(taskFile);
+        const fileData = file?.data;
         // Convert Commander options format
         // Merge --blocked-by (comma-separated) with --add-blocker (repeatable)
         let blockers = options.addBlocker || [];
         if (options.blockedBy) {
-            const parsed = options.blockedBy.split(',').map(s => s.trim()).filter(Boolean);
+            const parsed = options.blockedBy.split(',').map((s) => s.trim()).filter(Boolean);
             blockers = [...blockers, ...parsed];
         }
         const opts = {
@@ -386,7 +400,7 @@ export function registerTaskCommands(program) {
             removeTargetVersion: options.removeTargetVersion?.length ? options.removeTargetVersion : null,
             set: options.set?.length ? options.set : null
         };
-        const { updated, data } = parseUpdateOptions(opts, file.data, 'task');
+        const { updated, data } = parseUpdateOptions(opts, fileData, 'task');
         if (updated) {
             saveFile(taskFile, data, file.body);
             if (options.json) {
@@ -408,7 +422,7 @@ export function registerTaskCommands(program) {
         .option('--path', 'Include file path (discouraged)')
         .option('--json', 'JSON output')
         .action((options) => {
-        const { tasks, blocks } = buildDependencyGraph();
+        const { tasks } = buildDependencyGraph();
         // Find ready tasks (not started, all blockers done, unassigned)
         const ready = [];
         for (const [id, task] of tasks) {
@@ -426,7 +440,16 @@ export function registerTaskCommands(program) {
             if (isStatusNotStarted(task.status) &&
                 task.assignee === 'unassigned' &&
                 blockersResolved(task, tasks)) {
-                ready.push(task);
+                ready.push({
+                    id: task.id,
+                    title: task.title,
+                    status: task.status,
+                    parent: task.parent,
+                    assignee: task.assignee,
+                    priority: task.priority,
+                    prd: task.prd,
+                    file: task.file
+                });
             }
         }
         if (ready.length === 0) {
@@ -441,8 +464,8 @@ export function registerTaskCommands(program) {
         // Sort by priority and ID
         const priorityOrder = { critical: 0, high: 1, normal: 2, low: 3 };
         ready.sort((a, b) => {
-            const pa = priorityOrder[a.priority] ?? 2;
-            const pb = priorityOrder[b.priority] ?? 2;
+            const pa = (priorityOrder[a.priority]) ?? 2;
+            const pb = (priorityOrder[b.priority]) ?? 2;
             if (pa !== pb)
                 return pa - pb;
             const numA = parseInt(a.id.match(/\d+/)?.[0] || '0');
@@ -452,17 +475,8 @@ export function registerTaskCommands(program) {
         const next = ready[0];
         // Check for pending memory (preflight)
         let pendingWarning = null;
-        const { stdout, exitCode } = execRudderSafe('memory:sync --json');
-        if (exitCode === 0) {
-            try {
-                const syncData = JSON.parse(stdout);
-                if (syncData.pending) {
-                    pendingWarning = `⚠ PENDING LOGS: ${syncData.logs?.length || '?'} epic(s) need consolidation`;
-                }
-            }
-            catch {
-                // Ignore JSON parse errors
-            }
+        if (hasPendingMemoryLogs()) {
+            pendingWarning = `⚠ PENDING LOGS: epic(s) need consolidation`;
         }
         if (options.json) {
             const output = { ...next, pendingMemory: !!pendingWarning };
@@ -516,33 +530,12 @@ export function registerTaskCommands(program) {
         const { data } = parseUpdateOptions(opts, file.data, 'task');
         saveFile(taskFile, data, file.body);
         // Auto-escalate: Epic and PRD to In Progress if not started
-        const epicMatch = data.parent?.match(/E(\d+)/i);
-        if (epicMatch) {
-            const epicId = normalizeId(`E${epicMatch[1]}`);
-            const epicFile = findEpicFile(epicId);
-            if (epicFile) {
-                const epicData = loadFile(epicFile);
-                if (epicData?.data && isStatusNotStarted(epicData.data.status)) {
-                    epicData.data.status = 'In Progress';
-                    saveFile(epicFile, epicData.data, epicData.body);
-                    console.log(`● Epic ${epicId} → In Progress`);
-                }
-            }
-            // Check PRD
-            const prdMatch = data.parent?.match(/PRD-(\d+)/i);
-            if (prdMatch) {
-                const prdId = `PRD-${prdMatch[1].padStart(3, '0')}`;
-                const prdDir = findPrdDirs().find(d => matchesPrdDir(d, prdId));
-                if (prdDir) {
-                    const prdFile = path.join(prdDir, 'prd.md');
-                    const prdData = loadFile(prdFile);
-                    if (prdData?.data && (prdData.data.status === 'Draft' || prdData.data.status === 'Approved' || isStatusNotStarted(prdData.data.status))) {
-                        prdData.data.status = 'In Progress';
-                        saveFile(prdFile, prdData.data, prdData.body);
-                        console.log(`● PRD ${prdId} → In Progress`);
-                    }
-                }
-            }
+        const escalation = escalateOnTaskStart(data);
+        if (escalation.epic?.updated) {
+            console.log(`● ${escalation.epic.message}`);
+        }
+        if (escalation.prd?.updated) {
+            console.log(`● ${escalation.prd.message}`);
         }
         if (options.json) {
             const output = { ...data };
@@ -576,57 +569,13 @@ export function registerTaskCommands(program) {
         // Add log entry
         const body = addLogEntry(file.body, options.message, data.assignee || 'agent');
         saveFile(taskFile, data, body);
-        // Check if epic is now complete and auto-escalate to Auto-Done
-        const epicMatch = data.parent?.match(/E(\d+)/i);
-        if (epicMatch) {
-            const epicId = normalizeId(`E${epicMatch[1]}`);
-            const { tasks } = buildDependencyGraph();
-            // Find all tasks for this epic
-            const epicTasks = [...tasks.values()].filter(t => t.parent?.match(/E\d+/i)?.[0]?.toUpperCase() === epicId.toUpperCase());
-            const allTasksDone = epicTasks.every(t => isStatusDone(t.status) || isStatusCancelled(t.status) || t.id === normalizeId(id));
-            if (allTasksDone && epicTasks.length > 0) {
-                // Find and update epic to Auto-Done
-                const epicFile = findEpicFile(epicId);
-                if (epicFile) {
-                    const epicData = loadFile(epicFile);
-                    if (epicData?.data && !isStatusDone(epicData.data.status) && !isStatusAutoDone(epicData.data.status)) {
-                        epicData.data.status = 'Auto-Done';
-                        saveFile(epicFile, epicData.data, epicData.body);
-                        console.log(`\n◉ Epic ${epicId} → Auto-Done (to be reviewed for completion)`);
-                        // Check if PRD should be updated
-                        const prdMatch = data.parent?.match(/PRD-(\d+)/i);
-                        if (prdMatch) {
-                            const prdId = `PRD-${prdMatch[1].padStart(3, '0')}`;
-                            const prdDir = findPrdDirs().find(d => matchesPrdDir(d, prdId));
-                            if (prdDir) {
-                                const prdFile = path.join(prdDir, 'prd.md');
-                                const prdData = loadFile(prdFile);
-                                if (prdData?.data) {
-                                    // Get all epics for this PRD
-                                    const epicsDir = path.join(prdDir, 'epics');
-                                    const epicFiles = findFiles(epicsDir, /^E\d+.*\.md$/);
-                                    const allEpicsDone = epicFiles.every(ef => {
-                                        const ed = loadFile(ef);
-                                        return ed?.data && (isStatusDone(ed.data.status) || isStatusCancelled(ed.data.status));
-                                    });
-                                    // PRD → Auto-Done only if ALL epics are Done (not Auto-Done)
-                                    if (allEpicsDone && epicFiles.length > 0 && !isStatusDone(prdData.data.status) && !isStatusAutoDone(prdData.data.status)) {
-                                        prdData.data.status = 'Auto-Done';
-                                        saveFile(prdFile, prdData.data, prdData.body);
-                                        console.log(`◉ PRD ${prdId} → Auto-Done (to be reviewed for completion)`);
-                                    }
-                                    // PRD → In Progress if still at Draft/Approved
-                                    else if ((prdData.data.status === 'Draft' || prdData.data.status === 'Approved') && !allEpicsDone) {
-                                        prdData.data.status = 'In Progress';
-                                        saveFile(prdFile, prdData.data, prdData.body);
-                                        console.log(`● PRD ${prdId} → In Progress`);
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
+        // Cascade completion: check if Epic/PRD should be Auto-Done
+        const cascade = cascadeTaskCompletion(id, data);
+        if (cascade.epic?.updated) {
+            console.log(`\n◉ ${cascade.epic.message}`);
+        }
+        if (cascade.prd?.updated) {
+            console.log(`◉ ${cascade.prd.message}`);
         }
         if (options.json) {
             jsonOut(data);
@@ -636,7 +585,6 @@ export function registerTaskCommands(program) {
         }
     });
     // task:log
-    const LOG_LEVELS = ['info', 'tip', 'warn', 'error', 'critical'];
     task.command('log <id> <message>')
         .description('Log message during task work (→ memory/TNNN.log)')
         .option('--info', 'Progress note (default)')
@@ -803,23 +751,25 @@ export function registerTaskCommands(program) {
             console.log(context.technicalNotes);
         }
         // Memory sections
-        if (context.memory?.length) {
+        const memoryArray = context.memory;
+        if (memoryArray && memoryArray.length) {
             console.log(`\n${sep}`);
             console.log('## Memory (tips & learnings)\n');
-            for (const sec of context.memory) {
+            for (const sec of memoryArray) {
                 console.log(`### [${sec.level}] ${sec.name}\n`);
                 console.log(sec.content);
                 console.log('');
             }
         }
         // Dependencies
-        if (context.dependencies) {
+        const deps = context.dependencies;
+        if (deps) {
             console.log(`\n${sep}`);
             console.log('## Dependencies\n');
-            console.log(`Blocked by: ${context.dependencies.blockedBy.join(', ')}`);
-            console.log(`All resolved: ${context.dependencies.allResolved ? '✓' : '✗'}`);
+            console.log(`Blocked by: ${deps.blockedBy.join(', ')}`);
+            console.log(`All resolved: ${deps.allResolved ? '✓' : '✗'}`);
         }
-        if (!context.memory?.length && !context.technicalNotes && !context.dependencies) {
+        if (!memoryArray?.length && !context.technicalNotes && !deps) {
             console.log('(No memory or context available for this task)');
         }
     });
@@ -830,40 +780,35 @@ export function registerTaskCommands(program) {
         .option('--json', 'JSON output')
         .action((component, options) => {
         const results = [];
-        for (const prdDir of findPrdDirs()) {
-            const tasksDir = path.join(prdDir, 'tasks');
-            const taskFiles = findFiles(tasksDir, /^T\d+.*\.md$/);
-            for (const taskFile of taskFiles) {
-                const file = loadFile(taskFile);
-                if (file.data.target_versions && file.data.target_versions[component]) {
-                    const entry = {
-                        id: file.data.id,
-                        title: file.data.title,
-                        status: file.data.status,
-                        target_version: file.data.target_versions[component]
-                    };
-                    if (options.path)
-                        entry.file = taskFile;
-                    results.push(entry);
-                }
+        // Use artefacts.ts contract - single entry point
+        for (const taskEntry of getAllTasks()) {
+            const data = taskEntry.data;
+            if (data?.target_versions && data.target_versions[component]) {
+                const entry = {
+                    id: data.id,
+                    title: data.title,
+                    status: data.status,
+                    target_version: data.target_versions[component]
+                };
+                if (options.path)
+                    entry.file = taskEntry.file;
+                results.push(entry);
             }
-            // Also check epics
-            const epicsDir = path.join(prdDir, 'epics');
-            const epicFiles = findFiles(epicsDir, /^E\d+.*\.md$/);
-            for (const epicFile of epicFiles) {
-                const file = loadFile(epicFile);
-                if (file.data.target_versions && file.data.target_versions[component]) {
-                    const entry = {
-                        id: file.data.id,
-                        title: file.data.title,
-                        status: file.data.status,
-                        target_version: file.data.target_versions[component],
-                        type: 'epic'
-                    };
-                    if (options.path)
-                        entry.file = epicFile;
-                    results.push(entry);
-                }
+        }
+        // Also check epics (artefacts.ts contract)
+        for (const epicEntry of getAllEpics()) {
+            const data = epicEntry.data;
+            if (data?.target_versions && data.target_versions[component]) {
+                const entry = {
+                    id: data.id,
+                    title: data.title,
+                    status: data.status,
+                    target_version: data.target_versions[component],
+                    type: 'epic'
+                };
+                if (options.path)
+                    entry.file = epicEntry.file;
+                results.push(entry);
             }
         }
         if (options.json) {
@@ -976,7 +921,7 @@ See: bin/rudder artifact edit --help for full documentation
         }
         let content = options.content;
         if (!content) {
-            content = await new Promise((resolve) => {
+            const stdinContent = await new Promise((resolve) => {
                 let data = '';
                 if (process.stdin.isTTY) {
                     resolve('');
@@ -990,7 +935,7 @@ See: bin/rudder artifact edit --help for full documentation
                 });
                 process.stdin.on('end', () => resolve(data));
             });
-            content = content.trim();
+            content = stdinContent.trim();
         }
         if (!content) {
             console.error('Content required via --content or stdin');
@@ -1001,7 +946,7 @@ See: bin/rudder artifact edit --help for full documentation
             opType = 'append';
         if (options.prepend)
             opType = 'prepend';
-        let ops = options.section
+        const ops = options.section
             ? [{ op: opType, section: options.section, content }]
             : parseMultiSectionContent(content, opType);
         if (ops.length === 0) {
@@ -1024,7 +969,7 @@ See: bin/rudder artifact edit --help for full documentation
             }
             else {
                 const byOp = {};
-                originalOps.forEach(o => { byOp[o.op] = (byOp[o.op] || 0) + 1; });
+                originalOps.forEach(o => { byOp[o.op] = ((byOp[o.op]) || 0) + 1; });
                 const summary = Object.entries(byOp).map(([op, n]) => `${op}:${n}`).join(', ');
                 console.log(`✓ ${originalOps.length} sections in ${normalizedId} (${summary})`);
             }

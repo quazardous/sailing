@@ -4,10 +4,10 @@
  * Detects file conflicts between agent worktrees to support parallel execution.
  */
 import fs from 'fs';
-import { findProjectRoot } from './core.js';
+import { findProjectRoot } from '../managers/core-manager.js';
 import { getGit } from './git.js';
-import { getWorktreePath, getBranchName } from './worktree.js';
-import { loadState } from './state.js';
+import { getWorktreePath, getBranchName } from '../managers/worktree-manager.js';
+import { loadState } from '../managers/state-manager.js';
 /**
  * Get modified files for an agent worktree
  * @param {string} taskId - Task ID

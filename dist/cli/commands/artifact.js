@@ -3,14 +3,15 @@
  * Provides section-based editing for PRD, Epic, and Task files.
  */
 import fs from 'fs';
-import { jsonOut, stripComments } from '../lib/core.js';
+import { jsonOut, stripComments } from '../managers/core-manager.js';
 import { addDynamicHelp, withModifies } from '../lib/help.js';
 import { parseMarkdownSections, serializeSections, parseSearchReplace, applySearchReplace, editArtifact, listSections, getSection, parseMultiSectionContent, applySedCommands, parseCheckboxItems } from '../lib/artifact.js';
-import { getTask, getEpic, getPrd } from '../lib/index.js';
+import { getTask, getEpic, getPrd } from '../managers/artefacts-manager.js';
+// ============================================================================
+// Helper Functions
+// ============================================================================
 /**
  * Resolve artifact ID to file path
- * @param {string} id - Artifact ID (T042, E001, PRD-001)
- * @returns {{ path: string, type: string } | null}
  */
 function resolveArtifact(id) {
     const normalized = id.toUpperCase();
@@ -53,6 +54,9 @@ function readStdin() {
         process.stdin.on('error', reject);
     });
 }
+// ============================================================================
+// Command Registration
+// ============================================================================
 /**
  * Register artifact commands
  */
@@ -65,7 +69,7 @@ export function registerArtifactCommands(program) {
         .description('Show artifact content or specific section')
         .option('-s, --section <name>', 'Show only this section')
         .option('-l, --list', 'List section names only')
-        .option('--comments', 'Include template comments (stripped by default)')
+        .option('--strip-comments', 'Strip template comments from output')
         .option('--json', 'JSON output')
         .action((id, options) => {
         const resolved = resolveArtifact(id);
@@ -100,7 +104,7 @@ export function registerArtifactCommands(program) {
         }
         // Show full content (without frontmatter)
         let raw = fs.readFileSync(resolved.path, 'utf8');
-        if (!options.comments) {
+        if (options.stripComments) {
             raw = stripComments(raw);
         }
         const parsed = parseMarkdownSections(raw);
@@ -177,10 +181,10 @@ Examples:
             process.exit(1);
         }
         // Get content from option or stdin
-        let content = options.content;
+        let content = options.content || '';
         if (!content) {
-            content = await readStdin();
-            content = content.trim();
+            const stdinContent = await readStdin();
+            content = stdinContent.trim();
         }
         if (!content) {
             console.error('Content required via --content or stdin');
@@ -210,11 +214,11 @@ Examples:
             }
         }
         // Track original ops for output (before transformation)
-        const originalOps = ops.map(o => ({ op: o.op, section: o.section }));
+        const originalOps = ops.map((o) => ({ op: o.op, section: o.section }));
         // Process special operations: sed, check, uncheck, toggle, patch
         const expandedOps = [];
         for (const op of ops) {
-            if (op.op === 'sed' && op.sedCommands?.length > 0) {
+            if (op.op === 'sed' && op.sedCommands && op.sedCommands.length > 0) {
                 // Get current section content and apply sed commands
                 const sectionContent = getSection(resolved.path, op.section);
                 if (sectionContent === null) {
@@ -229,7 +233,7 @@ Examples:
             }
             else if (op.op === 'patch') {
                 // Parse SEARCH/REPLACE blocks and apply to section
-                const patches = parseSearchReplace(op.content);
+                const patches = parseSearchReplace(op.content || '');
                 if (patches.length === 0) {
                     console.error(`No SEARCH/REPLACE blocks found for patch: ${op.section}`);
                     process.exit(1);
@@ -245,7 +249,7 @@ Examples:
                         console.error(`Patch failed on ${op.section}: ${result.error}`);
                         process.exit(1);
                     }
-                    sectionContent = result.content;
+                    sectionContent = result.content ?? '';
                 }
                 expandedOps.push({
                     op: 'replace',
@@ -255,7 +259,7 @@ Examples:
             }
             else if (['check', 'uncheck', 'toggle'].includes(op.op)) {
                 // Create individual checkbox ops for each item
-                for (const item of parseCheckboxItems(op.content)) {
+                for (const item of parseCheckboxItems(op.content || '')) {
                     expandedOps.push({
                         op: op.op,
                         section: op.section,
@@ -436,13 +440,17 @@ Examples:
         }
         let ops;
         try {
-            ops = JSON.parse(opsContent);
-            if (!Array.isArray(ops)) {
-                ops = [ops]; // Allow single op
+            const parsed = JSON.parse(opsContent);
+            if (!Array.isArray(parsed)) {
+                ops = [parsed]; // Allow single op
+            }
+            else {
+                ops = parsed;
             }
         }
         catch (e) {
-            console.error(`Invalid JSON: ${e.message}`);
+            const error = e;
+            console.error(`Invalid JSON: ${error.message}`);
             process.exit(1);
         }
         const result = editArtifact(resolved.path, ops);

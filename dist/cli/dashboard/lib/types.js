@@ -1,0 +1,4 @@
+/**
+ * Dashboard types
+ */
+export {};

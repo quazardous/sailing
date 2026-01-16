@@ -3,11 +3,11 @@
  */
 import fs from 'fs';
 import path from 'path';
-import { jsonOut } from '../../lib/core.js';
-import { getAgentDir } from '../../lib/agent-utils.js';
+import { jsonOut, getAgentsDir } from '../../managers/core-manager.js';
+import { AgentUtils } from '../../lib/agent-utils.js';
 import { normalizeId } from '../../lib/normalize.js';
-import { getTaskEpic } from '../../lib/index.js';
-import { loadNoiseFilters, saveNoiseFilters, analyzeLog, printDiagnoseResult } from '../../lib/diagnose.js';
+import { getTaskEpic } from '../../managers/artefacts-manager.js';
+import { getDiagnoseOps, printDiagnoseResult } from '../../managers/diagnose-manager.js';
 /**
  * Summarize an event for display (exported for use in monitor.ts)
  */
@@ -70,7 +70,8 @@ export function registerDiagnoseCommands(agent) {
         .action(async (taskId, options) => {
         const maxLineLen = parseInt(options.maxLineLen) || 500;
         const normalized = normalizeId(taskId);
-        const agentDir = getAgentDir(normalized);
+        const agentUtils = new AgentUtils(getAgentsDir());
+        const agentDir = agentUtils.getAgentDir(normalized);
         const logFile = path.join(agentDir, 'run.jsonlog');
         if (!fs.existsSync(logFile)) {
             if (options.json) {
@@ -83,7 +84,7 @@ export function registerDiagnoseCommands(agent) {
         }
         const taskEpic = getTaskEpic(normalized);
         const epicId = taskEpic?.epicId || null;
-        const result = analyzeLog(logFile, epicId, maxLineLen);
+        const result = getDiagnoseOps().analyzeLog(logFile, epicId, maxLineLen);
         if (options.json) {
             jsonOut({
                 task_id: normalized,
@@ -111,7 +112,8 @@ export function registerDiagnoseCommands(agent) {
             console.error('At least one of --contains, --pattern, or --type is required');
             process.exit(1);
         }
-        const filters = loadNoiseFilters(epicId);
+        const ops = getDiagnoseOps();
+        const filters = ops.loadNoiseFilters(epicId);
         if (filters.find(f => f.id === id)) {
             console.error(`Filter "${id}" already exists`);
             process.exit(1);
@@ -129,7 +131,7 @@ export function registerDiagnoseCommands(agent) {
             newFilter.match.pattern = options.pattern;
         newFilter.learned_at = new Date().toISOString();
         filters.push(newFilter);
-        saveNoiseFilters(epicId, filters);
+        ops.saveNoiseFilters(epicId, filters);
         console.log(`Added filter "${id}" to ${epicId || 'global'}`);
     });
     // agent:log-noise-list-filters - List noise filters
@@ -138,7 +140,7 @@ export function registerDiagnoseCommands(agent) {
         .option('--json', 'JSON output')
         .action(async (taskOrEpic, options) => {
         const epicId = resolveEpicId(taskOrEpic);
-        const filters = loadNoiseFilters(epicId);
+        const filters = getDiagnoseOps().loadNoiseFilters(epicId);
         if (options.json) {
             jsonOut({ epic_id: epicId || 'global', filters });
         }
@@ -165,14 +167,15 @@ export function registerDiagnoseCommands(agent) {
         .description('Remove noise filter (task ID, epic ID, or "global")')
         .action(async (id, taskOrEpic) => {
         const epicId = resolveEpicId(taskOrEpic);
-        const filters = loadNoiseFilters(epicId);
+        const ops = getDiagnoseOps();
+        const filters = ops.loadNoiseFilters(epicId);
         const idx = filters.findIndex(f => f.id === id);
         if (idx === -1) {
             console.error(`Filter "${id}" not found`);
             process.exit(1);
         }
         filters.splice(idx, 1);
-        saveNoiseFilters(epicId, filters);
+        ops.saveNoiseFilters(epicId, filters);
         console.log(`Removed filter "${id}" from ${epicId || 'global'}`);
     });
 }

@@ -131,7 +131,6 @@ export function calculateRealSchedule(taskData, effortConfig, t0, now) {
     };
     for (const taskId of taskIds) {
         const task = taskData.get(taskId);
-        const theoretical = theoreticalSchedule.get(taskId);
         const durationHours = getDuration(task.effort, effortConfig);
         const status = task.status?.toLowerCase() || '';
         const isDone = status === 'done' || status === 'auto-done';

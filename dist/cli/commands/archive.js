@@ -8,9 +8,9 @@
  */
 import fs from 'fs';
 import path from 'path';
-import { getArchiveDir, getMemoryDir, loadFile, saveFile, findProjectRoot } from '../lib/core.js';
-import { getPrd, buildPrdIndex, clearIndexCache } from '../lib/index.js';
-import { findEpicPrd, findTaskEpic } from '../lib/memory.js';
+import { getArchiveDir, getMemoryDir, loadFile, saveFile, findProjectRoot } from '../managers/core-manager.js';
+import { getPrd, buildPrdIndex, clearCache } from '../managers/artefacts-manager.js';
+import { findEpicPrd, findTaskEpic } from '../managers/memory-manager.js';
 import { normalizeId } from '../lib/normalize.js';
 import { getGit } from '../lib/git.js';
 import { withModifies } from '../lib/help.js';
@@ -212,7 +212,7 @@ async function archivePrd(prdId, options = {}) {
     const method = await moveFile(prd.dir, archivePrdDest);
     console.log(`✓ Moved PRD folder${method === 'git' ? ' (git)' : ''}`);
     // Clear index cache
-    clearIndexCache();
+    clearCache();
     console.log();
     console.log(`✓ ${prd.id} archived successfully`);
 }
@@ -222,7 +222,7 @@ async function archivePrd(prdId, options = {}) {
 function getDonePrds() {
     const prdIndex = buildPrdIndex();
     const donePrds = [];
-    for (const [num, prd] of prdIndex) {
+    for (const [, prd] of prdIndex) {
         if (prd.data?.status === 'Done') {
             donePrds.push(prd);
         }

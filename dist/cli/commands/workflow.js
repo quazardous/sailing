@@ -5,8 +5,8 @@
 import fs from 'fs';
 import path from 'path';
 import yaml from 'js-yaml';
-import { jsonOut, getPrompting } from '../lib/core.js';
-import { getAgentConfig } from '../lib/config.js';
+import { jsonOut, getPrompting } from '../managers/core-manager.js';
+import { getAgentConfig } from '../managers/core-manager.js';
 import { addDynamicHelp } from '../lib/help.js';
 /**
  * Load workflows.yaml (raw)

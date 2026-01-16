@@ -13,8 +13,8 @@
  */
 import fs from 'fs';
 import path from 'path';
-import { getPrdsDir } from './core.js';
-import { getPrd } from './index.js';
+import { getPrdsDir } from '../managers/core-manager.js';
+import { getPrd } from '../managers/artefacts-manager.js';
 /**
  * Find story file by ID
  * @param {string} storyId - Story ID (e.g., S001)

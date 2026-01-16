@@ -2,9 +2,9 @@
  * Dashboard Debug commands - Inspect scheduling data for a project
  * Commands: debug-prd, debug-epic, debug-task, debug-gantt
  */
-import { getFullPrd, getEpic, getTask } from '../lib/index.js';
-import { loadFile } from '../lib/core.js';
-import { getConfigValue } from '../lib/config.js';
+import { getFullPrd, getEpic, getTask } from '../managers/artefacts-manager.js';
+import { loadFile } from '../managers/core-manager.js';
+import { getConfigValue } from '../managers/core-manager.js';
 import { calculateGanttMetrics, getTaskSchedules } from '../lib/scheduling.js';
 import { getSystemLocale } from '../lib/format.js';
 /**
@@ -15,30 +15,30 @@ export function registerDashboardDebugCommands(program) {
         .description('Debug PRD scheduling data')
         .option('--json', 'Output raw JSON')
         .option('--schedule', 'Show full schedule data')
-        .action(async (id, options) => {
-        await debugPrd(id, options);
+        .action((id, options) => {
+        debugPrd(id, options);
     });
     program.command('debug-epic <id>')
         .description('Debug Epic data')
         .option('--json', 'Output raw JSON')
-        .action(async (id, options) => {
-        await debugEpic(id, options);
+        .action((id, options) => {
+        debugEpic(id, options);
     });
     program.command('debug-task <id>')
         .description('Debug Task data')
         .option('--json', 'Output raw JSON')
-        .action(async (id, options) => {
-        await debugTask(id, options);
+        .action((id, options) => {
+        debugTask(id, options);
     });
     program.command('debug-gantt <prdId>')
         .description('Compare Gantt metrics vs actual schedule (debug overflow)')
         .option('--ascii', 'Show ASCII Gantt chart')
         .option('-w, --width <chars>', 'Chart width in characters', '80')
-        .action(async (prdId, options) => {
-        await debugCompare(prdId, options);
+        .action((prdId, options) => {
+        debugCompare(prdId, options);
     });
 }
-async function debugPrd(id, options) {
+function debugPrd(id, options) {
     const prd = getFullPrd(id);
     if (!prd) {
         console.error(`PRD ${id} not found`);
@@ -90,7 +90,7 @@ async function debugPrd(id, options) {
         console.log(`${status}: ${tasks.length} tasks`);
     }
 }
-async function debugEpic(id, options) {
+function debugEpic(id, options) {
     const epicEntry = getEpic(id);
     if (!epicEntry) {
         console.error(`Epic ${id} not found`);
@@ -108,7 +108,7 @@ async function debugEpic(id, options) {
     console.log(`\n--- Meta ---`);
     console.log(JSON.stringify(epicEntry.data, null, 2));
 }
-async function debugTask(id, options) {
+function debugTask(id, options) {
     const taskEntry = getTask(id);
     if (!taskEntry) {
         console.error(`Task ${id} not found`);
@@ -126,7 +126,7 @@ async function debugTask(id, options) {
     console.log(`\n--- Meta ---`);
     console.log(JSON.stringify(taskEntry.data, null, 2));
 }
-async function debugCompare(prdId, options = {}) {
+function debugCompare(prdId, options = {}) {
     const prd = getFullPrd(prdId);
     if (!prd) {
         console.error(`PRD ${prdId} not found`);
@@ -194,9 +194,6 @@ function renderAsciiGantt(schedule, taskData, metrics, width) {
     const chartWidth = width - labelWidth - 3; // Account for label + " |"
     const totalHours = metrics.maxEndHour - metrics.minStartHour;
     const hoursPerChar = totalHours / chartWidth;
-    // Now marker position
-    const nowHours = (Date.now() - new Date().setHours(0, 0, 0, 0)) / (1000 * 60 * 60) +
-        (new Date().getTime() - new Date().setHours(0, 0, 0, 0)) / (1000 * 60 * 60);
     console.log(`\n--- ASCII Gantt (${chartWidth} chars = ${totalHours.toFixed(0)}h) ---`);
     // Header with scale
     const scaleInterval = Math.ceil(totalHours / 10); // ~10 marks
@@ -219,7 +216,6 @@ function renderAsciiGantt(schedule, taskData, metrics, width) {
         // Calculate bar position
         const startPos = Math.floor((sched.startHour - metrics.minStartHour) / hoursPerChar);
         const endPos = Math.ceil((sched.endHour - metrics.minStartHour) / hoursPerChar);
-        const barLength = Math.max(1, endPos - startPos);
         // Choose character based on status
         let barChar = '█';
         if (status === 'done')

@@ -1,16 +1,20 @@
 /**
  * Update utilities for parsing flags and updating entity data
+ * Pure functions - no manager imports
  */
 import { normalizeStatus, STATUS, PRIORITY, validateEffort } from './lexicon.js';
-import { formatId } from './config.js';
+import { formatIdFrom } from './normalize.js';
+// Default digit config if not provided
+const DEFAULT_DIGITS = { prd: 3, epic: 3, task: 3, story: 3 };
 /**
  * Parse update flags from command options and apply to frontmatter data
- * @param {Object} options - Commander options object
- * @param {Object} data - Current frontmatter data
- * @param {string} entityType - 'task', 'epic', or 'prd'
- * @returns {{ updated: boolean, data: Object }}
+ * @param options - Commander options object
+ * @param data - Current frontmatter data
+ * @param entityType - 'task', 'epic', or 'prd'
+ * @param digitConfig - Optional digit config for ID formatting
+ * @returns { updated: boolean, data: Object }
  */
-export function parseUpdateOptions(options, data, entityType) {
+export function parseUpdateOptions(options, data, entityType, digitConfig = DEFAULT_DIGITS) {
     let updated = false;
     // Status (all entity types)
     if (options.status) {
@@ -116,7 +120,7 @@ export function parseUpdateOptions(options, data, entityType) {
             const stories = Array.isArray(options.story) ? options.story : [options.story];
             data.stories = stories.map(s => {
                 const num = s.match(/\d+/)?.[0];
-                return num ? formatId('S', parseInt(num, 10)) : s;
+                return num ? formatIdFrom('S', parseInt(num, 10), digitConfig) : s;
             });
             updated = true;
         }
@@ -127,7 +131,7 @@ export function parseUpdateOptions(options, data, entityType) {
                 data.stories = [];
             stories.forEach(s => {
                 const num = s.match(/\d+/)?.[0];
-                const normalized = num ? formatId('S', parseInt(num, 10)) : s;
+                const normalized = num ? formatIdFrom('S', parseInt(num, 10), digitConfig) : s;
                 if (!data.stories.includes(normalized)) {
                     data.stories.push(normalized);
                 }
@@ -140,7 +144,7 @@ export function parseUpdateOptions(options, data, entityType) {
             if (Array.isArray(data.stories)) {
                 const toRemove = stories.map(s => {
                     const num = s.match(/\d+/)?.[0];
-                    return num ? formatId('S', parseInt(num, 10)) : s;
+                    return num ? formatIdFrom('S', parseInt(num, 10), digitConfig) : s;
                 });
                 data.stories = data.stories.filter(s => !toRemove.includes(s));
             }
@@ -190,18 +194,19 @@ export function parseUpdateOptions(options, data, entityType) {
                 value = false;
             else if (value === 'null')
                 value = null;
-            else if (/^-?\d+$/.test(value))
+            else if (typeof value === 'string' && /^-?\d+$/.test(value))
                 value = parseInt(value, 10);
-            else if (/^-?\d+\.\d+$/.test(value))
+            else if (typeof value === 'string' && /^-?\d+\.\d+$/.test(value))
                 value = parseFloat(value);
-            else if (value.startsWith('[') && value.endsWith(']')) {
+            else if (typeof value === 'string' && value.startsWith('[') && value.endsWith(']')) {
                 // Try JSON first, then simple bracket syntax [a,b,c]
+                const arrayStr = value; // Preserve string type for catch block
                 try {
-                    value = JSON.parse(value);
+                    value = JSON.parse(arrayStr);
                 }
-                catch (e) {
+                catch {
                     // Parse simple array syntax: [E001,E002] -> ["E001", "E002"]
-                    const inner = value.slice(1, -1).trim();
+                    const inner = arrayStr.slice(1, -1).trim();
                     if (inner === '') {
                         value = [];
                     }

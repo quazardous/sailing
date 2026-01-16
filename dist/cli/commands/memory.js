@@ -7,13 +7,13 @@
  */
 import fs from 'fs';
 import path from 'path';
-import { jsonOut, findPrdDirs, findFiles, getArchiveDir, findProjectRoot } from '../lib/core.js';
+import { jsonOut, getArchiveDir, findProjectRoot } from '../managers/core-manager.js';
+import { getEpicsForPrd } from '../managers/artefacts-manager.js';
 import { normalizeId } from '../lib/normalize.js';
 import { addDynamicHelp } from '../lib/help.js';
-import { getMemoryDirPath, ensureMemoryDir, memoryFilePath, memoryFileExists, readLogFile, findLogFiles, findTaskEpic, parseLogLevels, createMemoryFile, mergeTaskLog, prdMemoryFilePath, prdMemoryExists, createPrdMemoryFile, projectMemoryFilePath, projectMemoryExists, getHierarchicalMemory, findEpicPrd } from '../lib/memory.js';
-import { getMemoryFile, getTask, getEpic } from '../lib/index.js';
+import { getMemoryDirPath, ensureMemoryDir, getEpicMemory, readLogFile, findLogFiles, findTaskEpic, parseLogLevels, mergeTaskLog, prdMemoryFilePath, prdMemoryExists, createPrdMemoryFile, projectMemoryFilePath, projectMemoryExists, getHierarchicalMemory, findEpicPrd, extractAllSections as extractAllSectionsLib, editSection } from '../managers/memory-manager.js';
+import { getMemoryFile, getTask, getEpic } from '../managers/artefacts-manager.js';
 import { getGit } from '../lib/git.js';
-import { extractAllSections as extractAllSectionsLib, editSection } from '../lib/memory-section.js';
 /**
  * Check if role is allowed for memory write operations
  * Agents are blocked - they receive memory via context:load only
@@ -247,10 +247,11 @@ export function registerMemoryCommands(program) {
                 deletedEmpty++;
                 continue;
             }
-            const mdExists = memoryFileExists(epicId);
+            const epicMem = getEpicMemory(epicId);
+            const mdExists = epicMem.memoryExists();
             // Create epic .md if missing (unless --no-create)
             if (!mdExists && options.create !== false) {
-                createMemoryFile(epicId);
+                epicMem.createMemory();
                 createdMd++;
             }
             // Create PRD .md if missing (unless --no-create)
@@ -265,9 +266,9 @@ export function registerMemoryCommands(program) {
                 id: epicId,
                 lines: content.split('\n').length,
                 entries: totalEntries,
-                levels,
-                hasMd: mdExists || (options.create !== false),
-                content
+                levels: levels,
+                hasMd: (mdExists || (options.create !== false)),
+                content: content
             });
         }
         // Step 3: Collect all memory files (epic, prd, project)
@@ -280,7 +281,8 @@ export function registerMemoryCommands(program) {
             .filter(f => f.startsWith('E'))
             .map(f => {
             const epicId = f.replace('.md', '');
-            const filePath = memoryFilePath(epicId);
+            const epicMem = getEpicMemory(epicId);
+            const filePath = epicMem.getMemoryPath();
             // Handle missing files gracefully (may have been deleted or referenced but not created)
             const content = fs.existsSync(filePath) ? fs.readFileSync(filePath, 'utf8') : '';
             const prdId = findEpicPrd(epicId);
@@ -469,27 +471,16 @@ export function registerMemoryCommands(program) {
             const epicId = normalizeId(options.epic);
             files = files.filter(f => f.replace('.md', '') === epicId);
         }
-        // Filter by PRD - need to check which epics belong to this PRD
+        // Filter by PRD - use artefacts.ts contract
         if (options.prd) {
-            const prdId = options.prd.toUpperCase();
-            const prdEpics = new Set();
-            for (const prdDir of findPrdDirs()) {
-                if (prdDir.includes(prdId)) {
-                    const epicsDir = prdDir + '/epics';
-                    const epicFiles = findFiles(epicsDir, /^E\d+.*\.md$/);
-                    for (const ef of epicFiles) {
-                        const match = ef.match(/E\d+/);
-                        if (match)
-                            prdEpics.add(normalizeId(match[0]));
-                    }
-                }
-            }
+            const prdEpics = new Set(getEpicsForPrd(options.prd).map(e => e.id));
             files = files.filter(f => prdEpics.has(f.replace('.md', '')));
         }
         const results = [];
         for (const file of files) {
             const epicId = file.replace('.md', '');
-            const filePath = memoryFilePath(epicId);
+            const epicMem = getEpicMemory(epicId);
+            const filePath = epicMem.getMemoryPath();
             if (!fs.existsSync(filePath))
                 continue;
             const content = fs.readFileSync(filePath, 'utf8');
@@ -533,7 +524,7 @@ export function registerMemoryCommands(program) {
         }
         // Fallback to constructed path (for new files)
         if (id.match(/^E\d+/i)) {
-            return memoryFilePath(id);
+            return getEpicMemory(id).getMemoryPath();
         }
         else if (id.match(/^PRD-?\d+/i)) {
             return prdMemoryFilePath(id);
@@ -558,7 +549,7 @@ export function registerMemoryCommands(program) {
             fs.writeFileSync(filePath, result.content);
             return { success: true, id: memoryId, section, operation };
         }
-        return { error: result.error || 'Unknown error', id: memoryId, section };
+        return { error: (result.error) || 'Unknown error', id: memoryId, section };
     }
     // memory:edit [ID] - edit memory section(s)
     memory.command('edit [id]')
@@ -587,16 +578,15 @@ export function registerMemoryCommands(program) {
         if (!id) {
             const headerRegex = /^## ([A-Z0-9-]+):(.+?)(?:\s*\[(append|prepend|replace)\])?\s*$/gm;
             const sections = [];
-            let lastIndex = 0;
             let match;
             // Find all section headers
             const matches = [];
             while ((match = headerRegex.exec(inputContent)) !== null) {
                 matches.push({
                     fullMatch: match[0],
-                    id: match[1].toUpperCase(),
-                    section: match[2].trim(),
-                    operation: match[3] || 'replace',
+                    id: (match[1]).toUpperCase(),
+                    section: (match[2]).trim(),
+                    operation: (match[3]) || 'replace',
                     index: match.index
                 });
             }
@@ -612,14 +602,14 @@ export function registerMemoryCommands(program) {
             // Extract content for each section
             for (let i = 0; i < matches.length; i++) {
                 const current = matches[i];
-                const nextIndex = matches[i + 1]?.index ?? inputContent.length;
+                const nextIndex = (matches[i + 1])?.index ?? inputContent.length;
                 const headerEnd = current.index + current.fullMatch.length;
                 const content = inputContent.slice(headerEnd, nextIndex).trim();
                 sections.push({
                     id: current.id === 'PROJECT' ? 'PROJECT' : normalizeId(current.id),
                     section: current.section,
                     operation: current.operation,
-                    content
+                    content: content
                 });
             }
             // Apply all edits

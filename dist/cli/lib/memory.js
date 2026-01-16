@@ -11,10 +11,10 @@
  */
 import fs from 'fs';
 import path from 'path';
-import { getMemoryDir } from './core.js';
-import { resolvePlaceholders, resolvePath } from './paths.js';
+import { getMemoryDir } from '../managers/core-manager.js';
+import { resolvePlaceholders, resolvePath } from '../managers/core-manager.js';
 import { normalizeId } from './normalize.js';
-import { getTaskEpic as indexGetTaskEpic, getEpicPrd as indexGetEpicPrd } from './index.js';
+import { getTaskEpic as indexGetTaskEpic, getEpicPrd as indexGetEpicPrd } from '../managers/artefacts-manager.js';
 /**
  * Get templates directory
  */
@@ -116,6 +116,19 @@ export function findLogFiles() {
             path: path.join(memDir, f)
         };
     });
+}
+/**
+ * Check if there are pending epic logs (need consolidation into memory)
+ * Used by task:next to warn about pending memory work
+ */
+export function hasPendingMemoryLogs() {
+    const epicLogs = findLogFiles().filter(f => f.type === 'epic');
+    for (const { id: epicId } of epicLogs) {
+        const content = readLogFile(epicId);
+        if (content)
+            return true;
+    }
+    return false;
 }
 /**
  * Find parent epic for a task

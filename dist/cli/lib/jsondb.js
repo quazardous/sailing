@@ -8,6 +8,9 @@
  * - MongoDB-like API (find, insert, update, remove)
  * - Stale lock detection
  *
+ * PURE LIB: No config access, no manager imports.
+ * Accepts optional hostname for lock diagnostics.
+ *
  * Usage:
  *   import { Collection } from './jsondb.js';
  *   const agents = new Collection<AgentDoc>('/path/to/agents.json');
@@ -23,6 +26,8 @@ const LOCK_STALE_MS = 30000;
 const LOCK_RETRY_MS = 50;
 // Default lock acquire timeout
 const LOCK_TIMEOUT_MS = 5000;
+// Default hostname for lock diagnostics
+const DEFAULT_HOSTNAME = 'localhost';
 /**
  * Generate unique ID
  */
@@ -109,7 +114,8 @@ function applyUpdate(doc, update) {
                 break;
             case '$inc':
                 for (const [key, amount] of Object.entries(fields)) {
-                    result[key] = (result[key] || 0) + amount;
+                    const currentValue = typeof result[key] === 'number' ? result[key] : 0;
+                    result[key] = currentValue + amount;
                 }
                 break;
             case '$push':
@@ -126,7 +132,7 @@ function applyUpdate(doc, update) {
                 }
         }
     }
-    result._updatedAt = new Date().toISOString();
+    result['_updatedAt'] = new Date().toISOString();
     return result;
 }
 /**
@@ -135,9 +141,11 @@ function applyUpdate(doc, update) {
 export class Collection {
     filepath;
     lockfile;
-    constructor(filepath) {
+    hostname;
+    constructor(filepath, options = {}) {
         this.filepath = filepath;
         this.lockfile = filepath + '.lock';
+        this.hostname = options.hostname ?? DEFAULT_HOSTNAME;
         // Ensure directory exists
         const dir = path.dirname(filepath);
         if (!fs.existsSync(dir)) {
@@ -156,7 +164,7 @@ export class Collection {
                 fs.writeFileSync(this.lockfile, JSON.stringify({
                     pid,
                     time: Date.now(),
-                    host: process.env.HOSTNAME || 'localhost'
+                    host: this.hostname
                 }), { flag: 'wx' });
                 return true;
             }
@@ -197,7 +205,7 @@ export class Collection {
         try {
             fs.unlinkSync(this.lockfile);
         }
-        catch (_err) {
+        catch {
             // Ignore errors
         }
     }
@@ -240,22 +248,22 @@ export class Collection {
     /**
      * Find all matching documents
      */
-    async find(query = {}) {
+    find(query = {}) {
         const docs = this.readAll();
         return docs.filter(doc => matchQuery(doc, query));
     }
     /**
      * Find first matching document
      */
-    async findOne(query = {}) {
+    findOne(query = {}) {
         const docs = this.readAll();
         return docs.find(doc => matchQuery(doc, query)) || null;
     }
     /**
      * Count matching documents
      */
-    async count(query = {}) {
-        const docs = await this.find(query);
+    count(query = {}) {
+        const docs = this.find(query);
         return docs.length;
     }
     // ============ Write Operations ============
@@ -358,7 +366,7 @@ export class Collection {
      * Ensure index exists (for API compatibility, indexes stored in separate file)
      * Note: For this simple implementation, indexes just speed up unique checks
      */
-    async ensureIndex(options = {}) {
+    ensureIndex(options = {}) {
         const { fieldName, unique = false } = options;
         if (!fieldName)
             return;
@@ -385,6 +393,6 @@ export class Collection {
 /**
  * Create collection instance (factory function)
  */
-export function createCollection(filepath) {
-    return new Collection(filepath);
+export function createCollection(filepath, options = {}) {
+    return new Collection(filepath, options);
 }

@@ -1,7 +1,9 @@
 /**
- * Configuration Management
+ * Configuration Management (Technical Layer)
  *
- * Loads and provides access to sailing configuration.
+ * Pure technical operations for config: load, parse, validate, schema.
+ * Semantic accessors (getAgentConfig, getGitConfig, etc.) are in managers/config-manager.ts.
+ *
  * Config file: .sailing/config.yaml
  *
  * CONFIG_SCHEMA is the single source of truth for all config variables.
@@ -9,7 +11,7 @@
  */
 import fs from 'fs';
 import yaml from 'js-yaml';
-import { getConfigFile } from './core.js';
+import { getConfigFile } from '../managers/core-manager.js';
 /**
  * Configuration Schema
  * Each component declares its config variables here.
@@ -357,8 +359,9 @@ function validateConfig(config) {
 }
 /**
  * Get nested value from object using dot notation
+ * Exported for use by config-manager
  */
-function getNestedValue(obj, key) {
+export function getNestedValue(obj, key) {
     const parts = key.split('.');
     let value = obj;
     for (const part of parts) {
@@ -381,63 +384,11 @@ function setNestedValue(obj, key, value) {
     }
     target[parts[parts.length - 1]] = value;
 }
-/**
- * Get agent configuration
- */
-export function getAgentConfig() {
-    const config = loadConfig();
-    return config.agent;
-}
-/**
- * Validate config coherence (early boot check)
- * use_worktrees is the master config
- *
- * Rules:
- *   1. use_subprocess must equal use_worktrees (master)
- *   2. if use_subprocess=true → sandbox must be true (no subprocess without sandbox yet)
- *   3. if use_subprocess=false → sandbox is ignored
- *
- * @returns {string|null} Error message if incoherent, null if OK
- */
-export function validateConfigCoherence() {
-    const config = loadConfig();
-    const { use_worktrees, use_subprocess, sandbox } = config.agent;
-    const errors = [];
-    const fixes = [];
-    // Rule 1: use_subprocess must follow use_worktrees
-    if (use_worktrees !== use_subprocess) {
-        errors.push(`agent.use_subprocess=${use_subprocess} (should be ${use_worktrees})`);
-        fixes.push(`rudder config:set agent.use_subprocess ${use_worktrees}`);
-    }
-    // Rule 2: if subprocess mode, sandbox is required
-    if (use_subprocess && !sandbox) {
-        errors.push(`agent.sandbox=${sandbox} (must be true when use_subprocess=true)`);
-        fixes.push(`rudder config:set agent.sandbox true`);
-    }
-    if (errors.length > 0) {
-        return `agent.use_worktrees=${use_worktrees} but:\n` +
-            errors.map(e => `   - ${e}`).join('\n') + '\n\n' +
-            `   use_worktrees is the master setting.\n\n` +
-            `   Fix:\n   ${fixes.join('\n   ')}`;
-    }
-    return null;
-}
-/**
- * Get a specific config value
- * @param {string} key - Dot-notation key (e.g., 'agent.timeout')
- * @returns {any}
- */
-export function getConfigValue(key) {
-    const config = loadConfig();
-    const parts = key.split('.');
-    let value = config;
-    for (const part of parts) {
-        if (value === undefined || value === null)
-            return undefined;
-        value = value[part];
-    }
-    return value;
-}
+// =============================================================================
+// Re-exports from config-manager for backward compatibility
+// Commands should prefer importing from managers/config-manager.ts
+// =============================================================================
+export { getAgentConfig, getGitConfig, getIdsConfig, getConfigValue, formatId, validateConfigCoherence, getConfigDisplay } from './managers/config-manager.js';
 /**
  * Clear config cache (for testing or after config changes)
  */
@@ -457,60 +408,8 @@ export function getDefaults() {
     return JSON.parse(JSON.stringify(DEFAULTS));
 }
 /**
- * Get all config values with schema info for display
- * Returns array of { key, value, default, description, type, values?, isDefault }
- */
-export function getConfigDisplay() {
-    const config = loadConfig();
-    const result = [];
-    for (const [key, schema] of Object.entries(CONFIG_SCHEMA)) {
-        const value = getNestedValue(config, key);
-        result.push({
-            key,
-            value,
-            default: schema.default,
-            description: schema.description,
-            type: schema.type,
-            values: schema.values,
-            isDefault: value === schema.default
-        });
-    }
-    return result;
-}
-/**
  * Get config schema (for documentation/tooling)
  */
 export function getSchema() {
     return CONFIG_SCHEMA;
-}
-/**
- * Get ID configuration
- */
-export function getIdsConfig() {
-    const config = loadConfig();
-    return config.ids;
-}
-/**
- * Get git configuration
- */
-export function getGitConfig() {
-    const config = loadConfig();
-    return config.git;
-}
-/**
- * Format an ID with configured digits
- * @param {string} prefix - 'PRD-', 'E', 'T', or 'S'
- * @param {number} num - The numeric part
- * @returns {string} Formatted ID
- */
-export function formatId(prefix, num) {
-    const ids = getIdsConfig();
-    const digitMap = {
-        'PRD-': ids.prd_digits,
-        'E': ids.epic_digits,
-        'T': ids.task_digits,
-        'S': ids.story_digits
-    };
-    const digits = digitMap[prefix] || 3;
-    return `${prefix}${String(num).padStart(digits, '0')}`;
 }

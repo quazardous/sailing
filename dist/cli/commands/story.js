@@ -3,91 +3,86 @@
  */
 import fs from 'fs';
 import path from 'path';
-import { findPrdDirs, findFiles, loadFile, saveFile, toKebab, loadTemplate, jsonOut, stripComments } from '../lib/core.js';
-import { normalizeId, matchesId, matchesPrdDir } from '../lib/normalize.js';
-import { nextId } from '../lib/state.js';
+import { findPrdDirs, loadFile, saveFile, toKebab, loadTemplate, jsonOut, stripComments } from '../managers/core-manager.js';
+import { normalizeId, matchesPrdDir } from '../lib/normalize.js';
+import { getAllEpics, getAllTasks, getEpic, getTask, getStory, getAllStories as getStoriesFromIndex, getPrd } from '../managers/artefacts-manager.js';
+import { nextId } from '../managers/state-manager.js';
 import { addDynamicHelp } from '../lib/help.js';
-import { formatId } from '../lib/config.js';
+import { formatId } from '../managers/core-manager.js';
 import { parseSearchReplace, editArtifact, parseMultiSectionContent, processMultiSectionOps } from '../lib/artifact.js';
 const STORY_TYPES = ['user', 'technical', 'api'];
 /**
- * Find a story file by ID
+ * Find a story file by ID (uses artefacts.ts contract)
  */
 function findStoryFile(storyId) {
-    const normalizedId = normalizeId(storyId);
-    for (const prdDir of findPrdDirs()) {
-        const storiesDir = path.join(prdDir, 'stories');
-        const files = findFiles(storiesDir, /^S\d+.*\.md$/);
-        for (const f of files) {
-            if (matchesId(f, storyId))
-                return { file: f, prdDir };
-        }
-    }
-    return null;
+    const storyEntry = getStory(storyId);
+    if (!storyEntry)
+        return null;
+    return { file: storyEntry.file, prdDir: storyEntry.prdDir };
 }
 /**
- * Get all stories across all PRDs
+ * Get all stories across all PRDs (uses artefacts.ts contract)
  * @param prdFilter - Optional PRD filter
  * @param includePath - Include file paths in result (default: false for privacy)
  */
 function getAllStories(prdFilter = null, includePath = false) {
-    const stories = [];
-    for (const prdDir of findPrdDirs()) {
-        if (prdFilter && !matchesPrdDir(prdDir, prdFilter))
-            continue;
-        const prdName = path.basename(prdDir);
-        const storiesDir = path.join(prdDir, 'stories');
-        findFiles(storiesDir, /^S\d+.*\.md$/).forEach(f => {
-            const file = loadFile(f);
-            if (!file?.data)
-                return;
-            const storyEntry = {
-                id: file.data.id || path.basename(f, '.md').match(/^S\d+/)?.[0],
-                title: file.data.title || '',
-                status: file.data.status || 'Draft',
-                type: file.data.type || 'user',
-                parent: file.data.parent || '',
-                parent_story: file.data.parent_story || null,
-                prd: prdName
-            };
-            if (includePath)
-                storyEntry.file = f;
-            stories.push(storyEntry);
-        });
+    // Get stories from artefacts index, optionally filter by PRD
+    let storyEntries = getStoriesFromIndex();
+    if (prdFilter) {
+        const prd = getPrd(prdFilter);
+        if (prd) {
+            storyEntries = storyEntries.filter(s => s.prdDir === prd.dir);
+        }
+        else {
+            // Fallback: filter by prdDir path containing prdFilter
+            storyEntries = storyEntries.filter(s => matchesPrdDir(s.prdDir, prdFilter));
+        }
     }
-    return stories;
+    return storyEntries.map(entry => {
+        const prdName = path.basename(entry.prdDir);
+        const storyEntry = {
+            id: entry.data?.id || entry.id,
+            title: entry.data?.title || '',
+            status: entry.data?.status || 'Draft',
+            type: entry.data?.type || 'user',
+            parent: entry.data?.parent || '',
+            parent_story: entry.data?.parent_story || null,
+            prd: prdName
+        };
+        if (includePath)
+            storyEntry.file = entry.file;
+        return storyEntry;
+    });
 }
 /**
  * Get all epics and tasks with their story references
  */
 function getStoryReferences() {
     const refs = { epics: {}, tasks: {} };
-    for (const prdDir of findPrdDirs()) {
-        // Epics
-        findFiles(path.join(prdDir, 'epics'), /^E\d+.*\.md$/).forEach(f => {
-            const file = loadFile(f);
-            if (!file?.data)
-                return;
-            const stories = file.data.stories || [];
-            stories.forEach(s => {
-                const sid = normalizeId(s);
-                if (!refs.epics[sid])
-                    refs.epics[sid] = [];
-                refs.epics[sid].push(file.data.id);
-            });
+    // Use artefacts.ts contract for epics
+    for (const epicEntry of getAllEpics()) {
+        const data = epicEntry.data;
+        if (!data)
+            continue;
+        const stories = data.stories || [];
+        stories.forEach(s => {
+            const sid = normalizeId(s);
+            if (!refs.epics[sid])
+                refs.epics[sid] = [];
+            refs.epics[sid].push(data.id);
         });
-        // Tasks
-        findFiles(path.join(prdDir, 'tasks'), /^T\d+.*\.md$/).forEach(f => {
-            const file = loadFile(f);
-            if (!file?.data)
-                return;
-            const stories = file.data.stories || [];
-            stories.forEach(s => {
-                const sid = normalizeId(s);
-                if (!refs.tasks[sid])
-                    refs.tasks[sid] = [];
-                refs.tasks[sid].push(file.data.id);
-            });
+    }
+    // Use artefacts.ts contract for tasks
+    for (const taskEntry of getAllTasks()) {
+        const data = taskEntry.data;
+        if (!data)
+            continue;
+        const stories = data.stories || [];
+        stories.forEach(s => {
+            const sid = normalizeId(s);
+            if (!refs.tasks[sid])
+                refs.tasks[sid] = [];
+            refs.tasks[sid].push(data.id);
         });
     }
     return refs;
@@ -170,7 +165,7 @@ export function registerStoryCommands(program) {
     story.command('show <id>')
         .description('Show story details (children, references)')
         .option('--raw', 'Dump raw markdown')
-        .option('--comments', 'Include template comments (stripped by default)')
+        .option('--strip-comments', 'Strip template comments from output')
         .option('--path', 'Include file path (discouraged)')
         .option('--json', 'JSON output')
         .action((id, options) => {
@@ -184,7 +179,7 @@ export function registerStoryCommands(program) {
             if (options.path)
                 console.log(`# File: ${result.file}\n`);
             const content = fs.readFileSync(result.file, 'utf8');
-            console.log(options.comments ? content : stripComments(content));
+            console.log(options.stripComments ? stripComments(content) : content);
             return;
         }
         const file = loadFile(result.file);
@@ -376,7 +371,6 @@ export function registerStoryCommands(program) {
             childList.forEach((child, i) => {
                 const isLast = i === childList.length - 1;
                 const prefix = isLast ? '└── ' : '├── ';
-                const nextIndent = indent + (isLast ? '    ' : '│   ');
                 printTree(child, indent + prefix.slice(0, -4));
             });
         }
@@ -476,7 +470,7 @@ export function registerStoryCommands(program) {
                 current = byId.get(normalizeId(current.parent_story));
             }
             else {
-                current = null;
+                current = undefined;
             }
         }
         if (options.json) {
@@ -616,44 +610,36 @@ export function registerStoryCommands(program) {
         .action((prdArg, options) => {
         let stories = [];
         if (options.epic) {
-            // Find epic and get its stories
-            for (const prdDir of findPrdDirs()) {
-                findFiles(path.join(prdDir, 'epics'), /^E\d+.*\.md$/).forEach(f => {
-                    const file = loadFile(f);
-                    if (matchesId(f, options.epic) && file?.data?.stories) {
-                        file.data.stories.forEach(sid => {
-                            const storyResult = findStoryFile(sid);
-                            if (storyResult) {
-                                const storyFile = loadFile(storyResult.file);
-                                stories.push({
-                                    id: storyFile.data.id,
-                                    title: storyFile.data.title,
-                                    type: storyFile.data.type,
-                                    file: storyResult.file
-                                });
-                            }
+            // Find epic and get its stories (artefacts.ts contract)
+            const epicEntry = getEpic(options.epic);
+            if (epicEntry?.data?.stories) {
+                epicEntry.data.stories.forEach(sid => {
+                    const storyResult = findStoryFile(sid);
+                    if (storyResult) {
+                        const storyFile = loadFile(storyResult.file);
+                        stories.push({
+                            id: storyFile.data.id,
+                            title: storyFile.data.title,
+                            type: storyFile.data.type,
+                            file: storyResult.file
                         });
                     }
                 });
             }
         }
         else if (options.task) {
-            // Find task and get its stories
-            for (const prdDir of findPrdDirs()) {
-                findFiles(path.join(prdDir, 'tasks'), /^T\d+.*\.md$/).forEach(f => {
-                    const file = loadFile(f);
-                    if (matchesId(f, options.task) && file?.data?.stories) {
-                        file.data.stories.forEach(sid => {
-                            const storyResult = findStoryFile(sid);
-                            if (storyResult) {
-                                const storyFile = loadFile(storyResult.file);
-                                stories.push({
-                                    id: storyFile.data.id,
-                                    title: storyFile.data.title,
-                                    type: storyFile.data.type,
-                                    file: storyResult.file
-                                });
-                            }
+            // Find task and get its stories (artefacts.ts contract)
+            const taskEntry = getTask(options.task);
+            if (taskEntry?.data?.stories) {
+                taskEntry.data.stories.forEach(sid => {
+                    const storyResult = findStoryFile(sid);
+                    if (storyResult) {
+                        const storyFile = loadFile(storyResult.file);
+                        stories.push({
+                            id: storyFile.data.id,
+                            title: storyFile.data.title,
+                            type: storyFile.data.type,
+                            file: storyResult.file
                         });
                     }
                 });
@@ -710,9 +696,11 @@ export function registerStoryCommands(program) {
                 }
                 process.stdin.setEncoding('utf8');
                 process.stdin.on('readable', () => {
-                    let chunk;
-                    while ((chunk = process.stdin.read()) !== null)
-                        data += chunk;
+                    let chunk = process.stdin.read();
+                    while (chunk !== null) {
+                        data += chunk.toString();
+                        chunk = process.stdin.read();
+                    }
                 });
                 process.stdin.on('end', () => resolve(data));
             });
@@ -778,9 +766,11 @@ See: bin/rudder artifact edit --help for full documentation
                 }
                 process.stdin.setEncoding('utf8');
                 process.stdin.on('readable', () => {
-                    let chunk;
-                    while ((chunk = process.stdin.read()) !== null)
-                        data += chunk;
+                    let chunk = process.stdin.read();
+                    while (chunk !== null) {
+                        data += chunk.toString();
+                        chunk = process.stdin.read();
+                    }
                 });
                 process.stdin.on('end', () => resolve(data));
             });
@@ -795,7 +785,7 @@ See: bin/rudder artifact edit --help for full documentation
             opType = 'append';
         if (options.prepend)
             opType = 'prepend';
-        let ops = options.section
+        const ops = options.section
             ? [{ op: opType, section: options.section, content }]
             : parseMultiSectionContent(content, opType);
         if (ops.length === 0) {
