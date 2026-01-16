@@ -477,6 +477,19 @@ export function registerDepsCommands(program: Command): void {
         }
       }
 
+      // 8b. Tasks without epic parent
+      for (const [id, task] of tasks) {
+        if (prdFilter && !task.prd?.includes(prdFilter)) continue;
+        // Check if parent contains an epic (ENNN)
+        if (!task.epic && !task.parent?.match(/E\d+/i)) {
+          errors.push({
+            type: 'missing_epic',
+            task: id,
+            message: `${id}: Task has no epic parent (parent: ${task.parent || 'none'})`
+          });
+        }
+      }
+
       // 9. ID mismatch
       for (const [id, task] of tasks) {
         if (prdFilter && !task.prd?.includes(prdFilter)) continue;

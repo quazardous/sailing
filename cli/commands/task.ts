@@ -430,6 +430,12 @@ export function registerTaskCommands(program: Command): void {
         const prdPart = parentParts[0];
         epicPart = parentParts[1] ? normalizeId(parentParts[1]) : null;
 
+        // Tasks MUST belong to an epic
+        if (!epicPart) {
+          console.error(`Tasks must belong to an epic. Use: task:create PRD-XXX/EXXX "title" or task:create EXXX "title"`);
+          process.exit(1);
+        }
+
         // Find PRD directory
         prdDir = findPrdDirs().find(d => matchesPrdDir(d, prdPart));
         if (!prdDir) {
