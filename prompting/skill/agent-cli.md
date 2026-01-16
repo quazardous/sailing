@@ -85,22 +85,26 @@ agent:spawn T001
     ↓
 [streams log, shows heartbeat]
     ↓
-exit 0 → auto-reap (merge + cleanup)
+exit 0 → auto-reap (merge + cleanup) + useful summary
 exit ≠0 → manual: agent:log, agent:reject, or agent:spawn --resume
 ```
 
+**Important:** On completion, spawn displays useful info (exit code, files changed, next steps). Do NOT lose this output.
+
 ## Parallel Spawning
 
-Use **Claude's parallel tool calls** (multiple Bash in one message), NOT bash `&`:
+Use **Task tool with `run_in_background: true`** for parallel agents:
 
 ```
-# In ONE message, call Bash multiple times:
-Bash: rudder agent:spawn T001
-Bash: rudder agent:spawn T002
-Bash: rudder agent:spawn T003
+# In ONE message, call Task multiple times with run_in_background:
+Task: rudder agent:spawn T001 (run_in_background: true)
+Task: rudder agent:spawn T002 (run_in_background: true)
+Task: rudder agent:spawn T003 (run_in_background: true)
 ```
 
-Each spawn blocks independently. All run in parallel.
+**NEVER use bash `&`** - it loses the output and useful completion info.
+
+Each spawn runs independently in background. Check status with `agent:status`.
 
 ## After Spawn Completes
 

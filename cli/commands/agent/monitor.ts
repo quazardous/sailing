@@ -96,10 +96,13 @@ export function registerMonitorCommands(agent) {
         }
 
         const completion = agentUtils.checkCompletion(taskId, agentData as AgentCompletionInfo);
-        const liveStatus = completion.complete ? 'complete' : agentData.status;
+        // Status-based completion: reaped/merged/collected means complete
+        const statusComplete = ['reaped', 'merged', 'collected'].includes(agentData.status);
+        const isComplete = completion.complete || statusComplete;
+        const liveStatus = isComplete ? 'complete' : agentData.status;
 
         // Check if process is actually running (only for active agents)
-        const isActive = ['dispatched', 'running'].includes(agentData.status);
+        const isActive = ['dispatched', 'running', 'spawned'].includes(agentData.status);
         const processInfo = (isActive && agentData.pid) ? getProcessStats(agentData.pid) : { running: false };
 
         if (options.json) {
@@ -108,19 +111,20 @@ export function registerMonitorCommands(agent) {
             ...agentData,
             live_status: liveStatus,
             ...(isActive && { process_running: processInfo.running }),
-            ...completion
+            ...completion,
+            complete: isComplete
           });
         } else {
           console.log(`Agent: ${taskId}`);
-          console.log(`  Status: ${agentData.status}${completion.complete ? ' (complete)' : ''}`);
-          // Show PID only for active agents
+          console.log(`  Status: ${agentData.status}${isComplete ? ' (complete)' : ''}`);
+          // Show PID for active agents
           if (agentData.pid && isActive) {
             const procState = processInfo.running ? 'running' : 'not running';
             console.log(`  PID: ${agentData.pid} (${procState})`);
           }
           console.log(`  Started: ${agentData.spawned_at || agentData.started_at || 'unknown'}`);
           console.log(`  Mission: ${agentData.mission_file}`);
-          console.log(`  Complete: ${completion.complete ? 'yes' : 'no'}`);
+          console.log(`  Complete: ${isComplete ? 'yes' : 'no'}`);
           if (completion.hasResult) console.log(`  Result: ${path.join(completion.agentDir, 'result.yaml')}`);
           if (completion.hasSentinel) console.log(`  Sentinel: ${path.join(completion.agentDir, 'done')}`);
           if (agentData.completed_at) {
