@@ -289,7 +289,8 @@ export function registerMonitorCommands(agent) {
         // PID for active agents (show even if dead)
         if (agentData.pid && isActiveStatus) {
           const pidColor = processInfo.running ? green : red;
-          line += `  ${dim}PID:${reset}${pidColor}${agentData.pid}${reset}`;
+          const pidStatus = processInfo.running ? 'running' : 'stopped';
+          line += `  ${dim}PID:${reset}${pidColor}${agentData.pid} (${pidStatus})${reset}`;
         }
 
         // Last activity
