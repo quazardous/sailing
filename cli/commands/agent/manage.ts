@@ -283,4 +283,87 @@ export function registerManageCommands(agent) {
         order.forEach((id, i) => console.log(`  ${i + 1}. rudder agent:merge ${id}`));
       }
     });
+
+  // agent:gc
+  withModifies(agent.command('gc'), ['state'])
+    .description('Garbage collect old agents from state (reaped/completed > TTL)')
+    .option('--ttl <duration>', 'Max age for reaped agents (default: 24h)', '24h')
+    .option('--force', 'Skip confirmation')
+    .option('--json', 'JSON output')
+    .action(async (options: { ttl: string; force?: boolean; json?: boolean }) => {
+      // Parse TTL
+      const ttlMatch = options.ttl.match(/^(\d+)(h|d)$/);
+      if (!ttlMatch) {
+        console.error(`Invalid TTL format: ${options.ttl}. Use format like "1h", "24h", "1d"`);
+        process.exit(1);
+      }
+      const ttlValue = parseInt(ttlMatch[1], 10);
+      const ttlUnit = ttlMatch[2];
+      const ttlMs = ttlUnit === 'h' ? ttlValue * 60 * 60 * 1000 : ttlValue * 24 * 60 * 60 * 1000;
+
+      const state = loadState();
+      const agents = state.agents || {};
+      const now = Date.now();
+
+      // Find agents to garbage collect
+      const finalStates = ['reaped', 'collected', 'rejected', 'killed', 'merged'];
+      const toGc: string[] = [];
+
+      for (const [taskId, agentInfo] of Object.entries(agents)) {
+        if (!finalStates.includes(agentInfo.status)) continue;
+
+        // Check age
+        const endedAt = agentInfo.reaped_at || agentInfo.completed_at || agentInfo.rejected_at || agentInfo.killed_at || agentInfo.merged_at;
+        if (!endedAt) continue;
+
+        const age = now - new Date(endedAt).getTime();
+        if (age > ttlMs) {
+          toGc.push(taskId);
+        }
+      }
+
+      if (toGc.length === 0) {
+        if (options.json) {
+          jsonOut({ status: 'ok', removed: [] });
+        } else {
+          console.log(`No agents older than ${options.ttl} to garbage collect`);
+        }
+        return;
+      }
+
+      if (!options.json) {
+        console.log(`Found ${toGc.length} agent(s) to garbage collect:`);
+        for (const taskId of toGc) {
+          const info = agents[taskId];
+          console.log(`  - ${taskId} (${info.status})`);
+        }
+      }
+
+      // Confirmation unless --force
+      if (!options.force && !options.json) {
+        const readline = await import('readline');
+        const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
+        const answer = await new Promise<string>(resolve => {
+          rl.question('\nRemove these agents from state? [y/N] ', resolve);
+        });
+        rl.close();
+
+        if (answer.toLowerCase() !== 'y') {
+          console.log('Aborted');
+          return;
+        }
+      }
+
+      // Remove agents from state
+      for (const taskId of toGc) {
+        delete state.agents[taskId];
+      }
+      saveState(state);
+
+      if (options.json) {
+        jsonOut({ status: 'ok', removed: toGc });
+      } else {
+        console.log(`\n✓ Removed ${toGc.length} agent(s) from state`);
+      }
+    });
 }

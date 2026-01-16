@@ -3,7 +3,7 @@
  */
 import fs from 'fs';
 import path from 'path';
-import { findProjectRoot, jsonOut, getAgentsDir } from '../../managers/core-manager.js';
+import { findProjectRoot, jsonOut, getAgentsDir, getWorktreesDir } from '../../managers/core-manager.js';
 import { loadState } from '../../managers/state-manager.js';
 import { getAgentLifecycle } from '../../managers/agent-manager.js';
 import { normalizeId } from '../../lib/normalize.js';
@@ -11,6 +11,7 @@ import {
   AgentUtils, getProcessStats, formatDuration,
   type AgentCompletionInfo
 } from '../../lib/agent-utils.js';
+import { WorktreeOps } from '../../lib/worktree.js';
 import { AgentInfo } from '../../lib/types/agent.js';
 import { getTaskEpic } from '../../managers/artefacts-manager.js';
 import {
@@ -18,12 +19,69 @@ import {
 } from '../../managers/diagnose-manager.js';
 import { summarizeEvent } from './diagnose.js';
 
+/**
+ * Parse duration string (e.g., "1h", "24h", "1d", "2d") to milliseconds
+ */
+function parseDuration(duration: string): number {
+  const match = duration.match(/^(\d+)(h|d)$/);
+  if (!match) {
+    throw new Error(`Invalid duration format: ${duration}. Use format like "1h", "24h", "1d"`);
+  }
+  const value = parseInt(match[1], 10);
+  const unit = match[2];
+  if (unit === 'h') return value * 60 * 60 * 1000;
+  if (unit === 'd') return value * 24 * 60 * 60 * 1000;
+  return 0;
+}
+
+/**
+ * Check if an agent is "interesting" (needs attention)
+ */
+function isInterestingAgent(agentData: AgentInfo & { live_complete?: boolean; worktree_merged?: boolean }, maxAge: number = 24 * 60 * 60 * 1000): boolean {
+  // Active agents are always interesting
+  if (['dispatched', 'running'].includes(agentData.status)) return true;
+
+  // Ready to reap (complete but not reaped)
+  if (agentData.live_complete && agentData.status === 'dispatched') return true;
+
+  // Failed/blocked/rejected are interesting
+  if (['blocked', 'failed', 'rejected'].includes(agentData.status)) return true;
+
+  // Has worktree not yet merged
+  if (agentData.worktree && !agentData.worktree_merged) return true;
+
+  // Recently reaped/completed (within maxAge)
+  const reapedAt = agentData.reaped_at || agentData.completed_at;
+  if (reapedAt) {
+    const age = Date.now() - new Date(reapedAt).getTime();
+    if (age < maxAge) return true;
+  }
+
+  return false;
+}
+
+/**
+ * Check if agent's worktree branch has been merged to main
+ */
+function checkWorktreeMerged(agentData: AgentInfo, ops: WorktreeOps): boolean {
+  if (!agentData.worktree?.branch) return true; // No worktree = considered merged
+  const branch = agentData.worktree.branch;
+  // Check if branch exists
+  if (!ops.branchExists(branch)) {
+    return true; // Branch doesn't exist = already merged/deleted
+  }
+  // Check if branch is ancestor of HEAD (merged)
+  return ops.isAncestor(branch, 'HEAD');
+}
+
 export function registerMonitorCommands(agent) {
   // agent:status
   agent.command('status [task-id]')
     .description('Show agent status (all or specific task)')
+    .option('--all', 'Show all agents (including old reaped)')
+    .option('--since <duration>', 'Show agents from last duration (e.g., 1h, 24h, 2d)')
     .option('--json', 'JSON output')
-    .action((taskId: string | undefined, options: { json?: boolean }) => {
+    .action((taskId: string | undefined, options: { all?: boolean; since?: string; json?: boolean }) => {
       const state = loadState();
       const agents: Record<string, AgentInfo> = state.agents || {};
       const agentUtils = new AgentUtils(getAgentsDir());
@@ -40,16 +98,26 @@ export function registerMonitorCommands(agent) {
         const completion = agentUtils.checkCompletion(taskId, agentData as AgentCompletionInfo);
         const liveStatus = completion.complete ? 'complete' : agentData.status;
 
+        // Check if process is actually running (only for active agents)
+        const isActive = ['dispatched', 'running'].includes(agentData.status);
+        const processInfo = (isActive && agentData.pid) ? getProcessStats(agentData.pid) : { running: false };
+
         if (options.json) {
           jsonOut({
             task_id: taskId,
             ...agentData,
             live_status: liveStatus,
+            ...(isActive && { process_running: processInfo.running }),
             ...completion
           });
         } else {
           console.log(`Agent: ${taskId}`);
           console.log(`  Status: ${agentData.status}${completion.complete ? ' (complete)' : ''}`);
+          // Show PID only for active agents
+          if (agentData.pid && isActive) {
+            const procState = processInfo.running ? 'running' : 'not running';
+            console.log(`  PID: ${agentData.pid} (${procState})`);
+          }
           console.log(`  Started: ${agentData.started_at}`);
           console.log(`  Mission: ${agentData.mission_file}`);
           console.log(`  Complete: ${completion.complete ? 'yes' : 'no'}`);
@@ -62,15 +130,33 @@ export function registerMonitorCommands(agent) {
         return;
       }
 
-      // Show all agents with live completion status
-      const agentList: (AgentInfo & { task_id: string; live_complete: boolean })[] = Object.entries(agents).map(([id, data]) => {
+      const projectRoot = findProjectRoot();
+      const worktreeOps = new WorktreeOps(projectRoot, getWorktreesDir());
+
+      // Build agent list with live status info
+      let agentList = Object.entries(agents).map(([id, data]) => {
         const completion = agentUtils.checkCompletion(id, data as AgentCompletionInfo);
+        const worktreeMerged = checkWorktreeMerged(data, worktreeOps);
         return {
           task_id: id,
           ...data,
-          live_complete: completion.complete
+          live_complete: completion.complete,
+          worktree_merged: worktreeMerged
         };
       });
+
+      // Apply filters
+      if (options.since) {
+        const sinceMs = parseDuration(options.since);
+        const cutoff = Date.now() - sinceMs;
+        agentList = agentList.filter(a => {
+          const startedAt = a.spawned_at || a.started_at;
+          return startedAt && new Date(startedAt).getTime() >= cutoff;
+        });
+      } else if (!options.all) {
+        // Default: only show interesting agents
+        agentList = agentList.filter(a => isInterestingAgent(a));
+      }
 
       if (options.json) {
         jsonOut(agentList);
@@ -78,24 +164,34 @@ export function registerMonitorCommands(agent) {
       }
 
       if (agentList.length === 0) {
-        console.log('No active agents');
+        const hint = options.all ? '' : ' (use --all to show old agents)';
+        console.log(`No agents to show${hint}`);
         return;
       }
 
-      console.log('Active agents:\n');
+      const title = options.all ? 'All agents' : (options.since ? `Agents (since ${options.since})` : 'Agents (recent/active)');
+      console.log(`${title}:\n`);
       for (const agentData of agentList) {
         let status;
         if (agentData.live_complete) {
           status = '✓';
         } else if (agentData.status === 'dispatched') {
           status = '●';
-        } else if (agentData.status === 'collected') {
+        } else if (agentData.status === 'collected' || agentData.status === 'reaped') {
           status = '✓';
         } else {
           status = '✗';
         }
-        const completeNote = agentData.live_complete && agentData.status === 'dispatched' ? ' [ready to collect]' : '';
-        console.log(`  ${status} ${agentData.task_id}: ${agentData.status}${completeNote}`);
+        const completeNote = agentData.live_complete && agentData.status === 'dispatched' ? ' [ready to reap]' : '';
+        // Show worktree merge status
+        const worktreeNote = (agentData.worktree && !agentData.worktree_merged) ? ' [worktree not merged]' : '';
+        // Show PID and process state only for active agents
+        let pidInfo = '';
+        if (agentData.pid && ['dispatched', 'running'].includes(agentData.status)) {
+          const processInfo = getProcessStats(agentData.pid);
+          pidInfo = ` [PID ${agentData.pid}: ${processInfo.running ? 'running' : 'stopped'}]`;
+        }
+        console.log(`  ${status} ${agentData.task_id}: ${agentData.status}${completeNote}${worktreeNote}${pidInfo}`);
       }
     });
 

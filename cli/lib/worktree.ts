@@ -192,6 +192,21 @@ export class WorktreeOps {
   }
 
   /**
+   * Check if a commit/branch is ancestor of another
+   */
+  isAncestor(commit: string, descendant: string): boolean {
+    try {
+      execSync(`git merge-base --is-ancestor "${commit}" "${descendant}"`, {
+        cwd: this.projectRoot,
+        stdio: ['pipe', 'pipe', 'pipe']
+      });
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  /**
    * Create a branch if it doesn't exist
    */
   ensureBranch(branchName: string, baseBranch: string) {
