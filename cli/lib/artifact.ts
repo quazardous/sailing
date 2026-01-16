@@ -136,16 +136,20 @@ export interface OpResult {
 export function applyOp(sections: Map<string, string>, order: string[], op: ArtifactOp): OpResult {
   switch (op.op) {
     case 'replace': {
+      // Auto-create section if it doesn't exist
       if (!sections.has(op.section)) {
-        return { success: false, error: `Section not found: ${op.section}` };
+        order.push(op.section);
       }
       sections.set(op.section, op.content ?? '');
       return { success: true };
     }
 
     case 'append': {
+      // Auto-create section if it doesn't exist
       if (!sections.has(op.section)) {
-        return { success: false, error: `Section not found: ${op.section}` };
+        order.push(op.section);
+        sections.set(op.section, op.content ?? '');
+        return { success: true };
       }
       const current: string | undefined = sections.get(op.section);
       const separator: string = current && !current.endsWith('\n') ? '\n' : '';
@@ -154,8 +158,11 @@ export function applyOp(sections: Map<string, string>, order: string[], op: Arti
     }
 
     case 'prepend': {
+      // Auto-create section if it doesn't exist
       if (!sections.has(op.section)) {
-        return { success: false, error: `Section not found: ${op.section}` };
+        order.push(op.section);
+        sections.set(op.section, op.content ?? '');
+        return { success: true };
       }
       const current: string | undefined = sections.get(op.section);
       sections.set(op.section, (op.content ?? '') + (current ? '\n' + current : ''));
@@ -464,7 +471,7 @@ export function getSection(filePath: string, sectionName: string): string | null
 /**
  * Supported operations for multi-section editing
  */
-export const SECTION_OPS = ['replace', 'append', 'prepend', 'delete', 'sed', 'check', 'uncheck', 'toggle', 'patch'];
+export const SECTION_OPS = ['replace', 'append', 'prepend', 'delete', 'create', 'sed', 'check', 'uncheck', 'toggle', 'patch'];
 
 export interface SedCommand {
   search: string;

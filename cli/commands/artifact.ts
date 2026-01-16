@@ -190,9 +190,10 @@ Multi-Section Format (omit --section):
   Add [op] after section name to specify operation.
 
 Operations:
-  [replace]   Replace section content (default)
-  [append]    Add content at end of section
-  [prepend]   Add content at start of section
+  [replace]   Replace section content (default) - auto-creates if missing
+  [append]    Add content at end of section - auto-creates if missing
+  [prepend]   Add content at start of section - auto-creates if missing
+  [create]    Create new section (fails if exists)
   [delete]    Remove section entirely
   [sed]       Search/replace with regex: s/pattern/replacement/g
   [check]     Check checkbox items (partial match)

@@ -535,7 +535,8 @@ Usage Examples:
   s/v1\\.0/v2.0/g
   EOF
 
-Operations: [replace] (default), [append], [prepend], [delete], [sed], [check], [uncheck], [toggle], [patch]
+Operations: [replace] (default), [append], [prepend], [delete], [create], [sed], [check], [uncheck], [toggle], [patch]
+Note: Sections are auto-created if they don't exist (replace/append/prepend).
 `)
     .action(async (id: string, options: EditOptions) => {
       const prdPath = getPrd(id)?.file;

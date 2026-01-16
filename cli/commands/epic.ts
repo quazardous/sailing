@@ -638,7 +638,8 @@ Usage Examples:
   T001
   EOF
 
-Operations: [replace] (default), [append], [prepend], [delete], [sed], [check], [uncheck], [toggle], [patch]
+Operations: [replace] (default), [append], [prepend], [delete], [create], [sed], [check], [uncheck], [toggle], [patch]
+Note: Sections are auto-created if they don't exist (replace/append/prepend).
 `)
     .action(async (id: string, options: EpicEditOptions) => {
       const result = findEpicFile(id);
