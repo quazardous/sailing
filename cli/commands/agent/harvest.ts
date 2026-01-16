@@ -223,8 +223,15 @@ export function registerHarvestCommands(agent) {
           const taskEpic = getTaskEpic(taskId);
           const epicIdForLog = taskEpic?.epicId || null;
           const logResult = getDiagnoseOps().analyzeLog(logFile, epicIdForLog);
-          console.log('\n--- Agent Run Analysis ---');
-          printDiagnoseResult(taskId, logResult);
+          if (logResult.errors.length > 0) {
+            console.log('\n--- Agent Run Analysis ---');
+            console.log('Review errors below:');
+            console.log('  - If critical/unrecoverable → STOP and escalate');
+            console.log('  - If fixable → handle the issue');
+            console.log(`  - If false positive → rudder agent:log-noise-add-filter <filter-id> ${epicIdForLog || 'global'} --contains "pattern"`);
+            console.log('');
+            printDiagnoseResult(taskId, logResult);
+          }
         }
       }
     });
