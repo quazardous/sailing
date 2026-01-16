@@ -33,7 +33,6 @@ export function registerSpawnCommand(agent) {
     .option('--timeout <seconds>', 'Execution timeout (default: 600)', parseInt)
     .option('--worktree', 'Create isolated worktree (overrides config)')
     .option('--no-worktree', 'Skip worktree creation (overrides config)')
-    .option('--no-wait', 'Fire and forget (do not wait for completion)')
     .option('--no-log', 'Do not stream Claude stdout/stderr')
     .option('--no-heartbeat', 'Do not show periodic heartbeat')
     .option('--heartbeat <seconds>', 'Heartbeat interval (default: 60 quiet, 30 verbose)', parseInt)
@@ -43,7 +42,6 @@ export function registerSpawnCommand(agent) {
       role?: string;
       timeout?: number;
       worktree?: boolean;
-      wait?: boolean;
       log?: boolean;
       heartbeat?: number | boolean;
       verbose?: boolean;
@@ -465,9 +463,8 @@ export function registerSpawnCommand(agent) {
       const logFile = getLogFilePath(getAgentsDir(), taskId);
 
       // Spawn Claude with bootstrap prompt
-      const shouldWait = options.wait !== false;
       const isQuiet = options.verbose !== true;
-      const shouldLog = options.log !== false && shouldWait && !isQuiet;
+      const shouldLog = options.log !== false && !isQuiet;
 
       const paths = getPathsInfo();
       const spawnResult = await spawnClaude({
@@ -589,35 +586,7 @@ export function registerSpawnCommand(agent) {
         }
       });
 
-      // === NO-WAIT MODE: fire and forget ===
-      if (!shouldWait) {
-        if (options.json) {
-          jsonOut({
-            task_id: taskId,
-            epic_id: epicId,
-            prd_id: prdId,
-            pid: spawnResult.pid,
-            cwd,
-            log_file: spawnResult.logFile,
-            mission_file: missionFile,
-            timeout,
-            ...(worktreeInfo && { worktree: worktreeInfo })
-          });
-        } else {
-          console.log(`Spawned: ${taskId}`);
-          console.log(`  PID: ${spawnResult.pid}`);
-          console.log(`  Timeout: ${timeout}s`);
-          console.log(`\nMonitor:`);
-          console.log(`  bin/rudder agent:status ${taskId}   # Check if running/complete`);
-          console.log(`  bin/rudder agent:log ${taskId} --tail   # Follow output (Ctrl+C to stop)`);
-          console.log(`  bin/rudder agent:log ${taskId}          # Show full log`);
-          console.log(`\nAfter completion:`);
-          console.log(`  bin/rudder agent:reap ${taskId}     # Merge work + cleanup`);
-        }
-        return;
-      }
-
-      // === WAIT MODE (default): wait with heartbeat, auto-reap ===
+      // === WAIT MODE: wait with heartbeat, auto-reap ===
       const startTime = Date.now();
       const defaultHeartbeat = isQuiet ? 60 : 30;
       const heartbeatSec = typeof options.heartbeat === 'number' ? options.heartbeat : defaultHeartbeat;

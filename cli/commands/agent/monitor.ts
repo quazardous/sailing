@@ -118,7 +118,7 @@ export function registerMonitorCommands(agent) {
             const procState = processInfo.running ? 'running' : 'not running';
             console.log(`  PID: ${agentData.pid} (${procState})`);
           }
-          console.log(`  Started: ${agentData.started_at}`);
+          console.log(`  Started: ${agentData.spawned_at || agentData.started_at || 'unknown'}`);
           console.log(`  Mission: ${agentData.mission_file}`);
           console.log(`  Complete: ${completion.complete ? 'yes' : 'no'}`);
           if (completion.hasResult) console.log(`  Result: ${path.join(completion.agentDir, 'result.yaml')}`);
