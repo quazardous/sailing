@@ -38,6 +38,15 @@ NEVER:
 - Implement dependency code (it should exist)
 - Chain to other tasks
 - Skip deliverables
+- **Mask or ignore bugs** that impact your deliverables
+
+**Existing Bugs (not created by you):**
+If you encounter a bug blocking your deliverable:
+1. **In scope + fixable** → fix it, log as `--tip`
+2. **Out of scope OR unfixable** → STOP immediately, escalate with `--error`
+   - What bug, where, impact on deliverable
+   - Do NOT work around silently
+   - Do NOT pretend "not my problem"
 
 **If blocked** → log error and STOP:
 {% if sandbox %}
