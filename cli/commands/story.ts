@@ -879,9 +879,33 @@ export function registerStoryCommands(program: Command) {
     .option('-p, --prepend', 'Prepend to section instead of replace')
     .option('--json', 'JSON output')
     .addHelpText('after', `
-Multi-section format: use ## headers with optional [op]
-Operations: [replace], [append], [prepend], [delete], [sed], [check], [uncheck], [toggle], [patch]
-See: bin/rudder artifact edit --help for full documentation
+Usage Examples:
+
+  # Single section via --content
+  rudder story:edit S001 -s "Description" -c "New description text"
+
+  # Single section via stdin (heredoc)
+  rudder story:edit S001 -s "Acceptance Criteria" <<'EOF'
+  - [ ] Criteria 1
+  - [ ] Criteria 2
+  EOF
+
+  # Single section via pipe
+  echo "New content" | rudder story:edit S001 -s "Notes"
+
+  # Multi-section edit (omit -s)
+  rudder story:edit S001 <<'EOF'
+  ## Description
+  Full replacement...
+
+  ## Acceptance Criteria [append]
+  - [ ] New criterion
+
+  ## Tasks [check]
+  T001
+  EOF
+
+Operations: [replace] (default), [append], [prepend], [delete], [sed], [check], [uncheck], [toggle], [patch]
 `)
     .action(async (id: string, options: StoryEditOptions) => {
       const result = findStoryFile(id);

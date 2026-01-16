@@ -509,9 +509,33 @@ export function registerPrdCommands(program: Command): void {
     .option('-p, --prepend', 'Prepend to section instead of replace')
     .option('--json', 'JSON output')
     .addHelpText('after', `
-Multi-section format: use ## headers with optional [op]
-Operations: [replace], [append], [prepend], [delete], [sed], [check], [uncheck], [toggle], [patch]
-See: bin/rudder artifact edit --help for full documentation
+Usage Examples:
+
+  # Single section via --content
+  rudder prd:edit P001 -s "Description" -c "New description text"
+
+  # Single section via stdin (heredoc)
+  rudder prd:edit P001 -s "Deliverables" <<'EOF'
+  - [ ] Item 1
+  - [ ] Item 2
+  EOF
+
+  # Single section via pipe
+  echo "New content" | rudder prd:edit P001 -s "Notes"
+
+  # Multi-section edit (omit -s)
+  rudder prd:edit P001 <<'EOF'
+  ## Description
+  Full replacement...
+
+  ## Deliverables [append]
+  - [ ] New item
+
+  ## Notes [sed]
+  s/v1\\.0/v2.0/g
+  EOF
+
+Operations: [replace] (default), [append], [prepend], [delete], [sed], [check], [uncheck], [toggle], [patch]
 `)
     .action(async (id: string, options: EditOptions) => {
       const prdPath = getPrd(id)?.file;

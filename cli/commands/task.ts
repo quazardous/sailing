@@ -1100,9 +1100,33 @@ export function registerTaskCommands(program: Command): void {
     .option('-p, --prepend', 'Prepend to section instead of replace')
     .option('--json', 'JSON output')
     .addHelpText('after', `
-Multi-section format: use ## headers with optional [op]
-Operations: [replace], [append], [prepend], [delete], [sed], [check], [uncheck], [toggle], [patch]
-See: bin/rudder artifact edit --help for full documentation
+Usage Examples:
+
+  # Single section via --content
+  rudder task:edit T001 -s "Description" -c "New description text"
+
+  # Single section via stdin (heredoc)
+  rudder task:edit T001 -s "Deliverables" <<'EOF'
+  - [ ] Item 1
+  - [ ] Item 2
+  EOF
+
+  # Single section via pipe
+  echo "New content" | rudder task:edit T001 -s "Notes"
+
+  # Multi-section edit (omit -s)
+  rudder task:edit T001 <<'EOF'
+  ## Description
+  Full replacement...
+
+  ## Deliverables [append]
+  - [ ] New item
+
+  ## Deliverables [check]
+  First item
+  EOF
+
+Operations: [replace] (default), [append], [prepend], [delete], [sed], [check], [uncheck], [toggle], [patch]
 `)
     .action(async (id: string, options: TaskEditOptions) => {
       const normalizedId = normalizeId(id);
