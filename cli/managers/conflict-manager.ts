@@ -8,7 +8,7 @@ import fs from 'fs';
 import { findProjectRoot } from './core-manager.js';
 import { getGit } from '../lib/git.js';
 import { getWorktreePath, getBranchName } from './worktree-manager.js';
-import { loadState } from './state-manager.js';
+import { getAllAgentsFromDb } from './db-manager.js';
 
 /**
  * Get modified files for an agent worktree
@@ -77,8 +77,7 @@ export async function detectConflicts(taskId1: string, taskId2: string): Promise
  * @returns {Promise<{ agents: string[], matrix: object, conflicts: object[], hasConflicts: boolean }>}
  */
 export async function buildConflictMatrix() {
-  const state = loadState();
-  const agents = state.agents || {};
+  const agents = getAllAgentsFromDb();
 
   // Get agents with worktrees that are dispatched or running
   const activeAgents = Object.entries(agents)
@@ -168,8 +167,7 @@ export function suggestMergeOrder(conflictData: { agents: string[]; filesByAgent
  * @returns {Promise<{ canMerge: boolean, conflictsWith: string[] }>}
  */
 export async function canMergeWithoutConflict(taskId: string): Promise<{ canMerge: boolean, conflictsWith: string[] }> {
-  const state = loadState();
-  const agents = state.agents || {};
+  const agents = getAllAgentsFromDb();
 
   // Get other active agents
   const otherAgents = Object.entries(agents)

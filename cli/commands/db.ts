@@ -5,9 +5,16 @@
 import fs from 'fs';
 import path from 'path';
 import { jsonOut, resolvePlaceholders } from '../managers/core-manager.js';
-import { getDbOps } from '../managers/db-manager.js';
+import {
+  getDbOps,
+  getAgentFromDb,
+  getAllAgentsFromDb,
+  deleteAgentFromDb,
+  migrateAgentsToTaskNum
+} from '../managers/db-manager.js';
 import { addDynamicHelp, withModifies } from '../lib/help.js';
-import { AgentInfo } from '../lib/types/agent.js';
+import { AgentRecord } from '../lib/types/agent.js';
+import { parseTaskNum, formatTaskId } from '../lib/normalize.js';
 
 /**
  * Register database commands
@@ -55,19 +62,18 @@ export function registerDbCommands(program) {
     .description('List all agents')
     .option('--status <status>', 'Filter by status')
     .action((options: { status?: string; json?: boolean }) => {
-      const agents = getDbOps().getAllAgents({ status: options.status });
+      const agents = getAllAgentsFromDb({ status: options.status });
 
       if (options.json) {
         jsonOut(agents);
       } else {
-        if (agents.length === 0) {
+        if (Object.keys(agents).length === 0) {
           console.log('No agents');
           return;
         }
         console.log('Agents:\n');
-        agents.forEach(a => {
-          const dirty = a.dirtyWorktree ? ' [dirty]' : '';
-          console.log(`  ${a.taskId}: ${a.status}${dirty}`);
+        Object.entries(agents).forEach(([taskId, a]) => {
+          console.log(`  ${taskId}: ${a.status}`);
         });
       }
     });
@@ -80,8 +86,7 @@ export function registerDbCommands(program) {
       taskId = taskId.toUpperCase();
       if (!taskId.startsWith('T')) taskId = 'T' + taskId;
 
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
-      const agent = getDbOps().getAgent(taskId);
+      const agent = getAgentFromDb(taskId);
 
       if (!agent) {
         console.error(`Agent not found: ${taskId}`);
@@ -91,41 +96,35 @@ export function registerDbCommands(program) {
       if (options.json) {
         jsonOut(agent);
       } else {
-        console.log(`Agent: ${agent.taskId}\n`);
+        console.log(`Agent: ${formatTaskId(agent.taskNum)}\n`);
         console.log(`Status: ${agent.status}`);
         if (agent.pid) console.log(`PID: ${agent.pid}`);
-        if (agent.spawnedAt) console.log(`Spawned: ${agent.spawnedAt}`);
-        if (agent.endedAt) console.log(`Ended: ${agent.endedAt}`);
-        if (agent.exitCode !== undefined) console.log(`Exit code: ${agent.exitCode}`);
+        if (agent.spawned_at) console.log(`Spawned: ${agent.spawned_at}`);
+        if (agent.ended_at) console.log(`Ended: ${agent.ended_at}`);
+        if (agent.exit_code !== undefined) console.log(`Exit code: ${agent.exit_code}`);
         if (agent.worktree) {
           console.log(`\nWorktree:`);
           console.log(`  Path: ${agent.worktree.path}`);
           console.log(`  Branch: ${agent.worktree.branch}`);
         }
-        if (agent.dirtyWorktree) {
-          console.log(`\nDirty: ${agent.uncommittedFiles} uncommitted files`);
-        }
-        // TODO: add run log management via rudder (agent:log, agent:log --tail, etc.)
-        if (agent.logFile) console.log(`\nRun Log: ${agent.logFile}`);
+        if (agent.agent_dir) console.log(`\nAgent dir: ${agent.agent_dir}`);
       }
     });
 
   // db:delete - delete agent entry
-  withModifies(db.command('delete <task-id>'), ['state'])
+  withModifies(db.command('delete <task-id>'), ['db'])
     .description('Delete agent entry')
     .action(async (taskId: string) => {
       taskId = taskId.toUpperCase();
       if (!taskId.startsWith('T')) taskId = 'T' + taskId;
 
-      const db = getDbOps();
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
-      const agent = db.getAgent(taskId);
+      const agent = getAgentFromDb(taskId);
       if (!agent) {
         console.error(`Agent not found: ${taskId}`);
         process.exit(1);
       }
 
-      await db.deleteAgent(taskId);
+      await deleteAgentFromDb(taskId);
       console.log(`Deleted: ${taskId}`);
     });
 
@@ -151,7 +150,13 @@ export function registerDbCommands(program) {
       taskId = taskId.toUpperCase();
       if (!taskId.startsWith('T')) taskId = 'T' + taskId;
 
-      const runs = getDbOps().getRunsForTask(taskId);
+      const taskNum = parseTaskNum(taskId);
+      if (taskNum === null) {
+        console.error(`Invalid task ID: ${taskId}`);
+        process.exit(1);
+      }
+
+      const runs = getDbOps().getRunsForTask(taskNum);
 
       if (options.json) {
         jsonOut(runs);
@@ -169,12 +174,30 @@ export function registerDbCommands(program) {
       }
     });
 
-  // db:migrate - migrate from haven's state.json
-  withModifies(db.command('migrate'), ['state', 'state'])
-    .description('Migrate agents from haven state.json to jsondb')
+  // db:migrate - migrate from haven's state.json or convert existing db
+  withModifies(db.command('migrate'), ['db'])
+    .description('Migrate agents from state.json or convert existing db to taskNum format')
     .option('--dry-run', 'Show what would be migrated')
-    .action(async (options: { dryRun?: boolean }) => {
-      // Read from haven's state.json (not project's)
+    .option('--convert', 'Convert existing agents.json to taskNum format')
+    .action(async (options: { dryRun?: boolean; convert?: boolean }) => {
+      if (options.convert) {
+        // Convert existing agents.json from taskId to taskNum format
+        if (options.dryRun) {
+          const agents = getDbOps().getAllAgents();
+          const toConvert = agents.filter(a => a.taskId !== undefined && a.taskNum === undefined);
+          console.log(`Would convert ${toConvert.length} agent(s) to taskNum format:`);
+          toConvert.forEach(a => {
+            console.log(`  ${a.taskId}: ${a.status}`);
+          });
+          return;
+        }
+
+        const converted = await migrateAgentsToTaskNum();
+        console.log(`Converted ${converted} agent(s) to taskNum format`);
+        return;
+      }
+
+      // Migrate from state.json
       const havenPath = resolvePlaceholders('${haven}');
       const stateFile = path.join(havenPath, 'state.json');
 
@@ -191,7 +214,7 @@ export function registerDbCommands(program) {
         return;
       }
 
-      const stateAgents = state.agents as Record<string, AgentInfo>;
+      const stateAgents = state.agents as Record<string, AgentRecord>;
       const count = Object.keys(stateAgents).length;
 
       if (options.dryRun) {
@@ -202,8 +225,8 @@ export function registerDbCommands(program) {
         return;
       }
 
-      const migrated = await getDbOps().migrateFromStateJson(state.agents);
-      console.log(`Migrated ${migrated} agent(s) to jsondb`);
+      const migrated = await getDbOps().migrateToTaskNum(state.agents);
+      console.log(`Migrated ${migrated} agent(s) to jsondb with taskNum format`);
 
       // Remove agents from state.json (keep counters)
       delete state.agents;

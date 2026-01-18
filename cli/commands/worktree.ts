@@ -6,7 +6,7 @@ import fs from 'fs';
 import { execSync } from 'child_process';
 import { Command } from 'commander';
 import { findProjectRoot, jsonOut } from '../managers/core-manager.js';
-import { loadState, saveState } from '../managers/state-manager.js';
+import { getAgentFromDb, getAllAgentsFromDb, updateAgentInDb, saveAgentToDb } from '../managers/db-manager.js';
 import { getAgentConfig, getGitConfig } from '../managers/core-manager.js';
 import { addDynamicHelp } from '../lib/help.js';
 import {
@@ -42,7 +42,9 @@ import {
   report as reconciliationReport,
   BranchState
 } from '../managers/reconciliation-manager.js';
-import type { AgentInfo } from '../lib/types/agent.js';
+import { getTask } from '../managers/artefacts-manager.js';
+import { extractPrdId, extractEpicId } from '../lib/normalize.js';
+import type { AgentRecord } from '../lib/types/agent.js';
 
 interface StatusOptions {
   json?: boolean;
@@ -149,21 +151,20 @@ async function getPrStatus(taskId: string, projectRoot: string, provider: string
  * Create PR for a task (wrapper for pr.js)
  */
 async function createPr(taskId: string, options: PrOptions, projectRoot: string) {
-  const state = loadState();
-  const agentInfo = state.agents?.[taskId] as AgentInfo | undefined;
+  // Get task info from artefacts (not stored in agent record)
+  const taskInfo = getTask(taskId);
+  const taskTitle = taskInfo?.data?.title;
+  const epicId = taskInfo?.data?.parent ? extractEpicId(taskInfo.data.parent) : null;
+  const prdId = taskInfo?.data?.parent ? extractPrdId(taskInfo.data.parent) : null;
 
-  // Get task info for PR title/body
-  let title = `${taskId}: Agent work`;
-  if (agentInfo?.task_title) {
-    title = `${taskId}: ${agentInfo.task_title}`;
-  }
+  const title = taskTitle ? `${taskId}: ${taskTitle}` : `${taskId}: Agent work`;
 
   return createPrFromLib(taskId, {
     cwd: projectRoot,
     title,
     draft: options.draft,
-    epicId: agentInfo?.epic_id,
-    prdId: agentInfo?.prd_id
+    epicId: epicId || undefined,
+    prdId: prdId || undefined
   });
 }
 
@@ -182,8 +183,7 @@ export function registerWorktreeCommands(program: Command) {
     .option('--json', 'JSON output')
     .action(async (options: StatusOptions) => {
       const projectRoot = findProjectRoot();
-      const state = loadState();
-      const agents = state.agents || {};
+      const agents = getAllAgentsFromDb();
       const config = getAgentConfig();
       const provider = config.pr_provider === 'auto' ? await detectProvider(projectRoot) : config.pr_provider;
 
@@ -192,7 +192,7 @@ export function registerWorktreeCommands(program: Command) {
 
       // Get all agent worktrees
       const worktrees = [];
-      for (const [taskId, info] of Object.entries(agents as Record<string, AgentInfo>)) {
+      for (const [taskId, info] of Object.entries(agents as Record<string, AgentRecord>)) {
         if (!info.worktree) continue;
 
         const worktreePath = getWorktreePath(taskId);
@@ -278,21 +278,21 @@ export function registerWorktreeCommands(program: Command) {
           const dim = '\x1b[2m';
 
           const statusIconMap: Record<string, { icon: string; color: string }> = {
-            'running': { icon: '●', color: green },
-            'spawned': { icon: '◐', color: yellow },
-            'dispatched': { icon: '◐', color: yellow },
-            'completed': { icon: '✓', color: green },
-            'reaped': { icon: '✓', color: green },
-            'failed': { icon: '✗', color: red },
-            'merged': { icon: '✓✓', color: green },
-            'conflict': { icon: '⚠', color: red }
+            'running': { icon: '[running]', color: green },
+            'spawned': { icon: '[spawned]', color: yellow },
+            'dispatched': { icon: '[dispatched]', color: yellow },
+            'completed': { icon: '[completed]', color: green },
+            'reaped': { icon: '[reaped]', color: green },
+            'failed': { icon: '[failed]', color: red },
+            'merged': { icon: '[merged]', color: green },
+            'conflict': { icon: '[conflict]', color: red }
           };
 
           for (let i = 0; i < worktrees.length; i++) {
             const wt = worktrees[i];
             const isLast = i === worktrees.length - 1;
             const treeChar = isLast ? '└── ' : '├── ';
-            const statusInfo = statusIconMap[wt.status] || { icon: '○', color: gray };
+            const statusInfo = statusIconMap[wt.status] || { icon: `[${wt.status || 'unknown'}]`, color: gray };
 
             // Build single line: tree + icon + taskId + branch + tags + time
             let line = `${gray}${treeChar}${reset}`;
@@ -345,8 +345,7 @@ export function registerWorktreeCommands(program: Command) {
     .option('--json', 'JSON output')
     .action(async (options: PreflightOptions) => {
       const projectRoot = findProjectRoot();
-      const state = loadState();
-      const agents = state.agents || {};
+      const agents = getAllAgentsFromDb();
       const config = getAgentConfig();
       const provider = config.pr_provider === 'auto' ? await detectProvider(projectRoot) : config.pr_provider;
 
@@ -372,7 +371,7 @@ export function registerWorktreeCommands(program: Command) {
       }
 
       // Check existing agents
-      for (const [taskId, info] of Object.entries(agents as Record<string, AgentInfo>)) {
+      for (const [taskId, info] of Object.entries(agents as Record<string, AgentRecord>)) {
         if (info.status === 'running') {
           runningAgents.push(taskId);
         }
@@ -467,8 +466,7 @@ export function registerWorktreeCommands(program: Command) {
       if (!taskId.startsWith('T')) taskId = 'T' + taskId;
 
       const projectRoot = findProjectRoot();
-      const state = loadState();
-      const agentInfo = state.agents?.[taskId] as AgentInfo | undefined;
+      const agentInfo = getAgentFromDb(taskId);
 
       if (!agentInfo) {
         console.error(`No agent found for task: ${taskId}`);
@@ -527,10 +525,11 @@ export function registerWorktreeCommands(program: Command) {
       try {
         const pr = await createPr(taskId, options, projectRoot);
 
-        // Update state with PR URL
-        (state.agents[taskId] as AgentInfo).pr_url = pr.url;
-        (state.agents[taskId] as AgentInfo).pr_created_at = new Date().toISOString();
-        saveState(state);
+        // Update db with PR URL
+        await updateAgentInDb(taskId, {
+          pr_url: pr.url,
+          pr_created_at: new Date().toISOString()
+        });
 
         if (options.json) {
           jsonOut({ taskId, ...pr });
@@ -554,8 +553,7 @@ export function registerWorktreeCommands(program: Command) {
       if (!taskId.startsWith('T')) taskId = 'T' + taskId;
 
       const projectRoot = findProjectRoot();
-      const state = loadState();
-      const agentInfo = state.agents?.[taskId] as AgentInfo | undefined;
+      const agentInfo = getAgentFromDb(taskId);
 
       if (!agentInfo) {
         console.error(`No agent found for task: ${taskId}`);
@@ -584,10 +582,11 @@ export function registerWorktreeCommands(program: Command) {
         }
       }
 
-      // Update state
-      (state.agents[taskId] as AgentInfo).status = 'merged';
-      (state.agents[taskId] as AgentInfo).cleaned_at = new Date().toISOString();
-      saveState(state);
+      // Update db
+      await updateAgentInDb(taskId, {
+        status: 'merged',
+        cleaned_at: new Date().toISOString()
+      });
 
       if (options.json) {
         jsonOut({ taskId, ...cleanupResult });
@@ -598,19 +597,18 @@ export function registerWorktreeCommands(program: Command) {
 
   // worktree:sync - Sync PR status and cleanup merged
   worktree.command('sync')
-    .description('Check PR status, cleanup merged worktrees, update state')
+    .description('Check PR status, cleanup merged worktrees, update db')
     .option('--dry-run', 'Show what would be done without doing it')
     .option('--json', 'JSON output')
     .action(async (options: SyncOptions) => {
       const projectRoot = findProjectRoot();
-      const state = loadState();
-      const agents = state.agents || {};
+      const agents = getAllAgentsFromDb();
       const config = getAgentConfig();
       const provider = config.pr_provider === 'auto' ? await detectProvider(projectRoot) : config.pr_provider;
 
       const actions = [];
 
-      for (const [taskId, info] of Object.entries(agents as Record<string, AgentInfo>)) {
+      for (const [taskId, info] of Object.entries(agents as Record<string, AgentRecord>)) {
         // Skip already cleaned up
         if (info.status === 'merged' || info.status === 'rejected') continue;
 
@@ -631,7 +629,7 @@ export function registerWorktreeCommands(program: Command) {
           const worktreePath = getWorktreePath(taskId);
           if (!fs.existsSync(worktreePath)) {
             actions.push({
-              action: 'update_state',
+              action: 'update_db',
               taskId,
               reason: 'Worktree missing'
             });
@@ -653,13 +651,11 @@ export function registerWorktreeCommands(program: Command) {
             // Execute cleanup
             const cleanupResult = cleanupWorktree(action.taskId, { force: true });
             if (cleanupResult.success) {
-              // Update state
-              const currentState = loadState();
-              if (currentState.agents?.[action.taskId]) {
-                currentState.agents[action.taskId].status = 'merged';
-                currentState.agents[action.taskId].cleaned_at = new Date().toISOString();
-                saveState(currentState);
-              }
+              // Update db
+              await updateAgentInDb(action.taskId, {
+                status: 'merged',
+                cleaned_at: new Date().toISOString()
+              });
               console.log(`  Cleaned: ${cleanupResult.removed.join(', ')}`);
             } else {
               console.error(`  Failed to cleanup ${action.taskId}: ${cleanupResult.errors.join(', ')}`);
@@ -676,13 +672,12 @@ export function registerWorktreeCommands(program: Command) {
     .option('--no-cleanup', 'Keep worktree after merge')
     .option('--dry-run', 'Show what would be done without doing it')
     .option('--json', 'JSON output')
-    .action((taskIdParam: string, options: MergeOptions) => {
+    .action(async (taskIdParam: string, options: MergeOptions) => {
       let taskId: string = taskIdParam.toUpperCase();
       if (!taskId.startsWith('T')) taskId = 'T' + taskId;
 
       const projectRoot = findProjectRoot();
-      const state = loadState();
-      const agentInfo = state.agents?.[taskId] as AgentInfo | undefined;
+      const agentInfo = getAgentFromDb(taskId);
 
       if (!agentInfo) {
         console.error(`No agent found for task: ${taskId}`);
@@ -700,10 +695,11 @@ export function registerWorktreeCommands(program: Command) {
         process.exit(1);
       }
 
-      // Get branching context from stored info
+      // Get branching context from task artefacts (not stored in agent record)
       const branching = agentInfo.worktree.branching || 'flat';
-      const prdId = agentInfo.prd_id;
-      const epicId = agentInfo.epic_id;
+      const taskInfo = getTask(taskId);
+      const prdId = taskInfo?.data?.parent ? extractPrdId(taskInfo.data.parent) : undefined;
+      const epicId = taskInfo?.data?.parent ? extractEpicId(taskInfo.data.parent) : undefined;
       const branchContext = { prdId, epicId, branching };
 
       // Get task branch and parent branch
@@ -854,15 +850,17 @@ export function registerWorktreeCommands(program: Command) {
         cleaned = removeResult.success;
       }
 
-      // Update state
-      (state.agents[taskId] as AgentInfo).status = 'merged';
-      (state.agents[taskId] as AgentInfo).merge_strategy = strategy;
-      (state.agents[taskId] as AgentInfo).merged_to = parentBranch;
-      (state.agents[taskId] as AgentInfo).merged_at = new Date().toISOString();
+      // Update db
+      const updates: Partial<AgentRecord> = {
+        status: 'merged',
+        merge_strategy: strategy,
+        merged_to: parentBranch,
+        merged_at: new Date().toISOString()
+      };
       if (cleaned) {
-        (state.agents[taskId] as AgentInfo).cleaned_at = new Date().toISOString();
+        updates.cleaned_at = new Date().toISOString();
       }
-      saveState(state);
+      await updateAgentInDb(taskId, updates);
 
       const result = {
         taskId,

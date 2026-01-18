@@ -10,7 +10,7 @@
 2. **ALWAYS** add `.js` extension on local imports
 3. **ALWAYS** use `lib/git.ts` or `lib/worktree.ts` for git operations
 4. **ALWAYS** use `execa` (via `lib/invoke.ts`) for shell commands, **NEVER** `child_process.execSync`
-5. **ALWAYS** use `state-manager.ts` for state mutations (atomic locks)
+5. **ALWAYS** use `db-manager.ts` for agent CRUD operations (taskNum-based)
 6. **ALWAYS** use `artefacts-manager.ts` to access tasks/epics/PRDs
 7. **ALWAYS** inject config as params in libs, **NEVER** import config in libs
 8. **ALWAYS** run `npx tsc --noEmit` before commit
@@ -28,7 +28,7 @@
 | `execSync('npm ...')` | Use `execa` with `reject: false` |
 | `import from '../lib/...'` without `.js` | Extension required for ESM |
 | Config in lib (`getAgentConfig()`) | Libs must be pure, inject via params |
-| `fs.readFileSync('state.json')` | Use `state-manager` (atomic locks) |
+| `fs.readFileSync('agents.json')` | Use `db-manager` (taskNum-based CRUD) |
 | `fs.readdirSync(tasksDir)` | Use `artefacts-manager` (cached indexes) |
 | Business logic in commands | Move to manager |
 | God manager (10+ functions) | Split by domain |
@@ -77,7 +77,7 @@ Commands → Managers → Libs
 | `worktree-manager` | Git worktree operations |
 | `pr-manager` | PR/MR operations (GitHub, GitLab) |
 | `config-manager` | Config semantic accessors |
-| `state-manager` | State persistence (atomic locks) |
+| `db-manager` | Agent CRUD (taskNum-based, replaces state.agents) |
 | `status-manager` | Status transitions cascade |
 | `memory-manager` | Memory/logs operations |
 | `diagnose-manager` | Log analysis, noise filters |

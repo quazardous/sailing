@@ -5,7 +5,7 @@ import fs from 'fs';
 import path from 'path';
 import { jsonOut, resolvePlaceholders, getAgentConfig } from '../../managers/core-manager.js';
 import { getGit } from '../../lib/git.js';
-import { loadState, saveState } from '../../managers/state-manager.js';
+import { getAllAgentsFromDb, getAgentFromDb, saveAgentToDb, deleteAgentFromDb } from '../../managers/db-manager.js';
 import { withModifies } from '../../lib/help.js';
 import { buildConflictMatrix, suggestMergeOrder } from '../../managers/conflict-manager.js';
 import { normalizeId } from '../../lib/normalize.js';
@@ -13,17 +13,15 @@ import { gcAgentsAction } from '../gc.js';
 
 export function registerManageCommands(agent) {
   // agent:sync
-  withModifies(agent.command('sync'), ['state'])
-    .description('Sync state.json with actual worktrees/agents (recover from ghosts)')
+  withModifies(agent.command('sync'), ['db'])
+    .description('Sync db with actual worktrees/agents (recover from ghosts)')
     .action(async (options: { dryRun?: boolean; json?: boolean }) => {
       const config = getAgentConfig();
       const havenPath = resolvePlaceholders('${haven}');
       const worktreesDir = path.join(havenPath, 'worktrees');
       const agentsDir = path.join(havenPath, 'agents');
 
-      const state = loadState();
-      if (!state.agents) state.agents = {};
-
+      const agents = getAllAgentsFromDb();
       const changes = { added: [], updated: [], orphaned: [] };
 
       if (fs.existsSync(worktreesDir)) {
@@ -37,7 +35,7 @@ export function registerManageCommands(agent) {
           const missionFile = path.join(agentDir, 'mission.yaml');
           const logFile = path.join(agentDir, 'run.log');
 
-          if (!state.agents[taskId]) {
+          if (!agents[taskId]) {
             const entry: any = {
               status: 'orphaned',
               recovered_at: new Date().toISOString(),
@@ -69,11 +67,11 @@ export function registerManageCommands(agent) {
             }
 
             if (!options.dryRun) {
-              state.agents[taskId] = entry;
+              await saveAgentToDb(taskId, entry);
             }
             changes.added.push({ taskId, status: entry.status });
-          } else if (state.agents[taskId].status === 'spawned') {
-            const pid = state.agents[taskId].pid;
+          } else if (agents[taskId].status === 'spawned') {
+            const pid = agents[taskId].pid;
             let isRunning = false;
             if (pid) {
               try {
@@ -84,9 +82,12 @@ export function registerManageCommands(agent) {
 
             if (!isRunning) {
               if (!options.dryRun) {
-                state.agents[taskId].status = 'orphaned';
-                state.agents[taskId].orphaned_at = new Date().toISOString();
-                delete state.agents[taskId].pid;
+                await saveAgentToDb(taskId, {
+                  ...agents[taskId],
+                  status: 'orphaned',
+                  orphaned_at: new Date().toISOString(),
+                  pid: undefined
+                });
               }
               changes.updated.push({ taskId, from: 'spawned', to: 'orphaned' });
             }
@@ -94,15 +95,11 @@ export function registerManageCommands(agent) {
         }
       }
 
-      for (const taskId of Object.keys(state.agents)) {
+      for (const taskId of Object.keys(agents)) {
         const worktreePath = path.join(worktreesDir, taskId);
-        if (!fs.existsSync(worktreePath) && state.agents[taskId].worktree) {
-          changes.orphaned.push({ taskId, status: state.agents[taskId].status });
+        if (!fs.existsSync(worktreePath) && agents[taskId].worktree) {
+          changes.orphaned.push({ taskId, status: agents[taskId].status });
         }
-      }
-
-      if (!options.dryRun) {
-        saveState(state);
       }
 
       if (options.json) {
@@ -122,19 +119,20 @@ export function registerManageCommands(agent) {
           changes.orphaned.forEach(c => console.log(`  ? ${c.taskId}: ${c.status}`));
         }
         if (changes.added.length === 0 && changes.updated.length === 0 && changes.orphaned.length === 0) {
-          console.log('State is in sync with reality');
+          console.log('DB is in sync with reality');
         }
       }
     });
 
   // agent:clear
-  withModifies(agent.command('clear [task-id]'), ['state'])
+  withModifies(agent.command('clear [task-id]'), ['db'])
     .description('Clear agent tracking (all or specific task)')
     .option('--force', 'Clear without confirmation')
-    .action((taskId: string | undefined, options: { force?: boolean }) => {
-      const state = loadState();
+    .action(async (taskId: string | undefined, options: { force?: boolean }) => {
+      const agents = getAllAgentsFromDb();
+      const agentCount = Object.keys(agents).length;
 
-      if (!state.agents) {
+      if (agentCount === 0) {
         console.log('No agents to clear');
         return;
       }
@@ -142,29 +140,28 @@ export function registerManageCommands(agent) {
       if (taskId) {
         taskId = normalizeId(taskId);
 
-        if (!state.agents[taskId]) {
+        if (!agents[taskId]) {
           console.error(`No agent found for task: ${taskId}`);
           process.exit(1);
         }
 
-        delete state.agents[taskId];
-        saveState(state);
+        await deleteAgentFromDb(taskId);
         console.log(`Cleared agent: ${taskId}`);
       } else {
-        const count = Object.keys(state.agents).length;
-        state.agents = {};
-        saveState(state);
-        console.log(`Cleared ${count} agent(s)`);
+        // Clear all agents one by one
+        for (const id of Object.keys(agents)) {
+          await deleteAgentFromDb(id);
+        }
+        console.log(`Cleared ${agentCount} agent(s)`);
       }
     });
 
   // agent:kill
-  withModifies(agent.command('kill <task-id>'), ['state'])
-    .action((taskId: string, options: { json?: boolean }) => {
+  withModifies(agent.command('kill <task-id>'), ['db'])
+    .action(async (taskId: string, options: { json?: boolean }) => {
       taskId = normalizeId(taskId);
 
-      const state = loadState();
-      const agentInfo = state.agents?.[taskId];
+      const agentInfo = getAgentFromDb(taskId);
 
       if (!agentInfo) {
         console.error(`No agent found for task: ${taskId}`);
@@ -201,13 +198,12 @@ export function registerManageCommands(agent) {
         }
       }
 
-      state.agents[taskId] = {
+      await saveAgentToDb(taskId, {
         ...agentInfo,
+        pid: undefined,
         status: 'killed',
         killed_at: new Date().toISOString()
-      };
-      delete state.agents[taskId].pid;
-      saveState(state);
+      });
 
       if (options.json) {
         jsonOut({
@@ -287,9 +283,10 @@ export function registerManageCommands(agent) {
 
   // agent:gc - alias for gc:agents
   agent.command('gc')
-    .description('Alias for gc:agents - Clean orphaned agent directories')
-    .option('--dry-run', 'Show what would be cleaned (default)')
-    .option('--force', 'Actually delete orphaned directories')
+    .description('Alias for gc:agents - Clean orphaned agent and worktree directories')
+    .option('--no-dry-run', 'Actually delete orphaned directories')
+    .option('--no-worktree', 'Skip worktree directory cleanup')
+    .option('--unsafe', 'Delete even if task file exists (for terminal agents)')
     .option('--json', 'JSON output')
     .action(gcAgentsAction);
 }

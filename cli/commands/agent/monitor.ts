@@ -5,7 +5,7 @@ import fs from 'fs';
 import path from 'path';
 import { execSync } from 'child_process';
 import { findProjectRoot, jsonOut, getAgentsDir, getWorktreesDir } from '../../managers/core-manager.js';
-import { loadState } from '../../managers/state-manager.js';
+import { getAllAgentsFromDb, getAgentFromDb, getAgentsArray, getAgentLogFile, getAgentMissionFile } from '../../managers/db-manager.js';
 import { getAgentLifecycle } from '../../managers/agent-manager.js';
 import { normalizeId } from '../../lib/normalize.js';
 import {
@@ -13,7 +13,7 @@ import {
   type AgentCompletionInfo
 } from '../../lib/agent-utils.js';
 import { WorktreeOps } from '../../lib/worktree.js';
-import { AgentInfo } from '../../lib/types/agent.js';
+import { AgentRecord } from '../../lib/types/agent.js';
 import { getWorktreePath } from '../../managers/worktree-manager.js';
 import { diagnoseWorktreeState } from '../../lib/state-machine/index.js';
 import { getTaskEpic } from '../../managers/artefacts-manager.js';
@@ -255,7 +255,7 @@ function parseDuration(duration: string): number {
 /**
  * Check if an agent is "interesting" (needs attention)
  */
-function isInterestingAgent(agentData: AgentInfo & { live_complete?: boolean; worktree_merged?: boolean }, maxAge: number = 24 * 60 * 60 * 1000): boolean {
+function isInterestingAgent(agentData: AgentRecord & { live_complete?: boolean; worktree_merged?: boolean }, maxAge: number = 24 * 60 * 60 * 1000): boolean {
   // Active agents are always interesting
   if (['spawned', 'dispatched', 'running'].includes(agentData.status)) return true;
 
@@ -281,7 +281,7 @@ function isInterestingAgent(agentData: AgentInfo & { live_complete?: boolean; wo
 /**
  * Check if agent's worktree branch has been merged to main
  */
-function checkWorktreeMerged(agentData: AgentInfo, ops: WorktreeOps): boolean {
+function checkWorktreeMerged(agentData: AgentRecord, ops: WorktreeOps): boolean {
   if (!agentData.worktree?.branch) return true; // No worktree = considered merged
   const branch = agentData.worktree.branch;
   // Check if branch exists
@@ -303,8 +303,7 @@ export function registerMonitorCommands(agent) {
     .option('--git', 'Include git worktree details (branch, ahead/behind, dirty)')
     .option('--json', 'JSON output')
     .action((taskId: string | undefined, options: { all?: boolean; active?: boolean; unmerged?: boolean; since?: string; git?: boolean; json?: boolean }) => {
-      const state = loadState();
-      const agents: Record<string, AgentInfo> = state.agents || {};
+      const agents: Record<string, AgentRecord> = getAllAgentsFromDb();
       const agentUtils = new AgentUtils(getAgentsDir());
 
       if (taskId) {
@@ -345,11 +344,13 @@ export function registerMonitorCommands(agent) {
           }
           console.log(`  Started: ${agentData.spawned_at || agentData.started_at || 'unknown'}`);
           // Show last activity from log file mtime
-          if (agentData.log_file && fs.existsSync(agentData.log_file)) {
-            const logStat = fs.statSync(agentData.log_file);
+          const logFilePath = getAgentLogFile(taskId);
+          if (logFilePath && fs.existsSync(logFilePath)) {
+            const logStat = fs.statSync(logFilePath);
             console.log(`  Last activity: ${logStat.mtime.toISOString()}`);
           }
-          console.log(`  Mission: ${agentData.mission_file}`);
+          const missionFilePath = getAgentMissionFile(taskId);
+          console.log(`  Mission: ${missionFilePath}`);
           console.log(`  Complete: ${isComplete ? 'yes' : 'no'}`);
           if (completion.hasResult) console.log(`  Result: ${path.join(completion.agentDir, 'result.yaml')}`);
           if (completion.hasSentinel) console.log(`  Sentinel: ${path.join(completion.agentDir, 'done')}`);
@@ -459,10 +460,11 @@ export function registerMonitorCommands(agent) {
       // Add last activity and sort by most recent at bottom
       const agentListWithActivity = agentList.map(a => {
         let lastActivity: Date | null = null;
-        if (a.log_file && fs.existsSync(a.log_file)) {
-          lastActivity = fs.statSync(a.log_file).mtime;
+        const agentLogFile = getAgentLogFile(a.task_id);
+        if (agentLogFile && fs.existsSync(agentLogFile)) {
+          lastActivity = fs.statSync(agentLogFile).mtime;
         } else if (a.spawned_at || a.started_at) {
-          lastActivity = new Date(a.spawned_at || a.started_at);
+          lastActivity = new Date((a.spawned_at || a.started_at) as string);
         }
         return { ...a, last_activity: lastActivity };
       });
@@ -545,8 +547,7 @@ export function registerMonitorCommands(agent) {
     .option('--active', 'Only show active agents (spawned/dispatched/running)')
     .option('--json', 'JSON output')
     .action((options: { active?: boolean; json?: boolean }) => {
-      const state = loadState();
-      const agents = state.agents || {};
+      const agents = getAllAgentsFromDb();
       const agentUtils = new AgentUtils(getAgentsDir());
 
       let agentList = Object.entries(agents).map(([id, info]) => {
@@ -562,7 +563,7 @@ export function registerMonitorCommands(agent) {
           pid: agentData.pid,
           worktree: agentData.worktree?.path,
           branch: agentData.worktree?.branch,
-          log_file: agentData.log_file
+          log_file: getAgentLogFile(id)
         };
       });
 
@@ -635,8 +636,7 @@ export function registerMonitorCommands(agent) {
     }) => {
       taskId = normalizeId(taskId);
 
-      const state = loadState();
-      const agentInfo = state.agents?.[taskId];
+      const agentInfo = getAgentFromDb(taskId);
       const projectRoot = findProjectRoot();
       const agentUtils = new AgentUtils(getAgentsDir());
 
@@ -673,7 +673,7 @@ export function registerMonitorCommands(agent) {
       let lastHeartbeat = startTime;
 
       const pid = agentInfo.pid;
-      const logFile = agentInfo.log_file;
+      const logFile = getAgentLogFile(taskId);
       const agentDir = agentUtils.getAgentDir(taskId);
 
       const rawJsonMode = options.events && options.raw;
@@ -747,12 +747,11 @@ export function registerMonitorCommands(agent) {
             process.exit(2);
           }
 
-          const currentState = loadState();
-          const currentAgentInfo = currentState.agents?.[taskId];
-          const completion = agentUtils.checkCompletion(taskId, currentAgentInfo as AgentCompletionInfo);
+          const currentAgentRecord = getAgentFromDb(taskId);
+          const completion = agentUtils.checkCompletion(taskId, currentAgentRecord as AgentCompletionInfo);
           if (completion.complete) {
             completed = true;
-            exitCode = currentAgentInfo?.exit_code ?? 0;
+            exitCode = currentAgentRecord?.exit_code ?? 0;
             resolve();
           }
         }, 1000);
@@ -808,8 +807,7 @@ export function registerMonitorCommands(agent) {
       heartbeat: number;
       json?: boolean;
     }) => {
-      const state = loadState();
-      const agents = state.agents || {};
+      const agents = getAllAgentsFromDb();
 
       const waitFor = taskIds.length > 0
         ? taskIds.map(id => normalizeId(id))
@@ -839,10 +837,9 @@ export function registerMonitorCommands(agent) {
       const stateFile = path.join(agentsDir, '..', 'state.json');
 
       const checkAllCompletion = () => {
-        const currentState = loadState();
         for (const taskId of waitFor) {
           if (completed.includes(taskId)) continue;
-          const agentInfo = currentState.agents?.[taskId];
+          const agentInfo = getAgentFromDb(taskId);
           const completion = agentUtils.checkCompletion(taskId, agentInfo as AgentCompletionInfo);
           if (completion.complete) {
             completed.push(taskId);
@@ -1081,6 +1078,168 @@ export function registerMonitorCommands(agent) {
         } else {
           console.log(content);
         }
+      }
+    });
+
+  // agent:debug - Raw debug info for troubleshooting
+  agent.command('debug')
+    .description('Show raw debug info (directories, git worktrees, state)')
+    .option('--json', 'JSON output')
+    .action((options: { json?: boolean }) => {
+      const projectRoot = findProjectRoot();
+      const agentsDir = getAgentsDir();
+      const worktreesDir = getWorktreesDir();
+
+      // 1. Raw filesystem: agent directories
+      let rawAgentDirs: string[] = [];
+      if (fs.existsSync(agentsDir)) {
+        rawAgentDirs = fs.readdirSync(agentsDir)
+          .filter(d => fs.statSync(path.join(agentsDir, d)).isDirectory())
+          .sort();
+      }
+
+      // 2. Raw filesystem: worktree directories
+      let rawWorktreeDirs: string[] = [];
+      if (fs.existsSync(worktreesDir)) {
+        rawWorktreeDirs = fs.readdirSync(worktreesDir)
+          .filter(d => fs.statSync(path.join(worktreesDir, d)).isDirectory())
+          .sort();
+      }
+
+      // 3. Git worktree list (raw)
+      let gitWorktrees: { path: string; commit: string; branch: string; prunable: boolean }[] = [];
+      try {
+        const output = execSync('git worktree list --porcelain', { cwd: projectRoot, encoding: 'utf-8' });
+        const entries = output.trim().split('\n\n').filter(Boolean);
+        for (const entry of entries) {
+          const lines = entry.split('\n');
+          const wtPath = lines.find(l => l.startsWith('worktree '))?.replace('worktree ', '') || '';
+          const commit = lines.find(l => l.startsWith('HEAD '))?.replace('HEAD ', '') || '';
+          const branch = lines.find(l => l.startsWith('branch '))?.replace('branch refs/heads/', '') || '';
+          const prunable = lines.some(l => l === 'prunable');
+          if (wtPath && wtPath !== projectRoot) {
+            gitWorktrees.push({ path: wtPath, commit: commit.slice(0, 7), branch, prunable });
+          }
+        }
+      } catch { /* ignore */ }
+
+      // 4. DB agents
+      const dbAgents = getAgentsArray().map(agent => ({
+        id: agent.taskId,
+        status: agent.status,
+        worktree: agent.worktree,
+        worktree_merged: agent.worktree_merged,
+        spawned_at: agent.spawned_at,
+        completed_at: agent.completed_at,
+        merged_at: agent.merged_at
+      })).sort((a, b) => a.id.localeCompare(b.id));
+
+      // 5. Compute discrepancies
+      const dbIds = new Set(dbAgents.map(a => a.id));
+      const agentDirIds = new Set(rawAgentDirs.filter(d => d.match(/^T\d+$/i)));
+      const worktreeDirIds = new Set(rawWorktreeDirs.filter(d => d.match(/^T\d+$/i)));
+      const gitWorktreeIds = new Set(gitWorktrees.map(w => {
+        const match = w.path.match(/\/(T\d+)$/i);
+        return match ? match[1].toUpperCase() : null;
+      }).filter(Boolean) as string[]);
+
+      // Orphans: in dirs but not in state
+      const orphanAgentDirs = [...agentDirIds].filter(id => !dbIds.has(id) && !dbIds.has(normalizeId(id) || id));
+      const orphanWorktreeDirs = [...worktreeDirIds].filter(id => !dbIds.has(id) && !dbIds.has(normalizeId(id) || id));
+
+      // Ghost state: in state but no dir
+      const ghostAgents = dbAgents.filter(a => !agentDirIds.has(a.id) && !agentDirIds.has(a.id.toLowerCase()));
+
+      // Git vs dirs mismatch
+      const gitNotInDirs = [...gitWorktreeIds].filter(id => !worktreeDirIds.has(id));
+      const dirsNotInGit = [...worktreeDirIds].filter(id => !gitWorktreeIds.has(id));
+
+      // Terminal agents with worktree dirs (should be cleaned)
+      const terminalStatuses = ['collected', 'merged', 'reaped', 'completed', 'rejected', 'killed', 'error'];
+      const terminalWithWorktree = dbAgents.filter(a =>
+        terminalStatuses.includes(a.status) &&
+        (worktreeDirIds.has(a.id) || gitWorktreeIds.has(a.id))
+      );
+
+      if (options.json) {
+        jsonOut({
+          paths: { agentsDir, worktreesDir, projectRoot },
+          raw: {
+            agentDirs: rawAgentDirs,
+            worktreeDirs: rawWorktreeDirs,
+            gitWorktrees
+          },
+          db: { agents: dbAgents },
+          analysis: {
+            orphanAgentDirs,
+            orphanWorktreeDirs,
+            ghostAgents: ghostAgents.map(a => a.id),
+            gitNotInDirs,
+            dirsNotInGit,
+            terminalWithWorktree: terminalWithWorktree.map(a => ({ id: a.id, status: a.status }))
+          }
+        });
+        return;
+      }
+
+      // Human-readable output
+      console.log('=== PATHS ===');
+      console.log(`Project root: ${projectRoot}`);
+      console.log(`Agents dir:   ${agentsDir}`);
+      console.log(`Worktrees dir: ${worktreesDir}`);
+
+      console.log('\n=== RAW FILESYSTEM ===');
+      console.log(`Agent dirs (${rawAgentDirs.length}): ${rawAgentDirs.join(', ') || '(none)'}`);
+      console.log(`Worktree dirs (${rawWorktreeDirs.length}): ${rawWorktreeDirs.join(', ') || '(none)'}`);
+
+      console.log('\n=== GIT WORKTREES ===');
+      if (gitWorktrees.length === 0) {
+        console.log('(none)');
+      } else {
+        for (const wt of gitWorktrees) {
+          const pruneTag = wt.prunable ? ' [prunable]' : '';
+          console.log(`  ${wt.branch || '(detached)'} → ${wt.path}${pruneTag}`);
+        }
+      }
+
+      console.log('\n=== DB AGENTS ===');
+      console.log(`Total: ${dbAgents.length}`);
+      const byStatus: Record<string, string[]> = {};
+      for (const a of dbAgents) {
+        byStatus[a.status] = byStatus[a.status] || [];
+        byStatus[a.status].push(a.id);
+      }
+      for (const [status, ids] of Object.entries(byStatus).sort()) {
+        console.log(`  ${status} (${ids.length}): ${ids.join(', ')}`);
+      }
+
+      console.log('\n=== ANALYSIS ===');
+      if (orphanAgentDirs.length > 0) {
+        console.log(`⚠ Orphan agent dirs (not in db): ${orphanAgentDirs.join(', ')}`);
+      }
+      if (orphanWorktreeDirs.length > 0) {
+        console.log(`⚠ Orphan worktree dirs (not in db): ${orphanWorktreeDirs.join(', ')}`);
+      }
+      if (ghostAgents.length > 0) {
+        console.log(`⚠ Ghost agents (in db, no dir): ${ghostAgents.map(a => a.id).join(', ')}`);
+      }
+      if (gitNotInDirs.length > 0) {
+        console.log(`⚠ Git worktrees not in dirs: ${gitNotInDirs.join(', ')}`);
+      }
+      if (dirsNotInGit.length > 0) {
+        console.log(`⚠ Dirs not in git worktrees: ${dirsNotInGit.join(', ')}`);
+      }
+      if (terminalWithWorktree.length > 0) {
+        console.log(`\n⚠ Terminal agents with worktree (should clean):`);
+        for (const a of terminalWithWorktree) {
+          console.log(`  ${a.id} [${a.status}]`);
+        }
+      }
+
+      if (orphanAgentDirs.length === 0 && orphanWorktreeDirs.length === 0 &&
+          ghostAgents.length === 0 && gitNotInDirs.length === 0 &&
+          dirsNotInGit.length === 0 && terminalWithWorktree.length === 0) {
+        console.log('✓ No issues detected');
       }
     });
 }

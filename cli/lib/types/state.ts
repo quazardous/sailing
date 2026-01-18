@@ -1,4 +1,4 @@
-import { AgentInfo } from './agent.js';
+import { AgentRecord } from './agent.js';
 
 export interface State {
   counters: {
@@ -8,7 +8,8 @@ export interface State {
     story: number;
     [key: string]: number; // Allow extensibility for new counters
   };
-  agents?: Record<string, AgentInfo>;
+  /** @deprecated Agents are now stored in db/agents.json, not state.json */
+  agents?: Record<string, AgentRecord>;
   // Add other state properties as needed
-  [key: string]: any; // Allow loose typing for now until fully migrated
+  [key: string]: unknown; // Allow loose typing for now until fully migrated
 }

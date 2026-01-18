@@ -18,7 +18,7 @@ export interface OptionWithMeta extends Option {
   argChoices?: string[];
 }
 
-export type ModificationType = 'prd' | 'epic' | 'task' | 'story' | 'memory' | 'git' | 'state' | 'config';
+export type ModificationType = 'prd' | 'epic' | 'task' | 'story' | 'memory' | 'git' | 'state' | 'db' | 'config';
 
 export interface CommandWithInternals extends Command {
   _args: CommandArg[];

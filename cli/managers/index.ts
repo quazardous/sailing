@@ -66,7 +66,7 @@ export {
   checkCli,
   exists as prExists,
   isMerged,
-  getUrlFromState
+  getUrlFromDb
 } from './pr-manager.js';
 
 // Config semantic accessors (from core-manager)

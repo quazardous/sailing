@@ -10,7 +10,7 @@ import { create as createPr } from '../../managers/pr-manager.js';
 import { AgentRunManager } from '../../lib/agent-run.js';
 import { getAgentLifecycle } from '../../managers/agent-manager.js';
 import { createMission } from '../../lib/agent-schema.js';
-import { loadState, saveState, updateStateAtomic } from '../../managers/state-manager.js';
+import { getAgentFromDb, saveAgentToDb, deleteAgentFromDb, updateAgentInDb } from '../../managers/db-manager.js';
 import { withModifies } from '../../lib/help.js';
 import { buildAgentSpawnPrompt } from '../../managers/compose-manager.js';
 import {
@@ -20,11 +20,11 @@ import {
 import { WorktreeOps } from '../../lib/worktree.js';
 import { spawnClaude, getLogFilePath } from '../../lib/claude.js';
 import { checkMcpServer } from '../../lib/srt.js';
-import { extractPrdId, extractEpicId, normalizeId } from '../../lib/normalize.js';
+import { extractPrdId, extractEpicId, normalizeId, parseTaskNum } from '../../lib/normalize.js';
 import { findDevMd, findToolset } from '../../managers/core-manager.js';
 import { getTask, getEpic, getMemoryFile, getPrdBranching } from '../../managers/artefacts-manager.js';
 import { AgentUtils, getProcessStats, formatDuration } from '../../lib/agent-utils.js';
-import { AgentInfo } from '../../lib/types/agent.js';
+import { AgentRecord } from '../../lib/types/agent.js';
 import { getDiagnoseOps, printDiagnoseResult } from '../../managers/diagnose-manager.js';
 
 export function registerSpawnCommand(agent) {
@@ -90,9 +90,7 @@ export function registerSpawnCommand(agent) {
         process.exit(1);
       }
 
-      // Optimistic spawn: check existing state and auto-handle simple cases
-      const state = loadState();
-      if (!state.agents) state.agents = {};
+      // Optimistic spawn: check existing db and auto-handle simple cases
       const projectRoot = findProjectRoot();
 
       // Helper for escalation with next steps
@@ -122,8 +120,9 @@ export function registerSpawnCommand(agent) {
         ]);
       }
 
-      if (state.agents[taskId]) {
-        const agentInfo = state.agents[taskId];
+      const existingAgent = getAgentFromDb(taskId);
+      if (existingAgent) {
+        const agentInfo = existingAgent;
         const status = agentInfo.status;
 
         // Check if process is actually running
@@ -167,8 +166,7 @@ export function registerSpawnCommand(agent) {
                 console.log(`Auto-cleaning previous ${taskId} (already merged)...`);
               }
               removeWorktree(taskId, { force: true });
-              delete state.agents[taskId];
-              saveState(state);
+              await deleteAgentFromDb(taskId);
             }
             // Already merged but dirty → escalate (uncommitted work after merge)
             else if (isMerged && isDirty) {
@@ -231,16 +229,14 @@ export function registerSpawnCommand(agent) {
                 console.log(`Auto-cleaning previous ${taskId} (no changes)...`);
               }
               removeWorktree(taskId, { force: true });
-              delete state.agents[taskId];
-              saveState(state);
+              await deleteAgentFromDb(taskId);
             }
           } else {
-            // Worktree doesn't exist, just clear state
+            // Worktree doesn't exist, just clear db entry
             if (!options.json) {
-              console.log(`Clearing stale state for ${taskId}...`);
+              console.log(`Clearing stale entry for ${taskId}...`);
             }
-            delete state.agents[taskId];
-            saveState(state);
+            await deleteAgentFromDb(taskId);
           }
         } else {
           // No worktree mode - clear completed/error states
@@ -248,8 +244,7 @@ export function registerSpawnCommand(agent) {
             if (!options.json) {
               console.log(`Clearing previous ${taskId} (${status})...`);
             }
-            delete state.agents[taskId];
-            saveState(state);
+            await deleteAgentFromDb(taskId);
           } else {
             escalate(`Agent ${taskId} in unexpected state: ${status}`, [
               `agent:clear ${taskId}    # Force clear state`
@@ -506,26 +501,26 @@ export function registerSpawnCommand(agent) {
         appendLogs: worktreeInfo?.resumed  // Don't rotate logs on resume
       });
 
-      // Update state atomically
-      const agentEntry: AgentInfo = {
+      // Save agent to db
+      const taskNum = parseTaskNum(taskId);
+      if (taskNum === null) {
+        console.error(`Invalid task ID: ${taskId}`);
+        process.exit(1);
+      }
+
+      const agentEntry: AgentRecord = {
+        taskNum,
         status: 'spawned',
         spawned_at: new Date().toISOString(),
         pid: spawnResult.pid,
-        mission_file: missionFile,
-        log_file: spawnResult.logFile,
-        srt_config: spawnResult.srtConfig,
-        mcp_config: spawnResult.mcpConfig,
+        agent_dir: agentDir,
         mcp_server: spawnResult.mcpServerPath || undefined,
         mcp_port: spawnResult.mcpPort ?? undefined,
         mcp_pid: spawnResult.mcpPid,
         timeout,
         ...(worktreeInfo && { worktree: worktreeInfo })
       };
-      updateStateAtomic(s => {
-        if (!s.agents) s.agents = {};
-        s.agents[taskId] = agentEntry;
-        return s;
-      });
+      await saveAgentToDb(taskId, agentEntry);
 
       // Handle process exit
       spawnResult.process.on('exit', async (code, signal) => {
@@ -547,20 +542,22 @@ export function registerSpawnCommand(agent) {
           commitsAhead = (exitLog as { total: number }).total;
         }
 
-        const updatedState = updateStateAtomic(s => {
-          if (s.agents?.[taskId]) {
-            s.agents[taskId].status = code === 0 ? 'completed' : 'error';
-            s.agents[taskId].exit_code = code;
-            s.agents[taskId].exit_signal = signal;
-            s.agents[taskId].ended_at = new Date().toISOString();
-            delete s.agents[taskId].pid;
-            if (dirtyWorktree) {
-              s.agents[taskId].dirty_worktree = true;
-              s.agents[taskId].uncommitted_files = uncommittedFiles;
-            }
+        // Update agent in db
+        const currentAgent = getAgentFromDb(taskId);
+        if (currentAgent) {
+          const updates: Partial<AgentRecord> = {
+            status: code === 0 ? 'completed' : 'error',
+            exit_code: code,
+            exit_signal: signal,
+            ended_at: new Date().toISOString(),
+            pid: undefined
+          };
+          if (dirtyWorktree) {
+            updates.dirty_worktree = true;
+            updates.uncommitted_files = uncommittedFiles;
           }
-          return s;
-        });
+          await saveAgentToDb(taskId, { ...currentAgent, ...updates });
+        }
 
         // Auto-release if agent exited successfully with work done
         if (code === 0 && (dirtyWorktree || commitsAhead > 0)) {
@@ -573,19 +570,26 @@ export function registerSpawnCommand(agent) {
         }
 
         // Auto-create PR if enabled and agent completed successfully
-        if (code === 0 && agentConfig.auto_pr && updatedState.agents?.[taskId]?.worktree) {
-          const agentInfo = updatedState.agents[taskId];
+        const updatedAgent = getAgentFromDb(taskId);
+        if (code === 0 && agentConfig.auto_pr && updatedAgent?.worktree) {
+          // Get task info from artefacts (not stored in agent record)
+          const taskInfo = getTask(taskId);
+          const taskTitle = taskInfo?.data?.title;
+          const epicId = taskInfo?.data?.parent ? extractEpicId(taskInfo.data.parent) : null;
+          const prdId = taskInfo?.data?.parent ? extractPrdId(taskInfo.data.parent) : null;
+
           const prResult = await createPr(taskId, {
             cwd: projectRoot,
-            title: agentInfo.task_title ? `${taskId}: ${agentInfo.task_title}` : undefined,
+            title: taskTitle ? `${taskId}: ${taskTitle}` : undefined,
             draft: agentConfig.pr_draft,
-            epicId: agentInfo.epic_id,
-            prdId: agentInfo.prd_id
+            epicId: epicId || undefined,
+            prdId: prdId || undefined
           });
           if ('url' in prResult) {
-            updatedState.agents[taskId].pr_url = prResult.url;
-            updatedState.agents[taskId].pr_created_at = new Date().toISOString();
-            saveState(updatedState);
+            await updateAgentInDb(taskId, {
+              pr_url: prResult.url,
+              pr_created_at: new Date().toISOString()
+            });
             console.log(`Auto-PR created for ${taskId}: ${prResult.url}`);
           } else {
             console.error(`Auto-PR failed for ${taskId}: ${prResult.error}`);

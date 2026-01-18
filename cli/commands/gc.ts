@@ -6,11 +6,11 @@ import fs from 'fs';
 import path from 'path';
 import os from 'os';
 import { findProjectRoot, jsonOut, computeProjectHash, getAgentsDir, getWorktreesDir } from '../managers/core-manager.js';
-import { loadState, saveState } from '../managers/state-manager.js';
+import { getAllAgentsFromDb, deleteAgentFromDb, getAgentsArray } from '../managers/db-manager.js';
 import { listAgentWorktrees, pruneWorktrees } from '../managers/worktree-manager.js';
 import { getTask } from '../managers/artefacts-manager.js';
 import { normalizeId } from '../lib/normalize.js';
-import { AgentInfo } from '../lib/types/agent.js';
+import { AgentRecord } from '../lib/types/agent.js';
 import type { Command } from 'commander';
 
 /**
@@ -58,36 +58,36 @@ function listHavens() {
  * @returns {string[]} List of task IDs
  */
 function getStaleAgents(days = 7) {
-  const state = loadState();
-  const agents: Record<string, AgentInfo> = state.agents || {};
+  const agents = getAgentsArray();
   const cutoff = Date.now() - (days * 24 * 60 * 60 * 1000);
 
-  return Object.entries(agents)
-    .filter(([, info]) => {
-      const agentInfo = info;
+  return agents
+    .filter((agent) => {
       // Check if terminal status
       const terminalStatus = ['collected', 'merged', 'reaped', 'completed', 'rejected', 'killed', 'error'];
-      if (!terminalStatus.includes(agentInfo.status)) return false;
+      if (!terminalStatus.includes(agent.status)) return false;
 
       // Check age
-      const timestamp = agentInfo.merged_at || agentInfo.rejected_at || agentInfo.completed_at || agentInfo.killed_at;
+      const timestamp = agent.merged_at || agent.rejected_at || agent.completed_at || agent.killed_at;
       if (!timestamp) return false;
 
       return new Date(timestamp).getTime() < cutoff;
     })
-    .map(([id]) => id);
+    .map(agent => agent.taskId);
 }
 
 /**
  * GC agents action handler - exported for use as alias in agent:gc
  * Cleans both agent directories and worktree directories for orphaned agents
  */
-export function gcAgentsAction(options: { dryRun?: boolean; force?: boolean; json?: boolean }) {
+export function gcAgentsAction(options: { dryRun?: boolean; worktree?: boolean; unsafe?: boolean; json?: boolean }) {
   const agentsDir = getAgentsDir();
   const worktreesDir = getWorktreesDir();
-  const state = loadState();
-  const stateAgents = state.agents || {};
-  const stateAgentIds = new Set(Object.keys(stateAgents));
+  const dbAgents = getAllAgentsFromDb();
+  const dbAgentIds = new Set(Object.keys(dbAgents));
+
+  // --no-worktree sets worktree to false, default is true
+  const includeWorktrees = options.worktree !== false;
 
   interface OrphanInfo {
     taskId: string;
@@ -96,9 +96,27 @@ export function gcAgentsAction(options: { dryRun?: boolean; force?: boolean; jso
     hasWorktreeDir: boolean;
     safe: boolean;
     reason?: string;
+    lastDate?: string;
   }
 
-  // Collect all task IDs from both directories (DIR → STATE direction)
+  // Helper to get most recent date from agent metadata
+  function getLastDate(agent: any): string | undefined {
+    const dates = [
+      agent.merged_at,
+      agent.completed_at,
+      agent.killed_at,
+      agent.rejected_at,
+      agent.cleaned_at,
+      agent.ended_at,
+      agent.spawned_at,
+      agent.started_at
+    ].filter(Boolean).map(d => new Date(d).getTime());
+    if (dates.length === 0) return undefined;
+    const maxDate = new Date(Math.max(...dates));
+    return maxDate.toISOString().split('T')[0]; // YYYY-MM-DD
+  }
+
+  // Collect all task IDs from directories (DIR → STATE direction)
   const taskIdsFromDirs = new Set<string>();
 
   // Scan agent directories
@@ -108,8 +126,8 @@ export function gcAgentsAction(options: { dryRun?: boolean; force?: boolean; jso
       .forEach(d => taskIdsFromDirs.add(d));
   }
 
-  // Scan worktree directories
-  if (fs.existsSync(worktreesDir)) {
+  // Scan worktree directories (if included)
+  if (includeWorktrees && fs.existsSync(worktreesDir)) {
     fs.readdirSync(worktreesDir)
       .filter(d => d.match(/^T\d+$/i) && fs.statSync(path.join(worktreesDir, d)).isDirectory())
       .forEach(d => taskIdsFromDirs.add(d));
@@ -125,29 +143,34 @@ export function gcAgentsAction(options: { dryRun?: boolean; force?: boolean; jso
   }
 
   const orphaned: OrphanInfo[] = [];
+  const unsafeMode = options.unsafe === true;
 
   for (const dirName of taskIdsFromDirs) {
     const normalized = normalizeId(dirName) || dirName;
-    const agent = stateAgents[normalized];
+    const agent = dbAgents[normalized];
 
     const hasAgentDir = fs.existsSync(path.join(agentsDir, dirName));
-    const hasWorktreeDir = fs.existsSync(path.join(worktreesDir, dirName));
+    const hasWorktreeDir = includeWorktrees && fs.existsSync(path.join(worktreesDir, dirName));
 
     if (!agent) {
       // No agent in state - check if task file exists
       const taskFile = getTask(normalized);
       if (!taskFile) {
         orphaned.push({ taskId: dirName, normalized, hasAgentDir, hasWorktreeDir, safe: true });
+      } else if (unsafeMode) {
+        // --unsafe: delete even if task file exists
+        orphaned.push({ taskId: dirName, normalized, hasAgentDir, hasWorktreeDir, safe: true, reason: 'unsafe mode' });
       } else {
         orphaned.push({ taskId: dirName, normalized, hasAgentDir, hasWorktreeDir, safe: false, reason: 'task file exists' });
       }
-    } else {
+    } else if (includeWorktrees) {
       // Agent exists - check if terminal status (can clean worktree)
       const terminalStatus = ['collected', 'merged', 'reaped', 'completed', 'rejected', 'killed', 'error'];
       const isTerminal = terminalStatus.includes(agent.status);
       if (isTerminal && hasWorktreeDir) {
         // Agent is terminal, worktree can be cleaned
-        orphaned.push({ taskId: dirName, normalized, hasAgentDir: false, hasWorktreeDir, safe: true, reason: `agent ${agent.status}` });
+        const lastDate = getLastDate(agent);
+        orphaned.push({ taskId: dirName, normalized, hasAgentDir: false, hasWorktreeDir, safe: true, reason: `agent ${agent.status}`, lastDate });
       }
       // else: agent active or no worktree dir to clean
     }
@@ -159,16 +182,16 @@ export function gcAgentsAction(options: { dryRun?: boolean; force?: boolean; jso
   if (options.json) {
     jsonOut({
       total_task_ids: taskIdsFromDirs.size,
-      in_state: stateAgentIds.size,
+      in_state: dbAgentIds.size,
       orphaned: orphaned.length,
-      safe: safeOrphans.map(o => ({ taskId: o.taskId, agentDir: o.hasAgentDir, worktreeDir: o.hasWorktreeDir, reason: o.reason })),
-      unsafe: unsafeOrphans.map(o => ({ taskId: o.taskId, reason: o.reason }))
+      safe: safeOrphans.map(o => ({ taskId: o.taskId, agentDir: o.hasAgentDir, worktreeDir: o.hasWorktreeDir, reason: o.reason, lastDate: o.lastDate })),
+      unsafe: unsafeOrphans.map(o => ({ taskId: o.taskId, reason: o.reason, lastDate: o.lastDate }))
     });
     return;
   }
 
   console.log(`Task IDs found in directories: ${taskIdsFromDirs.size}`);
-  console.log(`Agents in state: ${stateAgentIds.size}\n`);
+  console.log(`Agents in db: ${dbAgentIds.size}\n`);
 
   if (orphaned.length === 0) {
     console.log('No orphaned directories');
@@ -180,7 +203,8 @@ export function gcAgentsAction(options: { dryRun?: boolean; force?: boolean; jso
     safeOrphans.forEach(o => {
       const dirs = [o.hasAgentDir ? 'agent' : '', o.hasWorktreeDir ? 'worktree' : ''].filter(Boolean).join('+');
       const hint = o.reason ? ` (${o.reason})` : '';
-      console.log(`  ${o.taskId} [${dirs}]${hint}`);
+      const date = o.lastDate ? ` ${o.lastDate}` : '';
+      console.log(`  ${o.taskId} [${dirs}]${hint}${date}`);
     });
   }
 
@@ -188,19 +212,22 @@ export function gcAgentsAction(options: { dryRun?: boolean; force?: boolean; jso
     console.log(`\n⚠ Unsafe (${unsafeOrphans.length}):`);
     unsafeOrphans.forEach(o => {
       const dirs = [o.hasAgentDir ? 'agent' : '', o.hasWorktreeDir ? 'worktree' : ''].filter(Boolean).join('+');
-      console.log(`  ${o.taskId} [${dirs}] (${o.reason})`);
+      const date = o.lastDate ? ` ${o.lastDate}` : '';
+      console.log(`  ${o.taskId} [${dirs}] (${o.reason})${date}`);
     });
   }
 
-  if (!options.force) {
-    console.log('\n[Dry run] Use --force to delete safe orphans');
+  if (options.dryRun !== false) {
+    console.log('\n[Dry run] Use --no-dry-run to delete safe orphans');
     return;
   }
 
-  // Prune git worktrees first
-  pruneWorktrees();
+  // Prune git worktrees first (if worktrees included)
+  if (includeWorktrees) {
+    pruneWorktrees();
+  }
 
-  // Delete safe orphans (both agent and worktree dirs)
+  // Delete safe orphans
   let deletedAgents = 0;
   let deletedWorktrees = 0;
 
@@ -227,7 +254,11 @@ export function gcAgentsAction(options: { dryRun?: boolean; force?: boolean; jso
     }
   }
 
-  console.log(`\nDeleted ${deletedAgents} agent directories, ${deletedWorktrees} worktree directories`);
+  if (includeWorktrees) {
+    console.log(`\nDeleted ${deletedAgents} agent directories, ${deletedWorktrees} worktree directories`);
+  } else {
+    console.log(`\nDeleted ${deletedAgents} agent directories`);
+  }
   if (unsafeOrphans.length > 0) {
     console.log(`Skipped ${unsafeOrphans.length} unsafe task IDs`);
   }
@@ -346,8 +377,7 @@ export function registerGcCommands(program: Command) {
 
       // --dirs mode: also clean orphaned directories
       const worktreesDir = getWorktreesDir();
-      const state = loadState();
-      const stateAgents = state.agents || {};
+      const dbAgents = getAllAgentsFromDb();
 
       if (!fs.existsSync(worktreesDir)) {
         if (options.json) {
@@ -373,7 +403,7 @@ export function registerGcCommands(program: Command) {
 
       for (const dirName of worktreeDirs) {
         const normalized = normalizeId(dirName) || dirName;
-        const agent = stateAgents[normalized];
+        const agent = dbAgents[normalized];
 
         if (!agent) {
           const taskFile = getTask(normalized);
@@ -398,7 +428,7 @@ export function registerGcCommands(program: Command) {
         jsonOut({
           pruned: true,
           total_dirs: worktreeDirs.length,
-          agents_with_worktree: Object.values(stateAgents).filter(a => a.worktree).length,
+          agents_with_worktree: Object.values(dbAgents).filter(a => a.worktree).length,
           orphaned: orphaned.length,
           safe: safeOrphans.map(o => ({ dir: o.dir, reason: o.reason })),
           unsafe: unsafeOrphans.map(o => ({ dir: o.dir, reason: o.reason }))
@@ -408,7 +438,7 @@ export function registerGcCommands(program: Command) {
 
       console.log('Pruned orphaned git worktrees\n');
       console.log(`Worktree directories: ${worktreeDirs.length}`);
-      console.log(`Agents with worktree info: ${Object.values(stateAgents).filter(a => a.worktree).length}\n`);
+      console.log(`Agents with worktree info: ${Object.values(dbAgents).filter(a => a.worktree).length}\n`);
 
       if (orphaned.length === 0) {
         console.log('No orphaned worktree directories');
@@ -455,8 +485,9 @@ export function registerGcCommands(program: Command) {
   // gc:agents
   gc.command('agents')
     .description('Clean orphaned agent and worktree directories')
-    .option('--dry-run', 'Show what would be cleaned (default)')
-    .option('--force', 'Actually delete orphaned directories')
+    .option('--no-dry-run', 'Actually delete orphaned directories')
+    .option('--no-worktree', 'Skip worktree directory cleanup')
+    .option('--unsafe', 'Delete even if task file exists (for terminal agents)')
     .option('--json', 'JSON output')
     .action(gcAgentsAction);
 
@@ -466,7 +497,7 @@ export function registerGcCommands(program: Command) {
     .option('--dry-run', 'Show what would be cleaned without doing it')
     .option('--force', 'Skip confirmation for destructive operations')
     .option('--json', 'JSON output')
-    .action((options) => {
+    .action(async (options) => {
       if (!options.json) {
         console.log('Running garbage collection...\n');
       }
@@ -483,11 +514,9 @@ export function registerGcCommands(program: Command) {
       if (!options.json) console.log('=== Stale Agents ===');
       const staleIds = getStaleAgents(7);
       if (!options.dryRun && staleIds.length > 0) {
-        const state = loadState();
         for (const id of staleIds) {
-          delete state.agents[id];
+          await deleteAgentFromDb(id);
         }
-        saveState(state);
       }
       results.stale_agents = staleIds.length;
       if (!options.json) {

@@ -6,7 +6,7 @@ import fs from 'fs';
 import { execSync } from 'child_process';
 import type { Command } from 'commander';
 import { findProjectRoot, loadFile, jsonOut } from '../managers/core-manager.js';
-import { loadState } from '../managers/state-manager.js';
+import { getAgentFromDb } from '../managers/db-manager.js';
 import { getAgentConfig, getGitConfig } from '../managers/core-manager.js';
 import { addDynamicHelp } from '../lib/help.js';
 import { getBranchName,
@@ -374,8 +374,7 @@ export function registerSpawnCommands(program: any) {
       if (!taskId.startsWith('T')) taskId = 'T' + taskId;
 
       const projectRoot = findProjectRoot();
-      const state = loadState();
-      const agentInfo = state.agents?.[taskId];
+      const agentInfo = getAgentFromDb(taskId);
 
       if (!agentInfo) {
         if (options.json) {
