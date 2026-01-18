@@ -1,0 +1,23 @@
+---
+name: Block dist branch PRs to main
+
+'on':
+  pull_request:
+    types: [opened, synchronize, reopened]
+    branches:
+      - main
+
+jobs:
+  check-source-branch:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Check if PR is from dist branch
+        if: github.head_ref == 'dist'
+        run: |
+          echo "::error::Pull requests from the 'dist' branch to \
+          'main' are not allowed."
+          echo "The 'dist' branch is reserved for distribution \
+          purposes only."
+          exit 1
