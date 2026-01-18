@@ -1,29 +1,507 @@
 # ═══════════════════════════════════════════════════════════════════════════════
-# GUARDS.YAML — Définitions des guards CLI avec LiquidJS
+# GUARDS.YAML — CLI guard definitions with LiquidJS
 # ═══════════════════════════════════════════════════════════════════════════════
 #
-# Ce fichier centralise tous les guards (conditions de blocage) et post-prompts
-# (recommendations) pour les commandes CLI.
+# This file centralizes all guards (blocking conditions) and post-prompts
+# (recommendations) for CLI commands.
 #
-# SYNTAXE:
-#   vars:     Variables runtime requises (pas config)
-#   checks:   Liste de conditions évaluées dans l'ordre
-#   posts:    Messages affichés après succès
+# SYNTAX:
+#   vars:     Runtime variables required (not config)
+#   checks:   List of conditions evaluated in order
+#   posts:    Messages displayed after success
 #
-# VARIABLES IMPLICITES (toujours disponibles):
-#   - config.*  : Configuration rudder.yaml
-#   - role      : Role actuel (agent|skill|coordinator)
-#   - command   : Commande CLI en cours
+# IMPLICIT VARIABLES (always available):
+#   - config.*  : Configuration from rudder.yaml
+#   - role      : Current role (agent|skill|coordinator)
+#   - command   : Current CLI command
 #
 # LEVELS:
-#   - error: Bloque l'exécution (exit code)
-#   - warn:  Affiche warning, continue
-#   - info:  Information contextuelle
+#   - error: Blocks execution (exit code)
+#   - warn:  Shows warning, continues
+#   - info:  Contextual information
 #
 # ═══════════════════════════════════════════════════════════════════════════════
 
 # ─────────────────────────────────────────────────────────────────────────────
-# agent:spawn
+# archive:prd — Archive a completed PRD
+# ─────────────────────────────────────────────────────────────────────────────
+archive:prd:
+  vars:
+    prdId: { type: string, required: true }
+    prdExists: { type: boolean }
+    prdStatus: { type: string }
+    archiveExists: { type: boolean }
+    allMode: { type: boolean, default: false }
+    forceMode: { type: boolean, default: false }
+
+  checks:
+    - id: prd_not_found
+      when: "prdExists == false"
+      level: error
+      message: "✗ PRD not found: {{ prdId }}"
+      exit: 1
+
+    - id: prd_not_done
+      when: "prdStatus != 'Done' and forceMode == false"
+      level: error
+      message: "✗ PRD {{ prdId }} is not done (status: {{ prdStatus }})"
+      exit: 1
+
+    - id: archive_exists
+      when: "archiveExists == true"
+      level: error
+      message: "✗ Archive destination already exists"
+      exit: 1
+
+    - id: all_force_conflict
+      when: "allMode == true and forceMode == true"
+      level: error
+      message: "✗ --all and --force are incompatible"
+      exit: 1
+
+# ─────────────────────────────────────────────────────────────────────────────
+# context:load — Load context for operation
+# ─────────────────────────────────────────────────────────────────────────────
+context:load:
+  vars:
+    operation: { type: string }
+    roleArg: { type: string }
+    operationExists: { type: boolean }
+    taskId: { type: string }
+    taskExists: { type: boolean }
+
+  checks:
+    - id: missing_operation
+      when: "operation == nil and taskId == nil"
+      level: error
+      message: |
+        Error: missing required argument 'operation'
+        Usage: rudder context:load <operation> --role <role>
+               rudder context:load --task <id>
+               rudder context:load --list
+      exit: 1
+
+    - id: missing_role
+      when: "operation and roleArg == nil"
+      level: error
+      message: |
+        Error: --role is required
+        Usage: rudder context:load <operation> --role <role>
+        Roles: agent, coordinator, skill
+      exit: 1
+
+    - id: operation_not_found
+      when: "operation and operationExists == false"
+      level: error
+      message: |
+        Error: No context defined for operation '{{ operation }}'
+      exit: 1
+
+    - id: task_not_found
+      when: "taskId and taskExists == false"
+      level: error
+      message: |
+        Error: Task not found: {{ taskId }}
+      exit: 1
+
+# ─────────────────────────────────────────────────────────────────────────────
+# deps:validate — Validate dependency graph
+# ─────────────────────────────────────────────────────────────────────────────
+deps:validate:
+  vars:
+    cycles: { type: array, default: [] }
+    invalidBlockers: { type: array, default: [] }
+    selfReferences: { type: array, default: [] }
+
+  checks:
+    - id: cycle_detected
+      when: "cycles.size > 0"
+      level: error
+      message: |
+        ✗ Dependency cycles detected:
+        {% for cycle in cycles %}
+          {{ cycle | join: " → " }}
+        {% endfor %}
+      exit: 1
+
+    - id: invalid_blockers
+      when: "invalidBlockers.size > 0"
+      level: error
+      message: |
+        ✗ Invalid blockers:
+        {% for b in invalidBlockers %}
+          {{ b.task }}: blocker {{ b.blocker }} not found
+        {% endfor %}
+      exit: 1
+
+    - id: self_references
+      when: "selfReferences.size > 0"
+      level: error
+      message: |
+        ✗ Self-references:
+        {% for t in selfReferences %}
+          {{ t }}: cannot block itself
+        {% endfor %}
+      exit: 1
+
+# ─────────────────────────────────────────────────────────────────────────────
+# deps:show — Show task dependencies
+# ─────────────────────────────────────────────────────────────────────────────
+deps:show:
+  vars:
+    taskId: { type: string, required: true }
+    epicBlockers: { type: array, default: [] }
+    taskBlockers: { type: array, default: [] }
+
+  posts:
+    - id: epic_blocked
+      when: "epicBlockers.size > 0"
+      level: warn
+      message: |
+        ⚠ Epic blocked - waiting for: {{ epicBlockers | join: ", " }}
+
+    - id: task_blocked
+      when: "taskBlockers.size > 0"
+      level: info
+      message: |
+        Blocked by: {{ taskBlockers | join: ", " }}
+
+# ─────────────────────────────────────────────────────────────────────────────
+# assign:claim — Claim a task for execution
+# ─────────────────────────────────────────────────────────────────────────────
+assign:claim:
+  vars:
+    taskId: { type: string, required: true }
+    epicId: { type: string }
+    pendingMemory: { type: boolean, default: false }
+    pendingEpics: { type: array, default: [] }
+    forceMode: { type: boolean, default: false }
+
+  checks:
+    - id: pending_memory
+      when: "pendingMemory == true and forceMode == false"
+      level: error
+      message: |
+        STOP: Pending memory consolidation required:
+        {% for epic in pendingEpics %}
+          {{ epic }} - has unconsolidated logs
+        {% endfor %}
+      actions:
+        - { cmd: "memory:sync", label: "Consolidate logs first" }
+      exit: 1
+
+# ─────────────────────────────────────────────────────────────────────────────
+# assign:release — Release a claimed task
+# ─────────────────────────────────────────────────────────────────────────────
+assign:release:
+  vars:
+    taskId: { type: string, required: true }
+    hasTipLogs: { type: boolean }
+
+  posts:
+    - id: no_tip_logs
+      when: "hasTipLogs == false"
+      level: warn
+      message: |
+        ⚠ No TIP logs found for {{ taskId }}
+        Consider adding insights for the next agent.
+
+# ─────────────────────────────────────────────────────────────────────────────
+# memory:sync — Synchronize memory logs
+# ─────────────────────────────────────────────────────────────────────────────
+memory:sync:
+  vars:
+    pendingEpics: { type: array, default: [] }
+    skippedSections: { type: array, default: [] }
+    errors: { type: array, default: [] }
+
+  posts:
+    - id: pending_logs
+      when: "pendingEpics.size > 0"
+      level: warn
+      message: |
+        ⚠ PENDING LOGS: {{ pendingEpics.size }} epic(s)
+        {% for e in pendingEpics %}
+          {{ e }}
+        {% endfor %}
+
+    - id: skipped_sections
+      when: "skippedSections.size > 0"
+      level: warn
+      message: |
+        ⚠ {{ skippedSections.size }} skipped (section not found)
+
+# ─────────────────────────────────────────────────────────────────────────────
+# story:validate — Validate stories
+# ─────────────────────────────────────────────────────────────────────────────
+story:validate:
+  vars:
+    orphanStories: { type: array, default: [] }
+    unlinkedStories: { type: array, default: [] }
+
+  posts:
+    - id: orphan_stories
+      when: "orphanStories.size > 0"
+      level: warn
+      message: |
+        ⚠️ {{ orphanStories.size }} orphan stories (not referenced by any task)
+
+    - id: unlinked_stories
+      when: "unlinkedStories.size > 0"
+      level: warn
+      message: |
+        ⚠️ {{ unlinkedStories.size }} unlinked stories
+
+# ─────────────────────────────────────────────────────────────────────────────
+# renumber:check — Check for duplicate IDs
+# ─────────────────────────────────────────────────────────────────────────────
+renumber:check:
+  vars:
+    duplicateEpics: { type: array, default: [] }
+    duplicateTasks: { type: array, default: [] }
+
+  posts:
+    - id: duplicate_epics
+      when: "duplicateEpics.size > 0"
+      level: warn
+      message: |
+        ⚠ {{ duplicateEpics.size }} duplicate epic ID(s)
+
+    - id: duplicate_tasks
+      when: "duplicateTasks.size > 0"
+      level: warn
+      message: |
+        ⚠ {{ duplicateTasks.size }} duplicate task ID(s)
+
+# ─────────────────────────────────────────────────────────────────────────────
+# gc:cleanup — Garbage collection cleanup
+# ─────────────────────────────────────────────────────────────────────────────
+gc:cleanup:
+  vars:
+    unsafeOrphans: { type: array, default: [] }
+
+  posts:
+    - id: unsafe_orphans
+      when: "unsafeOrphans.size > 0"
+      level: warn
+      message: |
+        ⚠ Unsafe ({{ unsafeOrphans.size }}): would delete unmerged work
+        {% for o in unsafeOrphans %}
+          {{ o }}
+        {% endfor %}
+
+# ─────────────────────────────────────────────────────────────────────────────
+# worktree:preflight — Check worktree readiness
+# ─────────────────────────────────────────────────────────────────────────────
+worktree:preflight:
+  vars:
+    mainClean: { type: boolean, required: true }
+    mainUncommitted: { type: number, default: 0 }
+    mainBehind: { type: number, default: 0 }
+    hasCommits: { type: boolean, required: true }
+    pendingMerges: { type: array, default: [] }
+    runningAgents: { type: array, default: [] }
+    conflictCount: { type: number, default: 0 }
+
+  checks:
+    - id: uncommitted_main
+      when: "mainClean == false"
+      level: error
+      message: |
+        Main branch has {{ mainUncommitted }} uncommitted changes
+      exit: 1
+
+    - id: no_commits
+      when: "hasCommits == false"
+      level: error
+      message: |
+        No commits in repository
+        Git worktree requires at least one commit.
+      exit: 1
+
+  posts:
+    - id: behind_origin
+      when: "mainBehind > 0"
+      level: warn
+      message: |
+        ⚠ Main branch is {{ mainBehind }} commits behind origin
+      actions:
+        - { cmd: "git pull", label: "Pull latest changes" }
+
+    - id: pending_merges
+      when: "pendingMerges.size > 0"
+      level: info
+      message: |
+        Pending merges: {{ pendingMerges | join: ", " }}
+
+    - id: conflicts
+      when: "conflictCount > 0"
+      level: warn
+      message: |
+        ⚠ {{ conflictCount }} potential conflict(s) between running agents
+
+# ─────────────────────────────────────────────────────────────────────────────
+# worktree:merge — Merge worktree branch
+# ─────────────────────────────────────────────────────────────────────────────
+worktree:merge:
+  vars:
+    taskId: { type: string, required: true }
+    branch: { type: string, required: true }
+    parentBranch: { type: string, required: true }
+    strategy: { type: string }
+    uncommittedCount: { type: number, default: 0 }
+    branching: { type: string }  # flat|epic|prd
+    epicId: { type: string }
+    prdId: { type: string }
+    agentExists: { type: boolean }
+    hasWorktree: { type: boolean }
+    worktreeExists: { type: boolean }
+    parentBranchExists: { type: boolean }
+
+  checks:
+    - id: agent_not_found
+      when: "agentExists == false"
+      level: error
+      message: "No agent found for task: {{ taskId }}"
+      exit: 1
+
+    - id: no_worktree
+      when: "hasWorktree == false"
+      level: error
+      message: "Task {{ taskId }} has no worktree"
+      exit: 1
+
+    - id: worktree_missing
+      when: "worktreeExists == false"
+      level: error
+      message: "Worktree not found for {{ taskId }}"
+      exit: 1
+
+    - id: parent_not_found
+      when: "parentBranchExists == false"
+      level: error
+      message: |
+        Parent branch not found: {{ parentBranch }}
+      hint: "Create it first or check branching strategy in PRD."
+      exit: 1
+
+    - id: uncommitted_changes
+      when: "uncommittedCount > 0"
+      level: error
+      message: |
+        Worktree has {{ uncommittedCount }} uncommitted changes
+      actions:
+        - { cmd: "git -C <worktree> commit -am 'wip'", label: "Commit changes first" }
+        - { cmd: "agent:reject {{ taskId }}", label: "Or discard work" }
+      exit: 1
+
+    - id: invalid_strategy
+      when: "strategy and strategy != 'merge' and strategy != 'squash' and strategy != 'rebase'"
+      level: error
+      message: |
+        Invalid merge strategy: {{ strategy }}
+        Valid strategies: merge, squash, rebase
+      exit: 1
+
+  posts:
+    - id: merge_success_epic
+      when: "branching == 'epic'"
+      message: |
+        Next: When epic is complete, merge epic/{{ epicId }} to prd/{{ prdId }}
+
+    - id: merge_success_prd
+      when: "branching == 'prd'"
+      message: |
+        Next: When PRD is complete, merge prd/{{ prdId }} to main
+
+    - id: merge_conflict
+      when: "mergeConflict == true"
+      message: |
+        ⚠ Merge conflicts detected
+      actions:
+        - { cmd: "/dev:merge {{ taskId }}", label: "Use merge skill to resolve" }
+
+# ─────────────────────────────────────────────────────────────────────────────
+# agent:reap — Harvest agent work
+# ─────────────────────────────────────────────────────────────────────────────
+agent:reap:
+  vars:
+    taskId: { type: string, required: true }
+    agentExists: { type: boolean }
+    agentPid: { type: number }
+    isRunning: { type: boolean }
+    waitTimeout: { type: boolean, default: false }
+
+  checks:
+    - id: agent_not_found
+      when: "agentExists == false"
+      level: error
+      message: |
+        No agent found for task {{ taskId }}
+      actions:
+        - { cmd: "agent:spawn {{ taskId }}", label: "Start agent first" }
+      exit: 1
+
+    - id: agent_running_no_wait
+      when: "isRunning == true"
+      level: error
+      message: |
+        Agent {{ taskId }} is still running (PID {{ agentPid }})
+      actions:
+        - { cmd: "agent:wait {{ taskId }}", label: "Wait for completion" }
+        - { cmd: "agent:kill {{ taskId }}", label: "Force terminate" }
+      exit: 1
+
+    - id: timeout
+      when: "waitTimeout == true"
+      level: error
+      message: |
+        Timeout waiting for agent {{ taskId }}
+      actions:
+        - { cmd: "agent:kill {{ taskId }}", label: "Force terminate" }
+        - { cmd: "agent:log {{ taskId }}", label: "Check logs" }
+      exit: 1
+
+# ─────────────────────────────────────────────────────────────────────────────
+# agent:monitor — Monitor agent status
+# ─────────────────────────────────────────────────────────────────────────────
+agent:monitor:
+  vars:
+    orphanAgentDirs: { type: array, default: [] }
+    orphanWorktreeDirs: { type: array, default: [] }
+    ghostAgents: { type: array, default: [] }
+    terminalWithWorktree: { type: array, default: [] }
+
+  posts:
+    - id: orphan_agent_dirs
+      when: "orphanAgentDirs.size > 0"
+      level: warn
+      message: |
+        ⚠ Orphan agent dirs (not in db): {{ orphanAgentDirs | join: ", " }}
+
+    - id: orphan_worktree_dirs
+      when: "orphanWorktreeDirs.size > 0"
+      level: warn
+      message: |
+        ⚠ Orphan worktree dirs (not in db): {{ orphanWorktreeDirs | join: ", " }}
+
+    - id: ghost_agents
+      when: "ghostAgents.size > 0"
+      level: warn
+      message: |
+        ⚠ Ghost agents (in db, no dir): {{ ghostAgents | join: ", " }}
+
+    - id: terminal_with_worktree
+      when: "terminalWithWorktree.size > 0"
+      level: warn
+      message: |
+        ⚠ Terminal agents with worktree (should clean):
+        {% for a in terminalWithWorktree %}
+          {{ a }}
+        {% endfor %}
+
+# ─────────────────────────────────────────────────────────────────────────────
+# agent:spawn — Spawn agent to execute task
 # ─────────────────────────────────────────────────────────────────────────────
 agent:spawn:
   vars:
@@ -45,7 +523,7 @@ agent:spawn:
   checks:
     # Role enforcement
     - id: role_denied
-      when: "{{ role == 'agent' }}"
+      when: "role == 'agent'"
       level: error
       message: |
         ⚠ agent:spawn cannot be called with --role agent
@@ -55,7 +533,7 @@ agent:spawn:
 
     # Config check
     - id: subprocess_disabled
-      when: "{{ config.agent.use_subprocess == false }}"
+      when: "config.agent.use_subprocess == false"
       level: error
       message: |
         ⚠ agent:spawn is disabled (use_subprocess: false)
@@ -64,7 +542,7 @@ agent:spawn:
 
     # MCP server
     - id: mcp_not_running
-      when: "{{ mcpRunning == false }}"
+      when: "mcpRunning == false"
       level: error
       message: |
         ⚠ MCP server not running
@@ -76,7 +554,7 @@ agent:spawn:
 
     # Existing agent running
     - id: agent_running
-      when: "{{ isAgentRunning == true }}"
+      when: "isAgentRunning == true"
       level: error
       message: |
         ⚠ Agent {{ taskId }} is still running (PID {{ existingAgentPid }})
@@ -112,7 +590,7 @@ agent:spawn:
 
     # Git repo check (worktree mode only)
     - id: not_git_repo
-      when: "{{ useWorktree and isGitRepo == false }}"
+      when: "useWorktree and isGitRepo == false"
       level: error
       message: |
         ⚠ use_worktrees requires a git repository
@@ -121,7 +599,7 @@ agent:spawn:
 
     # Uncommitted changes (worktree mode only)
     - id: uncommitted_main
-      when: "{{ useWorktree and gitClean == false }}"
+      when: "useWorktree and gitClean == false"
       level: error
       message: |
         ⚠ Working directory has uncommitted changes
@@ -131,7 +609,7 @@ agent:spawn:
 
     # No commits (worktree mode only)
     - id: no_commits
-      when: "{{ useWorktree and hasCommits == false }}"
+      when: "useWorktree and hasCommits == false"
       level: error
       message: |
         ⚠ No commits in repository
@@ -167,7 +645,7 @@ agent:spawn:
 
   posts:
     - id: spawn_failed
-      when: "{{ exitCode != 0 }}"
+      when: "exitCode != 0"
       message: |
         Next steps:
       actions:
@@ -175,487 +653,9 @@ agent:spawn:
         - { cmd: "agent:reject {{ taskId }}", label: "Discard work" }
 
     - id: diagnose_errors
-      when: "{{ diagnoseErrors > 0 }}"
+      when: "diagnoseErrors > 0"
       message: |
         🛑 STOP - Action required:
       actions:
         - { cmd: "agent:log-noise-add-filter <id> {{ taskId }} --contains \"pattern\"", label: "If noise: add filter" }
         - { cmd: "escalate", label: "If real issue: fix sandbox/environment" }
-
-# ─────────────────────────────────────────────────────────────────────────────
-# worktree:merge
-# ─────────────────────────────────────────────────────────────────────────────
-worktree:merge:
-  vars:
-    taskId: { type: string, required: true }
-    branch: { type: string, required: true }
-    parentBranch: { type: string, required: true }
-    strategy: { type: string }
-    uncommittedCount: { type: number, default: 0 }
-    branching: { type: string }  # flat|epic|prd
-    epicId: { type: string }
-    prdId: { type: string }
-    agentExists: { type: boolean }
-    hasWorktree: { type: boolean }
-    worktreeExists: { type: boolean }
-    parentBranchExists: { type: boolean }
-
-  checks:
-    - id: agent_not_found
-      when: "{{ agentExists == false }}"
-      level: error
-      message: "No agent found for task: {{ taskId }}"
-      exit: 1
-
-    - id: no_worktree
-      when: "{{ hasWorktree == false }}"
-      level: error
-      message: "Task {{ taskId }} has no worktree"
-      exit: 1
-
-    - id: worktree_missing
-      when: "{{ worktreeExists == false }}"
-      level: error
-      message: "Worktree not found for {{ taskId }}"
-      exit: 1
-
-    - id: parent_not_found
-      when: "{{ parentBranchExists == false }}"
-      level: error
-      message: |
-        Parent branch not found: {{ parentBranch }}
-      hint: "Create it first or check branching strategy in PRD."
-      exit: 1
-
-    - id: uncommitted_changes
-      when: "{{ uncommittedCount > 0 }}"
-      level: error
-      message: |
-        Worktree has {{ uncommittedCount }} uncommitted changes
-      actions:
-        - { cmd: "git -C <worktree> commit -am 'wip'", label: "Commit changes first" }
-        - { cmd: "agent:reject {{ taskId }}", label: "Or discard work" }
-      exit: 1
-
-    - id: invalid_strategy
-      when: "{{ strategy and strategy != 'merge' and strategy != 'squash' and strategy != 'rebase' }}"
-      level: error
-      message: |
-        Invalid merge strategy: {{ strategy }}
-        Valid strategies: merge, squash, rebase
-      exit: 1
-
-  posts:
-    - id: merge_success_epic
-      when: "{{ branching == 'epic' }}"
-      message: |
-        Next: When epic is complete, merge epic/{{ epicId }} to prd/{{ prdId }}
-
-    - id: merge_success_prd
-      when: "{{ branching == 'prd' }}"
-      message: |
-        Next: When PRD is complete, merge prd/{{ prdId }} to main
-
-    - id: merge_conflict
-      when: "{{ mergeConflict == true }}"
-      message: |
-        ⚠ Merge conflicts detected
-      actions:
-        - { cmd: "/dev:merge {{ taskId }}", label: "Use merge skill to resolve" }
-
-# ─────────────────────────────────────────────────────────────────────────────
-# worktree:preflight
-# ─────────────────────────────────────────────────────────────────────────────
-worktree:preflight:
-  vars:
-    mainClean: { type: boolean, required: true }
-    mainUncommitted: { type: number, default: 0 }
-    mainBehind: { type: number, default: 0 }
-    hasCommits: { type: boolean, required: true }
-    pendingMerges: { type: array, default: [] }
-    runningAgents: { type: array, default: [] }
-    conflictCount: { type: number, default: 0 }
-
-  checks:
-    - id: uncommitted_main
-      when: "{{ mainClean == false }}"
-      level: error
-      message: |
-        Main branch has {{ mainUncommitted }} uncommitted changes
-      exit: 1
-
-    - id: no_commits
-      when: "{{ hasCommits == false }}"
-      level: error
-      message: |
-        No commits in repository
-        Git worktree requires at least one commit.
-      exit: 1
-
-  posts:
-    - id: behind_origin
-      when: "{{ mainBehind > 0 }}"
-      level: warn
-      message: |
-        ⚠ Main branch is {{ mainBehind }} commits behind origin
-      actions:
-        - { cmd: "git pull", label: "Pull latest changes" }
-
-    - id: pending_merges
-      when: "{{ pendingMerges.size > 0 }}"
-      level: info
-      message: |
-        Pending merges: {{ pendingMerges | join: ", " }}
-
-    - id: conflicts
-      when: "{{ conflictCount > 0 }}"
-      level: warn
-      message: |
-        ⚠ {{ conflictCount }} potential conflict(s) between running agents
-
-# ─────────────────────────────────────────────────────────────────────────────
-# agent:reap / agent:harvest
-# ─────────────────────────────────────────────────────────────────────────────
-agent:reap:
-  vars:
-    taskId: { type: string, required: true }
-    agentExists: { type: boolean }
-    agentPid: { type: number }
-    isRunning: { type: boolean }
-    waitTimeout: { type: boolean, default: false }
-
-  checks:
-    - id: agent_not_found
-      when: "{{ agentExists == false }}"
-      level: error
-      message: |
-        No agent found for task {{ taskId }}
-      actions:
-        - { cmd: "agent:spawn {{ taskId }}", label: "Start agent first" }
-      exit: 1
-
-    - id: agent_running_no_wait
-      when: "{{ isRunning == true }}"
-      level: error
-      message: |
-        Agent {{ taskId }} is still running (PID {{ agentPid }})
-      actions:
-        - { cmd: "agent:wait {{ taskId }}", label: "Wait for completion" }
-        - { cmd: "agent:kill {{ taskId }}", label: "Force terminate" }
-      exit: 1
-
-    - id: timeout
-      when: "{{ waitTimeout == true }}"
-      level: error
-      message: |
-        Timeout waiting for agent {{ taskId }}
-      actions:
-        - { cmd: "agent:kill {{ taskId }}", label: "Force terminate" }
-        - { cmd: "agent:log {{ taskId }}", label: "Check logs" }
-      exit: 1
-
-# ─────────────────────────────────────────────────────────────────────────────
-# assign:claim
-# ─────────────────────────────────────────────────────────────────────────────
-assign:claim:
-  vars:
-    taskId: { type: string, required: true }
-    epicId: { type: string }
-    pendingMemory: { type: boolean, default: false }
-    pendingEpics: { type: array, default: [] }
-    forceMode: { type: boolean, default: false }
-
-  checks:
-    - id: pending_memory
-      when: "{{ pendingMemory == true and forceMode == false }}"
-      level: error
-      message: |
-        STOP: Pending memory consolidation required:
-        {% for epic in pendingEpics %}
-          {{ epic }} - has unconsolidated logs
-        {% endfor %}
-      actions:
-        - { cmd: "memory:sync", label: "Consolidate logs first" }
-      exit: 1
-
-# ─────────────────────────────────────────────────────────────────────────────
-# assign:release
-# ─────────────────────────────────────────────────────────────────────────────
-assign:release:
-  vars:
-    taskId: { type: string, required: true }
-    hasTipLogs: { type: boolean }
-
-  posts:
-    - id: no_tip_logs
-      when: "{{ hasTipLogs == false }}"
-      level: warn
-      message: |
-        ⚠ No TIP logs found for {{ taskId }}
-        Consider adding insights for the next agent.
-
-# ─────────────────────────────────────────────────────────────────────────────
-# deps:validate
-# ─────────────────────────────────────────────────────────────────────────────
-deps:validate:
-  vars:
-    cycles: { type: array, default: [] }
-    invalidBlockers: { type: array, default: [] }
-    selfReferences: { type: array, default: [] }
-
-  checks:
-    - id: cycle_detected
-      when: "{{ cycles.size > 0 }}"
-      level: error
-      message: |
-        ✗ Dependency cycles detected:
-        {% for cycle in cycles %}
-          {{ cycle | join: " → " }}
-        {% endfor %}
-      exit: 1
-
-    - id: invalid_blockers
-      when: "{{ invalidBlockers.size > 0 }}"
-      level: error
-      message: |
-        ✗ Invalid blockers:
-        {% for b in invalidBlockers %}
-          {{ b.task }}: blocker {{ b.blocker }} not found
-        {% endfor %}
-      exit: 1
-
-    - id: self_references
-      when: "{{ selfReferences.size > 0 }}"
-      level: error
-      message: |
-        ✗ Self-references:
-        {% for t in selfReferences %}
-          {{ t }}: cannot block itself
-        {% endfor %}
-      exit: 1
-
-# ─────────────────────────────────────────────────────────────────────────────
-# deps:show
-# ─────────────────────────────────────────────────────────────────────────────
-deps:show:
-  vars:
-    taskId: { type: string, required: true }
-    epicBlockers: { type: array, default: [] }
-    taskBlockers: { type: array, default: [] }
-
-  posts:
-    - id: epic_blocked
-      when: "{{ epicBlockers.size > 0 }}"
-      level: warn
-      message: |
-        ⚠ Epic blocked - waiting for: {{ epicBlockers | join: ", " }}
-
-    - id: task_blocked
-      when: "{{ taskBlockers.size > 0 }}"
-      level: info
-      message: |
-        Blocked by: {{ taskBlockers | join: ", " }}
-
-# ─────────────────────────────────────────────────────────────────────────────
-# memory:sync
-# ─────────────────────────────────────────────────────────────────────────────
-memory:sync:
-  vars:
-    pendingEpics: { type: array, default: [] }
-    skippedSections: { type: array, default: [] }
-    errors: { type: array, default: [] }
-
-  posts:
-    - id: pending_logs
-      when: "{{ pendingEpics.size > 0 }}"
-      level: warn
-      message: |
-        ⚠ PENDING LOGS: {{ pendingEpics.size }} epic(s)
-        {% for e in pendingEpics %}
-          {{ e }}
-        {% endfor %}
-
-    - id: skipped_sections
-      when: "{{ skippedSections.size > 0 }}"
-      level: warn
-      message: |
-        ⚠ {{ skippedSections.size }} skipped (section not found)
-
-# ─────────────────────────────────────────────────────────────────────────────
-# context:load
-# ─────────────────────────────────────────────────────────────────────────────
-context:load:
-  vars:
-    operation: { type: string }
-    roleArg: { type: string }
-    operationExists: { type: boolean }
-    taskId: { type: string }
-    taskExists: { type: boolean }
-
-  checks:
-    - id: missing_operation
-      when: "{{ operation == nil and taskId == nil }}"
-      level: error
-      message: |
-        Error: missing required argument 'operation'
-        Usage: rudder context:load <operation> --role <role>
-               rudder context:load --task <id>
-               rudder context:load --list
-      exit: 1
-
-    - id: missing_role
-      when: "{{ operation and roleArg == nil }}"
-      level: error
-      message: |
-        Error: --role is required
-        Usage: rudder context:load <operation> --role <role>
-        Roles: agent, coordinator, skill
-      exit: 1
-
-    - id: operation_not_found
-      when: "{{ operation and operationExists == false }}"
-      level: error
-      message: |
-        Error: No context defined for operation '{{ operation }}'
-      exit: 1
-
-    - id: task_not_found
-      when: "{{ taskId and taskExists == false }}"
-      level: error
-      message: |
-        Error: Task not found: {{ taskId }}
-      exit: 1
-
-# ─────────────────────────────────────────────────────────────────────────────
-# archive:prd
-# ─────────────────────────────────────────────────────────────────────────────
-archive:prd:
-  vars:
-    prdId: { type: string, required: true }
-    prdExists: { type: boolean }
-    prdStatus: { type: string }
-    archiveExists: { type: boolean }
-    allMode: { type: boolean, default: false }
-    forceMode: { type: boolean, default: false }
-
-  checks:
-    - id: prd_not_found
-      when: "{{ prdExists == false }}"
-      level: error
-      message: "✗ PRD not found: {{ prdId }}"
-      exit: 1
-
-    - id: prd_not_done
-      when: "{{ prdStatus != 'Done' and forceMode == false }}"
-      level: error
-      message: "✗ PRD {{ prdId }} is not done (status: {{ prdStatus }})"
-      exit: 1
-
-    - id: archive_exists
-      when: "{{ archiveExists == true }}"
-      level: error
-      message: "✗ Archive destination already exists"
-      exit: 1
-
-    - id: all_force_conflict
-      when: "{{ allMode == true and forceMode == true }}"
-      level: error
-      message: "✗ --all and --force are incompatible"
-      exit: 1
-
-# ─────────────────────────────────────────────────────────────────────────────
-# story:validate
-# ─────────────────────────────────────────────────────────────────────────────
-story:validate:
-  vars:
-    orphanStories: { type: array, default: [] }
-    unlinkedStories: { type: array, default: [] }
-
-  posts:
-    - id: orphan_stories
-      when: "{{ orphanStories.size > 0 }}"
-      level: warn
-      message: |
-        ⚠️ {{ orphanStories.size }} orphan stories (not referenced by any task)
-
-    - id: unlinked_stories
-      when: "{{ unlinkedStories.size > 0 }}"
-      level: warn
-      message: |
-        ⚠️ {{ unlinkedStories.size }} unlinked stories
-
-# ─────────────────────────────────────────────────────────────────────────────
-# gc:agents / gc:worktrees
-# ─────────────────────────────────────────────────────────────────────────────
-gc:cleanup:
-  vars:
-    unsafeOrphans: { type: array, default: [] }
-
-  posts:
-    - id: unsafe_orphans
-      when: "{{ unsafeOrphans.size > 0 }}"
-      level: warn
-      message: |
-        ⚠ Unsafe ({{ unsafeOrphans.size }}): would delete unmerged work
-        {% for o in unsafeOrphans %}
-          {{ o }}
-        {% endfor %}
-
-# ─────────────────────────────────────────────────────────────────────────────
-# agent:monitor
-# ─────────────────────────────────────────────────────────────────────────────
-agent:monitor:
-  vars:
-    orphanAgentDirs: { type: array, default: [] }
-    orphanWorktreeDirs: { type: array, default: [] }
-    ghostAgents: { type: array, default: [] }
-    terminalWithWorktree: { type: array, default: [] }
-
-  posts:
-    - id: orphan_agent_dirs
-      when: "{{ orphanAgentDirs.size > 0 }}"
-      level: warn
-      message: |
-        ⚠ Orphan agent dirs (not in db): {{ orphanAgentDirs | join: ", " }}
-
-    - id: orphan_worktree_dirs
-      when: "{{ orphanWorktreeDirs.size > 0 }}"
-      level: warn
-      message: |
-        ⚠ Orphan worktree dirs (not in db): {{ orphanWorktreeDirs | join: ", " }}
-
-    - id: ghost_agents
-      when: "{{ ghostAgents.size > 0 }}"
-      level: warn
-      message: |
-        ⚠ Ghost agents (in db, no dir): {{ ghostAgents | join: ", " }}
-
-    - id: terminal_with_worktree
-      when: "{{ terminalWithWorktree.size > 0 }}"
-      level: warn
-      message: |
-        ⚠ Terminal agents with worktree (should clean):
-        {% for a in terminalWithWorktree %}
-          {{ a }}
-        {% endfor %}
-
-# ─────────────────────────────────────────────────────────────────────────────
-# renumber:check
-# ─────────────────────────────────────────────────────────────────────────────
-renumber:check:
-  vars:
-    duplicateEpics: { type: array, default: [] }
-    duplicateTasks: { type: array, default: [] }
-
-  posts:
-    - id: duplicate_epics
-      when: "{{ duplicateEpics.size > 0 }}"
-      level: warn
-      message: |
-        ⚠ {{ duplicateEpics.size }} duplicate epic ID(s)
-
-    - id: duplicate_tasks
-      when: "{{ duplicateTasks.size > 0 }}"
-      level: warn
-      message: |
-        ⚠ {{ duplicateTasks.size }} duplicate task ID(s)
