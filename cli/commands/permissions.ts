@@ -21,7 +21,10 @@ interface PathsConfig {
 
 // Base sailing permissions (path-independent)
 const BASE_PERMISSIONS = [
-  'Bash(bin/rudder:*)',
+  'Bash(bin/rudder:*)',      // bin/rudder <args>
+  'Bash(bin/rudder *:*)',    // bin/rudder <subcommand> <args>
+  'Bash(./bin/rudder:*)',    // ./bin/rudder <args>
+  'Bash(./bin/rudder *:*)',  // ./bin/rudder <subcommand> <args>
   'Bash(npm install:*)',
   'Bash(npm test:*)',
   'Bash(npm run:*)',
@@ -147,7 +150,7 @@ export function registerPermissionsCommands(program: Command) {
 
   // permissions:fix
   perms.command('fix')
-    .description('Add missing sailing permissions to settings')
+    .description('Add missing sailing permissions and clean up redundant ones')
     .option('--dry-run', 'Show what would be done')
     .option('--json', 'JSON output')
     .action((options: { dryRun?: boolean; json?: boolean }) => {
@@ -157,6 +160,7 @@ export function registerPermissionsCommands(program: Command) {
 
       const existing: string[] = settings.permissions.allow;
       const added: string[] = [];
+      const removed: string[] = [];
       const requiredPerms = getSailingPermissions();
 
       // Ensure includeCoAuthoredBy is set to false
@@ -168,6 +172,7 @@ export function registerPermissionsCommands(program: Command) {
         coAuthorFixed = true;
       }
 
+      // Add missing required permissions
       for (const perm of requiredPerms) {
         if (!existing.includes(perm)) {
           added.push(perm);
@@ -177,7 +182,36 @@ export function registerPermissionsCommands(program: Command) {
         }
       }
 
-      if (!options.dryRun && (added.length > 0 || coAuthorFixed)) {
+      // Remove redundant bin/rudder permissions (specific ones without wildcards)
+      // Keep only the broad patterns: bin/rudder:*, bin/rudder *:*, ./bin/rudder:*, ./bin/rudder *:*
+      const broadRudderPatterns = [
+        'Bash(bin/rudder:*)',
+        'Bash(bin/rudder *:*)',
+        'Bash(./bin/rudder:*)',
+        'Bash(./bin/rudder *:*)'
+      ];
+
+      const toRemove: number[] = [];
+      for (let i = 0; i < existing.length; i++) {
+        const perm = existing[i];
+        // Check if it's a bin/rudder permission but not a broad pattern
+        if (perm.startsWith('Bash(bin/rudder') || perm.startsWith('Bash(./bin/rudder')) {
+          if (!broadRudderPatterns.includes(perm)) {
+            toRemove.push(i);
+            removed.push(perm);
+          }
+        }
+      }
+
+      // Remove from end to start to preserve indices
+      if (!options.dryRun) {
+        for (let i = toRemove.length - 1; i >= 0; i--) {
+          existing.splice(toRemove[i], 1);
+        }
+      }
+
+      const hasChanges = added.length > 0 || removed.length > 0 || coAuthorFixed;
+      if (!options.dryRun && hasChanges) {
         saveSettings(settings);
       }
 
@@ -185,6 +219,8 @@ export function registerPermissionsCommands(program: Command) {
         settingsPath: getSettingsPath(),
         added: added.length,
         addedList: added,
+        removed: removed.length,
+        removedList: removed,
         coAuthorFixed,
         dryRun: options.dryRun || false
       };
@@ -192,7 +228,7 @@ export function registerPermissionsCommands(program: Command) {
       if (options.json) {
         jsonOut(result);
       } else {
-        if (added.length === 0 && !coAuthorFixed) {
+        if (!hasChanges) {
           console.log('All sailing settings already configured.');
         } else {
           if (coAuthorFixed) {
@@ -209,6 +245,13 @@ export function registerPermissionsCommands(program: Command) {
               console.log(`Added ${added.length} permissions:`);
             }
             added.forEach(p => console.log(`  + ${p}`));
+          }
+          if (removed.length > 0) {
+            if (options.dryRun) {
+              console.log(`\nWould remove ${removed.length} redundant bin/rudder permissions`);
+            } else {
+              console.log(`\nRemoved ${removed.length} redundant bin/rudder permissions`);
+            }
           }
           if (!options.dryRun) {
             console.log(`\nUpdated: ${result.settingsPath}`);
