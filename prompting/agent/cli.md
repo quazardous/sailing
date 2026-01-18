@@ -5,8 +5,12 @@ Rudder is the ONLY interface for sailing artifacts. **NEVER use Edit tool on `.s
 | Data | Command |
 |------|---------|
 | Task | `rudder task:show TNNN` |
+| Epic | `rudder epic:show ENNN` |
+| PRD | `rudder prd:show PRD-NNN` |
 | Dependencies | `rudder deps:show TNNN` |
 | Memory | `rudder task:show-memory TNNN` |
+
+Add `--raw` to see full markdown content: `rudder epic:show ENNN --raw`
 
 > **Memory context** is included in `context:load`. Use `task:show-memory` only to refresh mid-task.
 
