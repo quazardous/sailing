@@ -423,6 +423,7 @@ echo "Building skill files..."
 echo "Installing skill..."
 copy_file "$SRC/skill/SKILL_INLINE.md" "$SKILL/SKILL_INLINE.md" false
 copy_file "$SRC/skill/SKILL_WORKTREE.md" "$SKILL/SKILL_WORKTREE.md" false
+copy_file "$SRC/skill/CHEATSHEET.md" "$SKILL/CHEATSHEET.md" false
 
 # Commands (always updated)
 echo "Installing commands..."

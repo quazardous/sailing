@@ -568,6 +568,7 @@ EOF
 
   # SKILL.md → source repo SKILL_WORKTREE.md
   do_ln "$SCRIPT_DIR/skill/SKILL_WORKTREE.md" "$SKILL/SKILL.md"
+  do_ln "$SCRIPT_DIR/skill/CHEATSHEET.md" "$SKILL/CHEATSHEET.md"
 
   # Create haven convenience symlink for IDE
   echo
@@ -597,6 +598,7 @@ EOF
 else
   echo -e "  ${GREEN}Mode: inline (default)${NC}"
   do_ln "$SCRIPT_DIR/skill/SKILL_INLINE.md" "$SKILL/SKILL.md"
+  do_ln "$SCRIPT_DIR/skill/CHEATSHEET.md" "$SKILL/CHEATSHEET.md"
 fi
 echo
 
