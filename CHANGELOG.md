@@ -11,6 +11,7 @@ All notable changes to the Sailing Framework will be documented in this file.
 - `gc:agents` now cleans up stale database records (terminal status with no directories)
 - `permissions:fix` now removes redundant `bin/rudder` and `git` permissions, keeping only broad patterns
 - All `git` commands now auto-allowed (broad `git:*` and `git *:*` patterns)
+- Common dev tools auto-allowed: `jq`, `yq`, `curl`, `ls`, `tee`, `ps`, `pgrep`, `pkill`, `lsof`, `netstat`, `ss`, `python`, `python3`, `pip install`, `pip3 install`, `WebSearch`
 - `artifact:edit --merge-dedup-section` to merge duplicate sections in markdown files
 
 ### Changed

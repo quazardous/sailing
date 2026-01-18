@@ -21,18 +21,44 @@ interface PathsConfig {
 
 // Base sailing permissions (path-independent)
 const BASE_PERMISSIONS = [
+  // Rudder CLI
   'Bash(bin/rudder:*)',      // bin/rudder <args>
   'Bash(bin/rudder *:*)',    // bin/rudder <subcommand> <args>
   'Bash(./bin/rudder:*)',    // ./bin/rudder <args>
   'Bash(./bin/rudder *:*)',  // ./bin/rudder <subcommand> <args>
+  // Git
+  'Bash(git:*)',
+  'Bash(git *:*)',
+  // Build tools
   'Bash(npm install:*)',
   'Bash(npm test:*)',
   'Bash(npm run:*)',
   'Bash(make:*)',
+  // File operations
   'Bash(chmod:*)',
   'Bash(mkdir:*)',
-  'Bash(git:*)',
-  'Bash(git *:*)',
+  'Bash(ls:*)',
+  'Bash(tee:*)',
+  // Data processing
+  'Bash(jq:*)',
+  'Bash(yq:*)',
+  'Bash(curl:*)',
+  // Process management
+  'Bash(ps:*)',
+  'Bash(pgrep:*)',
+  'Bash(pkill:*)',
+  'Bash(lsof:*)',
+  // Network
+  'Bash(netstat:*)',
+  'Bash(ss:*)',
+  // Python
+  'Bash(python:*)',
+  'Bash(python3:*)',
+  'Bash(pip install:*)',
+  'Bash(pip3 install:*)',
+  // Web
+  'WebSearch',
+  // Read permissions
   'Read(.claude/**)'
 ];
 
