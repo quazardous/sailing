@@ -15,7 +15,8 @@ import {
   getSection,
   parseMultiSectionContent,
   applySedCommands,
-  parseCheckboxItems
+  parseCheckboxItems,
+  mergeDuplicateSectionsInFile
 } from '../lib/artifact.js';
 import { getTask, getEpic, getPrd } from '../managers/artefacts-manager.js';
 import type { Command } from 'commander';
@@ -183,6 +184,7 @@ export function registerArtifactCommands(program: Command): void {
     .option('-c, --content <text>', 'New content (or use stdin)')
     .option('-a, --append', 'Append to section instead of replace')
     .option('-p, --prepend', 'Prepend to section instead of replace')
+    .option('--merge-dedup-section', 'Merge duplicate sections (combine content)')
     .option('--json', 'JSON output')
     .addHelpText('after', `
 Multi-Section Format (omit --section):
@@ -236,12 +238,31 @@ Examples:
       content?: string;
       append?: boolean;
       prepend?: boolean;
+      mergeDedupSection?: boolean;
       json?: boolean;
     }) => {
       const resolved = resolveArtifact(id);
       if (!resolved) {
         console.error(`Artifact not found: ${id}`);
         process.exit(1);
+      }
+
+      // Handle --merge-dedup-section as standalone operation
+      if (options.mergeDedupSection) {
+        const result = mergeDuplicateSectionsInFile(resolved.path);
+        if (options.json) {
+          jsonOut({ id, ...result });
+        } else if (result.success) {
+          if (result.merged.length === 0) {
+            console.log(`No duplicate sections found in ${id}`);
+          } else {
+            console.log(`✓ Merged duplicate sections in ${id}: ${result.merged.join(', ')}`);
+          }
+        } else {
+          console.error(`Failed to merge sections: ${result.error}`);
+          process.exit(1);
+        }
+        return;
       }
 
       // Get content from option or stdin

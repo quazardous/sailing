@@ -27,6 +27,7 @@ export interface ParsedMarkdown {
 
 /**
  * Parse markdown content into frontmatter and sections
+ * Auto-merges duplicate sections by combining their content.
  * @param {string} content - Raw markdown content
  * @returns {{ frontmatter: string, sections: Map<string, string>, order: string[] }}
  */
@@ -46,7 +47,7 @@ export function parseMarkdownSections(content: string): ParsedMarkdown {
     }
   }
 
-  // Parse sections (## headings)
+  // Parse sections (## headings) - auto-merge duplicates
   const sections: Map<string, string> = new Map();
   const order: string[] = [];
   let currentSection: string | null = null;
@@ -60,14 +61,23 @@ export function parseMarkdownSections(content: string): ParsedMarkdown {
     if (headingMatch) {
       // Save previous section
       if (currentSection) {
-        sections.set(currentSection, currentContent.join('\n').trim());
+        const trimmedContent = currentContent.join('\n').trim();
+        if (sections.has(currentSection)) {
+          // Merge with existing content
+          const existing = sections.get(currentSection) || '';
+          sections.set(currentSection, existing + (existing && trimmedContent ? '\n\n' : '') + trimmedContent);
+        } else {
+          sections.set(currentSection, trimmedContent);
+        }
       } else if (currentContent.length > 0) {
         preamble = currentContent;
       }
 
-      // Start new section
+      // Start new section (only add to order if not seen before)
       currentSection = headingMatch[1].trim();
-      order.push(currentSection);
+      if (!order.includes(currentSection)) {
+        order.push(currentSection);
+      }
       currentContent = [];
     } else {
       currentContent.push(line);
@@ -76,7 +86,14 @@ export function parseMarkdownSections(content: string): ParsedMarkdown {
 
   // Save last section
   if (currentSection) {
-    sections.set(currentSection, currentContent.join('\n').trim());
+    const trimmedContent = currentContent.join('\n').trim();
+    if (sections.has(currentSection)) {
+      // Merge with existing content
+      const existing = sections.get(currentSection) || '';
+      sections.set(currentSection, existing + (existing && trimmedContent ? '\n\n' : '') + trimmedContent);
+    } else {
+      sections.set(currentSection, trimmedContent);
+    }
   }
 
   return {
@@ -119,6 +136,127 @@ export function serializeSections(parsed: ParsedMarkdown): string {
   }
 
   return parts.join('\n').trimEnd() + '\n';
+}
+
+/**
+ * Parse markdown preserving duplicate sections (for dedup detection)
+ */
+export function parseMarkdownSectionsRaw(content: string): {
+  frontmatter: string;
+  preamble: string;
+  sections: Array<{ name: string; content: string }>;
+} {
+  const lines = content.split('\n');
+  let frontmatter = '';
+  let frontmatterEnd = 0;
+
+  // Extract frontmatter
+  if (lines[0] === '---') {
+    for (let i = 1; i < lines.length; i++) {
+      if (lines[i] === '---') {
+        frontmatterEnd = i + 1;
+        frontmatter = lines.slice(0, frontmatterEnd).join('\n');
+        break;
+      }
+    }
+  }
+
+  // Parse sections preserving duplicates
+  const sections: Array<{ name: string; content: string }> = [];
+  let currentSection: string | null = null;
+  let currentContent: string[] = [];
+  let preamble: string[] = [];
+
+  for (let i = frontmatterEnd; i < lines.length; i++) {
+    const line = lines[i];
+    const headingMatch = line.match(/^## (.+)$/);
+
+    if (headingMatch) {
+      // Save previous section
+      if (currentSection) {
+        sections.push({ name: currentSection, content: currentContent.join('\n').trim() });
+      } else if (currentContent.length > 0) {
+        preamble = currentContent;
+      }
+
+      // Start new section
+      currentSection = headingMatch[1].trim();
+      currentContent = [];
+    } else {
+      currentContent.push(line);
+    }
+  }
+
+  // Save last section
+  if (currentSection) {
+    sections.push({ name: currentSection, content: currentContent.join('\n').trim() });
+  }
+
+  return {
+    frontmatter,
+    preamble: preamble.join('\n').trim(),
+    sections
+  };
+}
+
+/**
+ * Merge duplicate sections by combining their content
+ * @returns {{ parsed: ParsedMarkdown, merged: string[] }} - merged contains names of sections that were deduplicated
+ */
+export function mergeDuplicateSections(content: string): { parsed: ParsedMarkdown; merged: string[] } {
+  const raw = parseMarkdownSectionsRaw(content);
+  const sections = new Map<string, string>();
+  const order: string[] = [];
+  const merged: string[] = [];
+  const seenSections = new Set<string>();
+
+  for (const section of raw.sections) {
+    if (seenSections.has(section.name)) {
+      // Duplicate - merge content
+      const existing = sections.get(section.name) || '';
+      const combined = existing + (existing && section.content ? '\n\n' : '') + section.content;
+      sections.set(section.name, combined);
+      if (!merged.includes(section.name)) {
+        merged.push(section.name);
+      }
+    } else {
+      // First occurrence
+      seenSections.add(section.name);
+      sections.set(section.name, section.content);
+      order.push(section.name);
+    }
+  }
+
+  return {
+    parsed: {
+      frontmatter: raw.frontmatter,
+      preamble: raw.preamble,
+      sections,
+      order
+    },
+    merged
+  };
+}
+
+/**
+ * Merge duplicate sections in a file
+ * @returns {{ success: boolean, merged: string[], error?: string }}
+ */
+export function mergeDuplicateSectionsInFile(filePath: string): { success: boolean; merged: string[]; error?: string } {
+  try {
+    const content = fs.readFileSync(filePath, 'utf-8');
+    const { parsed, merged } = mergeDuplicateSections(content);
+
+    if (merged.length === 0) {
+      return { success: true, merged: [] };
+    }
+
+    const newContent = serializeSections(parsed);
+    fs.writeFileSync(filePath, newContent);
+    return { success: true, merged };
+  } catch (e) {
+    return { success: false, merged: [], error: (e as Error).message };
+  }
 }
 
 export interface OpResult {

@@ -24,7 +24,7 @@ import { extractPrdId, extractEpicId, normalizeId, parseTaskNum } from '../../li
 import { findDevMd, findToolset } from '../../managers/core-manager.js';
 import { getTask, getEpic, getMemoryFile, getPrdBranching } from '../../managers/artefacts-manager.js';
 import { AgentUtils, getProcessStats, formatDuration } from '../../lib/agent-utils.js';
-import { AgentRecord } from '../../lib/types/agent.js';
+import type { AgentRecord } from '../../lib/types/agent.js';
 import { getDiagnoseOps, printDiagnoseResult } from '../../managers/diagnose-manager.js';
 
 export function registerSpawnCommand(agent) {

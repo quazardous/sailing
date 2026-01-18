@@ -10,7 +10,7 @@ import { getAllAgentsFromDb, deleteAgentFromDb, getAgentsArray } from '../manage
 import { listAgentWorktrees, pruneWorktrees } from '../managers/worktree-manager.js';
 import { getTask } from '../managers/artefacts-manager.js';
 import { normalizeId } from '../lib/normalize.js';
-import { AgentRecord } from '../lib/types/agent.js';
+import type { AgentRecord } from '../lib/types/agent.js';
 import type { Command } from 'commander';
 
 /**
@@ -77,10 +77,43 @@ function getStaleAgents(days = 7) {
 }
 
 /**
- * GC agents action handler - exported for use as alias in agent:gc
- * Cleans both agent directories and worktree directories for orphaned agents
+ * Get stale db records (terminal status, no directories, or very old)
  */
-export function gcAgentsAction(options: { dryRun?: boolean; worktree?: boolean; unsafe?: boolean; json?: boolean }) {
+function getStaleDbRecords(days = 30) {
+  const agents = getAgentsArray();
+  const agentsDir = getAgentsDir();
+  const worktreesDir = getWorktreesDir();
+  const cutoff = Date.now() - (days * 24 * 60 * 60 * 1000);
+
+  const terminalStatus = ['collected', 'merged', 'reaped', 'completed', 'rejected', 'killed', 'error'];
+
+  return agents.filter((agent) => {
+    // Skip records with invalid taskNum
+    if (typeof agent.taskNum !== 'number' || isNaN(agent.taskNum)) return false;
+
+    // Must be in terminal status
+    if (!terminalStatus.includes(agent.status)) return false;
+
+    // Check if directories still exist
+    const agentDirExists = fs.existsSync(path.join(agentsDir, agent.taskId));
+    const worktreeDirExists = fs.existsSync(path.join(worktreesDir, agent.taskId));
+
+    // If no directories exist, it's stale
+    if (!agentDirExists && !worktreeDirExists) return true;
+
+    // Check age - if very old (> days), consider stale even with directories
+    const timestamp = agent.merged_at || agent.rejected_at || agent.completed_at || agent.killed_at || agent.reaped_at;
+    if (timestamp && new Date(timestamp).getTime() < cutoff) return true;
+
+    return false;
+  });
+}
+
+/**
+ * GC agents action handler - exported for use as alias in agent:gc
+ * Cleans both agent directories, worktree directories, and stale db records
+ */
+export async function gcAgentsAction(options: { dryRun?: boolean; worktree?: boolean; db?: boolean; unsafe?: boolean; json?: boolean; days?: number }) {
   const agentsDir = getAgentsDir();
   const worktreesDir = getWorktreesDir();
   const dbAgents = getAllAgentsFromDb();
@@ -88,6 +121,9 @@ export function gcAgentsAction(options: { dryRun?: boolean; worktree?: boolean; 
 
   // --no-worktree sets worktree to false, default is true
   const includeWorktrees = options.worktree !== false;
+  // --no-db sets db to false, default is true
+  const includeDbRecords = options.db !== false;
+  const staleDays = options.days ?? 30;
 
   interface OrphanInfo {
     taskId: string;
@@ -179,13 +215,21 @@ export function gcAgentsAction(options: { dryRun?: boolean; worktree?: boolean; 
   const safeOrphans = orphaned.filter(o => o.safe);
   const unsafeOrphans = orphaned.filter(o => !o.safe);
 
+  // Get stale DB records (if included)
+  const staleDbRecords = includeDbRecords ? getStaleDbRecords(staleDays) : [];
+
   if (options.json) {
     jsonOut({
       total_task_ids: taskIdsFromDirs.size,
       in_state: dbAgentIds.size,
       orphaned: orphaned.length,
       safe: safeOrphans.map(o => ({ taskId: o.taskId, agentDir: o.hasAgentDir, worktreeDir: o.hasWorktreeDir, reason: o.reason, lastDate: o.lastDate })),
-      unsafe: unsafeOrphans.map(o => ({ taskId: o.taskId, reason: o.reason, lastDate: o.lastDate }))
+      unsafe: unsafeOrphans.map(o => ({ taskId: o.taskId, reason: o.reason, lastDate: o.lastDate })),
+      stale_db_records: staleDbRecords.map(r => ({
+        taskId: r.taskId,
+        status: r.status,
+        date: r.merged_at || r.rejected_at || r.completed_at || r.killed_at || r.reaped_at
+      }))
     });
     return;
   }
@@ -193,8 +237,8 @@ export function gcAgentsAction(options: { dryRun?: boolean; worktree?: boolean; 
   console.log(`Task IDs found in directories: ${taskIdsFromDirs.size}`);
   console.log(`Agents in db: ${dbAgentIds.size}\n`);
 
-  if (orphaned.length === 0) {
-    console.log('No orphaned directories');
+  if (orphaned.length === 0 && staleDbRecords.length === 0) {
+    console.log('No orphaned directories or stale db records');
     return;
   }
 
@@ -217,8 +261,18 @@ export function gcAgentsAction(options: { dryRun?: boolean; worktree?: boolean; 
     });
   }
 
+  // Show stale DB records info
+  if (includeDbRecords && staleDbRecords.length > 0) {
+    console.log(`\n📋 Stale DB records (${staleDbRecords.length}):`);
+    staleDbRecords.forEach(r => {
+      const timestamp = r.merged_at || r.rejected_at || r.completed_at || r.killed_at || r.reaped_at;
+      const date = timestamp ? new Date(timestamp).toISOString().split('T')[0] : '';
+      console.log(`  ${r.taskId} [${r.status}] ${date}`);
+    });
+  }
+
   if (options.dryRun !== false) {
-    console.log('\n[Dry run] Use --no-dry-run to delete safe orphans');
+    console.log('\n[Dry run] Use --no-dry-run to delete safe orphans and db records');
     return;
   }
 
@@ -230,6 +284,7 @@ export function gcAgentsAction(options: { dryRun?: boolean; worktree?: boolean; 
   // Delete safe orphans
   let deletedAgents = 0;
   let deletedWorktrees = 0;
+  let deletedDbRecords = 0;
 
   for (const orphan of safeOrphans) {
     if (orphan.hasAgentDir) {
@@ -254,10 +309,28 @@ export function gcAgentsAction(options: { dryRun?: boolean; worktree?: boolean; 
     }
   }
 
-  if (includeWorktrees) {
-    console.log(`\nDeleted ${deletedAgents} agent directories, ${deletedWorktrees} worktree directories`);
+  // Delete stale DB records
+  if (includeDbRecords) {
+    for (const record of staleDbRecords) {
+      try {
+        await deleteAgentFromDb(record.taskNum);
+        console.log(`Deleted db record: ${record.taskId}`);
+        deletedDbRecords++;
+      } catch (e) {
+        console.error(`Failed to delete db record ${record.taskId}: ${(e as Error).message}`);
+      }
+    }
+  }
+
+  const summary: string[] = [];
+  if (deletedAgents > 0) summary.push(`${deletedAgents} agent dir(s)`);
+  if (deletedWorktrees > 0) summary.push(`${deletedWorktrees} worktree dir(s)`);
+  if (deletedDbRecords > 0) summary.push(`${deletedDbRecords} db record(s)`);
+
+  if (summary.length > 0) {
+    console.log(`\nDeleted ${summary.join(', ')}`);
   } else {
-    console.log(`\nDeleted ${deletedAgents} agent directories`);
+    console.log('\nNothing to delete');
   }
   if (unsafeOrphans.length > 0) {
     console.log(`Skipped ${unsafeOrphans.length} unsafe task IDs`);
@@ -484,9 +557,11 @@ export function registerGcCommands(program: Command) {
 
   // gc:agents
   gc.command('agents')
-    .description('Clean orphaned agent and worktree directories')
-    .option('--no-dry-run', 'Actually delete orphaned directories')
+    .description('Clean orphaned agent/worktree directories and stale db records')
+    .option('--no-dry-run', 'Actually delete orphaned directories and db records')
     .option('--no-worktree', 'Skip worktree directory cleanup')
+    .option('--no-db', 'Skip stale db record cleanup')
+    .option('--days <n>', 'Age threshold for stale db records (default: 30)', parseInt)
     .option('--unsafe', 'Delete even if task file exists (for terminal agents)')
     .option('--json', 'JSON output')
     .action(gcAgentsAction);

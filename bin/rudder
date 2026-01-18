@@ -28,6 +28,18 @@
 
 SCRIPT_DIR="$(dirname "$(realpath "$0")")"
 PROJECT_ROOT="$(realpath "$SCRIPT_DIR/..")"
+
+# PROTECTION: This bin/rudder must be called from its own project directory
+if [ "$(pwd)" != "$PROJECT_ROOT" ]; then
+  echo "Error: This rudder must be called from $PROJECT_ROOT"
+  echo "You are in: $(pwd)"
+  echo ""
+  echo "Either:"
+  echo "  cd $PROJECT_ROOT && bin/rudder ..."
+  echo "Or use the bin/rudder of your current project."
+  exit 1
+fi
+
 MODE_FILE="$PROJECT_ROOT/SAILING_DIST"
 TS_SRC="$PROJECT_ROOT/cli/rudder.ts"
 DIST_ENTRY="$PROJECT_ROOT/dist/cli/rudder.js"

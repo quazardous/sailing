@@ -1,4 +1,4 @@
-import { AgentRecord } from './agent.js';
+import type { AgentRecord } from './agent.js';
 
 export interface State {
   counters: {

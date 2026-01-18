@@ -10,7 +10,7 @@
  */
 import { resolvePlaceholders, resolvePath, getAgentConfig } from './core-manager.js';
 import { DbOps } from '../lib/db.js';
-import { AgentRecord } from '../lib/types/agent.js';
+import type { AgentRecord } from '../lib/types/agent.js';
 import {
   parseTaskNum,
   formatTaskId,

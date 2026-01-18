@@ -10,7 +10,7 @@ import { nextId } from '../managers/state-manager.js';
 import { parseUpdateOptions } from '../lib/update.js';
 import { addDynamicHelp, withModifies } from '../lib/help.js';
 import { formatId } from '../managers/core-manager.js';
-import { parseSearchReplace, editArtifact, parseMultiSectionContent, processMultiSectionOps } from '../lib/artifact.js';
+import { parseSearchReplace, editArtifact, parseMultiSectionContent, processMultiSectionOps, mergeDuplicateSectionsInFile } from '../lib/artifact.js';
 import { getPrd, getEpicsForPrd, getTasksForPrd, getAllPrds } from '../managers/artefacts-manager.js';
 import { createPrdMemoryFile } from '../managers/memory-manager.js';
 import { Prd } from '../lib/types/entities.js';
@@ -62,6 +62,7 @@ interface EditOptions {
   content?: string;
   append?: boolean;
   prepend?: boolean;
+  mergeDedupSection?: boolean;
   json?: boolean;
 }
 
@@ -507,6 +508,7 @@ export function registerPrdCommands(program: Command): void {
     .option('-c, --content <text>', 'New content (or use stdin)')
     .option('-a, --append', 'Append to section instead of replace')
     .option('-p, --prepend', 'Prepend to section instead of replace')
+    .option('--merge-dedup-section', 'Merge duplicate sections (combine content)')
     .option('--json', 'JSON output')
     .addHelpText('after', `
 Usage Examples:

@@ -13,7 +13,7 @@ import {
   type AgentCompletionInfo
 } from '../../lib/agent-utils.js';
 import { WorktreeOps } from '../../lib/worktree.js';
-import { AgentRecord } from '../../lib/types/agent.js';
+import type { AgentRecord } from '../../lib/types/agent.js';
 import { getWorktreePath } from '../../managers/worktree-manager.js';
 import { diagnoseWorktreeState } from '../../lib/state-machine/index.js';
 import { getTaskEpic } from '../../managers/artefacts-manager.js';

@@ -283,9 +283,11 @@ export function registerManageCommands(agent) {
 
   // agent:gc - alias for gc:agents
   agent.command('gc')
-    .description('Alias for gc:agents - Clean orphaned agent and worktree directories')
-    .option('--no-dry-run', 'Actually delete orphaned directories')
+    .description('Alias for gc:agents - Clean orphaned directories and stale db records')
+    .option('--no-dry-run', 'Actually delete orphaned directories and db records')
     .option('--no-worktree', 'Skip worktree directory cleanup')
+    .option('--no-db', 'Skip stale db record cleanup')
+    .option('--days <n>', 'Age threshold for stale db records (default: 30)', parseInt)
     .option('--unsafe', 'Delete even if task file exists (for terminal agents)')
     .option('--json', 'JSON output')
     .action(gcAgentsAction);
