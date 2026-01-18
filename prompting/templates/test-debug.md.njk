@@ -1,0 +1,99 @@
+{#
+variables:
+  testPath: string|null  # Failing test path (optional)
+  errorMessage: string|null # Error message (optional)
+  mode: worktree|inline  # Execution mode
+  sandbox: boolean       # Running in sandbox
+  role: coordinator|agent # Actor role
+  memory: string|null    # Memory (optional)
+#}
+# Debug Tests{% if testPath %}: {{ testPath }}{% endif %}
+
+---
+
+## Your Role
+
+You are the **{{ role }}** debugging failing tests.
+
+- ✅ Identify root cause
+- ✅ Fix the issue
+- ✅ Verify tests pass
+- ❌ DO NOT skip failing tests
+
+---
+
+{% if errorMessage %}
+## Error
+
+```
+{{ errorMessage }}
+```
+
+---
+{% endif %}
+
+## Debug Steps
+
+### 1. Run Failing Test
+{% if sandbox %}
+```json
+{ "command": "Run test command via Bash" }
+```
+{% else %}
+```bash
+# Run specific test
+npm test -- {{ testPath or '--grep "failing"' }}
+
+# With verbose output
+npm test -- --verbose {{ testPath or '' }}
+```
+{% endif %}
+
+### 2. Analyze Failure
+- What's the expected vs actual?
+- Is it a test bug or code bug?
+- Recent changes that could cause this?
+
+### 3. Fix
+
+If code bug → fix the code
+If test bug → fix the test
+
+### 4. Verify
+```bash
+npm test
+```
+
+---
+
+## Logging
+
+{% if sandbox %}
+```json
+{ "command": "task:log TNNN \"Root cause: X because Y\" --tip" }
+```
+{% else %}
+```bash
+rudder task:log TNNN "Root cause: X because Y" --tip
+```
+{% endif %}
+
+---
+
+{% if role == 'agent' %}
+## Git
+
+{% if mode == 'worktree' %}
+**Commit fix**: `fix(TNNN): <description of fix>`
+{% else %}
+**No commit** - coordinator handles git.
+{% endif %}
+{% endif %}
+
+{% if memory %}
+---
+
+# Memory
+
+{{ memory }}
+{% endif %}

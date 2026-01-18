@@ -1,0 +1,120 @@
+{#
+variables:
+  prdId: string         # PRD ID (PRD-001)
+  prdTitle: string|null # PRD title
+  mode: worktree|inline # Execution mode
+  sandbox: boolean      # Running in sandbox
+  role: coordinator     # Actor role
+  prdBody: string       # PRD content
+  versions: string|null # Current versions (optional)
+  memory: string|null   # Project memory (optional)
+#}
+# PRD Review: {{ prdId }}
+
+{% if prdTitle %}**{{ prdTitle }}**{% endif %}
+
+---
+
+## Your Role
+
+You are the **coordinator** reviewing this PRD.
+
+- ✅ Verify completeness and clarity
+- ✅ Check milestones are realistic
+- ✅ Ensure success criteria are measurable
+- ❌ DO NOT implement anything
+
+---
+
+## Review Checklist
+
+{% if sandbox %}
+```json
+{ "command": "prd:show {{ prdId }} --raw" }
+{ "command": "epic:list --prd {{ prdId }}" }
+{ "command": "versions" }
+```
+{% else %}
+```bash
+rudder prd:show {{ prdId }} --raw
+rudder epic:list --prd {{ prdId }}
+rudder versions
+```
+{% endif %}
+
+---
+
+## What to Check
+
+### 1. Problem Statement
+- Is the problem clearly defined?
+- Who is affected?
+- What's the impact?
+
+### 2. Success Criteria
+- Are criteria measurable?
+- How will we validate?
+- What's the acceptance process?
+
+### 3. Milestones
+- Are phases realistic?
+- Dependencies between milestones?
+- Clear deliverables per milestone?
+
+### 4. Scope
+- Non-goals documented?
+- Boundaries clear?
+- Any scope creep risks?
+
+---
+
+## Recording Findings
+
+{% if sandbox %}
+```json
+{ "command": "prd:edit {{ prdId }} -s \"## Review Notes\" -c \"Findings...\" --append" }
+```
+{% else %}
+```bash
+rudder prd:edit {{ prdId }} -s "## Review Notes" -c "Findings..." --append
+```
+{% endif %}
+
+---
+
+## Status Update
+
+After review:
+{% if sandbox %}
+```json
+{ "command": "prd:update {{ prdId }} --status Approved" }
+```
+{% else %}
+```bash
+rudder prd:update {{ prdId }} --status Approved
+```
+{% endif %}
+
+Status flow: `Draft` → `In Review` → `Approved`
+
+---
+
+# PRD Content
+
+{{ prdBody }}
+
+{% if versions %}
+---
+
+# Current Versions
+
+{{ versions }}
+{% endif %}
+
+{% if memory %}
+---
+
+# Memory
+
+{{ memory }}
+{% endif %}

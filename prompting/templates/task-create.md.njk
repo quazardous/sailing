@@ -1,0 +1,126 @@
+{#
+variables:
+  taskTitle: string     # Task title
+  epicId: string        # Parent epic ID
+  epicTitle: string|null # Epic title (optional)
+  mode: worktree|inline # Execution mode
+  sandbox: boolean      # Running in sandbox
+  role: coordinator     # Actor role
+  memory: string|null   # Epic memory (optional)
+#}
+# Create Task: {{ taskTitle }}
+
+Epic: {{ epicId }}{% if epicTitle %} - {{ epicTitle }}{% endif %}
+
+---
+
+## Your Role
+
+You are the **coordinator** creating a new task.
+
+- ✅ Define clear deliverables
+- ✅ Set blockers if any
+- ✅ Estimate effort
+- ❌ DO NOT implement
+
+---
+
+## Creating the Task
+
+{% if sandbox %}
+```json
+{ "command": "task:create {{ epicId }} \"{{ taskTitle }}\"" }
+```
+{% else %}
+```bash
+rudder task:create {{ epicId }} "{{ taskTitle }}"
+```
+{% endif %}
+
+---
+
+## Editing Task Content
+
+{% if sandbox %}
+```json
+{ "command": "task:edit TNNN -s \"## Deliverables\" -c \"- [ ] Item 1\"" }
+```
+{% else %}
+```bash
+rudder task:edit TNNN -s "## Deliverables" -c "- [ ] Item 1"
+
+# Or with patch:
+cat <<'PATCH' | rudder task:patch TNNN
+<<<<<<< SEARCH
+## Deliverables
+=======
+## Deliverables
+
+- [ ] First deliverable
+- [ ] Second deliverable
+
+## Notes
+
+Implementation details here.
+>>>>>>> REPLACE
+PATCH
+```
+{% endif %}
+
+---
+
+## Task Structure
+
+A good task includes:
+
+1. **Deliverables** - Checklist of concrete outputs
+2. **Notes** - Context, hints, constraints
+3. **Effort** - Estimated hours (set in frontmatter)
+
+---
+
+## Setting Dependencies
+
+{% if sandbox %}
+```json
+{ "command": "deps:add TNNN --blocked-by TXXX" }
+{ "command": "task:update TNNN --add-blocker TXXX" }
+```
+{% else %}
+```bash
+rudder deps:add TNNN --blocked-by TXXX
+# or
+rudder task:update TNNN --add-blocker TXXX
+```
+{% endif %}
+
+---
+
+## Effort Guidelines
+
+| Effort | Description |
+|--------|-------------|
+| **30min** | Trivial change |
+| **1h** | Standard task |
+| **2h** | Complex task |
+| **4h** | Large task |
+| **8h+** | Should split |
+
+Set effort:
+{% if sandbox %}
+```json
+{ "command": "task:update TNNN --set effort=2" }
+```
+{% else %}
+```bash
+rudder task:update TNNN --set effort=2
+```
+{% endif %}
+
+{% if memory %}
+---
+
+# Epic Memory
+
+{{ memory }}
+{% endif %}

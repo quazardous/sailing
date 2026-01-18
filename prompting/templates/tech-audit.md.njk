@@ -1,0 +1,115 @@
+{#
+variables:
+  targetPath: string|null # Path to audit (optional)
+  epicId: string|null    # Epic context (optional)
+  prdId: string|null     # PRD context (optional)
+  mode: worktree|inline  # Execution mode
+  sandbox: boolean       # Running in sandbox
+  role: coordinator      # Actor role
+  memory: string|null    # Memory (optional)
+  stack: string|null     # STACK.md content (optional)
+#}
+# Tech Audit{% if targetPath %}: {{ targetPath }}{% endif %}
+
+{% if prdId %}PRD: {{ prdId }}{% endif %}{% if epicId %} | Epic: {{ epicId }}{% endif %}
+
+---
+
+## Your Role
+
+You are the **coordinator** auditing technical opportunities.
+
+- ✅ Identify improvements
+- ✅ Find tech debt
+- ✅ Spot security issues
+- ❌ DO NOT implement (create tasks instead)
+
+---
+
+## Audit Areas
+
+### 1. Code Quality
+- Dead code?
+- Duplicated logic?
+- Complex functions?
+
+### 2. Performance
+- N+1 queries?
+- Unnecessary re-renders?
+- Large bundle size?
+
+### 3. Security
+- Input validation?
+- SQL injection risks?
+- XSS vulnerabilities?
+
+### 4. Dependencies
+- Outdated packages?
+- Known vulnerabilities?
+- Unused dependencies?
+
+---
+
+## Commands
+
+{% if sandbox %}
+```json
+{ "command": "Run audit tools via Bash" }
+```
+{% else %}
+```bash
+# Dependency audit
+npm audit
+
+# Outdated packages
+npm outdated
+
+# Lint
+npm run lint
+
+# Type check
+npm run typecheck
+```
+{% endif %}
+
+---
+
+## Recording Findings
+
+Create tasks for each finding:
+{% if sandbox %}
+```json
+{ "command": "task:create {{ epicId or 'ENNN' }} \"Fix: <issue description>\"" }
+```
+{% else %}
+```bash
+rudder task:create {{ epicId or 'ENNN' }} "Fix: <issue description>"
+```
+{% endif %}
+
+Tag technical debt tasks:
+{% if sandbox %}
+```json
+{ "command": "task:update TNNN --set tags=tech-debt" }
+```
+{% else %}
+```bash
+rudder task:update TNNN --set tags=tech-debt
+```
+{% endif %}
+
+{% if stack %}
+---
+
+# Tech Stack
+
+{{ stack }}
+{% endif %}
+
+{% if memory %}
+---
+
+# Memory
+
+{{ memory }}
+{% endif %}

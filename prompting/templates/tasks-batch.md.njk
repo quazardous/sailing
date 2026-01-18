@@ -1,0 +1,165 @@
+{#
+variables:
+  taskIds: string       # Comma-separated task IDs (T001,T002,T003)
+  epicId: string|null   # Parent epic ID (optional)
+  mode: worktree|inline # Execution mode
+  sandbox: boolean      # Running in sandbox
+  role: skill           # Actor role (always skill)
+  memory: string|null   # Epic memory (optional)
+#}
+# Batch Tasks: {{ taskIds }}
+
+{% if epicId %}Epic: {{ epicId }}{% endif %}
+
+---
+
+## Your Role
+
+You are the **skill** spawning multiple agents in parallel.
+
+- ✅ Verify all tasks are ready
+- ✅ Spawn agents concurrently
+- ✅ Monitor and harvest results
+- ❌ DO NOT implement tasks yourself
+
+---
+
+## Pre-flight (All Tasks)
+
+{% if sandbox %}
+```json
+{ "command": "memory:sync" }
+{ "command": "deps:ready{% if epicId %} --epic {{ epicId }}{% endif %}" }
+```
+{% else %}
+```bash
+rudder memory:sync
+rudder deps:ready{% if epicId %} --epic {{ epicId }}{% endif %}
+```
+{% endif %}
+
+---
+
+## Spawning Agents
+
+{% if mode == 'worktree' %}
+### Subprocess Mode (Recommended)
+
+Spawn each task as a background agent:
+{% if sandbox %}
+```json
+{ "command": "agent:spawn T001" }
+{ "command": "agent:spawn T002" }
+{ "command": "agent:spawn T003" }
+```
+{% else %}
+```bash
+# Spawn in parallel (each in background)
+rudder agent:spawn T001 &
+rudder agent:spawn T002 &
+rudder agent:spawn T003 &
+
+# Or use Task tool with run_in_background: true
+```
+{% endif %}
+
+### Monitor Progress
+
+{% if sandbox %}
+```json
+{ "command": "agent:status" }
+{ "command": "agent:wait-all" }
+```
+{% else %}
+```bash
+rudder agent:status
+rudder agent:wait-all
+```
+{% endif %}
+
+{% else %}{# inline mode #}
+### Inline Mode
+
+Use the **Task tool** with parallel invocations:
+
+```
+Task tool (run_in_background: true):
+  prompt: "Execute task T001 following sailing contract"
+
+Task tool (run_in_background: true):
+  prompt: "Execute task T002 following sailing contract"
+```
+
+{% endif %}
+
+---
+
+## Check Conflicts
+
+Before merging, check for file conflicts:
+{% if sandbox %}
+```json
+{ "command": "agent:conflicts" }
+```
+{% else %}
+```bash
+rudder agent:conflicts
+```
+{% endif %}
+
+---
+
+## Harvest Results
+
+{% if mode == 'worktree' %}
+{% if sandbox %}
+```json
+{ "command": "agent:reap-all" }
+```
+{% else %}
+```bash
+# If no conflicts
+rudder agent:reap-all
+
+# If conflicts exist, merge one by one
+rudder agent:reap T001
+rudder agent:reap T002
+# ... or use /dev:merge for conflicts
+```
+{% endif %}
+{% else %}
+Inline agents complete automatically. Verify results and update status:
+{% if sandbox %}
+```json
+{ "command": "task:update T001 --status Done" }
+```
+{% else %}
+```bash
+rudder task:update T001 --status Done
+```
+{% endif %}
+{% endif %}
+
+---
+
+## Post-batch
+
+{% if sandbox %}
+```json
+{ "command": "memory:sync" }
+{ "command": "task:list{% if epicId %} --epic {{ epicId }}{% endif %}" }
+```
+{% else %}
+```bash
+rudder memory:sync
+rudder task:list{% if epicId %} --epic {{ epicId }}{% endif %}
+```
+{% endif %}
+
+{% if memory %}
+---
+
+# Memory
+
+{{ memory }}
+{% endif %}

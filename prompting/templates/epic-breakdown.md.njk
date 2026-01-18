@@ -1,0 +1,243 @@
+{#
+variables:
+  epicId: string        # Epic ID (E001)
+  epicTitle: string|null # Epic title
+  prdId: string         # Parent PRD ID (PRD-001)
+  prdTitle: string|null # PRD title
+  mode: worktree|inline # Execution mode
+  sandbox: boolean      # Running in sandbox (MCP only)
+  role: coordinator|agent # Actor role
+  epicBody: string      # Epic content (deliverables)
+  memory: string|null   # PRD/Epic memory (optional)
+#}
+{% if role == 'coordinator' %}
+# Epic Breakdown: {{ epicId }}
+
+PRD: {{ prdId }}{% if prdTitle %} - {{ prdTitle }}{% endif %}
+
+---
+
+## Your Role
+
+You are the **coordinator**. You orchestrate the breakdown, you do NOT implement.
+
+- ✅ Analyze the epic and create tasks
+- ✅ Set dependencies between tasks
+- ✅ Spawn agents for complex analysis if needed
+- ❌ DO NOT write code yourself
+- ❌ DO NOT implement deliverables
+
+---
+
+## Pre-flight Checklist
+
+{% if sandbox %}
+```json
+{ "command": "memory:sync" }
+{ "command": "epic:show {{ epicId }}" }
+{ "command": "deps:show {{ epicId }}" }
+```
+{% else %}
+```bash
+rudder memory:sync
+rudder epic:show {{ epicId }}
+rudder deps:show {{ epicId }}
+```
+{% endif %}
+
+---
+
+## Breakdown Guidelines
+
+**Target: 1-2h per task** (AI can complete in one session)
+
+| Effort | Description | Examples |
+|--------|-------------|----------|
+| **30min** | Trivial | Fix typo, rename variable |
+| **1h** | Standard | Add function, fix bug |
+| **2h** | Complex | Feature with tests |
+| **4h** | Large | Multi-file feature |
+| **8h+** | Split it | Too big |
+
+Signs a task is too big:
+- Multiple unrelated deliverables
+- Touches 5+ files in different domains
+- Has "and" connecting different concerns
+
+---
+
+## Creating Tasks
+
+{% if sandbox %}
+```json
+{ "command": "task:create {{ epicId }} \"Task title\"" }
+{ "command": "deps:add TNNN --blocked-by TXXX" }
+{ "command": "deps:validate --fix" }
+```
+{% else %}
+```bash
+rudder task:create {{ epicId }} "Task title"
+rudder deps:add TNNN --blocked-by TXXX
+rudder deps:validate --fix
+```
+{% endif %}
+
+---
+
+## Editing Task Content
+
+{% if sandbox %}
+```json
+{ "command": "task:edit TNNN -s \"## Deliverables\" -c \"Content here\"" }
+```
+{% else %}
+```bash
+rudder task:edit TNNN -s "## Deliverables" -c "Content here"
+
+# Or with patch syntax:
+cat <<'PATCH' | rudder task:patch TNNN
+<<<<<<< SEARCH
+## Deliverables
+=======
+## Deliverables
+
+- [ ] First deliverable
+- [ ] Second deliverable
+>>>>>>> REPLACE
+PATCH
+```
+{% endif %}
+
+---
+
+## Completion
+
+After creating all tasks:
+{% if sandbox %}
+```json
+{ "command": "deps:validate --fix" }
+{ "command": "task:list --epic {{ epicId }}" }
+```
+{% else %}
+```bash
+rudder deps:validate --fix
+rudder task:list --epic {{ epicId }}
+```
+{% endif %}
+
+{% else %}{# role == 'agent' #}
+# Agent Mission: Epic Breakdown {{ epicId }}
+
+PRD: {{ prdId }}{% if prdTitle %} - {{ prdTitle }}{% endif %}
+
+---
+
+## Contract
+
+You are an **agent** assigned to break down epic {{ epicId }} into tasks.
+
+**Rudder CLI = Single Source of Truth.** All operations go through rudder.
+
+NEVER:
+- Edit files in `.sailing/` directly
+- Make architectural decisions not in spec
+- Create tasks outside the epic scope
+- Skip dependency validation
+
+**If blocked** → log error and STOP:
+{% if sandbox %}
+```json
+{ "command": "task:log {{ epicId }} \"BLOCKED: <reason>\" --error" }
+```
+{% else %}
+```bash
+rudder task:log {{ epicId }} "BLOCKED: <reason>" --error
+```
+{% endif %}
+
+---
+
+## Rudder CLI
+
+{% if sandbox %}
+MCP tool for all rudder operations:
+```
+Tool: mcp__rudder__cli
+Arguments: { "command": "<command>" }
+```
+**Do NOT use Bash for rudder.**
+{% else %}
+Bash for rudder commands:
+```bash
+rudder <command>
+```
+{% endif %}
+
+---
+
+## Task Creation
+
+{% if sandbox %}
+```json
+{ "command": "task:create {{ epicId }} \"Task title\"" }
+{ "command": "task:edit TNNN -s \"## Deliverables\" -c \"- [ ] Item\"" }
+{ "command": "deps:add TNNN --blocked-by TXXX" }
+```
+{% else %}
+```bash
+rudder task:create {{ epicId }} "Task title"
+rudder task:edit TNNN -s "## Deliverables" -c "- [ ] Item"
+rudder deps:add TNNN --blocked-by TXXX
+```
+{% endif %}
+
+---
+
+## Effort Guidelines
+
+| Effort | Description |
+|--------|-------------|
+| **30min** | Trivial change |
+| **1h** | Standard task |
+| **2h** | Complex task |
+| **4h** | Large task (consider splitting) |
+
+---
+
+## Git
+
+{% if mode == 'worktree' %}
+**Commit before exiting**: `chore({{ epicId }}): breakdown into tasks`
+{% else %}
+**No commit** - coordinator handles git.
+{% endif %}
+
+---
+
+## Complete
+
+Exit normally when done. Validate dependencies before finishing:
+{% if sandbox %}
+```json
+{ "command": "deps:validate --fix" }
+```
+{% else %}
+```bash
+rudder deps:validate --fix
+```
+{% endif %}
+
+{% endif %}{# /role #}
+---
+
+# Epic Content
+
+{{ epicBody }}
+
+{% if memory %}
+---
+
+# Memory
+
+{{ memory }}
+{% endif %}

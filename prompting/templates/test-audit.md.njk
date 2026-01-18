@@ -1,0 +1,112 @@
+{#
+variables:
+  targetPath: string|null # Path to audit (optional)
+  epicId: string|null    # Epic context (optional)
+  mode: worktree|inline  # Execution mode
+  sandbox: boolean       # Running in sandbox
+  role: coordinator|agent # Actor role
+  memory: string|null    # Memory (optional)
+#}
+# Test Audit{% if targetPath %}: {{ targetPath }}{% endif %}
+
+{% if epicId %}Epic: {{ epicId }}{% endif %}
+
+---
+
+## Your Role
+
+You are the **{{ role }}** auditing test quality.
+
+- ✅ Review test coverage
+- ✅ Identify missing tests
+- ✅ Check test quality
+- ❌ DO NOT write tests (unless agent role)
+
+---
+
+## Audit Scope
+
+{% if targetPath %}
+Focus on: `{{ targetPath }}`
+{% else %}
+Full project test audit.
+{% endif %}
+
+---
+
+## What to Check
+
+### 1. Coverage
+- Are critical paths tested?
+- Edge cases covered?
+- Error scenarios?
+
+### 2. Quality
+- Tests are readable?
+- Assertions are meaningful?
+- No flaky tests?
+
+### 3. Structure
+- Tests organized logically?
+- Setup/teardown proper?
+- Mocks appropriate?
+
+---
+
+## Commands
+
+{% if sandbox %}
+```json
+{ "command": "status" }
+```
+{% else %}
+```bash
+# Run tests
+npm test
+# or
+make test
+
+# Coverage report
+npm run test:coverage
+```
+{% endif %}
+
+---
+
+## Recording Findings
+
+Create tasks for missing tests:
+{% if sandbox %}
+```json
+{ "command": "task:create {{ epicId or 'ENNN' }} \"Add tests for X\"" }
+```
+{% else %}
+```bash
+rudder task:create {{ epicId or 'ENNN' }} "Add tests for X"
+```
+{% endif %}
+
+{% if role == 'agent' %}
+---
+
+## Agent Contract
+
+You can write tests if specifically tasked. Log findings:
+{% if sandbox %}
+```json
+{ "command": "task:log TNNN \"Found untested edge case in X\" --tip" }
+```
+{% else %}
+```bash
+rudder task:log TNNN "Found untested edge case in X" --tip
+```
+{% endif %}
+{% endif %}
+
+{% if memory %}
+---
+
+# Memory
+
+{{ memory }}
+{% endif %}
