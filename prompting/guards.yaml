@@ -22,8 +22,11 @@
 # ─────────────────────────────────────────────────────────────────────────────
 assign:claim:
   vars:
+    # The task ID being claimed (e.g., "T001")
     taskId: { type: string, required: true }
+    # Whether there are unconsolidated memory logs pending
     pendingMemory: { type: boolean, default: false }
+    # List of epic IDs that have unconsolidated logs
     pendingEpics: { type: array, default: [] }
 
   checks:
@@ -45,7 +48,9 @@ assign:claim:
 # ─────────────────────────────────────────────────────────────────────────────
 assign:release:
   vars:
+    # The task ID being released (e.g., "T001")
     taskId: { type: string, required: true }
+    # Whether the agent left TIP (insights) logs for the next agent
     hasTipLogs: { type: boolean }
 
   posts:
@@ -61,8 +66,11 @@ assign:release:
 # ─────────────────────────────────────────────────────────────────────────────
 deps:show:
   vars:
+    # The task ID to show dependencies for (e.g., "T001")
     taskId: { type: string, required: true }
+    # List of epic IDs blocking this task's epic
     epicBlockers: { type: array, default: [] }
+    # List of task IDs directly blocking this task
     taskBlockers: { type: array, default: [] }
 
   posts:
@@ -83,7 +91,9 @@ deps:show:
 # ─────────────────────────────────────────────────────────────────────────────
 memory:sync:
   vars:
+    # List of epic IDs that still have unconsolidated logs
     pendingEpics: { type: array, default: [] }
+    # List of section names that were skipped (target not found in memory)
     skippedSections: { type: array, default: [] }
 
   posts:
@@ -107,11 +117,17 @@ memory:sync:
 # ─────────────────────────────────────────────────────────────────────────────
 agent:spawn:
   vars:
+    # The task ID to spawn an agent for (e.g., "T001")
     taskId: { type: string, required: true }
+    # Status of existing agent for this task (if any): running, completed, failed, etc.
     existingAgentStatus: { type: string }
+    # Whether the worktree has uncommitted changes
     isDirty: { type: boolean }
+    # Number of commits ahead of the parent branch (unmerged work)
     commitsAhead: { type: number, default: 0 }
+    # Whether the agent's work has already been merged
     isMerged: { type: boolean }
+    # Whether we're resuming an existing agent (--resume flag)
     resumeMode: { type: boolean, default: false }
 
   checks:
@@ -166,8 +182,11 @@ agent:spawn:
 # ─────────────────────────────────────────────────────────────────────────────
 agent:reap:
   vars:
+    # The task ID whose agent to reap (e.g., "T001")
     taskId: { type: string, required: true }
+    # Whether the agent process is still running
     isRunning: { type: boolean }
+    # The agent's process ID (if running)
     agentPid: { type: number }
 
   checks:
@@ -188,10 +207,15 @@ agent:reap:
 # ─────────────────────────────────────────────────────────────────────────────
 worktree:merge:
   vars:
+    # The task ID whose worktree to merge (e.g., "T001")
     taskId: { type: string, required: true }
-    branching: { type: string }  # flat|epic|prd
+    # The branching strategy: "flat", "epic", or "prd"
+    branching: { type: string }
+    # The epic ID for the task (used in merge hints)
     epicId: { type: string }
+    # The PRD ID for the task (used in merge hints)
     prdId: { type: string }
+    # Whether merge conflicts were detected
     mergeConflict: { type: boolean, default: false }
 
   posts:
@@ -220,8 +244,11 @@ worktree:merge:
 # ─────────────────────────────────────────────────────────────────────────────
 worktree:preflight:
   vars:
+    # Number of commits main branch is behind origin
     mainBehind: { type: number, default: 0 }
+    # Number of potential merge conflicts between running agents
     conflictCount: { type: number, default: 0 }
+    # List of task IDs with pending merges
     pendingMerges: { type: array, default: [] }
 
   posts:
@@ -251,6 +278,7 @@ worktree:preflight:
 # ─────────────────────────────────────────────────────────────────────────────
 gc:cleanup:
   vars:
+    # List of orphan directories that contain unmerged work (would lose data if deleted)
     unsafeOrphans: { type: array, default: [] }
 
   posts:
@@ -269,9 +297,13 @@ gc:cleanup:
 # ─────────────────────────────────────────────────────────────────────────────
 agent:monitor:
   vars:
+    # Agent directories on disk that are not tracked in the database
     orphanAgentDirs: { type: array, default: [] }
+    # Worktree directories on disk that are not tracked in the database
     orphanWorktreeDirs: { type: array, default: [] }
+    # Agents in database but with no corresponding directory on disk
     ghostAgents: { type: array, default: [] }
+    # Terminal agents (completed/failed/rejected) that still have worktrees to clean up
     terminalWithWorktree: { type: array, default: [] }
 
   posts:

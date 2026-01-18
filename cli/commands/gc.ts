@@ -10,6 +10,7 @@ import { getAllAgentsFromDb, deleteAgentFromDb, getAgentsArray } from '../manage
 import { listAgentWorktrees, pruneWorktrees } from '../managers/worktree-manager.js';
 import { getTask } from '../managers/artefacts-manager.js';
 import { normalizeId } from '../lib/normalize.js';
+import { checkPosts, formatPostOutput } from '../lib/guards.js';
 import type { AgentRecord } from '../lib/types/agent.js';
 import type { Command } from 'commander';
 
@@ -252,13 +253,16 @@ export async function gcAgentsAction(options: { dryRun?: boolean; worktree?: boo
     });
   }
 
-  if (unsafeOrphans.length > 0) {
-    console.log(`\n⚠ Unsafe (${unsafeOrphans.length}):`);
-    unsafeOrphans.forEach(o => {
-      const dirs = [o.hasAgentDir ? 'agent' : '', o.hasWorktreeDir ? 'worktree' : ''].filter(Boolean).join('+');
-      const date = o.lastDate ? ` ${o.lastDate}` : '';
-      console.log(`  ${o.taskId} [${dirs}] (${o.reason})${date}`);
-    });
+  // Post-prompts for unsafe orphans (via guards)
+  const unsafeOrphanStrings = unsafeOrphans.map(o => {
+    const dirs = [o.hasAgentDir ? 'agent' : '', o.hasWorktreeDir ? 'worktree' : ''].filter(Boolean).join('+');
+    const date = o.lastDate ? ` ${o.lastDate}` : '';
+    return `${o.taskId} [${dirs}] (${o.reason})${date}`;
+  });
+  const posts = await checkPosts('gc:cleanup', { unsafeOrphans: unsafeOrphanStrings });
+  const postOutput = formatPostOutput(posts);
+  if (postOutput) {
+    console.log('\n' + postOutput);
   }
 
   // Show stale DB records info

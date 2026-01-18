@@ -21,6 +21,7 @@ import {
   getDiagnoseOps, matchesNoiseFilter, parseJsonLog
 } from '../../managers/diagnose-manager.js';
 import { summarizeEvent } from './diagnose.js';
+import { checkPosts, formatPostOutput } from '../../lib/guards.js';
 
 // ============================================================================
 // Log Tailing Helpers
@@ -1014,7 +1015,7 @@ export function registerMonitorCommands(agent) {
   agent.command('debug')
     .description('Show raw debug info (directories, git worktrees, state)')
     .option('--json', 'JSON output')
-    .action((options: { json?: boolean }) => {
+    .action(async (options: { json?: boolean }) => {
       const projectRoot = findProjectRoot();
       const agentsDir = getAgentsDir();
       const worktreesDir = getWorktreesDir();
@@ -1143,26 +1144,26 @@ export function registerMonitorCommands(agent) {
       }
 
       console.log('\n=== ANALYSIS ===');
-      if (orphanAgentDirs.length > 0) {
-        console.log(`⚠ Orphan agent dirs (not in db): ${orphanAgentDirs.join(', ')}`);
-      }
-      if (orphanWorktreeDirs.length > 0) {
-        console.log(`⚠ Orphan worktree dirs (not in db): ${orphanWorktreeDirs.join(', ')}`);
-      }
-      if (ghostAgents.length > 0) {
-        console.log(`⚠ Ghost agents (in db, no dir): ${ghostAgents.map(a => a.id).join(', ')}`);
-      }
+
+      // Git-specific warnings (not in guards.yaml)
       if (gitNotInDirs.length > 0) {
         console.log(`⚠ Git worktrees not in dirs: ${gitNotInDirs.join(', ')}`);
       }
       if (dirsNotInGit.length > 0) {
         console.log(`⚠ Dirs not in git worktrees: ${dirsNotInGit.join(', ')}`);
       }
-      if (terminalWithWorktree.length > 0) {
-        console.log(`\n⚠ Terminal agents with worktree (should clean):`);
-        for (const a of terminalWithWorktree) {
-          console.log(`  ${a.id} [${a.status}]`);
-        }
+
+      // Post-prompts for analysis warnings (via guards)
+      const terminalWithWorktreeStrings = terminalWithWorktree.map(a => `${a.id} [${a.status}]`);
+      const posts = await checkPosts('agent:monitor', {
+        orphanAgentDirs,
+        orphanWorktreeDirs,
+        ghostAgents: ghostAgents.map(a => a.id),
+        terminalWithWorktree: terminalWithWorktreeStrings
+      });
+      const postOutput = formatPostOutput(posts);
+      if (postOutput) {
+        console.log(postOutput);
       }
 
       if (orphanAgentDirs.length === 0 && orphanWorktreeDirs.length === 0 &&

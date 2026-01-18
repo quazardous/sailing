@@ -9,6 +9,7 @@ import { getEpic, getAllEpics } from '../managers/artefacts-manager.js';
 import { STATUS, normalizeStatus, isStatusDone, isStatusNotStarted, isStatusInProgress, isStatusCancelled, statusSymbol } from '../lib/lexicon.js';
 import { buildDependencyGraph, detectCycles, findRoots, blockersResolved, longestPath, countTotalUnblocked, getAncestors, getDescendants, type TaskNode } from '../managers/graph-manager.js';
 import { addDynamicHelp, withModifies } from '../lib/help.js';
+import { checkPosts, formatPostOutput } from '../lib/guards.js';
 import type { Command } from 'commander';
 
 interface EpicDependency {
@@ -1056,7 +1057,7 @@ export function registerDepsCommands(program: Command): void {
     .description('Show dependencies (TNNN for task, ENNN for epic with blockers)')
     .option('--role <role>', 'Role context: agent blocked, skill/coordinator allowed')
     .option('--json', 'JSON output')
-    .action((id: string, options: ShowOptions) => {
+    .action(async (id: string, options: ShowOptions) => {
       // Role enforcement: agents don't query dependencies
       if (options.role === 'agent') {
         console.error('ERROR: deps:show cannot be called with --role agent');

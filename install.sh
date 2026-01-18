@@ -554,7 +554,7 @@ if [ -n "$FOLDERS_PROFILE" ]; then
       check_haven_path "artefacts" "artefacts"
       check_haven_path "memory" "memory"
       check_haven_path "state" "state.json"
-      check_haven_path "components" "components.yaml"
+      # components.yaml always stays in .sailing/ (default)
     else
       echo -e "${YELLOW}paths.yaml already exists, skipping (use --force to overwrite or --fix to update)${NC}"
     fi
@@ -580,7 +580,6 @@ EOF
 artefacts: ${haven}/artefacts
 memory: ${haven}/memory
 state: ${haven}/state.json
-components: ${haven}/components.yaml
 worktrees: ${haven}/worktrees
 agents: ${haven}/agents
 EOF

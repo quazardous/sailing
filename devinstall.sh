@@ -242,13 +242,13 @@ if [ "$FOLDERS_PROFILE" = "haven" ] || [ "$FOLDERS_PROFILE" = "sibling" ]; then
   ARTEFACTS="$HAVEN_PATH/artefacts"
   MEMORY="$HAVEN_PATH/memory"
   STATE_FILE="$HAVEN_PATH/state.json"
-  COMPONENTS_FILE="$HAVEN_PATH/components.yaml"
 else
   ARTEFACTS=".sailing/artefacts"
   MEMORY=".sailing/memory"
   STATE_FILE=".sailing/state.json"
-  COMPONENTS_FILE=".sailing/components.yaml"
 fi
+# components.yaml always stays in .sailing/ (default)
+COMPONENTS_FILE=".sailing/components.yaml"
 
 # Resolve ${haven} placeholder in path (also supports legacy %haven%)
 resolve_path() {
