@@ -30,9 +30,11 @@ SCRIPT_DIR="$(dirname "$(realpath "$0")")"
 PROJECT_ROOT="$(realpath "$SCRIPT_DIR/..")"
 
 # PROTECTION: This bin/rudder must be called from its own project directory
-if [ "$(pwd)" != "$PROJECT_ROOT" ]; then
+# Compare resolved paths to handle symlinks
+CWD_REAL="$(realpath "$(pwd)")"
+if [ "$CWD_REAL" != "$PROJECT_ROOT" ]; then
   echo "Error: This rudder must be called from $PROJECT_ROOT"
-  echo "You are in: $(pwd)"
+  echo "You are in: $(pwd) (resolved: $CWD_REAL)"
   echo ""
   echo "Either:"
   echo "  cd $PROJECT_ROOT && bin/rudder ..."

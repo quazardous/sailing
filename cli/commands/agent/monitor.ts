@@ -293,8 +293,9 @@ function checkWorktreeMerged(agentData: AgentRecord, ops: WorktreeOps): boolean 
 }
 
 export function registerMonitorCommands(agent) {
-  // agent:status
+  // agent:status (alias: agent:list)
   agent.command('status [task-id]')
+    .alias('list')
     .description('Show agent status (all or specific task)')
     .option('--all', 'Show all agents (including old reaped)')
     .option('--active', 'Show only agents with PID (running or dead)')
@@ -538,78 +539,6 @@ export function registerMonitorCommands(agent) {
         }
 
         console.log(line);
-      }
-    });
-
-  // agent:list
-  agent.command('list')
-    .description('List all agents with status and details')
-    .option('--active', 'Only show active agents (spawned/dispatched/running)')
-    .option('--json', 'JSON output')
-    .action((options: { active?: boolean; json?: boolean }) => {
-      const agents = getAllAgentsFromDb();
-      const agentUtils = new AgentUtils(getAgentsDir());
-
-      let agentList = Object.entries(agents).map(([id, info]) => {
-        const agentData = info;
-        const completion = agentUtils.checkCompletion(id, agentData as AgentCompletionInfo);
-        const liveComplete = completion.complete;
-
-        return {
-          task_id: id,
-          status: agentData.status,
-          live_complete: liveComplete,
-          started_at: agentData.spawned_at,
-          pid: agentData.pid,
-          worktree: agentData.worktree?.path,
-          branch: agentData.worktree?.branch,
-          log_file: getAgentLogFile(id)
-        };
-      });
-
-      if (options.active) {
-        agentList = agentList.filter(a =>
-          ['spawned', 'dispatched', 'running'].includes(a.status)
-        );
-      }
-
-      if (options.json) {
-        jsonOut(agentList);
-        return;
-      }
-
-      if (agentList.length === 0) {
-        console.log(options.active ? 'No active agents' : 'No agents');
-        return;
-      }
-
-      const timeAgo = (isoDate) => {
-        if (!isoDate) return '-';
-        const diff = Date.now() - new Date(isoDate).getTime();
-        const mins = Math.floor(diff / 60000);
-        if (mins < 60) return `${mins}m ago`;
-        const hours = Math.floor(mins / 60);
-        if (hours < 24) return `${hours}h ago`;
-        const days = Math.floor(hours / 24);
-        return `${days}d ago`;
-      };
-
-      console.log('TASK    STATUS      STARTED     WORKTREE');
-      console.log('─'.repeat(60));
-
-      for (const agentData of agentList) {
-        const status = agentData.status.padEnd(11);
-        const started = timeAgo(agentData.started_at).padEnd(11);
-        const worktree = agentData.worktree || '-';
-
-        let statusIndicator = '';
-        if (agentData.live_complete && agentData.status === 'dispatched') {
-          statusIndicator = ' ✓';
-        } else if (agentData.pid) {
-          statusIndicator = ` (PID ${agentData.pid})`;
-        }
-
-        console.log(`${agentData.task_id}    ${status} ${started} ${worktree}${statusIndicator}`);
       }
     });
 
