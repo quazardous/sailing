@@ -86,14 +86,24 @@ agent:spawn:
         - { cmd: "agent:reap {{ taskId }}", label: "Wait + harvest results" }
       exit: 1
 
-    # Unmerged work (not resume mode)
-    - id: unmerged_work
-      when: "{{ existingAgentStatus and (isDirty or commitsAhead > 0) and isMerged == false and resumeMode == false }}"
+    # Unmerged work - uncommitted changes (not resume mode)
+    - id: unmerged_work_dirty
+      when: "existingAgentStatus and isDirty and isMerged == false and resumeMode == false"
       level: error
       message: |
-        ⚠ Agent {{ taskId }} has unmerged work
-        {% if isDirty %}Has uncommitted changes{% endif %}
-        {% if commitsAhead > 0 %}Has {{ commitsAhead }} commit(s) ahead{% endif %}
+        ⚠ Agent {{ taskId }} has uncommitted changes
+      actions:
+        - { cmd: "agent:spawn {{ taskId }} --resume", label: "Continue with existing work" }
+        - { cmd: "agent:reap {{ taskId }}", label: "Merge + cleanup + respawn" }
+        - { cmd: "agent:reject {{ taskId }}", label: "Discard work" }
+      exit: 1
+
+    # Unmerged work - commits ahead (not resume mode)
+    - id: unmerged_work_commits
+      when: "existingAgentStatus and commitsAhead > 0 and isMerged == false and resumeMode == false"
+      level: error
+      message: |
+        ⚠ Agent {{ taskId }} has {{ commitsAhead }} commit(s) ahead
       actions:
         - { cmd: "agent:spawn {{ taskId }} --resume", label: "Continue with existing work" }
         - { cmd: "agent:reap {{ taskId }}", label: "Merge + cleanup + respawn" }
@@ -129,14 +139,26 @@ agent:spawn:
       hint: "Escalate for resolution."
       exit: 1
 
-    # Orphaned worktree
-    - id: orphaned_worktree
-      when: "{{ worktreeExists and (isDirty or commitsAhead > 0) and resumeMode == false }}"
+    # Orphaned worktree - dirty
+    - id: orphaned_worktree_dirty
+      when: "worktreeExists and isDirty and resumeMode == false"
       level: error
       message: |
         ⚠ Orphaned worktree exists for {{ taskId }}
-        {% if isDirty %}Has uncommitted changes{% endif %}
-        {% if commitsAhead > 0 %}Has {{ commitsAhead }} commit(s) ahead{% endif %}
+        Has uncommitted changes
+      actions:
+        - { cmd: "agent:spawn {{ taskId }} --resume", label: "Continue with existing work" }
+        - { cmd: "agent:sync", label: "Recover into state" }
+        - { cmd: "agent:reject {{ taskId }}", label: "Discard work" }
+      exit: 1
+
+    # Orphaned worktree - commits ahead
+    - id: orphaned_worktree_commits
+      when: "worktreeExists and commitsAhead > 0 and resumeMode == false"
+      level: error
+      message: |
+        ⚠ Orphaned worktree exists for {{ taskId }}
+        Has {{ commitsAhead }} commit(s) ahead
       actions:
         - { cmd: "agent:spawn {{ taskId }} --resume", label: "Continue with existing work" }
         - { cmd: "agent:sync", label: "Recover into state" }
