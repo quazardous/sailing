@@ -31,10 +31,8 @@ const BASE_PERMISSIONS = [
   'Bash(make:*)',
   'Bash(chmod:*)',
   'Bash(mkdir:*)',
-  'Bash(git status:*)',
-  'Bash(git diff:*)',
-  'Bash(git log:*)',
-  'Bash(git branch:*)',
+  'Bash(git:*)',
+  'Bash(git *:*)',
   'Read(.claude/**)'
 ];
 
@@ -182,13 +180,15 @@ export function registerPermissionsCommands(program: Command) {
         }
       }
 
-      // Remove redundant bin/rudder permissions (specific ones without wildcards)
-      // Keep only the broad patterns: bin/rudder:*, bin/rudder *:*, ./bin/rudder:*, ./bin/rudder *:*
-      const broadRudderPatterns = [
+      // Remove redundant permissions (specific ones that are covered by broad patterns)
+      // Keep only broad patterns like: bin/rudder:*, bin/rudder *:*, git:*, git *:*
+      const broadPatterns = [
         'Bash(bin/rudder:*)',
         'Bash(bin/rudder *:*)',
         'Bash(./bin/rudder:*)',
-        'Bash(./bin/rudder *:*)'
+        'Bash(./bin/rudder *:*)',
+        'Bash(git:*)',
+        'Bash(git *:*)'
       ];
 
       const toRemove: number[] = [];
@@ -196,10 +196,15 @@ export function registerPermissionsCommands(program: Command) {
         const perm = existing[i];
         // Check if it's a bin/rudder permission but not a broad pattern
         if (perm.startsWith('Bash(bin/rudder') || perm.startsWith('Bash(./bin/rudder')) {
-          if (!broadRudderPatterns.includes(perm)) {
+          if (!broadPatterns.includes(perm)) {
             toRemove.push(i);
             removed.push(perm);
           }
+        }
+        // Check if it's a git permission but not a broad pattern
+        if (perm.startsWith('Bash(git') && !broadPatterns.includes(perm)) {
+          toRemove.push(i);
+          removed.push(perm);
         }
       }
 

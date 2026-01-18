@@ -4,6 +4,25 @@ All notable changes to the Sailing Framework will be documented in this file.
 
 <!-- NOTE: This is a USER changelog, not a commit log. Focus on user-visible features and benefits, not implementation details. -->
 
+## [1.13.0] - 2026-01-18
+
+### Added
+- `gc:agents --days <n>` option to set age threshold for stale db records (default: 30)
+- `gc:agents` now cleans up stale database records (terminal status with no directories)
+- `permissions:fix` now removes redundant `bin/rudder` and `git` permissions, keeping only broad patterns
+- All `git` commands now auto-allowed (broad `git:*` and `git *:*` patterns)
+- `artifact:edit --merge-dedup-section` to merge duplicate sections in markdown files
+
+### Changed
+- Agent database now uses `taskNum` (number) as primary key instead of `taskId` (string)
+- `agent:list` is now an alias of `agent:status` (same features, fewer commands)
+- Markdown parsing auto-merges duplicate sections (prevents duplication bugs)
+- `bin/rudder` wrapper requires being called from its project directory (security)
+
+### Fixed
+- Records with invalid `taskNum` are now filtered out (no more "Tundefined" display)
+- `import type` for TypeScript interfaces prevents runtime import errors
+
 ## [1.12.0] - 2026-01-16
 
 ### Added
