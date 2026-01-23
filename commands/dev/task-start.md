@@ -1,13 +1,14 @@
 ---
 description: Start task (autonomous mode)
 argument-hint: <TNNN>
-allowed-tools: Read, Edit, Glob, Task, Bash
+allowed-tools: Read, Edit, Glob, Task, mcp
 ---
 
 ## Pre-flight (MANDATORY)
 
-```bash
-rudder context:load task-start --role skill
+```json
+// MCP: context_load
+{ "operation": "task-start", "role": "skill" }
 ```
 
 The output includes a **Workflow: task-start** section with steps filtered for your execution mode:
@@ -34,8 +35,9 @@ You are a senior engineer executing task {TNNN}.
 
 ## 1. Get your context
 
-```bash
-rudder assign:claim {TNNN} --role agent
+```json
+// MCP: context_load
+{ "operation": "{TNNN}", "role": "agent" }
 ```
 
 This returns your complete execution context:
@@ -66,12 +68,12 @@ Implement the deliverables. No scope expansion.
 
 | Mode | Workflow |
 |------|----------|
-| **Inline** (non-subprocess) | Skill spawns Task tool → agent calls `assign:claim --role agent` → skill calls `assign:release` |
-| **Subprocess** (default) | `agent:spawn` pre-claims → launches Claude → agent calls `context:load` → auto-release on exit 0 |
+| **Inline** (non-subprocess) | Skill spawns Task tool → agent calls `context_load` → skill calls `assign_release` |
+| **Subprocess** (default) | `agent_spawn` pre-claims → launches Claude → agent calls `context_load` → auto-release on exit 0 |
 | **Worktree** (subprocess+isolation) | Same as subprocess but agent runs in isolated git branch |
 
 Claim/release lifecycle:
-- **Inline**: Agent calls `assign:claim --role agent`, skill calls `assign:release` after agent returns
+- **Inline**: Agent calls `context_load`, skill calls `assign_release` after agent returns
 - **Subprocess**: Spawn pre-claims, auto-release on exit code 0
 
 ## Role Mapping (optional refinement)

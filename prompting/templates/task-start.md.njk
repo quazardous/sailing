@@ -17,7 +17,7 @@ variables:
 **You are the skill. You do NOT implement tasks.**
 
 {% if sandbox %}
-Use `rudder agent:spawn {{ taskId }}` to delegate to an agent.
+Use `agent_spawn { "task_id": "{{ taskId }}" }` to delegate to an agent.
 {% else %}{# inline mode #}
 Use the **Task tool** to spawn an inline agent with this context.
 {% endif %}{# /sandbox #}
@@ -30,7 +30,7 @@ Epic: {{ epicId }}{% if epicTitle %} - {{ epicTitle }}{% endif %} | PRD: {{ prdI
 
 ## Contract
 
-**Rudder CLI = Single Source of Truth.** All task operations go through rudder.
+**MCP Tools = Single Source of Truth.** All task operations go through MCP tools.
 
 NEVER:
 - Edit files in `.sailing/` directly
@@ -42,36 +42,34 @@ NEVER:
 
 **Existing Bugs (not created by you):**
 If you encounter a bug blocking your deliverable:
-1. **In scope + fixable** → fix it, log as `--tip`
-2. **Out of scope OR unfixable** → STOP immediately, escalate with `--error`
+1. **In scope + fixable** → fix it, log as `tip`
+2. **Out of scope OR unfixable** → STOP immediately, escalate with `error`
    - What bug, where, impact on deliverable
    - Do NOT work around silently
    - Do NOT pretend "not my problem"
 
 **If blocked** → log error and STOP:
-{% if sandbox %}
-`task:log {{ taskId }} "BLOCKED: <reason>" --error`
-{% else %}{# inline #}
-`rudder task:log {{ taskId }} "BLOCKED: <reason>" --error`
-{% endif %}{# /sandbox #}
+```json
+// MCP: task_log
+{ "task_id": "{{ taskId }}", "message": "BLOCKED: <reason>", "level": "error" }
+```
 
 ---
 
-## Rudder CLI
+## MCP Tools
 
-{% if sandbox %}
-MCP tool for all rudder operations:
+Use MCP tools for all sailing operations:
+
+```json
+// MCP: artefact_show
+{ "id": "{{ taskId }}" }
+
+// MCP: task_log
+{ "task_id": "{{ taskId }}", "message": "<message>", "level": "info|tip|error" }
+
+// MCP: artefact_update
+{ "id": "{{ taskId }}", "status": "<status>" }
 ```
-Tool: mcp__rudder__cli
-Arguments: { "command": "<command>" }
-```
-**Do NOT use Bash for rudder.**
-{% else %}{# !sandbox #}
-Bash for rudder commands:
-```bash
-rudder <command>
-```
-{% endif %}{# /sandbox #}
 
 ---
 
@@ -86,15 +84,10 @@ You MUST log at least ONE notable insight before completing.
 
 **NOT notable**: "completed task", "done", "implemented feature"
 
-{% if sandbox %}
 ```json
-{ "command": "task:log {{ taskId }} \"<insight>\" --tip" }
+// MCP: task_log
+{ "task_id": "{{ taskId }}", "message": "<insight>", "level": "tip" }
 ```
-{% else %}{# inline #}
-```bash
-rudder task:log {{ taskId }} "<insight>" --tip
-```
-{% endif %}{# /sandbox #}
 
 ---
 

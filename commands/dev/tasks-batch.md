@@ -1,12 +1,10 @@
 ---
 description: Start all ready tasks in parallel (project)
 argument-hint: "[PRD-NNN] [--limit N]"
-allowed-tools: Read, Edit, Glob, Task, Bash
+allowed-tools: Read, Edit, Glob, Task, mcp
 ---
 
 # Batch Start Ready Tasks
-
-> 📖 CLI reference: `bin/rudder -h`
 
 **Arguments:** $ARGUMENTS
 
@@ -18,7 +16,7 @@ allowed-tools: Read, Edit, Glob, Task, Bash
 
 Orchestrate the **parallel start of ready tasks** while strictly preserving project invariants:
 
-* **Rudder is the single source of truth** for state
+* **MCP tools are the single source of truth** for state
 * **Agents are authoritative** for execution outcomes
 * This command performs **coordination only**, never implementation or inference
 
@@ -28,14 +26,15 @@ The batch runner prepares and launches work, then steps aside.
 
 ## Pre-flight (MANDATORY)
 
-```bash
-rudder context:load tasks-batch --role skill
+```json
+// MCP: context_load
+{ "operation": "tasks-batch", "role": "skill" }
 ```
 
 This tells you:
 - **Execution mode**: subprocess vs inline
 - **Worktree isolation**: enabled/disabled
-- How to spawn agents (agent:spawn vs Task tool)
+- How to spawn agents (agent_spawn vs Task tool)
 
 **⚠️ NO AUTO-FALLBACK**: If worktree mode is enabled but fails (no git, no commits, spawn error):
 - DO NOT switch to inline mode on your own
@@ -48,37 +47,42 @@ This tells you:
 
 1. **Memory Sync (MANDATORY)**
 
-   ```bash
-   rudder memory:sync
+   ```json
+   // MCP: memory_sync
+   {}
    ```
 
    | Output | Action |
    |--------|--------|
    | `✓ No pending logs` | Proceed to step 2 |
-   | `⚠ MEMORY SYNC REQUIRED` | Consolidate logs, run `epic:clean-logs`, then re-run sync |
+   | `⚠ MEMORY SYNC REQUIRED` | Consolidate logs, then re-run sync |
 
    **Invariant**: Memory not consolidated = lost. Lost memory = system failure.
 
 2. **Validate dependencies (MANDATORY)**
 
-   ```bash
-   rudder deps:validate --fix
+   ```json
+   // MCP: workflow_validate
+   {}
    ```
 
 3. **Find ready tasks**
 
-   ```bash
-   # If PRD specified (recommended)
-   rudder deps:ready --prd PRD-005 [--tag <tag>] --limit 6
+   ```json
+   // If PRD specified (recommended)
+   // MCP: workflow_ready
+   { "scope": "PRD-005", "limit": 6 }
 
-   # Or filter by epic
-   rudder deps:ready --epic E048 --limit 4
+   // Or filter by epic
+   // MCP: workflow_ready
+   { "scope": "E048", "limit": 4 }
 
-   # Otherwise, all ready tasks (⚠️ cross-PRD)
-   rudder deps:ready --limit 6
+   // Otherwise, all ready tasks (⚠️ cross-PRD)
+   // MCP: workflow_ready
+   { "limit": 6 }
    ```
 
-   **CRITICAL**: Tasks from `deps:ready` are **guaranteed independent** — no manual check needed.
+   **CRITICAL**: Tasks from `workflow_ready` are **guaranteed independent** — no manual check needed.
 
 4. **Fail fast**
 
@@ -89,15 +93,15 @@ This tells you:
 
 5. **Mark tasks In Progress**
 
-   ```bash
-   for task in T101 T102 T103; do
-     rudder task:update $task --status "In Progress" --assignee agent
-   done
+   ```json
+   // MCP: workflow_start
+   { "task_id": "T101", "assignee": "agent" }
+   // Repeat for each task
    ```
 
 6. **Spawn parallel agents**
 
-   Check your execution mode from `rudder context:load tasks-batch` output.
+   Check your execution mode from `context_load` output.
 
    **If spawning fails mid-batch:**
    - Do NOT attempt recovery
@@ -106,10 +110,10 @@ This tells you:
    - This command is NOT idempotent — re-running may spawn duplicate work
 
    **Mode: subprocess** (`use_subprocess: true`):
-   ```bash
-   rudder agent:spawn T101
-   rudder agent:spawn T102
-   rudder agent:spawn T103
+   ```json
+   // MCP: agent_spawn
+   { "task_id": "T101" }
+   // Repeat for each task
    ```
 
    Each spawn:
@@ -121,11 +125,11 @@ This tells you:
 
    **Mode: inline** (`use_subprocess: false`):
    * Spawn agents in a **single message** using multiple `Task` tools
-   * Each agent runs `assign:claim TNNN --role agent` to get its full context
+   * Each agent runs `context_load` to get its full context
 
    ```
    ┌─ Task(T101) ─┐
-   ├─ Task(T102) ─┼─► Parallel: each agent runs `assign:claim TNNN --role agent`
+   ├─ Task(T102) ─┼─► Parallel: each agent runs context_load
    ├─ Task(T103) ─┤
    └─ Task(T104) ─┘
    ```
@@ -153,8 +157,9 @@ This tells you:
 
    Before starting another batch or ending the session:
 
-   ```bash
-   rudder memory:sync
+   ```json
+   // MCP: memory_sync
+   {}
    ```
 
    Consolidate any pending logs before spawning new agents.
@@ -174,7 +179,7 @@ The orchestrator observes and reports — it does not correct or override.
 
 ## Agent Brief — Inline Mode
 
-For inline agents (Task tool), the prompt is minimal. The agent gets its context via `assign:claim`:
+For inline agents (Task tool), the prompt is minimal. The agent gets its context via `context_load`:
 
 ```markdown
 # Assignment: {TNNN}
@@ -183,8 +188,9 @@ You are a senior engineer executing task {TNNN}.
 
 ## 1. Get your context
 
-```bash
-rudder assign:claim {TNNN} --role agent
+```json
+// MCP: context_load
+{ "operation": "{TNNN}", "role": "agent" }
 ```
 
 This returns your complete execution context:
@@ -210,7 +216,7 @@ Implement the deliverables. No scope expansion.
 
 ## 3. Complete
 
-Exit normally. The skill will call `assign:release {TNNN}` after you return.
+Exit normally. The skill will call `assign_release { "task_id": "{TNNN}" }` after you return.
 
 ---
 

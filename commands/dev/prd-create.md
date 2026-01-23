@@ -1,21 +1,20 @@
 ---
 description: Create new PRD (Draft)
 argument-hint: <title>
-allowed-tools: Bash
+allowed-tools: mcp
 ---
 
 # PRD Create
 
 **Purpose:** Create a new PRD structure in Draft status.
 
-> 📖 CLI reference: `bin/rudder -h`
-
 ---
 
 ## Usage
 
-```bash
-bin/rudder prd:create <title>
+```json
+// MCP: artefact_create
+{ "type": "prd", "title": "PRD title" }
 ```
 
 ---

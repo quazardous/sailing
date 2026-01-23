@@ -1,7 +1,7 @@
 ---
 description: Review PRD (arch + milestones + versions) before breakdown
 argument-hint: <PRD-NNN>
-allowed-tools: Read, Edit, Glob, Grep, Task, Bash
+allowed-tools: Read, Edit, Glob, Grep, Task, mcp
 ---
 
 # PRD Review Agent
@@ -17,10 +17,15 @@ You are acting as a **software architect / project lead** reviewing a PRD prior 
 
 ## Pre-flight
 
-```bash
-rudder context:load prd-review --role coordinator
-rudder versions           # Get current component versions
-rudder prd:show PRD-NNN   # Verify PRD exists and see epic/task counts
+```json
+// MCP: context_load
+{ "operation": "prd-review", "role": "coordinator" }
+
+// MCP: system_versions - Get current component versions
+{}
+
+// MCP: artefact_show - Verify PRD exists and see epic/task counts
+{ "id": "PRD-NNN" }
 ```
 
 ## Inputs
@@ -29,7 +34,7 @@ rudder prd:show PRD-NNN   # Verify PRD exists and see epic/task counts
 |------|------|
 | PRD file | {path} |
 | Stack context | DEV.md / DEVELOPMENT.md (sub-project or root) |
-| Current versions | From `rudder versions` output above |
+| Current versions | From `system_versions` output above |
 
 ## Mission
 
@@ -44,7 +49,7 @@ rudder prd:show PRD-NNN   # Verify PRD exists and see epic/task counts
 
 For each milestone:
 - Determine target component versions (PATCH / MINOR / MAJOR)
-- Use current versions (`rudder versions`) as baseline
+- Use current versions (`system_versions`) as baseline
 - Suggest concrete targets in PRD `milestones[].versions`
 
 Example:
@@ -198,4 +203,3 @@ This command does **NOT**:
 - Make final version decisions (user validates)
 - Modify ROADMAP.md
 - Trigger other commands or suggest next steps
-

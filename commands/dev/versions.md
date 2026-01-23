@@ -1,10 +1,11 @@
 ---
 description: Show component versions
-allowed-tools: Bash
+allowed-tools: mcp
 ---
 
-```bash
-bin/rudder versions [--json]
+```json
+// MCP: system_versions
+{}
 ```
 
 Displays all components from `.sailing/components.yaml`:
@@ -13,4 +14,4 @@ Displays all components from `.sailing/components.yaml`:
 - **file**: Where version is stored
 - **changelog**: Path to CHANGELOG.md
 
-Use `--json` for machine-readable output with all fields.
+Use JSON output for machine-readable output with all fields.

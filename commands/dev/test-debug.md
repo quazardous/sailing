@@ -1,7 +1,7 @@
 ---
 description: Debug failing tests (2-pass, project-aware)
 argument-hint: [test-path] [--task TNNN]
-allowed-tools: Read, Edit, Glob, Grep, Task, Bash
+allowed-tools: Read, Edit, Glob, Grep, Task, Bash, mcp
 ---
 
 # Test Debug Agent
@@ -12,13 +12,18 @@ allowed-tools: Read, Edit, Glob, Grep, Task, Bash
 
 ## Pre-flight
 
-```bash
-rudder context:load test-debug --role coordinator
+```json
+// MCP: context_load
+{ "operation": "test-debug", "role": "coordinator" }
 ```
 
 If `--task TNNN` provided:
-```bash
-rudder task:show-memory TNNN  # Agent context (memory + tech notes)
+```json
+// MCP: artefact_show
+{ "id": "TNNN" }
+
+// MCP: memory_read - Agent context (memory + tech notes)
+{ "scope": "TNNN", "full": true }
 ```
 
 ---
@@ -40,7 +45,7 @@ rudder task:show-memory TNNN  # Agent context (memory + tech notes)
 
 3. **Gather context**
    - Read TESTING.md for conventions
-   - Check `rudder status` for project/task state
+   - Check `system_status` for project/task state
    - Check `tests/validation/` for audit findings
    - Related task if `--task` provided
 
@@ -107,7 +112,12 @@ After all individual fixes:
 
 ## Logging
 
-Use `bin/rudder task:log` during work. See logging rules in `rudder context:load test-debug`.
+```json
+// MCP: task_log
+{ "task_id": "TNNN", "message": "Fixed test: description" }
+```
+
+See logging rules in context.
 
 ---
 
@@ -119,4 +129,3 @@ This command does **NOT**:
 - Fix implementation bugs (escalate instead)
 - Modify test structure without respecting TESTING.md
 - Parallelize individual test fixes
-

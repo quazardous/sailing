@@ -1,13 +1,12 @@
 ---
 description: Add epic to PRD (manual)
 argument-hint: <PRD-NNN> <title>
-allowed-tools: Bash
+allowed-tools: mcp
 ---
 
-> 📖 CLI reference: `bin/rudder -h`
-
-```bash
-bin/rudder epic:create <PRD-NNN> <title>
+```json
+// MCP: artefact_create
+{ "type": "epic", "parent": "PRD-NNN", "title": "Epic title" }
 ```
 
 Use only for adding epics after initial breakdown.

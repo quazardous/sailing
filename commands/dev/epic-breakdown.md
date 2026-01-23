@@ -1,7 +1,7 @@
 ---
 description: Decompose epic into task files
 argument-hint: <PRD-NNN/ENNN>
-allowed-tools: Read, Write, Edit, Task, Bash
+allowed-tools: Read, Write, Edit, Task, mcp
 ---
 
 # Epic Breakdown
@@ -10,11 +10,18 @@ Decompose epic into tasks. Coordination only, no implementation.
 
 ## Pre-flight
 
-```bash
-rudder context:load epic-breakdown --role coordinator
-rudder epic:show ENNN                 # Verify epic exists
-rudder memory:show ENNN --full        # Previous learnings + escalations
-rudder story:list PRD-NNN             # Check if stories exist
+```json
+// MCP: context_load
+{ "operation": "epic-breakdown", "role": "coordinator" }
+
+// MCP: artefact_show - Verify epic exists
+{ "id": "ENNN" }
+
+// MCP: memory_read - Previous learnings + escalations
+{ "scope": "ENNN", "full": true }
+
+// MCP: artefact_list - Check if stories exist
+{ "type": "story", "scope": "PRD-NNN" }
 ```
 
 If Technical Notes empty → escalate.
@@ -24,28 +31,35 @@ If Technical Notes empty → escalate.
 1. Read epic → extract Technical Notes, Acceptance Criteria
 2. Propose task structure (titles + 1-line descriptions)
 3. Present questions to main thread
-4. After approval: create tasks via rudder
+4. After approval: create tasks via MCP
 
 ### Create Tasks
 
-```bash
-rudder task:create PRD-NNN/ENNN "title"
+```json
+// MCP: artefact_create
+{ "type": "task", "parent": "ENNN", "title": "title" }
 ```
 
-Then fill content via `task:patch` (see Artefact Editing Rules).
+Then fill content via `artefact_edit` (see Artefact Editing Rules).
 
 ### Dependencies
 
-```bash
-rudder deps:add TNNN --blocked-by T001
-rudder deps:validate --fix
+```json
+// MCP: deps_add
+{ "task_id": "TNNN", "blocked_by": "T001" }
+
+// MCP: workflow_validate
+{}
 ```
 
 ### Story Linkage
 
-```bash
-rudder story:orphans PRD-NNN           # Check orphans
-rudder task:update TNNN --add-story S001  # Link if needed
+```json
+// MCP: story_orphans - Check orphans
+{ "scope": "PRD-NNN" }
+
+// MCP: artefact_update - Link if needed
+{ "id": "TNNN", "add_story": "S001" }
 ```
 
 ## Output

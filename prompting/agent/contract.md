@@ -1,8 +1,8 @@
 # Agent Contract
 
-## Rudder = Single Source of Truth
+## MCP Tools = Single Source of Truth
 
-All state operations go through rudder CLI. Never:
+All state operations go through MCP tools. Never:
 - Grep/read files for task metadata
 - Edit frontmatter directly
 - Bypass with file manipulation
@@ -10,7 +10,7 @@ All state operations go through rudder CLI. Never:
 ## Artifacts are Opaque
 
 Project artifacts (PRD, Epic, Task) location and structure are user-defined.
-Agents rely ONLY on rudder CLI output, never on file structure assumptions.
+Agents rely ONLY on MCP tool output, never on file structure assumptions.
 
 ## Not Authorized
 
@@ -21,8 +21,9 @@ Agents rely ONLY on rudder CLI output, never on file structure assumptions.
 
 ## Escalation
 
-```bash
-rudder task:log TNNN "BLOCKED: <reason>" --error
+```json
+// MCP: task_log
+{ "task_id": "TNNN", "message": "BLOCKED: <reason>", "level": "error" }
 ```
 
 Then **STOP**. Do not continue. Skill decides next.

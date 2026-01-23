@@ -3,8 +3,8 @@
 ## Pre-Task Gates
 
 Before spawning agent, verify ALL:
-- [ ] `memory:sync` shows no pending
-- [ ] `deps:show TNNN` confirms unblocked
+- [ ] `memory_sync {}` shows no pending
+- [ ] `deps_show { "id": "TNNN" }` confirms unblocked
 - [ ] Deliverables are explicit text
 
 **Any unchecked → STOP. Do not spawn.**
@@ -22,7 +22,7 @@ Before marking Done, verify ALL:
 ## State Corruption Triggers
 
 STOP and escalate if:
-- `memory:sync` pending when task marked Done
+- `memory_sync` pending when task marked Done
 - Dependency Done but artifact missing
 - Agent modified frontmatter directly
 - Agent committed to git
@@ -31,11 +31,11 @@ STOP and escalate if:
 
 ## Forbidden Edits
 
-Never use Edit/Write on sailing artefacts. Use rudder CLI:
-- Frontmatter → `:update` commands
-- Body content → `:patch` commands
-- PRD milestone → `prd:milestone`
-- Dependencies → `task:update --add-blocker`
+Never use Edit/Write on sailing artefacts. Use MCP tools:
+- Frontmatter → `artefact_update`
+- Body content → `artefact_edit`
+- PRD milestone → `artefact_update { "id": "PRD-NNN", "milestone": "..." }`
+- Dependencies → `artefact_update { "id": "TNNN", "add_blocker": "..." }`
 
 Edit tool ONLY for:
 - Source code (project files, not `.sailing/`)

@@ -1,12 +1,12 @@
 ---
 name: sailing
 description: Project governance via PRD → Epic → Task workflow.
-allowed-tools: Read, Write, Edit, Glob, Grep, Task, Bash
+allowed-tools: Read, Write, Edit, Glob, Grep, Task, mcp
 ---
 
 # Sailing
 
-Refs: `rudder paths roadmap`, **`.claude/TOOLSET.md`** (optional, user-created)
+Refs: `system_paths { "type": "roadmap" }`, **`.claude/TOOLSET.md`** (optional, user-created)
 
 ---
 
@@ -15,13 +15,13 @@ Refs: `rudder paths roadmap`, **`.claude/TOOLSET.md`** (optional, user-created)
 These invariants are immutable. Everything else submits to them.
 
 ```
-1. Rudder is the single source of truth for state.
+1. MCP tools are the single source of truth for state.
 2. Main thread makes all decisions.
 3. Agents execute and return output. They never chain, infer, or decide.
-4. NEVER Edit/Write artefacts directly → use rudder CLI (:patch, :update).
+4. NEVER Edit/Write artefacts directly → use MCP tools (artefact_edit, artefact_update).
 5. When in doubt: stop, log, escalate. Never guess.
 6. Memory that is not consolidated before execution is considered lost.
-7. Use rudder commands for metadata queries. Never grep/search task files directly.
+7. Use MCP tools for metadata queries. Never grep/search task files directly.
 ```
 
 ---
@@ -33,7 +33,7 @@ These invariants are immutable. Everything else submits to them.
 | **Main thread (skill)** | Decisions, sequencing, orchestration |
 | **Coordinator** | High-level /dev commands, creates artefacts, returns output |
 | **Agent** | Pure execution, implements deliverables, returns output |
-| **Rudder CLI** | State mutations, context guidance, role enforcement |
+| **MCP Tools** | State mutations, context guidance, role enforcement |
 | **User** | Git commits, approvals, final decisions |
 
 ---
@@ -46,7 +46,7 @@ These invariants are immutable. Everything else submits to them.
 | **coordinator** | /dev commands | ✓ (batch) | ❌ returns output | Full (`--full`) |
 | **agent** | Task execution | ❌ | ❌ | Agent Context only (Epic level) |
 
-**Enforcement**: CLI commands validate role. Wrong role = blocked.
+**Enforcement**: MCP tools validate role. Wrong role = blocked.
 
 ---
 
@@ -74,7 +74,7 @@ Agents and coordinators NEVER chain. They return output and stop.
 
 ### Tier 0 — Constitutional (cannot be broken)
 
-- Rudder is SoT for state
+- MCP tools are SoT for state
 - Agents don't decide, don't chain, don't infer
 - Main thread owns all sequencing
 - No guessing — escalate instead
@@ -84,14 +84,14 @@ Agents and coordinators NEVER chain. They return output and stop.
 - Memory sync before task execution
 - Dependency check before parallelization
 - No git commit/push by agents
-- No direct frontmatter edits — use Rudder
+- No direct frontmatter edits — use MCP tools
 - Specs locked during implementation
 
 ### Tier 2 — Operational (preferred practices)
 
 - Max 6 parallel agents
 - Read TOOLSET.md before implementation (if exists)
-- Create artefacts via `rudder` CLI (never manually)
+- Create artefacts via MCP tools (never manually)
 
 ---
 
@@ -100,13 +100,13 @@ Agents and coordinators NEVER chain. They return output and stop.
 **Memory = institutional knowledge. Logs = raw observations.**
 
 ```
-Agents PRODUCE logs → task:log (CLI command, NOT files)
+Agents PRODUCE logs → task_log MCP tool (NOT files)
 Skill CONSOLIDATES logs → memory files
 Memory GUIDES future agents
 ```
 
 ⚠️ **NEVER create log files directly** (no `.tip-log.txt`, no `*.log` files).
-Always use: `rudder task:log TNNN "message" --tip`
+Always use: `task_log { "task_id": "TNNN", "message": "...", "level": "tip" }`
 
 Memory not consolidated before execution is considered **lost**.
 Lost memory is a **system failure**.
@@ -122,12 +122,11 @@ MEMORY.md (project)      ← Universal patterns, architecture decisions
             └── TNNN.log ← Raw task logs (temporary)
 ```
 
-| Action | Command |
-|--------|---------|
-| Read | `memory:show ENNN` or `memory:show PROJECT` |
-| Edit | `memory:edit ENNN --section "Tips"` |
-| Consolidate | `memory:sync` (shows pending + edit hints) |
-| Agent view | `task:show-memory TNNN` (memory + tech notes) |
+| Action | MCP Tool |
+|--------|----------|
+| Read | `memory_read { "scope": "ENNN" }` or `memory_read { "scope": "PROJECT" }` |
+| Consolidate | `memory_sync {}` (shows pending + edit hints) |
+| Agent view | `artefact_show { "id": "TNNN" }` + `memory_read { "scope": "TNNN" }` |
 
 ---
 
@@ -147,9 +146,9 @@ Each level has one abstraction. Don't mix.
 
 ## Context Loading
 
-Before ANY /dev command: `rudder context:load <operation> --role <role>`
+Before ANY /dev command: `context_load { "operation": "<operation>", "role": "<role>" }`
 
-The CLI provides:
+The MCP tool provides:
 - Role-appropriate context (what you need to know)
 - Workflow steps (what you need to do)
 - Guidance (how to handle edge cases)
@@ -188,7 +187,7 @@ User controls all commits.
 When uncertain:
 
 1. **Do what's possible** — partial progress is valuable
-2. **Log the issue** — `task:log --error` or `--critical`
+2. **Log the issue** — `task_log { ..., "level": "error" }` or `"critical"`
 3. **Stop cleanly** — return output describing the block
 4. **Never force** — don't push through misaligned specs
 

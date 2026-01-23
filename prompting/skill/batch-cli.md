@@ -1,11 +1,17 @@
-# Batch CLI Operations
+# Batch MCP Operations
 
-## Find Command
+## Artefact List
 
-Search entities with filters, optionally execute commands on results.
+Search entities with filters.
 
-```bash
-rudder find <entity> [filters] [--exec "command {}"]
+```json
+// MCP: artefact_list
+{ "type": "prd" }                              // All PRDs
+{ "type": "epic", "scope": "PRD-001" }         // Epics in PRD
+{ "type": "task", "scope": "E001" }            // Tasks in epic
+{ "type": "task", "status": "Done" }           // Filter by status
+{ "type": "task", "scope": "E001", "status": "In Progress" }
+{ "type": "story" }                            // All stories
 ```
 
 Entities: `prd`, `epic`, `task`, `story`
@@ -14,94 +20,51 @@ Entities: `prd`, `epic`, `task`, `story`
 
 | Filter | Applies to | Example |
 |--------|------------|---------|
-| `--status <s>` | all | `--status Done` |
-| `--prd <id>` | epic, task, story | `--prd PRD-001` |
-| `--epic <id>` | task | `--epic E001` |
-| `--tag <t>` | all | `--tag api` |
-| `--assignee <n>` | task | `--assignee agent` |
-| `--blocked` | task | Only blocked tasks |
-| `--unblocked` | task | Only unblocked tasks |
-| `--has-story` | epic, task | Has linked stories |
-| `--no-story` | epic, task | No linked stories |
-| `--type <t>` | story | `--type user` |
-
-### Output Modes
-
-| Option | Output |
-|--------|--------|
-| (default) | Human-readable list |
-| `--ids` | One ID per line (pipeable) |
-| `--count` | Just the count |
-| `--json` | JSON array |
-
-### Execute on Results
-
-```bash
-# Dry run first
-rudder find task --epic E001 --status Done --exec "task:show {}" --dry-run
-
-# Execute
-rudder find task --blocked --exec "task:update {} --status Blocked"
-
-# Batch update assignees
-rudder find task --status "In Progress" --exec "task:update {} --assignee agent"
-```
-
-Options: `--dry-run`, `--quiet`, `--verbose`
+| `status` | all | `"status": "Done"` |
+| `scope` | epic, task, story | `"scope": "PRD-001"` or `"scope": "E001"` |
 
 ## Dependency Commands
 
-**ALWAYS use `deps:*` commands - NEVER grep/search for dependency info.**
+**ALWAYS use `deps_*` tools - NEVER grep/search for dependency info.**
 
-```bash
-# Check task dependencies (blockers/blocked-by)
-rudder deps:show TNNN
+```json
+// MCP: deps_show
+{ "id": "TNNN" }                  // Task blockers/blocked-by
 
-# Ready tasks (sorted by impact - best to work on first)
-rudder deps:ready
-rudder deps:ready --epic E001
-rudder deps:ready --limit 5
+// MCP: workflow_ready
+{}                                // Ready tasks (sorted by impact)
+{ "scope": "E001" }               // Ready in specific epic
+{ "limit": 5 }                    // Limit results
 
-# Dependency tree visualization
-rudder deps:tree TNNN --ancestors    # What blocks this
-rudder deps:tree TNNN --descendants  # What this blocks
+// MCP: deps_critical
+{}                                // Bottleneck tasks blocking the most work
+{ "scope": "PRD-001" }            // Critical path in specific PRD
+{ "limit": 5 }                    // Limit results
 
-# Impact analysis: what gets unblocked when task completes
-rudder deps:impact TNNN
-
-# Critical path: bottleneck tasks blocking the most work
-rudder deps:critical
-rudder deps:critical --prd PRD-001
-
-# Add/modify dependencies
-rudder deps:add T001 --blocked-by T002 T003
-rudder deps:add T001 --blocks T004 T005
-
-# Validate dependency graph (find cycles, missing refs)
-rudder deps:validate
-rudder deps:validate --fix   # Auto-fix issues
+// MCP: deps_validate
+{}                                // Validate graph (find cycles, missing refs)
+{ "fix": true }                   // Auto-fix issues
 ```
 
 ## Common Patterns
 
-```bash
-# Ready tasks (sorted by impact - best to work on first)
-rudder deps:ready
-rudder deps:ready --epic E001
-rudder deps:ready --limit 5
+```json
+// Ready tasks (sorted by impact - best to work on first)
+// MCP: workflow_ready
+{}
+{ "scope": "E001" }
+{ "limit": 5 }
 
-# Count tasks by status
-rudder find task --status Done --count
-rudder find task --status "In Progress" --count
+// Count tasks by status
+// MCP: artefact_list
+{ "type": "task", "status": "Done" }
+{ "type": "task", "status": "In Progress" }
 
-# Find orphan epics (no stories)
-rudder find epic --prd PRD-001 --no-story
+// Find orphan epics (no stories)
+// MCP: story_orphans
+{ "scope": "PRD-001" }
 
-# Mass status update
-rudder find task --epic E001 --status "Not Started" --exec "task:update {} --status 'In Progress'"
-
-# List IDs for scripting
-for id in $(rudder find task --epic E001 --ids); do
-  rudder task:show $id
-done
+// Update task status
+// MCP: artefact_update
+{ "id": "TNNN", "status": "In Progress" }
 ```

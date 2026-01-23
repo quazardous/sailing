@@ -1,24 +1,25 @@
 ---
 description: Decompose PRD into epic files
 argument-hint: <PRD-NNN>
-allowed-tools: Read, Write, Edit, Task, Bash
+allowed-tools: Read, Write, Edit, Task, mcp
 ---
 
 # PRD Breakdown Agent
 
-**Purpose:** Decompose a PRD into epics using Rudder CLI. Parallelize agents where possible.
+**Purpose:** Decompose a PRD into epics using MCP tools. Parallelize agents where possible.
 
 This command creates **epics only**. Use `/dev:epic-breakdown` to create tasks after epic review.
-
-> 📖 CLI reference: `bin/rudder -h`
 
 ---
 
 ## Pre-flight
 
-```bash
-rudder context:load prd-breakdown --role coordinator
-rudder prd:show PRD-NNN               # Verify PRD exists and see current epics
+```json
+// MCP: context_load
+{ "operation": "prd-breakdown", "role": "coordinator" }
+
+// MCP: artefact_show - Verify PRD exists and see current epics
+{ "id": "PRD-NNN" }
 ```
 
 ---
@@ -36,7 +37,7 @@ When spawning an agent for epic creation, ensure the prompt contains:
 | 3 | **Draft reference**: Existing bullet points from PRD to expand | Agent interprets, doesn't create from scratch |
 | 4 | **Intent**: 1–2 phrases on what this achieves and why | Reduces scope creep |
 | 5 | **Sizing**: Epic = 5–10 tasks, each task ~1-2h AI effort | Prevents micro/macro splitting |
-| 6 | **File creation mandate**: "Use `rudder epic:create` then `:patch` — NEVER Edit/Write directly" | Ensures proper state tracking |
+| 6 | **File creation mandate**: "Use MCP `artefact_create` then `artefact_edit` — NEVER Edit/Write directly" | Ensures proper state tracking |
 
 ### IF APPLICABLE
 
@@ -55,7 +56,7 @@ Agent must provide:
 - ❓ Questions or ambiguities found
 - 📋 Proposed structure: titles + 1-line descriptions
 - 🔗 Dependencies (`blocked_by`)
-- 🛠️ CLI commands to run after approval
+- 🛠️ MCP tool calls to run after approval
 
 ---
 
@@ -76,60 +77,45 @@ Agent must provide:
 
 ---
 
-## File Creation (Rudder CLI) — MANDATORY
+## File Creation (MCP Tools) — MANDATORY
 
 ⚠️ **NEVER use Write tool to create epic files directly.**
 
-```bash
-# Step 1: Create via Rudder (inherit PRD tags using --tag)
-bin/rudder epic:create <PRD-NNN> "<title>" [--target-version=<comp:ver>] [--tag=<tag>]
-
-# Example with tag propagation:
-# If PRD has tags: [api, security]
-bin/rudder epic:create PRD-001 "API Authentication" --tag=api --tag=security
+```json
+// Step 1: Create via MCP (inherit PRD tags using tag)
+// MCP: artefact_create
+{ "type": "epic", "parent": "PRD-001", "title": "API Authentication", "tags": ["api", "security"] }
 ```
 
-### Step 2: Fill Content via Patch
+### Step 2: Fill Content via Edit
 
-⚠️ **NEVER use Edit tool directly on artefacts.** Use `epic:patch` instead:
+⚠️ **NEVER use Edit tool directly on artefacts.** Use `artefact_edit` instead:
 
-```bash
-cat <<'PATCH' | bin/rudder epic:patch E001
-<<<<<<< SEARCH
-## Description
-=======
-## Description
+```json
+// MCP: artefact_edit
+{ "id": "E001", "section": "Description", "content": "Epic description here (2-3 sentences explaining the scope)." }
 
-Epic description here (2-3 sentences explaining the scope).
->>>>>>> REPLACE
-
-<<<<<<< SEARCH
-## Acceptance Criteria
-=======
-## Acceptance Criteria
-
-- [ ] First acceptance criterion
-- [ ] Second acceptance criterion
->>>>>>> REPLACE
-PATCH
+// MCP: artefact_edit
+{ "id": "E001", "section": "Acceptance Criteria", "content": "- [ ] First acceptance criterion\n- [ ] Second acceptance criterion" }
 ```
 
-For frontmatter changes, use `epic:update`:
-```bash
-bin/rudder epic:update E001 --add-story S001 --target-version game:0.2.0
+For frontmatter changes, use `artefact_update`:
+```json
+// MCP: artefact_update
+{ "id": "E001", "add_story": "S001", "target_version": "game:0.2.0" }
 ```
 
 ### Tag Propagation
 
 When creating epics, propagate parent PRD's tags:
 1. Read PRD tags from frontmatter
-2. Pass to `epic:create` using `--tag` option
+2. Pass to `artefact_create` using `tags` option
 3. User can modify/override before confirmation
 
 **Why mandatory?**
-- Rudder assigns sequential IDs (E040, E041, etc.)
-- Rudder sets correct frontmatter structure
-- Rudder tracks state in state.json
+- MCP assigns sequential IDs (E040, E041, etc.)
+- MCP sets correct frontmatter structure
+- MCP tracks state in state.json
 - Direct Write breaks state tracking
 
 ---
@@ -144,7 +130,7 @@ Spawn agents in parallel (one per epic draft in PRD.md):
          ↓
 Main thread: collect escalations → present to user → answers
          ↓
-When approved: agents call `rudder epic:create` then `epic:patch`
+When approved: agents call MCP `artefact_create` then `artefact_edit`
 ```
 
 > Single message = multiple Task tool calls = parallel execution.
@@ -178,4 +164,3 @@ This command does **NOT**:
 - Fill Technical Notes
 - Start implementation
 - Make architectural decisions not in PRD
-

@@ -1,110 +1,128 @@
-# Rudder Cheatsheet
+# MCP Tools Cheatsheet
 
-CLI: `bin/rudder` or `./bin/rudder`
+MCP tools are available via the `mcp` allowed-tool.
 
 ## Read Artifacts
 
-```bash
-rudder prd:show PRD-NNN          # PRD summary
-rudder epic:show ENNN            # Epic summary
-rudder task:show TNNN            # Task details
+```json
+// MCP: artefact_show
+{ "id": "PRD-NNN" }      // PRD summary
+{ "id": "ENNN" }         // Epic summary
+{ "id": "TNNN" }         // Task details
 
-# Full markdown content
-rudder prd:show PRD-NNN --raw
-rudder epic:show ENNN --raw
-rudder task:show TNNN --raw
+// Full markdown content
+{ "id": "PRD-NNN", "raw": true }
+{ "id": "ENNN", "raw": true }
+{ "id": "TNNN", "raw": true }
 ```
 
 ## Project Status
 
-```bash
-rudder status                    # Overview (PRDs, tasks by status)
-rudder prd:list                  # All PRDs
-rudder epic:list --prd PRD-NNN   # Epics in PRD
-rudder task:list --epic ENNN     # Tasks in epic
+```json
+// MCP: system_status
+{}                              // Overview (PRDs, tasks by status)
+
+// MCP: artefact_list
+{ "type": "prd" }               // All PRDs
+{ "type": "epic", "scope": "PRD-NNN" }  // Epics in PRD
+{ "type": "task", "scope": "ENNN" }     // Tasks in epic
 ```
 
 ## Dependencies
 
-```bash
-rudder deps:ready                # Ready tasks (unblocked)
-rudder deps:ready --epic ENNN    # Ready in specific epic
-rudder deps:show TNNN            # Task blockers
-rudder deps:show ENNN            # Epic blockers
+```json
+// MCP: workflow_ready
+{}                              // Ready tasks (unblocked)
+{ "scope": "ENNN" }             // Ready in specific epic
+
+// MCP: deps_show
+{ "id": "TNNN" }                // Task blockers
+{ "id": "ENNN" }                // Epic blockers
+
+// MCP: deps_critical
+{ "limit": 5 }                  // Bottleneck tasks
 ```
 
 ## Modify Artifacts
 
-```bash
-# Status
-rudder task:update TNNN --status Done
-rudder epic:update ENNN --status "In Progress"
+```json
+// Status
+// MCP: artefact_update
+{ "id": "TNNN", "status": "Done" }
+{ "id": "ENNN", "status": "In Progress" }
 
-# Content (stdin patch)
-cat <<'PATCH' | rudder task:patch TNNN
-<<<<<<< SEARCH
-old text
-=======
-new text
->>>>>>> REPLACE
-PATCH
+// Content
+// MCP: artefact_edit
+{ "id": "TNNN", "section": "Notes", "content": "New content" }
 
-# Section edit
-rudder task:edit TNNN -s "## Notes" -c "New content"
-rudder task:edit TNNN -s "## Notes" -c "More" --append
+// MCP: workflow_complete
+{ "task_id": "TNNN", "message": "Completion summary" }
 ```
 
 ## Agents
 
-```bash
-rudder agent:spawn TNNN          # Start agent (blocking)
-rudder agent:spawn TNNN --worktree  # Isolated branch
-rudder agent:status              # List agents
-rudder agent:status TNNN         # Specific agent
-rudder agent:log TNNN            # View log
-rudder agent:log TNNN --tail     # Follow log
-rudder agent:reap TNNN           # Merge completed work
-rudder agent:reject TNNN         # Discard work
+```json
+// MCP: agent_spawn
+{ "task_id": "TNNN" }           // Start agent (blocking)
+{ "task_id": "TNNN", "worktree": true }  // Isolated branch
+
+// MCP: agent_status
+{}                              // List agents
+{ "task_id": "TNNN" }           // Specific agent
+
+// MCP: agent_log
+{ "task_id": "TNNN" }           // View log
+{ "task_id": "TNNN", "tail": true }  // Follow log
+
+// MCP: agent_reap
+{ "task_id": "TNNN" }           // Merge completed work
+
+// MCP: agent_reject
+{ "task_id": "TNNN" }           // Discard work
 ```
 
 ## Memory
 
-```bash
-rudder memory:sync               # Process pending logs
-rudder memory:show ENNN          # Epic memory
-rudder task:show-memory TNNN     # Full context for task
+```json
+// MCP: memory_sync
+{}                              // Process pending logs
+
+// MCP: memory_read
+{ "scope": "ENNN" }             // Epic memory
+{ "scope": "TNNN", "full": true }  // Full context for task
 ```
 
 ## Create Artifacts
 
-```bash
-rudder prd:create "Title"
-rudder epic:create "Title" --prd PRD-NNN
-rudder task:create "Title" --epic ENNN
+```json
+// MCP: artefact_create
+{ "type": "prd", "title": "Title" }
+{ "type": "epic", "parent": "PRD-NNN", "title": "Title" }
+{ "type": "task", "parent": "ENNN", "title": "Title" }
 ```
 
-## Permissions (Claude Code)
+## Logging
 
-```bash
-rudder permissions:check         # Verify setup
-rudder permissions:fix           # Add missing permissions
+```json
+// MCP: task_log
+{ "task_id": "TNNN", "message": "Progress update", "level": "info" }
+{ "task_id": "TNNN", "message": "Useful insight", "level": "tip" }
+{ "task_id": "TNNN", "message": "Problem found", "level": "error" }
 ```
 
 ## Role Reference
 
-| Operation | Role | How to invoke |
-|-----------|------|---------------|
-| Read artifacts | any | `rudder <entity>:show` |
-| Project status | any | `rudder status` |
-| Ready tasks | any | `rudder deps:ready` |
-| Spawn agent | skill | `rudder agent:spawn TNNN` |
+| Operation | Role | MCP Tool |
+|-----------|------|----------|
+| Read artifacts | any | `artefact_show` |
+| Project status | any | `system_status` |
+| Ready tasks | any | `workflow_ready` |
+| Spawn agent | skill | `agent_spawn` |
 | Epic breakdown | coordinator | `/dev:epic-breakdown` |
 | PRD breakdown | coordinator | `/dev:prd-breakdown` |
-| Task execution | agent | (via agent:spawn) |
+| Task execution | agent | (via agent_spawn) |
 
 ## Tips
 
-- `--json` on any command for machine-readable output
-- `--raw` on show commands for full markdown
-- `--dry-run` on spawn/patch to preview changes
-- Tab completion: `rudder <TAB>` lists commands
+- Use `raw: true` for full markdown content
+- Use `full: true` for complete memory context

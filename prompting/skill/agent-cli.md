@@ -1,95 +1,79 @@
-# Agent CLI Commands
+# Agent MCP Commands
 
 ## Spawning
 
-```bash
-# Spawn single agent
-rudder agent:spawn T001
+```json
+// MCP: agent_spawn
+{ "task_id": "T001" }
 
-# Spawn with timeout (default: 600s)
-rudder agent:spawn T001 --timeout 1800
+// With timeout (default: 600s)
+{ "task_id": "T001", "timeout": 1800 }
 
-# Spawn with worktree (isolated git branch)
-rudder agent:spawn T001 --worktree
+// With worktree (isolated git branch)
+{ "task_id": "T001", "worktree": true }
 
-# Dry-run (show what would happen)
-rudder agent:spawn T001 --dry-run
+// Dry-run (show what would happen)
+{ "task_id": "T001", "dry_run": true }
 ```
 
 ## Monitoring
 
-```bash
-# List all agents
-rudder agent:list
+```json
+// MCP: agent_status
+{}                           // List all agents
+{ "active": true }           // Only active (dispatched/running)
+{ "task_id": "T001" }        // Specific agent
 
-# Only active agents (dispatched/running)
-rudder agent:list --active
-
-# Check specific agent status
-rudder agent:status T001
-
-# Show full log
-rudder agent:log T001
-
-# Last N lines
-rudder agent:log T001 -n 50
-
-# Follow log in real-time (Ctrl+C to stop)
-rudder agent:log T001 --tail
-
-# Show filtered JSON events
-rudder agent:log T001 --events
+// MCP: agent_log
+{ "task_id": "T001" }              // Full log
+{ "task_id": "T001", "lines": 50 } // Last N lines
+{ "task_id": "T001", "tail": true } // Follow log (Ctrl+C to stop)
+{ "task_id": "T001", "events": true } // Filtered JSON events
 ```
 
 ## Waiting
 
-```bash
-# Wait for single agent to complete
-rudder agent:wait T001
+```json
+// MCP: agent_wait
+{ "task_id": "T001" }              // Wait for single agent
 
-# Wait for multiple agents
-rudder agent:wait-all T001 T002 T003
-
-# Wait for ALL active agents
-rudder agent:wait-all
-
-# Wait for FIRST to complete
-rudder agent:wait-all --any
-
-# With timeout (default: 3600s)
-rudder agent:wait-all --timeout 300
+// MCP: agent_wait_all
+{}                                 // Wait for ALL active agents
+{ "task_ids": ["T001", "T002"] }   // Wait for specific agents
+{ "any": true }                    // Wait for FIRST to complete
+{ "timeout": 300 }                 // With timeout (default: 3600s)
 ```
 
 ## Harvesting Results
 
-```bash
-# Reap single agent (wait + merge + cleanup + update status)
-rudder agent:reap T001
+```json
+// MCP: agent_reap
+{ "task_id": "T001" }       // Wait + merge + cleanup + update status
 
-# Reap all completed agents
-rudder agent:reap-all
+// MCP: agent_reap_all
+{}                          // Reap all completed agents
 
-# Reject agent work (discard worktree)
-rudder agent:reject T001 --reason "Wrong approach"
+// MCP: agent_reject
+{ "task_id": "T001", "reason": "Wrong approach" }  // Discard worktree
 
-# Force-terminate running agent
-rudder agent:kill T001
+// MCP: agent_kill
+{ "task_id": "T001" }       // Force-terminate running agent
 ```
 
 ## Spawn Behavior
 
-`agent:spawn` is **BLOCKING** - it waits, streams output, and auto-reaps on success.
+`agent_spawn` is **BLOCKING** - it waits, streams output, and auto-reaps on success.
 
 ```
-agent:spawn T001
+agent_spawn { "task_id": "T001" }
     ↓
 [streams log, shows heartbeat]
     ↓
 exit 0 → auto-reap (merge + cleanup) + useful summary
-exit ≠0 → manual: agent:log, agent:reject, or agent:spawn --resume
+exit ≠0 → manual: agent_log, agent_reject, or agent_spawn with resume
 ```
 
-**Important:** On completion, spawn displays useful info (exit code, files changed, next steps). Do NOT lose this output.
+**Important:** On completion, spawn returns useful info (exit code, files changed, next steps). Do NOT lose this output.
 
 ## Parallel Spawning
 
@@ -97,53 +81,43 @@ Use **Task tool with `run_in_background: true`** for parallel agents:
 
 ```
 # In ONE message, call Task multiple times with run_in_background:
-Task: rudder agent:spawn T001 (run_in_background: true)
-Task: rudder agent:spawn T002 (run_in_background: true)
-Task: rudder agent:spawn T003 (run_in_background: true)
+Task: agent_spawn T001 (run_in_background: true)
+Task: agent_spawn T002 (run_in_background: true)
+Task: agent_spawn T003 (run_in_background: true)
 ```
 
 **NEVER use bash `&`** - it loses the output and useful completion info.
 
 **NEVER use `sleep && check` patterns** - Task tool handles completion notification automatically.
 
-Each spawn runs independently in background. Check status with `agent:status`.
+Each spawn runs independently in background. Check status with `agent_status`.
 
 ## After Spawn Completes
 
 | Exit | Action |
 |------|--------|
-| 0 (success) | Auto-reaped, check `agent:status` |
-| ≠0 (failed) | `agent:log T001` to investigate |
-| Blocked | `agent:spawn T001 --resume` or `agent:reject T001` |
+| 0 (success) | Auto-reaped, check `agent_status` |
+| ≠0 (failed) | `agent_log { "task_id": "T001" }` to investigate |
+| Blocked | `agent_spawn` with resume or `agent_reject` |
 
 ## Checking Dead/Failed Agents
 
-```bash
-# See what happened
-rudder agent:log T001 -n 50
+```json
+// MCP: agent_log
+{ "task_id": "T001", "lines": 50 }  // See what happened
+{ "task_id": "T001" }                // Full log
 
-# Full log
-rudder agent:log T001
-
-# Current status
-rudder agent:status T001
-
-# List all agents
-rudder agent:list
+// MCP: agent_status
+{ "task_id": "T001" }               // Current status
+{}                                   // List all agents
 ```
 
 ## Batch Harvest
 
-```bash
-# After all spawns complete
-rudder agent:conflicts      # Check file overlaps
-rudder agent:reap-all       # Merge all completed
-```
+```json
+// MCP: agent_conflicts
+{}                          // Check file overlaps
 
-## Output Formats
-
-All commands support `--json` for machine-readable output:
-```bash
-rudder agent:list --json
-rudder agent:status T001 --json
+// MCP: agent_reap_all
+{}                          // Merge all completed
 ```

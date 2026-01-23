@@ -1,14 +1,12 @@
 ---
 description: Create stories from PRD requirements
 argument-hint: <PRD-NNN>
-allowed-tools: Read, Write, Edit, Task, Bash
+allowed-tools: Read, Write, Edit, Task, mcp
 ---
 
 # PRD Story Agent
 
 **Purpose:** Create user/technical/API stories from PRD requirements.
-
-> 📖 CLI reference: `bin/rudder story -h`
 
 This agent creates **stories only**. Stories capture narrative context (who, what, why) that epics and tasks will reference.
 
@@ -16,8 +14,9 @@ This agent creates **stories only**. Stories capture narrative context (who, wha
 
 ## Pre-check
 
-```bash
-rudder prd:show PRD-NNN              # Verify PRD exists
+```json
+// MCP: artefact_show - Verify PRD exists
+{ "id": "PRD-NNN" }
 ```
 
 ## Prerequisites
@@ -86,56 +85,50 @@ Name the **WHAT** (page, role, feature), not the **HOW** (file, class, route).
 
 ---
 
-## Story Creation (Rudder CLI) — MANDATORY
+## Story Creation (MCP Tools) — MANDATORY
 
 ⚠️ **NEVER use Write tool to create story files directly.**
 
-```bash
-# Step 1: Create via Rudder
-bin/rudder story:create <PRD-NNN> "<title>" --type <user|technical|api>
+```json
+// Step 1: Create via MCP
+// MCP: artefact_create
+{ "type": "story", "parent": "PRD-NNN", "title": "Story title" }
 
-# Optional: Set parent for tree structure
-bin/rudder story:update S001 --parent-story S000
-
+// Optional: Set parent for tree structure
+// MCP: artefact_update
+{ "id": "S001", "parent_story": "S000" }
 ```
 
-### Step 2: Fill Content via Patch
+### Step 2: Fill Content via Edit
 
-⚠️ **NEVER use Edit tool directly on artefacts.** Use `story:patch` instead:
+⚠️ **NEVER use Edit tool directly on artefacts.** Use `artefact_edit` instead:
 
-```bash
-cat <<'PATCH' | bin/rudder story:patch S001
-<<<<<<< SEARCH
-## Story
-=======
-## Story
+```json
+// MCP: artefact_edit
+{
+  "id": "S001",
+  "section": "Story",
+  "content": "**As a** user\n**I want** to see my dashboard\n**So that** I can track my progress"
+}
 
-**As a** user
-**I want** to see my dashboard
-**So that** I can track my progress
->>>>>>> REPLACE
-
-<<<<<<< SEARCH
-## Acceptance Criteria
-=======
-## Acceptance Criteria
-
-**Given** I am logged in
-**When** I navigate to /dashboard
-**Then** I see my statistics
->>>>>>> REPLACE
-PATCH
+// MCP: artefact_edit
+{
+  "id": "S001",
+  "section": "Acceptance Criteria",
+  "content": "**Given** I am logged in\n**When** I navigate to /dashboard\n**Then** I see my statistics"
+}
 ```
 
-For frontmatter changes, use `story:update`:
-```bash
-bin/rudder story:update S001 --type user --parent-story S000
+For frontmatter changes, use `artefact_update`:
+```json
+// MCP: artefact_update
+{ "id": "S001", "type": "user", "parent_story": "S000" }
 ```
 
 **Why mandatory?**
-- Rudder assigns sequential IDs (S001, S002, etc.)
-- Rudder sets correct frontmatter structure
-- Rudder tracks state in state.json
+- MCP assigns sequential IDs (S001, S002, etc.)
+- MCP sets correct frontmatter structure
+- MCP tracks state in state.json
 - Direct Write breaks state tracking
 
 ---
@@ -146,8 +139,8 @@ bin/rudder story:update S001 --type user --parent-story S000
 1. Read PRD goals and personas
 2. Propose story structure (list with types)
 3. Present to main thread for approval
-4. After approval: create stories via rudder CLI
-5. Fill content via story:patch (NOT Edit tool)
+4. After approval: create stories via MCP tools
+5. Fill content via artefact_edit (NOT Edit tool)
 6. Return output to main thread
 ```
 
@@ -180,4 +173,3 @@ This agent does **NOT**:
 - Link stories to epics/tasks (done in prd-breakdown/epic-breakdown)
 - Make architectural decisions
 - Start implementation
-

@@ -1,14 +1,12 @@
 ---
 description: Finalize story-task linkage (phase finale before implementation)
 argument-hint: <PRD-NNN>
-allowed-tools: Read, Write, Edit, Task, Bash
+allowed-tools: Read, Write, Edit, Task, mcp
 ---
 
 # PRD Story Finalize Agent
 
 **Purpose:** Link orphan stories to tasks, or create new tasks. Final phase before implementation when stories exist.
-
-> 📖 CLI reference: `bin/rudder story -h`
 
 This agent ensures **zero orphan stories** before implementation starts.
 
@@ -16,18 +14,21 @@ This agent ensures **zero orphan stories** before implementation starts.
 
 ## Pre-check
 
-```bash
-rudder story:validate PRD-NNN        # Check for orphan stories
-rudder story:orphans PRD-NNN         # List orphan stories
+```json
+// MCP: story_validate - Check for orphan stories
+{ "scope": "PRD-NNN" }
+
+// MCP: story_orphans - List orphan stories
+{ "scope": "PRD-NNN" }
 ```
 
 ## Prerequisites
 
 Before running this command:
 
-1. Stories exist (`story:list PRD-NNN`)
+1. Stories exist (`artefact_list { "type": "story", "scope": "PRD-NNN" }`)
 2. Epic breakdown is complete (tasks exist)
-3. `story:validate` reports orphan stories
+3. `story_validate` reports orphan stories
 
 ---
 
@@ -35,7 +36,7 @@ Before running this command:
 
 This agent is triggered by the **skill** when:
 1. `epic-breakdown` completes
-2. Skill runs `story:validate`
+2. Skill runs `story_validate`
 3. Orphan stories are detected
 
 ---
@@ -43,12 +44,12 @@ This agent is triggered by the **skill** when:
 ## Workflow
 
 ```
-1. List orphan stories: rudder story:orphans PRD-NNN
+1. List orphan stories: story_orphans { "scope": "PRD-NNN" }
 2. For each orphan:
    a. Find semantically matching tasks
    b. If match exists → link story to task
    c. If no match → create new task (incremental breakdown)
-3. Re-validate: rudder story:validate PRD-NNN
+3. Re-validate: story_validate { "scope": "PRD-NNN" }
 4. Repeat until zero orphans
 5. Return output to skill
 ```
@@ -57,12 +58,14 @@ This agent is triggered by the **skill** when:
 
 ## Linking Stories to Tasks
 
-```bash
-# Add story reference to existing task
-rudder task:update TNNN --add-story S001 --add-story S002
+```json
+// Add story reference to existing task
+// MCP: artefact_update
+{ "id": "TNNN", "add_story": "S001" }
 
-# Verify link
-rudder story:show S001   # Should show "Referenced by Tasks: TNNN"
+// Verify link
+// MCP: artefact_show - Should show "Referenced by Tasks: TNNN"
+{ "id": "S001" }
 ```
 
 ---
@@ -71,23 +74,18 @@ rudder story:show S001   # Should show "Referenced by Tasks: TNNN"
 
 When no matching task exists, create one:
 
-```bash
-# Step 1: Create task via Rudder
-rudder task:create PRD-NNN/ENNN "Task title based on story"
+```json
+// Step 1: Create task via MCP
+// MCP: artefact_create
+{ "type": "task", "parent": "ENNN", "title": "Task title based on story" }
 
-# Step 2: Link story
-rudder task:update TNNN --add-story S001
+// Step 2: Link story
+// MCP: artefact_update
+{ "id": "TNNN", "add_story": "S001" }
 
-# Step 3: Fill task content via task:patch (NOT Edit tool)
-cat <<'PATCH' | rudder task:patch TNNN
-<<<<<<< SEARCH
-## Description
-=======
-## Description
-
-Task description based on story requirements.
->>>>>>> REPLACE
-PATCH
+// Step 3: Fill task content via artefact_edit (NOT Edit tool)
+// MCP: artefact_edit
+{ "id": "TNNN", "section": "Description", "content": "Task description based on story requirements." }
 ```
 
 ---
@@ -110,7 +108,7 @@ When linking orphan stories to tasks:
 
 - Stories linked (list: S001 → T042)
 - Tasks created (list with IDs)
-- Validation result: `story:validate` must pass
+- Validation result: `story_validate` must pass
 - Remaining issues (if any)
 
 **Main thread decides next action.** Agent returns output only.
@@ -118,14 +116,6 @@ When linking orphan stories to tasks:
 ---
 
 ## Validation Loop
-
-```bash
-# Loop until validation passes
-while rudder story:validate PRD-NNN --json | jq -e '.issues | length > 0'; do
-  # Fix orphans
-  # ...
-done
-```
 
 The agent must achieve **zero orphan stories** before returning.
 
@@ -147,4 +137,3 @@ This agent does **NOT**:
 - Modify story acceptance criteria
 - Start implementation
 - Make architectural decisions
-
