@@ -6,7 +6,7 @@
  */
 import path from 'path';
 import fs from 'fs';
-import { spawnClaudeWithSrt, generateSrtConfig, generateAgentMcpConfig, checkMcpServer, startSocatBridge } from './srt.js';
+import { spawnClaudeWithSrt, generateSrtConfig, generateAgentMcpConfig, checkMcpAgentServer, startSocatBridge } from './srt.js';
 import type { ChildProcess } from 'child_process';
 
 export interface SpawnClaudeResult {
@@ -204,14 +204,14 @@ export function spawnClaude(options: SpawnClaudeOptions): SpawnClaudeResult {
 
   if (useExternalMcp) {
     const havenDir = getHavenDir(agentDir);
-    const mcpStatus = checkMcpServer(havenDir);
+    const mcpStatus = checkMcpAgentServer(havenDir);
 
     if (!mcpStatus.running) {
       throw new Error(
-        'MCP server not running. Start it first:\n\n' +
-        '  bin/rudder-mcp start\n\n' +
-        'Then retry spawn. Check status with "bin/rudder-mcp status".\n' +
-        'Transport mode (socket/port) is set in .sailing/config.yaml (agent.mcp_mode).'
+        'MCP agent server not running. Start it first:\n\n' +
+        '  bin/rdrctl start\n\n' +
+        'Then retry spawn. Check status with "bin/rdrctl status".\n' +
+        'Note: Agent MCP requires use_subprocess=true in config.'
       );
     }
 

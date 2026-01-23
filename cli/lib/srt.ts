@@ -150,39 +150,98 @@ interface McpServerStatus {
 
 /**
  * Check if MCP server is already running for a haven
- * Supports both socket and port modes
+ * Reads state from mcp-state.json (created by rdrctl)
+ * Supports both socket and port modes for conductor and agent
  * @param {string} havenDir - Haven directory
  * @returns {{ running: boolean, mode?: string, socket?: string, port?: number, pid?: number }}
  */
 export function checkMcpServer(havenDir: string): McpServerStatus {
-  const socketPath = path.join(havenDir, 'mcp.sock');
-  const portFile = path.join(havenDir, 'mcp.port');
-  const pidFile = path.join(havenDir, 'mcp.pid');
+  const stateFile = path.join(havenDir, 'mcp-state.json');
 
-  if (!fs.existsSync(pidFile)) {
+  if (!fs.existsSync(stateFile)) {
     return { running: false };
   }
 
-  // Check if PID is still running
   try {
-    const pid = parseInt(fs.readFileSync(pidFile, 'utf8').trim(), 10);
-    process.kill(pid, 0); // Signal 0 = check if process exists
+    const state = JSON.parse(fs.readFileSync(stateFile, 'utf8'));
 
-    // Determine mode
-    if (fs.existsSync(portFile)) {
-      const port = parseInt(fs.readFileSync(portFile, 'utf8').trim(), 10);
-      return { running: true, mode: 'port', port, pid };
-    } else if (fs.existsSync(socketPath)) {
-      return { running: true, mode: 'socket', socket: socketPath, pid };
-    } else {
-      // PID exists but no socket or port file - stale
-      throw new Error('Stale PID file');
+    // Check conductor (primary MCP for orchestrator)
+    if (state.conductor?.pid) {
+      try {
+        process.kill(state.conductor.pid, 0); // Signal 0 = check if process exists
+
+        if (state.conductor.socket) {
+          return {
+            running: true,
+            mode: 'socket',
+            socket: state.conductor.socket,
+            pid: state.conductor.pid
+          };
+        } else if (state.conductor.port) {
+          return {
+            running: true,
+            mode: 'port',
+            port: state.conductor.port,
+            pid: state.conductor.pid
+          };
+        }
+      } catch {
+        // Conductor not running
+      }
     }
+
+    // Conductor not running, clean up stale state
+    fs.unlinkSync(stateFile);
+    return { running: false };
   } catch {
-    // Process not running, clean up stale files
-    try { fs.unlinkSync(socketPath); } catch { /* ignore */ }
-    try { fs.unlinkSync(pidFile); } catch { /* ignore */ }
-    try { fs.unlinkSync(portFile); } catch { /* ignore */ }
+    // Corrupted state file, clean up
+    try { fs.unlinkSync(stateFile); } catch { /* ignore */ }
+    return { running: false };
+  }
+}
+
+/**
+ * Check if MCP agent server is running (for sandbox agents)
+ * @param {string} havenDir - Haven directory
+ * @returns {{ running: boolean, mode?: string, socket?: string, port?: number, pid?: number }}
+ */
+export function checkMcpAgentServer(havenDir: string): McpServerStatus {
+  const stateFile = path.join(havenDir, 'mcp-state.json');
+
+  if (!fs.existsSync(stateFile)) {
+    return { running: false };
+  }
+
+  try {
+    const state = JSON.parse(fs.readFileSync(stateFile, 'utf8'));
+
+    // Check agent MCP (for sandbox agents)
+    if (state.agent?.pid) {
+      try {
+        process.kill(state.agent.pid, 0);
+
+        if (state.agent.socket) {
+          return {
+            running: true,
+            mode: 'socket',
+            socket: state.agent.socket,
+            pid: state.agent.pid
+          };
+        } else if (state.agent.port) {
+          return {
+            running: true,
+            mode: 'port',
+            port: state.agent.port,
+            pid: state.agent.pid
+          };
+        }
+      } catch {
+        // Agent not running
+      }
+    }
+
+    return { running: false };
+  } catch {
     return { running: false };
   }
 }

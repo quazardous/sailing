@@ -9,7 +9,8 @@
  * - mcp-agent:schema Show tool schema
  */
 import { Command } from 'commander';
-import { jsonOut } from '../managers/core-manager.js';
+import { jsonOut, findProjectRoot } from '../managers/core-manager.js';
+import { setProjectRoot as setMcpProjectRoot } from '../managers/mcp-manager.js';
 import { addDynamicHelp } from '../lib/help.js';
 import {
   AGENT_TOOLS,
@@ -17,6 +18,15 @@ import {
   formatToolHelp,
   getToolSchema
 } from '../managers/mcp-tools-manager.js';
+
+// Lazy initialization flag
+let mcpInitialized = false;
+function ensureMcpInit() {
+  if (!mcpInitialized) {
+    setMcpProjectRoot(findProjectRoot());
+    mcpInitialized = true;
+  }
+}
 
 // =============================================================================
 // Helpers
@@ -172,6 +182,9 @@ export function registerMcpAgentCommands(program: Command) {
     .option('--json', 'JSON output')
     .allowUnknownOption(true)
     .action(async (tool: string, options: { json?: boolean }, command: Command) => {
+      // Initialize MCP project root (deferred to avoid import hoisting issues)
+      ensureMcpInit();
+
       // Get all args after the tool name
       const rawArgs = command.args.slice(1); // Skip tool name
       const toolArgs = parseToolArgs(rawArgs);

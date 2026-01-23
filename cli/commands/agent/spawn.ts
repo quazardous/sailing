@@ -19,7 +19,7 @@ import {
 } from '../../managers/worktree-manager.js';
 import { WorktreeOps } from '../../lib/worktree.js';
 import { spawnClaude, getLogFilePath } from '../../lib/claude.js';
-import { checkMcpServer } from '../../lib/srt.js';
+import { checkMcpAgentServer } from '../../lib/srt.js';
 import { extractPrdId, extractEpicId, normalizeId, parseTaskNum } from '../../lib/normalize.js';
 import { findDevMd, findToolset } from '../../managers/core-manager.js';
 import { getTask, getEpic, getMemoryFile, getPrdBranching } from '../../managers/artefacts-manager.js';
@@ -110,13 +110,13 @@ export function registerSpawnCommand(agent) {
         process.exit(1);
       };
 
-      // Check MCP server is running (required for sandbox agents)
+      // Check MCP agent server is running (required for sandbox agents)
       const havenDir = resolvePlaceholders('${haven}');
-      const mcpStatus = checkMcpServer(havenDir);
+      const mcpStatus = checkMcpAgentServer(havenDir);
       if (!mcpStatus.running) {
-        escalate('MCP server not running', [
-          `bin/rudder-mcp start     # Start the MCP server`,
-          `bin/rudder-mcp status    # Check server status`
+        escalate('MCP agent server not running', [
+          `bin/rdrctl start     # Start MCP services`,
+          `bin/rdrctl status    # Check server status`
         ]);
       }
 

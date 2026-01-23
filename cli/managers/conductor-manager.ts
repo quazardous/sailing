@@ -24,7 +24,7 @@ import { createMission } from '../lib/agent-schema.js';
 import { AgentUtils } from '../lib/agent-utils.js';
 import { AgentRunManager } from '../lib/agent-run.js';
 import { getGit } from '../lib/git.js';
-import { checkMcpServer } from '../lib/srt.js';
+import { checkMcpAgentServer } from '../lib/srt.js';
 import type { AgentRecord } from '../lib/types/agent.js';
 import type { ChildProcess } from 'child_process';
 
@@ -144,18 +144,19 @@ export class ConductorManager {
       };
     }
 
-    // Check MCP server
+    // Check MCP agent server (required for spawning agents)
     const havenDir = resolvePlaceholders('${haven}');
-    const mcpStatus = checkMcpServer(havenDir);
+    const mcpStatus = checkMcpAgentServer(havenDir);
     if (!mcpStatus.running) {
       return {
         success: false,
         taskId,
         escalate: {
-          reason: 'MCP server not running',
+          reason: 'MCP agent server not running',
           nextSteps: [
-            'bin/rudder-mcp start     # Start the MCP server',
-            'bin/rudder-mcp status    # Check server status'
+            'bin/rdrctl start     # Start MCP servers',
+            'bin/rdrctl status    # Check server status',
+            'Note: Requires use_subprocess=true in config'
           ]
         }
       };
