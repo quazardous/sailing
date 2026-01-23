@@ -92,13 +92,13 @@ paths:
   artefacts: ${haven}/artefacts
   memory: ${haven}/memory
   state: ${haven}/state.json
-  components: ${haven}/components.yaml
 
   # Worktrees in haven
   worktrees: ${haven}/worktrees
   agents: ${haven}/agents
 
-  # Templates/prompting in project (shared)
+  # Always in project (git-tracked)
+  components: .sailing/components.yaml
   templates: .sailing/templates
   prompting: .sailing/prompting
 ```

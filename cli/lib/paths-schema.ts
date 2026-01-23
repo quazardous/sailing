@@ -65,11 +65,9 @@ export const PATHS_SCHEMA: Record<string, PathEntry> = {
   },
   components: {
     default: '.sailing/components.yaml',
-    description: 'Component versions',
-    category: 'state',
-    profiles: {
-      haven: '${haven}/components.yaml'
-    }
+    description: 'Component versions (always in project)',
+    category: 'state'
+    // No profiles - components.yaml must stay in .sailing/ for git tracking
   },
 
   // Project-centric files

@@ -1,0 +1,443 @@
+/**
+ * Install command - Unified installation/configuration for sailing
+ *
+ * Consolidates:
+ * - MCP configuration (.mcp.json)
+ * - Claude permissions (settings.local.json)
+ * - Paths initialization (paths.yaml)
+ * - Sandbox setup (optional)
+ */
+import fs from 'fs';
+import path from 'path';
+import { Command } from 'commander';
+import { findProjectRoot, jsonOut } from '../managers/core-manager.js';
+import { addDynamicHelp } from '../lib/help.js';
+
+// =============================================================================
+// MCP Configuration
+// =============================================================================
+
+interface McpServer {
+  command: string;
+  args?: string[];
+  env?: Record<string, string>;
+}
+
+interface McpConfig {
+  mcpServers?: Record<string, McpServer>;
+}
+
+/**
+ * Get path to .mcp.json
+ */
+function getMcpConfigPath(): string {
+  const projectRoot = findProjectRoot();
+  return path.join(projectRoot, '.mcp.json');
+}
+
+/**
+ * Load existing .mcp.json or create empty
+ */
+function loadMcpConfig(): McpConfig {
+  const configPath = getMcpConfigPath();
+  if (fs.existsSync(configPath)) {
+    try {
+      return JSON.parse(fs.readFileSync(configPath, 'utf8')) as McpConfig;
+    } catch {
+      console.error(`Warning: Could not parse ${configPath}`);
+    }
+  }
+  return {};
+}
+
+/**
+ * Save .mcp.json
+ */
+function saveMcpConfig(config: McpConfig): void {
+  const configPath = getMcpConfigPath();
+  fs.writeFileSync(configPath, JSON.stringify(config, null, 2) + '\n');
+}
+
+/**
+ * Get default rudder MCP server configuration
+ */
+function getDefaultRudderMcp(): McpServer {
+  return {
+    command: 'bin/rdrctl',
+    args: ['start', 'conductor']
+  };
+}
+
+/**
+ * Check if MCP is configured
+ */
+function checkMcp(): { configured: boolean; hasRudder: boolean; config: McpConfig } {
+  const config = loadMcpConfig();
+  const hasRudder = !!config.mcpServers?.rudder;
+  return {
+    configured: fs.existsSync(getMcpConfigPath()),
+    hasRudder,
+    config
+  };
+}
+
+/**
+ * Fix MCP configuration - adds rudder if missing, preserves others
+ */
+function fixMcp(options: { dryRun?: boolean; force?: boolean }): {
+  added: boolean;
+  updated: boolean;
+  path: string;
+} {
+  const configPath = getMcpConfigPath();
+  const config = loadMcpConfig();
+
+  if (!config.mcpServers) {
+    config.mcpServers = {};
+  }
+
+  const defaultMcp = getDefaultRudderMcp();
+  let added = false;
+  let updated = false;
+
+  if (!config.mcpServers.rudder) {
+    // Add rudder MCP
+    if (!options.dryRun) {
+      config.mcpServers.rudder = defaultMcp;
+      saveMcpConfig(config);
+    }
+    added = true;
+  } else if (options.force) {
+    // Update existing rudder MCP
+    if (!options.dryRun) {
+      config.mcpServers.rudder = defaultMcp;
+      saveMcpConfig(config);
+    }
+    updated = true;
+  }
+
+  return { added, updated, path: configPath };
+}
+
+// =============================================================================
+// Register Commands
+// =============================================================================
+
+async function doInstall(options: { dryRun?: boolean; force?: boolean; json?: boolean; check?: boolean }) {
+  // If --check, just show status
+  if (options.check) {
+    const mcpStatus = checkMcp();
+    const permissionsOk = await checkPermissions();
+
+    const result = {
+      mcp: {
+        configured: mcpStatus.configured,
+        hasRudder: mcpStatus.hasRudder,
+        path: getMcpConfigPath()
+      },
+      permissions: permissionsOk,
+      ok: mcpStatus.hasRudder && permissionsOk.ok
+    };
+
+    if (options.json) {
+      jsonOut(result);
+    } else {
+      console.log('Installation Status\n');
+      console.log('MCP Configuration:');
+      console.log(`  File: ${result.mcp.path}`);
+      console.log(`  Exists: ${result.mcp.configured ? 'Yes' : 'No'}`);
+      console.log(`  Rudder MCP: ${result.mcp.hasRudder ? '✓ Configured' : '✗ Missing'}`);
+      console.log('\nClaude Permissions:');
+      console.log(`  Required: ${permissionsOk.required}`);
+      console.log(`  Present: ${permissionsOk.present}`);
+      console.log(`  Status: ${permissionsOk.ok ? '✓ OK' : '✗ Missing permissions'}`);
+      console.log(`\nOverall: ${result.ok ? '✓ OK' : '✗ Run `bin/rudder install` to fix'}`);
+    }
+    return;
+  }
+
+  // Do install/fix
+  const results: Record<string, unknown> = {};
+
+  // Fix MCP
+  const mcpResult = fixMcp({ dryRun: options.dryRun, force: options.force });
+  results.mcp = mcpResult;
+
+  // Fix Permissions
+  const permResult = await fixPermissions({ dryRun: options.dryRun });
+  results.permissions = permResult;
+
+  if (options.json) {
+    jsonOut(results);
+  } else {
+    console.log('Installation\n');
+
+    // MCP
+    if (mcpResult.added) {
+      if (options.dryRun) {
+        console.log('MCP: Would add rudder conductor MCP');
+      } else {
+        console.log('MCP: Added rudder conductor MCP');
+      }
+    } else if (mcpResult.updated) {
+      if (options.dryRun) {
+        console.log('MCP: Would update rudder conductor MCP');
+      } else {
+        console.log('MCP: Updated rudder conductor MCP');
+      }
+    } else {
+      console.log('MCP: Already configured');
+    }
+
+    // Permissions
+    if (permResult.added > 0) {
+      if (options.dryRun) {
+        console.log(`Permissions: Would add ${permResult.added} permissions`);
+      } else {
+        console.log(`Permissions: Added ${permResult.added} permissions`);
+      }
+    } else {
+      console.log('Permissions: Already configured');
+    }
+
+    if (!options.dryRun) {
+      console.log('\nDone!');
+    }
+  }
+}
+
+export function registerInstallCommands(program: Command) {
+  // Main install command - does the installation by default
+  const install = program.command('install')
+    .description('Install/configure MCP and permissions')
+    .option('--check', 'Check installation status only')
+    .option('--dry-run', 'Show what would be done')
+    .option('--force', 'Force update even if already configured')
+    .option('--json', 'JSON output')
+    .action(async (options: { check?: boolean; dryRun?: boolean; force?: boolean; json?: boolean }) => {
+      await doInstall(options);
+    });
+
+  // install:fix - Alias for install (for explicit fix)
+  install.command('fix')
+    .description('Fix installation (alias for install)')
+    .option('--dry-run', 'Show what would be done')
+    .option('--force', 'Force update even if already configured')
+    .option('--json', 'JSON output')
+    .action(async (options: { dryRun?: boolean; force?: boolean; json?: boolean }) => {
+      await doInstall(options);
+    });
+
+  // install:check - Check status (alias for install --check)
+  install.command('check')
+    .description('Check installation status')
+    .option('--json', 'JSON output')
+    .action(async (options: { json?: boolean }) => {
+      await doInstall({ check: true, json: options.json });
+    });
+
+  // install:mcp - MCP-specific commands
+  const mcp = install.command('mcp')
+    .description('MCP configuration');
+
+  mcp.command('check')
+    .description('Check MCP configuration')
+    .option('--json', 'JSON output')
+    .action((options: { json?: boolean }) => {
+      const status = checkMcp();
+
+      if (options.json) {
+        jsonOut({
+          path: getMcpConfigPath(),
+          ...status
+        });
+      } else {
+        console.log('MCP Configuration\n');
+        console.log(`File: ${getMcpConfigPath()}`);
+        console.log(`Exists: ${status.configured ? 'Yes' : 'No'}`);
+
+        if (status.configured && status.config.mcpServers) {
+          console.log('\nConfigured servers:');
+          for (const [name, server] of Object.entries(status.config.mcpServers)) {
+            const isRudder = name === 'rudder';
+            console.log(`  ${name}: ${server.command} ${(server.args || []).join(' ')}${isRudder ? ' (conductor)' : ''}`);
+          }
+        }
+
+        console.log(`\nRudder MCP: ${status.hasRudder ? '✓ Configured' : '✗ Missing'}`);
+        if (!status.hasRudder) {
+          console.log('\nRun `bin/rudder install:fix` to add rudder MCP.');
+        }
+      }
+    });
+
+  mcp.command('fix')
+    .description('Add/update rudder MCP configuration')
+    .option('--dry-run', 'Show what would be done')
+    .option('--force', 'Force update even if already configured')
+    .option('--json', 'JSON output')
+    .action((options: { dryRun?: boolean; force?: boolean; json?: boolean }) => {
+      const result = fixMcp(options);
+
+      if (options.json) {
+        jsonOut(result);
+      } else {
+        if (result.added) {
+          if (options.dryRun) {
+            console.log('Would add rudder MCP to .mcp.json');
+          } else {
+            console.log('Added rudder MCP to .mcp.json');
+          }
+        } else if (result.updated) {
+          if (options.dryRun) {
+            console.log('Would update rudder MCP in .mcp.json');
+          } else {
+            console.log('Updated rudder MCP in .mcp.json');
+          }
+        } else {
+          console.log('Rudder MCP already configured');
+          if (!options.force) {
+            console.log('Use --force to update');
+          }
+        }
+      }
+    });
+
+  mcp.command('show')
+    .description('Show current MCP configuration')
+    .option('--json', 'JSON output')
+    .action((options: { json?: boolean }) => {
+      const configPath = getMcpConfigPath();
+
+      if (!fs.existsSync(configPath)) {
+        if (options.json) {
+          jsonOut({ exists: false, path: configPath });
+        } else {
+          console.log(`MCP config not found: ${configPath}`);
+        }
+        return;
+      }
+
+      const config = loadMcpConfig();
+
+      if (options.json) {
+        jsonOut({ exists: true, path: configPath, config });
+      } else {
+        console.log(`File: ${configPath}\n`);
+        console.log(JSON.stringify(config, null, 2));
+      }
+    });
+
+  addDynamicHelp(install);
+}
+
+// =============================================================================
+// Helper functions (import from permissions module logic)
+// =============================================================================
+
+async function checkPermissions(): Promise<{ ok: boolean; required: number; present: number; missing: number }> {
+  const projectRoot = findProjectRoot();
+  const settingsPath = path.join(projectRoot, '.claude', 'settings.local.json');
+
+  let existing: string[] = [];
+  if (fs.existsSync(settingsPath)) {
+    try {
+      const settings = JSON.parse(fs.readFileSync(settingsPath, 'utf8'));
+      existing = settings.permissions?.allow || [];
+    } catch {}
+  }
+
+  const missing = BASE_PERMISSIONS.filter(p => !existing.includes(p));
+
+  return {
+    ok: missing.length === 0,
+    required: BASE_PERMISSIONS.length,
+    present: BASE_PERMISSIONS.length - missing.length,
+    missing: missing.length
+  };
+}
+
+// Base sailing permissions (same as permissions.ts)
+const BASE_PERMISSIONS = [
+  // Rudder CLI
+  'Bash(bin/rudder:*)',
+  'Bash(bin/rudder *:*)',
+  'Bash(./bin/rudder:*)',
+  'Bash(./bin/rudder *:*)',
+  // Git
+  'Bash(git:*)',
+  'Bash(git *:*)',
+  // Build tools
+  'Bash(npm install:*)',
+  'Bash(npm test:*)',
+  'Bash(npm run:*)',
+  'Bash(make:*)',
+  // File operations
+  'Bash(chmod:*)',
+  'Bash(mkdir:*)',
+  'Bash(ls:*)',
+  'Bash(tee:*)',
+  // Data processing
+  'Bash(jq:*)',
+  'Bash(yq:*)',
+  'Bash(curl:*)',
+  // Process management
+  'Bash(ps:*)',
+  'Bash(pgrep:*)',
+  'Bash(pkill:*)',
+  'Bash(lsof:*)',
+  // Network
+  'Bash(netstat:*)',
+  'Bash(ss:*)',
+  // Python
+  'Bash(python:*)',
+  'Bash(python3:*)',
+  'Bash(pip install:*)',
+  'Bash(pip3 install:*)',
+  // Web
+  'WebSearch',
+  // Read permissions
+  'Read(.claude/**)',
+  'Read(.sailing/**)'
+];
+
+async function fixPermissions(options: { dryRun?: boolean }): Promise<{ added: number; path: string }> {
+  const projectRoot = findProjectRoot();
+  const settingsPath = path.join(projectRoot, '.claude', 'settings.local.json');
+
+  let settings: { includeCoAuthoredBy?: boolean; permissions?: { allow?: string[] } } = {
+    includeCoAuthoredBy: false,
+    permissions: { allow: [] }
+  };
+
+  if (fs.existsSync(settingsPath)) {
+    try {
+      settings = JSON.parse(fs.readFileSync(settingsPath, 'utf8'));
+    } catch {}
+  }
+
+  if (!settings.permissions) settings.permissions = { allow: [] };
+  if (!Array.isArray(settings.permissions.allow)) settings.permissions.allow = [];
+
+  const existing = settings.permissions.allow;
+  let added = 0;
+
+  for (const perm of BASE_PERMISSIONS) {
+    if (!existing.includes(perm)) {
+      if (!options.dryRun) {
+        existing.push(perm);
+      }
+      added++;
+    }
+  }
+
+  if (!options.dryRun && added > 0) {
+    const dir = path.dirname(settingsPath);
+    if (!fs.existsSync(dir)) {
+      fs.mkdirSync(dir, { recursive: true });
+    }
+    fs.writeFileSync(settingsPath, JSON.stringify(settings, null, 2) + '\n');
+  }
+
+  return { added, path: settingsPath };
+}

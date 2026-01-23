@@ -150,9 +150,12 @@ import { registerDbCommands } from './commands/db.js';
 import { registerFindCommands } from './commands/find.js';
 import { registerRenumberCommands } from './commands/renumber.js';
 import { registerArchiveCommands } from './commands/archive.js';
-import { registerDashboardCommands } from './commands/dashboard.js';
 import { registerDashboardDebugCommands } from './commands/dashboard-debug.js';
 import { registerAuditCommands } from './commands/audit.js';
+import { registerInstallCommands } from './commands/install.js';
+import { registerMcpConductorCommands } from './commands/mcp-conductor.js';
+import { registerMcpAgentCommands } from './commands/mcp-agent.js';
+// Dashboard and conductor moved to rdrctl
 
 // Expand colon syntax: task:list → task list (first arg only, if it looks like group:command)
 let commandExpanded = false;
@@ -208,9 +211,12 @@ registerDbCommands(program);
 registerFindCommands(program);
 registerRenumberCommands(program);
 registerArchiveCommands(program);
-registerDashboardCommands(program);
 registerDashboardDebugCommands(program);
 registerAuditCommands(program);
+registerInstallCommands(program);
+registerMcpConductorCommands(program);
+registerMcpAgentCommands(program);
+// Dashboard and conductor now in rdrctl
 registerUtilCommands(program);
 registerPermissionsCommands(program);
 

@@ -1146,6 +1146,280 @@
     ::-webkit-scrollbar-thumb:hover {
       background: var(--bg-hover);
     }
+
+    /* === Agent Control Panel === */
+    .agent-panel {
+      position: fixed;
+      top: 60px;
+      right: 20px;
+      width: 320px;
+      max-height: calc(100vh - 100px);
+      background: var(--bg-secondary);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-lg);
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
+      z-index: 100;
+      overflow: hidden;
+    }
+
+    .agent-panel-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 12px 16px;
+      background: var(--bg-card);
+      border-bottom: 1px solid var(--border);
+    }
+
+    .agent-panel-title {
+      font-weight: 600;
+      font-size: 13px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .agent-panel-body {
+      max-height: 400px;
+      overflow-y: auto;
+      padding: 8px;
+    }
+
+    .agent-item {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 10px 12px;
+      background: var(--bg-primary);
+      border-radius: var(--radius);
+      margin-bottom: 6px;
+    }
+
+    .agent-info {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex: 1;
+      min-width: 0;
+    }
+
+    .agent-id {
+      font-family: 'SF Mono', Consolas, monospace;
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--accent-light);
+    }
+
+    .agent-pid {
+      font-family: 'SF Mono', Consolas, monospace;
+      font-size: 10px;
+      color: var(--text-dim);
+    }
+
+    .agent-actions {
+      display: flex;
+      gap: 4px;
+    }
+
+    .agent-btn {
+      width: 28px;
+      height: 28px;
+      border: none;
+      border-radius: var(--radius);
+      cursor: pointer;
+      font-size: 12px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: all 0.15s;
+    }
+
+    .agent-btn.spawn {
+      background: var(--ok-bg);
+      color: var(--ok);
+    }
+
+    .agent-btn.spawn:hover {
+      background: var(--ok);
+      color: white;
+    }
+
+    .agent-btn.reap {
+      background: var(--accent);
+      background: rgba(59, 130, 246, 0.15);
+      color: var(--accent-light);
+    }
+
+    .agent-btn.reap:hover {
+      background: var(--accent);
+      color: white;
+    }
+
+    .agent-btn.kill {
+      background: var(--blocked-bg);
+      color: var(--blocked);
+    }
+
+    .agent-btn.kill:hover {
+      background: var(--blocked);
+      color: white;
+    }
+
+    .agent-btn.log {
+      background: var(--bg-card);
+      color: var(--text-muted);
+    }
+
+    .agent-btn.log:hover {
+      background: var(--bg-hover);
+      color: var(--text);
+    }
+
+    /* === WebSocket Status Indicator === */
+    .ws-indicator {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      margin-right: 8px;
+    }
+
+    .ws-indicator.connected {
+      background: var(--ok);
+      box-shadow: 0 0 6px var(--ok);
+    }
+
+    .ws-indicator.disconnected {
+      background: var(--blocked);
+      animation: pulse 2s infinite;
+    }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.4; }
+    }
+
+    /* === Notifications === */
+    #notifications {
+      position: fixed;
+      bottom: 20px;
+      right: 20px;
+      z-index: 1000;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      max-width: 360px;
+    }
+
+    .notification {
+      padding: 12px 16px;
+      border-radius: var(--radius);
+      font-size: 13px;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+      animation: slideIn 0.3s ease;
+    }
+
+    .notification.info {
+      background: var(--accent);
+      color: white;
+    }
+
+    .notification.success {
+      background: var(--ok);
+      color: white;
+    }
+
+    .notification.warning {
+      background: var(--risk);
+      color: white;
+    }
+
+    .notification.error {
+      background: var(--blocked);
+      color: white;
+    }
+
+    .notification.fade-out {
+      animation: fadeOut 0.3s ease forwards;
+    }
+
+    @keyframes slideIn {
+      from { transform: translateX(100%); opacity: 0; }
+      to { transform: translateX(0); opacity: 1; }
+    }
+
+    @keyframes fadeOut {
+      from { opacity: 1; }
+      to { opacity: 0; }
+    }
+
+    /* === Log Modal === */
+    .log-modal {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.6);
+      z-index: 200;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .log-modal-content {
+      background: var(--bg-secondary);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-lg);
+      width: 90%;
+      max-width: 800px;
+      max-height: 80vh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .log-modal-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 12px 16px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .log-modal-header h3 {
+      font-size: 14px;
+      font-weight: 600;
+    }
+
+    .log-modal-close {
+      background: transparent;
+      border: none;
+      color: var(--text-muted);
+      font-size: 20px;
+      cursor: pointer;
+      padding: 4px 8px;
+    }
+
+    .log-modal-close:hover {
+      color: var(--text);
+    }
+
+    .log-modal-body {
+      flex: 1;
+      overflow-y: auto;
+      padding: 16px;
+      font-family: 'SF Mono', Consolas, monospace;
+      font-size: 12px;
+      background: var(--bg-primary);
+      max-height: 60vh;
+    }
+
+    .log-line {
+      padding: 2px 0;
+      color: var(--text-muted);
+      white-space: pre-wrap;
+      word-break: break-all;
+    }
+
+    .log-line:nth-child(odd) {
+      background: rgba(255, 255, 255, 0.02);
+    }
   </style>
 </head>
 <body>
@@ -1157,6 +1431,13 @@
         <span class="version-badge">v{{mainVersion}}</span>
       </div>
       <div class="header-right">
+        <div id="ws-status" class="ws-indicator disconnected" title="Real-time disconnected"></div>
+        <button class="header-btn" onclick="toggleAgentPanel()" title="Agent Control Panel">
+          🤖
+        </button>
+        <button class="header-btn" onclick="agentSpawn()" title="Spawn New Agent">
+          ▶
+        </button>
         <button class="header-btn" hx-get="/api/settings" hx-target="#detail" hx-swap="innerHTML" title="Settings">
           ⚙
         </button>
@@ -1179,6 +1460,37 @@
     </main>
   </div>
 
+  <!-- Agent Control Panel -->
+  <div id="agent-panel" class="agent-panel" style="display: none;">
+    <div class="agent-panel-header">
+      <span class="agent-panel-title">
+        🤖 Agent Control
+      </span>
+      <button class="agent-btn spawn" onclick="agentSpawn()" title="Spawn new agent">+</button>
+    </div>
+    <div class="agent-panel-body">
+      <div id="agent-list">
+        <div class="empty">No active agents</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Notifications Container -->
+  <div id="notifications"></div>
+
+  <!-- Log Modal -->
+  <div id="log-modal" class="log-modal" onclick="if(event.target === this) closeLogModal()">
+    <div class="log-modal-content">
+      <div class="log-modal-header">
+        <h3 id="log-title">Agent Log</h3>
+        <button class="log-modal-close" onclick="closeLogModal()">&times;</button>
+      </div>
+      <div id="log-content" class="log-modal-body">
+        <div class="empty">No logs</div>
+      </div>
+    </div>
+  </div>
+
   <script>
     // Theme toggle
     function toggleTheme() {
@@ -1199,9 +1511,288 @@
       document.getElementById('theme-icon').textContent = savedTheme === 'dark' ? '☀' : '☾';
     }
 
-    // Auto-refresh every 30s
+    // ========== WebSocket Connection for Real-time Updates ==========
+    let ws = null;
+    let wsReconnectTimeout = null;
+    let wsConnected = false;
+
+    function connectWebSocket() {
+      if (ws && ws.readyState === WebSocket.OPEN) return;
+
+      const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+      const wsUrl = `${protocol}//${window.location.host}`;
+
+      try {
+        ws = new WebSocket(wsUrl);
+
+        ws.onopen = () => {
+          wsConnected = true;
+          updateConnectionStatus(true);
+          console.log('[WS] Connected');
+          // Subscribe to all events
+          ws.send(JSON.stringify({ type: 'subscribe', channel: '*' }));
+        };
+
+        ws.onmessage = (event) => {
+          try {
+            const msg = JSON.parse(event.data);
+            handleWsMessage(msg);
+          } catch (e) {
+            console.error('[WS] Parse error:', e);
+          }
+        };
+
+        ws.onclose = () => {
+          wsConnected = false;
+          updateConnectionStatus(false);
+          console.log('[WS] Disconnected');
+          // Attempt reconnect after 5s
+          wsReconnectTimeout = setTimeout(connectWebSocket, 5000);
+        };
+
+        ws.onerror = (error) => {
+          console.error('[WS] Error:', error);
+        };
+      } catch (e) {
+        console.error('[WS] Connection failed:', e);
+        // Fallback to polling
+        wsReconnectTimeout = setTimeout(connectWebSocket, 5000);
+      }
+    }
+
+    function updateConnectionStatus(connected) {
+      const indicator = document.getElementById('ws-status');
+      if (indicator) {
+        indicator.className = 'ws-indicator ' + (connected ? 'connected' : 'disconnected');
+        indicator.title = connected ? 'Real-time connected' : 'Real-time disconnected (reconnecting...)';
+      }
+    }
+
+    function handleWsMessage(msg) {
+      switch (msg.type) {
+        case 'connected':
+          console.log('[WS] Client ID:', msg.clientId);
+          break;
+        case 'agent:spawned':
+          showNotification(`Agent ${msg.taskId} spawned (PID: ${msg.pid})`, 'info');
+          refreshAgentPanel();
+          htmx.trigger('#tree', 'load');
+          break;
+        case 'agent:completed':
+          const status = msg.exitCode === 0 ? 'completed' : 'failed';
+          showNotification(`Agent ${msg.taskId} ${status}`, msg.exitCode === 0 ? 'success' : 'error');
+          refreshAgentPanel();
+          htmx.trigger('#tree', 'load');
+          break;
+        case 'agent:killed':
+          showNotification(`Agent ${msg.taskId} killed`, 'warning');
+          refreshAgentPanel();
+          break;
+        case 'agent:log':
+          appendAgentLog(msg.taskId, msg.line);
+          break;
+        case 'agent:reaped':
+          showNotification(`Agent ${msg.taskId} reaped → ${msg.taskStatus}`, 'success');
+          htmx.trigger('#tree', 'load');
+          break;
+        case 'pong':
+          // Keepalive response
+          break;
+      }
+    }
+
+    // Agent control panel functions
+    function refreshAgentPanel() {
+      fetch('/api/agents')
+        .then(r => r.json())
+        .then(data => updateAgentList(data.agents))
+        .catch(e => console.error('[Agents] Fetch error:', e));
+    }
+
+    function updateAgentList(agents) {
+      const panel = document.getElementById('agent-list');
+      if (!panel) return;
+
+      if (!agents || Object.keys(agents).length === 0) {
+        panel.innerHTML = '<div class="empty">No active agents</div>';
+        return;
+      }
+
+      let html = '';
+      for (const [taskId, agent] of Object.entries(agents)) {
+        const statusClass = agent.status === 'spawned' || agent.status === 'running' ? 'status-active' :
+                           agent.status === 'completed' ? 'status-done' :
+                           agent.status === 'error' ? 'status-blocked' : 'status-draft';
+
+        const isRunning = agent.status === 'spawned' || agent.status === 'running';
+
+        html += `<div class="agent-item">
+          <div class="agent-info">
+            <span class="agent-id">${taskId}</span>
+            <span class="status ${statusClass}">${agent.status}</span>
+            ${agent.pid ? `<span class="agent-pid">PID: ${agent.pid}</span>` : ''}
+          </div>
+          <div class="agent-actions">
+            ${isRunning ? `
+              <button class="agent-btn kill" onclick="agentKill('${taskId}')" title="Kill agent">✕</button>
+            ` : `
+              <button class="agent-btn reap" onclick="agentReap('${taskId}')" title="Reap agent">↩</button>
+            `}
+            <button class="agent-btn log" onclick="showAgentLog('${taskId}')" title="View logs">📋</button>
+          </div>
+        </div>`;
+      }
+
+      panel.innerHTML = html;
+    }
+
+    function agentSpawn(taskId) {
+      if (!taskId) {
+        taskId = prompt('Enter task ID to spawn (e.g., T042):');
+        if (!taskId) return;
+      }
+
+      fetch(`/api/agents/${taskId}/spawn`, { method: 'POST' })
+        .then(r => r.json())
+        .then(result => {
+          if (result.success) {
+            showNotification(`Spawning agent for ${taskId}...`, 'info');
+          } else {
+            showNotification(`Spawn failed: ${result.error || result.escalate?.reason}`, 'error');
+          }
+          refreshAgentPanel();
+        })
+        .catch(e => showNotification('Spawn error: ' + e.message, 'error'));
+    }
+
+    function agentReap(taskId) {
+      fetch(`/api/agents/${taskId}/reap`, { method: 'POST' })
+        .then(r => r.json())
+        .then(result => {
+          if (result.success) {
+            showNotification(`Reaped ${taskId} → ${result.taskStatus}`, 'success');
+          } else {
+            showNotification(`Reap failed: ${result.error || result.escalate?.reason}`, 'error');
+          }
+          refreshAgentPanel();
+          htmx.trigger('#tree', 'load');
+        })
+        .catch(e => showNotification('Reap error: ' + e.message, 'error'));
+    }
+
+    function agentKill(taskId) {
+      if (!confirm(`Kill agent ${taskId}?`)) return;
+
+      fetch(`/api/agents/${taskId}/kill`, { method: 'POST' })
+        .then(r => r.json())
+        .then(result => {
+          if (result.success) {
+            showNotification(`Killed ${taskId}`, 'warning');
+          } else {
+            showNotification(`Kill failed: ${result.error}`, 'error');
+          }
+          refreshAgentPanel();
+        })
+        .catch(e => showNotification('Kill error: ' + e.message, 'error'));
+    }
+
+    function showAgentLog(taskId) {
+      const modal = document.getElementById('log-modal');
+      const content = document.getElementById('log-content');
+      const title = document.getElementById('log-title');
+
+      title.textContent = `Agent Log: ${taskId}`;
+      content.innerHTML = '<div class="empty">Loading...</div>';
+      modal.style.display = 'flex';
+
+      // Subscribe to log stream via WebSocket
+      if (ws && ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({ type: 'subscribe', channel: 'agent:log', filter: taskId }));
+      }
+
+      // Fetch existing logs
+      fetch(`/api/agents/${taskId}/log?tail=100`)
+        .then(r => r.json())
+        .then(data => {
+          content.innerHTML = data.lines.map(line => `<div class="log-line">${escapeHtml(line)}</div>`).join('');
+          content.scrollTop = content.scrollHeight;
+        })
+        .catch(e => {
+          content.innerHTML = `<div class="empty">Error: ${e.message}</div>`;
+        });
+
+      // Store taskId for appending new logs
+      modal.dataset.taskId = taskId;
+    }
+
+    function appendAgentLog(taskId, line) {
+      const modal = document.getElementById('log-modal');
+      if (modal.style.display !== 'flex' || modal.dataset.taskId !== taskId) return;
+
+      const content = document.getElementById('log-content');
+      const lineEl = document.createElement('div');
+      lineEl.className = 'log-line';
+      lineEl.textContent = line;
+      content.appendChild(lineEl);
+      content.scrollTop = content.scrollHeight;
+    }
+
+    function closeLogModal() {
+      const modal = document.getElementById('log-modal');
+      modal.style.display = 'none';
+      modal.dataset.taskId = '';
+    }
+
+    function escapeHtml(text) {
+      const div = document.createElement('div');
+      div.textContent = text;
+      return div.innerHTML;
+    }
+
+    function showNotification(message, type = 'info') {
+      const container = document.getElementById('notifications');
+      const notification = document.createElement('div');
+      notification.className = `notification ${type}`;
+      notification.textContent = message;
+      container.appendChild(notification);
+
+      setTimeout(() => {
+        notification.classList.add('fade-out');
+        setTimeout(() => notification.remove(), 300);
+      }, 4000);
+    }
+
+    // Toggle agent panel visibility
+    function toggleAgentPanel() {
+      const panel = document.getElementById('agent-panel');
+      const isHidden = panel.style.display === 'none';
+      panel.style.display = isHidden ? 'block' : 'none';
+      if (isHidden) refreshAgentPanel();
+    }
+
+    // Initialize WebSocket on load
+    connectWebSocket();
+
+    // Refresh agent panel periodically as fallback
     setInterval(() => {
-      htmx.trigger('#tree', 'load');
+      const panel = document.getElementById('agent-panel');
+      if (panel && panel.style.display !== 'none') {
+        refreshAgentPanel();
+      }
+    }, 10000);
+
+    // Ping WebSocket keepalive
+    setInterval(() => {
+      if (ws && ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({ type: 'ping' }));
+      }
+    }, 25000);
+
+    // Auto-refresh tree every 30s (fallback for non-WS)
+    setInterval(() => {
+      if (!wsConnected) {
+        htmx.trigger('#tree', 'load');
+      }
     }, 30000);
 
     // Track current tab preference
