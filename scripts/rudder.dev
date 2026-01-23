@@ -1,0 +1,51 @@
+#!/bin/bash
+# Rudder CLI wrapper (dev mode)
+# Auto-installed by devinstall.sh
+#
+# Mode (determined by SAILING_DIST file at project root):
+#   - "dev": uses npx tsx with source .ts files (live changes)
+#   - otherwise: uses node with compiled dist/cli/*.js files
+#
+# Changes to sailing repo are immediately reflected in dev mode.
+
+set -e
+
+PROJECT_ROOT="$(realpath "$(dirname "$0")/..")"
+
+# Check if running from within project (unless --allow-outside flag)
+if [[ " $* " != *" --allow-outside "* ]]; then
+  CWD="$(realpath "$(pwd)")"
+  if [[ "$CWD" != "$PROJECT_ROOT" && "$CWD" != "$PROJECT_ROOT/"* ]]; then
+    echo "Error: rudder must be run from within the project directory" >&2
+    echo "  Project: $PROJECT_ROOT" >&2
+    echo "  Current: $CWD" >&2
+    echo "  Use --allow-outside to override" >&2
+    exit 1
+  fi
+fi
+
+# Read source path (sailing repo location)
+SOURCE_FILE="$PROJECT_ROOT/.sailing/SAILING_SOURCE"
+if [ ! -f "$SOURCE_FILE" ]; then
+  echo "Error: $SOURCE_FILE not found" >&2
+  echo "Please run devinstall.sh" >&2
+  exit 1
+fi
+SAILING_SOURCE="$(cat "$SOURCE_FILE" | tr -d '[:space:]')"
+
+# Resolve relative paths
+if [[ "$SAILING_SOURCE" != /* ]]; then
+  SAILING_SOURCE="$PROJECT_ROOT/$SAILING_SOURCE"
+fi
+
+export SAILING_PROJECT="$PROJECT_ROOT"
+
+# Check SAILING_DIST to determine mode
+DIST_FILE="$PROJECT_ROOT/SAILING_DIST"
+if [ -f "$DIST_FILE" ] && [ "$(cat "$DIST_FILE" | tr -d '[:space:]')" = "dev" ]; then
+  # Dev mode: use tsx with source .ts files
+  exec npx tsx "$SAILING_SOURCE/cli/rudder.ts" "$@"
+else
+  # Dist mode: use node with compiled .js files
+  exec node "$SAILING_SOURCE/dist/cli/rudder.js" "$@"
+fi

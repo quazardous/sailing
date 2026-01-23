@@ -2,7 +2,7 @@
 # Publish dist files to dist branch
 # Uses a temporary worktree - never touches your working directory
 #
-# Usage: bin/publish-dist [--push]
+# Usage: ./publish-dist.sh [--push]
 
 set -e
 
