@@ -4,6 +4,22 @@ All notable changes to the Sailing Framework will be documented in this file.
 
 <!-- NOTE: This is a USER changelog, not a commit log. Focus on user-visible features and benefits, not implementation details. -->
 
+## [1.14.0] - 2026-01-23
+
+### Added
+- `epicId` field in task index for direct epic filtering (no more parent string parsing)
+- `matchesPrd()` and `matchesEpic()` helper functions in artefacts manager
+- `lib/agent-paths.ts` module for agent directory path utilities
+
+### Changed
+- Task filtering by epic now uses pre-computed `epicId` instead of parsing `parent` field
+- `matchesPrd` moved from lib to manager layer (lib version kept as internal implementation)
+- Agent path functions extracted from `normalize.ts` to dedicated `agent-paths.ts`
+- `normalize.ts` now focused purely on ID normalization and extraction
+
+### Removed
+- Unused `parentContainsEpic` and `parentContainsPrd` functions from normalize.ts
+
 ## [1.13.0] - 2026-01-18
 
 ### Added
