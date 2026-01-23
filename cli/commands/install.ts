@@ -10,7 +10,7 @@
 import fs from 'fs';
 import path from 'path';
 import { Command } from 'commander';
-import { findProjectRoot, jsonOut } from '../managers/core-manager.js';
+import { findProjectRoot, jsonOut, getPath } from '../managers/core-manager.js';
 import { addDynamicHelp } from '../lib/help.js';
 
 // =============================================================================
@@ -60,33 +60,51 @@ function saveMcpConfig(config: McpConfig): void {
 
 /**
  * Get default rudder MCP server configuration
+ * Uses socat to connect to the conductor socket (must be started separately)
  */
 function getDefaultRudderMcp(): McpServer {
+  const havenPath = getPath('haven');
+  const socketPath = path.join(havenPath, 'mcp-conductor.sock');
   return {
-    command: 'bin/rdrctl',
-    args: ['start', 'conductor']
+    command: 'socat',
+    args: ['-', `UNIX-CONNECT:${socketPath}`]
   };
+}
+
+/**
+ * Check if rudder MCP config is using the correct socat+socket format
+ */
+function isRudderMcpValid(server: McpServer): boolean {
+  // Valid config uses socat to connect to conductor socket
+  return server.command === 'socat' &&
+    Array.isArray(server.args) &&
+    server.args.length === 2 &&
+    server.args[0] === '-' &&
+    server.args[1].startsWith('UNIX-CONNECT:');
 }
 
 /**
  * Check if MCP is configured
  */
-function checkMcp(): { configured: boolean; hasRudder: boolean; config: McpConfig } {
+function checkMcp(): { configured: boolean; hasRudder: boolean; isValid: boolean; config: McpConfig } {
   const config = loadMcpConfig();
   const hasRudder = !!config.mcpServers?.rudder;
+  const isValid = hasRudder && isRudderMcpValid(config.mcpServers!.rudder);
   return {
     configured: fs.existsSync(getMcpConfigPath()),
     hasRudder,
+    isValid,
     config
   };
 }
 
 /**
- * Fix MCP configuration - adds rudder if missing, preserves others
+ * Fix MCP configuration - adds rudder if missing or outdated, preserves others
  */
 function fixMcp(options: { dryRun?: boolean; force?: boolean }): {
   added: boolean;
   updated: boolean;
+  reason?: string;
   path: string;
 } {
   const configPath = getMcpConfigPath();
@@ -99,6 +117,7 @@ function fixMcp(options: { dryRun?: boolean; force?: boolean }): {
   const defaultMcp = getDefaultRudderMcp();
   let added = false;
   let updated = false;
+  let reason: string | undefined;
 
   if (!config.mcpServers.rudder) {
     // Add rudder MCP
@@ -107,16 +126,25 @@ function fixMcp(options: { dryRun?: boolean; force?: boolean }): {
       saveMcpConfig(config);
     }
     added = true;
-  } else if (options.force) {
-    // Update existing rudder MCP
+  } else if (!isRudderMcpValid(config.mcpServers.rudder)) {
+    // Outdated format - fix it automatically
     if (!options.dryRun) {
       config.mcpServers.rudder = defaultMcp;
       saveMcpConfig(config);
     }
     updated = true;
+    reason = 'outdated format (now uses socat + socket)';
+  } else if (options.force) {
+    // Force update even if valid
+    if (!options.dryRun) {
+      config.mcpServers.rudder = defaultMcp;
+      saveMcpConfig(config);
+    }
+    updated = true;
+    reason = 'forced update';
   }
 
-  return { added, updated, path: configPath };
+  return { added, updated, reason, path: configPath };
 }
 
 // =============================================================================
@@ -133,10 +161,11 @@ async function doInstall(options: { dryRun?: boolean; force?: boolean; json?: bo
       mcp: {
         configured: mcpStatus.configured,
         hasRudder: mcpStatus.hasRudder,
+        isValid: mcpStatus.isValid,
         path: getMcpConfigPath()
       },
       permissions: permissionsOk,
-      ok: mcpStatus.hasRudder && permissionsOk.ok
+      ok: mcpStatus.isValid && permissionsOk.ok
     };
 
     if (options.json) {
@@ -146,7 +175,11 @@ async function doInstall(options: { dryRun?: boolean; force?: boolean; json?: bo
       console.log('MCP Configuration:');
       console.log(`  File: ${result.mcp.path}`);
       console.log(`  Exists: ${result.mcp.configured ? 'Yes' : 'No'}`);
-      console.log(`  Rudder MCP: ${result.mcp.hasRudder ? '✓ Configured' : '✗ Missing'}`);
+      if (result.mcp.hasRudder && !result.mcp.isValid) {
+        console.log(`  Rudder MCP: ⚠ Outdated format (run install to fix)`);
+      } else {
+        console.log(`  Rudder MCP: ${result.mcp.hasRudder ? '✓ Configured' : '✗ Missing'}`);
+      }
       console.log('\nClaude Permissions:');
       console.log(`  Required: ${permissionsOk.required}`);
       console.log(`  Present: ${permissionsOk.present}`);
@@ -175,15 +208,16 @@ async function doInstall(options: { dryRun?: boolean; force?: boolean; json?: bo
     // MCP
     if (mcpResult.added) {
       if (options.dryRun) {
-        console.log('MCP: Would add rudder conductor MCP');
+        console.log('MCP: Would add rudder conductor MCP (socat + socket)');
       } else {
-        console.log('MCP: Added rudder conductor MCP');
+        console.log('MCP: Added rudder conductor MCP (socat + socket)');
       }
     } else if (mcpResult.updated) {
+      const reasonSuffix = mcpResult.reason ? ` - ${mcpResult.reason}` : '';
       if (options.dryRun) {
-        console.log('MCP: Would update rudder conductor MCP');
+        console.log(`MCP: Would update rudder conductor MCP${reasonSuffix}`);
       } else {
-        console.log('MCP: Updated rudder conductor MCP');
+        console.log(`MCP: Updated rudder conductor MCP${reasonSuffix}`);
       }
     } else {
       console.log('MCP: Already configured');
@@ -202,6 +236,8 @@ async function doInstall(options: { dryRun?: boolean; force?: boolean; json?: bo
 
     if (!options.dryRun) {
       console.log('\nDone!');
+      console.log('\nReminder: Start the MCP conductor before using Claude:');
+      console.log('  bin/rdrctl start');
     }
   }
 }
@@ -260,13 +296,20 @@ export function registerInstallCommands(program: Command) {
           console.log('\nConfigured servers:');
           for (const [name, server] of Object.entries(status.config.mcpServers)) {
             const isRudder = name === 'rudder';
-            console.log(`  ${name}: ${server.command} ${(server.args || []).join(' ')}${isRudder ? ' (conductor)' : ''}`);
+            const valid = isRudder && isRudderMcpValid(server);
+            const suffix = isRudder ? (valid ? ' (conductor ✓)' : ' (outdated ⚠)') : '';
+            console.log(`  ${name}: ${server.command} ${(server.args || []).join(' ')}${suffix}`);
           }
         }
 
-        console.log(`\nRudder MCP: ${status.hasRudder ? '✓ Configured' : '✗ Missing'}`);
-        if (!status.hasRudder) {
-          console.log('\nRun `bin/rudder install:fix` to add rudder MCP.');
+        if (status.hasRudder && !status.isValid) {
+          console.log(`\nRudder MCP: ⚠ Outdated format`);
+          console.log('\nRun `bin/rudder install` to update.');
+        } else {
+          console.log(`\nRudder MCP: ${status.hasRudder ? '✓ Configured' : '✗ Missing'}`);
+          if (!status.hasRudder) {
+            console.log('\nRun `bin/rudder install` to add rudder MCP.');
+          }
         }
       }
     });
@@ -282,22 +325,27 @@ export function registerInstallCommands(program: Command) {
       if (options.json) {
         jsonOut(result);
       } else {
+        const reasonSuffix = result.reason ? ` (${result.reason})` : '';
         if (result.added) {
           if (options.dryRun) {
-            console.log('Would add rudder MCP to .mcp.json');
+            console.log('Would add rudder MCP to .mcp.json (socat + socket)');
           } else {
-            console.log('Added rudder MCP to .mcp.json');
+            console.log('Added rudder MCP to .mcp.json (socat + socket)');
+            console.log('\nReminder: Start the MCP conductor before using Claude:');
+            console.log('  bin/rdrctl start');
           }
         } else if (result.updated) {
           if (options.dryRun) {
-            console.log('Would update rudder MCP in .mcp.json');
+            console.log(`Would update rudder MCP in .mcp.json${reasonSuffix}`);
           } else {
-            console.log('Updated rudder MCP in .mcp.json');
+            console.log(`Updated rudder MCP in .mcp.json${reasonSuffix}`);
+            console.log('\nReminder: Start the MCP conductor before using Claude:');
+            console.log('  bin/rdrctl start');
           }
         } else {
-          console.log('Rudder MCP already configured');
+          console.log('Rudder MCP already configured and valid');
           if (!options.force) {
-            console.log('Use --force to update');
+            console.log('Use --force to update anyway');
           }
         }
       }
@@ -359,6 +407,8 @@ async function checkPermissions(): Promise<{ ok: boolean; required: number; pres
 
 // Base sailing permissions (same as permissions.ts)
 const BASE_PERMISSIONS = [
+  // MCP Conductor (all tools)
+  'mcp__rudder__*',
   // Rudder CLI
   'Bash(bin/rudder:*)',
   'Bash(bin/rudder *:*)',

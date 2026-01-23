@@ -8,17 +8,15 @@ blocked_by: []
 stories: []
 tags: []
 target_versions: {}
-# Edit frontmatter: bin/rudder epic:update <id> --set key=value
+# MCP: artefact_update { "id": "<id>", "status": "...", "set": {...} }
 ---
 
-<!-- Edit ALL sections in ONE command: bin/rudder epic:edit <id> <<'EOF'
-## Description
-...
-## Acceptance Criteria
-- [ ] ...
-EOF
+<!--
+MCP multi-section edit (preferred):
+artefact_edit { "id": "<id>", "content": "## Description\nYour description...\n\n## Acceptance Criteria\n- [ ] Criterion 1\n- [ ] Criterion 2" }
+
+With mode: artefact_edit { "id": "<id>", "content": "## Technical Notes [append]\n- Note", "mode": "append" }
 -->
-<!-- Ops: [append], [sed], [check], [patch]... See: bin/rudder epic edit --help -->
 
 ## Description
 

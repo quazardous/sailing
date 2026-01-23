@@ -194,7 +194,7 @@ export function registerLifecycleCommands(assign: Command): void {
       const posts = await checkPosts('assign:release', {
         taskId: normalized,
         hasTipLogs: tipCount > 0
-      });
+      }, process.cwd());
       const postOutput = formatPostOutput(posts);
       if (postOutput) {
         console.log(postOutput);

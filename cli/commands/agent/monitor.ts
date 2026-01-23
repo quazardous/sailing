@@ -1028,7 +1028,7 @@ export function registerMonitorCommands(agent) {
         orphanWorktreeDirs,
         ghostAgents: ghostAgents.map(a => a.id),
         terminalWithWorktree: terminalWithWorktreeStrings
-      });
+      }, process.cwd());
       const postOutput = formatPostOutput(posts);
       if (postOutput) {
         console.log(postOutput);

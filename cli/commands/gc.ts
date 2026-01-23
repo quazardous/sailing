@@ -259,7 +259,7 @@ export async function gcAgentsAction(options: { dryRun?: boolean; worktree?: boo
     const date = o.lastDate ? ` ${o.lastDate}` : '';
     return `${o.taskId} [${dirs}] (${o.reason})${date}`;
   });
-  const posts = await checkPosts('gc:cleanup', { unsafeOrphans: unsafeOrphanStrings });
+  const posts = await checkPosts('gc:cleanup', { unsafeOrphans: unsafeOrphanStrings }, process.cwd());
   const postOutput = formatPostOutput(posts);
   if (postOutput) {
     console.log('\n' + postOutput);

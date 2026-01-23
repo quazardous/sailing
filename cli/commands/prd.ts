@@ -3,14 +3,14 @@
  */
 import fs from 'fs';
 import path from 'path';
-import { findPrdDirs, loadFile, saveFile, toKebab, jsonOut, getPrdsDir, stripComments } from '../managers/core-manager.js';
+import { findPrdDirs, loadFile, saveFile, toKebab, jsonOut, getPrdsDir, stripComments, loadTemplate } from '../managers/core-manager.js';
 import { matchesPrdDir } from '../lib/normalize.js';
 import { STATUS, normalizeStatus, statusSymbol } from '../lib/lexicon.js';
 import { nextId } from '../managers/state-manager.js';
 import { parseUpdateOptions } from '../lib/update.js';
 import { addDynamicHelp, withModifies } from '../lib/help.js';
 import { formatId } from '../managers/core-manager.js';
-import { parseSearchReplace, editArtifact, parseMultiSectionContent, processMultiSectionOps, mergeDuplicateSectionsInFile } from '../lib/artifact.js';
+import { parseSearchReplace, editArtifact, parseMultiSectionContent, processMultiSectionOps } from '../lib/artifact.js';
 import { getPrd, getEpicsForPrd, getTasksForPrd, getAllPrds } from '../managers/artefacts-manager.js';
 import { createPrdMemoryFile } from '../managers/memory-manager.js';
 import { Prd } from '../lib/types/entities.js';
@@ -259,7 +259,14 @@ export function registerPrdCommands(program: Command): void {
         data.tags = options.tag.map((t: string) => toKebab(t));
       }
 
-      const body = `\n# ${id}: ${title}\n\n## Problem Statement\n\n[Describe the problem]\n\n## Goals\n\n- [Goal 1]\n\n## Non-Goals\n\n- [Non-goal 1]\n\n## Solution Overview\n\n[High-level approach]\n`;
+      // Load template or use minimal body
+      let body = loadTemplate('prd');
+      if (body) {
+        body = body.replace(/^---[\s\S]*?---\s*/, ''); // Remove template frontmatter
+        body = body.replace(/# PRD-00000: PRD Title/g, `# ${id}: ${title}`);
+      } else {
+        body = `\n# ${id}: ${title}\n\n## Problem Statement\n\n[Describe the problem]\n\n## Goals\n\n- [Goal 1]\n\n## Non-Goals\n\n- [Non-goal 1]\n\n## Solution Overview\n\n[High-level approach]\n`;
+      }
 
       const prdFile = path.join(prdDir, 'prd.md');
       saveFile(prdFile, data, body);

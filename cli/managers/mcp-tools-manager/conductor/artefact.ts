@@ -1,11 +1,27 @@
 /**
  * MCP Conductor Tools - Artefact operations
  */
-import { runRudder } from '../../mcp-manager.js';
+import { loadFile } from '../../core-manager.js';
+import {
+  getAllTasks,
+  getAllEpics,
+  getAllPrds,
+  getAllStories,
+  getTask,
+  getEpic,
+  getPrd,
+  getStory,
+  createTask,
+  createEpic,
+  createPrd,
+  createStory,
+  updateArtefact,
+  editArtefactSection,
+  editArtefactMultiSection
+} from '../../artefacts-manager.js';
 import {
   ok,
   err,
-  fromRunResult,
   normalizeId,
   detectType
 } from '../types.js';
@@ -29,25 +45,66 @@ export const ARTEFACT_TOOLS: ToolDefinition[] = [
     },
     handler: (args) => {
       const { type, scope, status, limit } = args;
-      let cmd = `${type}:list`;
-      if (scope) cmd += ` ${scope}`;
-      if (status) cmd += ` --status "${status}"`;
-      if (limit) cmd += ` --limit ${limit}`;
-      cmd += ' --json';
-
-      const result = runRudder(cmd, { json: false });
       const nextActions: NextAction[] = [];
 
-      if (result.success && type === 'prd') {
-        nextActions.push({
-          tool: 'artefact_list',
-          args: { type: 'epic', scope: 'PRD-001' },
-          reason: 'List epics for a specific PRD',
-          priority: 'normal'
-        });
-      }
+      try {
+        let items: Array<{ id: string; title?: string; status?: string; [key: string]: unknown }> = [];
 
-      return fromRunResult(result, nextActions);
+        if (type === 'task') {
+          const opts: { epicId?: string; status?: string } = {};
+          if (scope) opts.epicId = scope;
+          if (status) opts.status = status;
+          items = getAllTasks(opts).map(t => ({
+            id: t.id,
+            title: t.data?.title,
+            status: t.data?.status,
+            parent: t.data?.parent,
+            assignee: t.data?.assignee
+          }));
+        } else if (type === 'epic') {
+          const opts: { status?: string } = {};
+          if (status) opts.status = status;
+          items = getAllEpics(opts).map(e => ({
+            id: e.id,
+            title: e.data?.title,
+            status: e.data?.status,
+            parent: e.data?.parent
+          }));
+        } else if (type === 'prd') {
+          items = getAllPrds().map(p => ({
+            id: p.id,
+            title: p.data?.title,
+            status: p.data?.status
+          }));
+          if (status) {
+            items = items.filter(i => i.status === status);
+          }
+        } else if (type === 'story') {
+          items = getAllStories().map(s => ({
+            id: s.id,
+            title: s.data?.title,
+            type: s.data?.type,
+            parent: s.data?.parent
+          }));
+        }
+
+        if (limit && items.length > limit) {
+          items = items.slice(0, limit);
+        }
+
+        if (type === 'prd') {
+          nextActions.push({
+            tool: 'artefact_list',
+            args: { type: 'epic', scope: 'PRD-001' },
+            reason: 'List epics for a specific PRD',
+            priority: 'normal'
+          });
+        }
+
+        return ok({ success: true, data: { items, count: items.length }, next_actions: nextActions });
+      } catch (error: any) {
+        return err(error.message);
+      }
     }
   },
   {
@@ -66,42 +123,61 @@ export const ARTEFACT_TOOLS: ToolDefinition[] = [
     handler: (args) => {
       const id = normalizeId(args.id);
       const type = detectType(id);
+      const nextActions: NextAction[] = [];
 
       if (type === 'unknown') {
         return err(`Cannot detect artefact type from ID: ${id}`);
       }
 
-      const cmd = args.raw
-        ? `${type}:show ${id} --raw`
-        : `${type}:show ${id} --json`;
+      try {
+        let entry: { file: string; data?: Record<string, unknown> } | null = null;
 
-      const result = runRudder(cmd, { json: false });
-      const nextActions: NextAction[] = [];
+        if (type === 'task') {
+          entry = getTask(id);
+        } else if (type === 'epic') {
+          entry = getEpic(id);
+        } else if (type === 'prd') {
+          entry = getPrd(id);
+        } else if (type === 'story') {
+          entry = getStory(id);
+        }
 
-      // Suggest editing empty sections
-      if (result.success && !args.raw) {
-        try {
-          const data = JSON.parse(result.output || '{}');
-          if (type === 'epic' && !data.technical_notes) {
-            nextActions.push({
-              tool: 'artefact_edit',
-              args: { id, section: 'Technical Notes', content: '' },
-              reason: 'Technical Notes section is empty',
-              priority: 'high'
-            });
-          }
-          if (type === 'task' && !data.deliverables) {
-            nextActions.push({
-              tool: 'artefact_edit',
-              args: { id, section: 'Deliverables', content: '' },
-              reason: 'Deliverables section is empty',
-              priority: 'high'
-            });
-          }
-        } catch { /* ignore parse errors */ }
+        if (!entry) {
+          return err(`Artefact not found: ${id}`);
+        }
+
+        const file = loadFile(entry.file);
+        if (!file) {
+          return err(`Could not load file for: ${id}`);
+        }
+
+        const data = {
+          ...file.data,
+          ...(args.raw ? { body: file.body } : {})
+        };
+
+        // Suggest editing empty sections
+        if (type === 'epic' && !file.body?.includes('## Technical Notes')) {
+          nextActions.push({
+            tool: 'artefact_edit',
+            args: { id, section: 'Technical Notes', content: '' },
+            reason: 'Technical Notes section is empty',
+            priority: 'high'
+          });
+        }
+        if (type === 'task' && !file.body?.includes('## Deliverables')) {
+          nextActions.push({
+            tool: 'artefact_edit',
+            args: { id, section: 'Deliverables', content: '' },
+            reason: 'Deliverables section is empty',
+            priority: 'high'
+          });
+        }
+
+        return ok({ success: true, data, next_actions: nextActions });
+      } catch (error: any) {
+        return err(error.message);
       }
-
-      return fromRunResult(result, nextActions);
     }
   },
   {
@@ -121,6 +197,7 @@ export const ARTEFACT_TOOLS: ToolDefinition[] = [
     },
     handler: (args) => {
       const { type, parent, title, tags } = args;
+      const nextActions: NextAction[] = [];
 
       // Validate parent requirement
       if ((type === 'task' || type === 'epic' || type === 'story') && !parent) {
@@ -132,50 +209,49 @@ export const ARTEFACT_TOOLS: ToolDefinition[] = [
         }]);
       }
 
-      let cmd = `${type}:create`;
-      if (parent) cmd += ` ${parent}`;
-      cmd += ` "${title.replace(/"/g, '\\"')}"`;
-      if (tags?.length) {
-        tags.forEach((t: string) => { cmd += ` --tag ${t}`; });
+      try {
+        let result: { id: string; title: string; parent?: string; file?: string; dir?: string };
+
+        if (type === 'task') {
+          result = createTask(parent, title, { tags });
+        } else if (type === 'epic') {
+          result = createEpic(parent, title, { tags });
+        } else if (type === 'prd') {
+          result = createPrd(title, { tags });
+        } else if (type === 'story') {
+          result = createStory(parent, title, { tags });
+        } else {
+          return err(`Unknown artefact type: ${type}`);
+        }
+
+        // Suggest next actions
+        nextActions.push({
+          tool: 'artefact_edit',
+          args: { id: result.id, section: 'Description', content: '' },
+          reason: 'Add description to newly created artefact',
+          priority: 'high'
+        });
+        if (type === 'epic') {
+          nextActions.push({
+            tool: 'artefact_edit',
+            args: { id: result.id, section: 'Acceptance Criteria', content: '' },
+            reason: 'Define acceptance criteria',
+            priority: 'high'
+          });
+        }
+        if (type === 'task') {
+          nextActions.push({
+            tool: 'artefact_edit',
+            args: { id: result.id, section: 'Deliverables', content: '' },
+            reason: 'Define deliverables',
+            priority: 'high'
+          });
+        }
+
+        return ok({ success: true, data: result, next_actions: nextActions });
+      } catch (error: any) {
+        return err(error.message);
       }
-      cmd += ' --json';
-
-      const result = runRudder(cmd, { json: false });
-      const nextActions: NextAction[] = [];
-
-      if (result.success) {
-        // Parse created ID from output
-        try {
-          const data = JSON.parse(result.output || '{}');
-          const createdId = data.id || data.taskId || data.epicId || data.prdId;
-          if (createdId) {
-            nextActions.push({
-              tool: 'artefact_edit',
-              args: { id: createdId, section: 'Description', content: '' },
-              reason: 'Add description to newly created artefact',
-              priority: 'high'
-            });
-            if (type === 'epic') {
-              nextActions.push({
-                tool: 'artefact_edit',
-                args: { id: createdId, section: 'Acceptance Criteria', content: '' },
-                reason: 'Define acceptance criteria',
-                priority: 'high'
-              });
-            }
-            if (type === 'task') {
-              nextActions.push({
-                tool: 'artefact_edit',
-                args: { id: createdId, section: 'Deliverables', content: '' },
-                reason: 'Define deliverables',
-                priority: 'high'
-              });
-            }
-          }
-        } catch { /* ignore */ }
-      }
-
-      return fromRunResult(result, nextActions);
     }
   },
   {
@@ -204,35 +280,35 @@ export const ARTEFACT_TOOLS: ToolDefinition[] = [
         return err(`Cannot detect artefact type from ID: ${id}`);
       }
 
-      let cmd = `${type}:update ${id}`;
-      if (args.status) cmd += ` --status "${args.status}"`;
-      if (args.assignee) cmd += ` --assignee "${args.assignee}"`;
-      if (args.title) cmd += ` --title "${args.title}"`;
-      if (args.effort && type === 'task') cmd += ` --effort ${args.effort}`;
-      if (args.priority && type === 'task') cmd += ` --priority ${args.priority}`;
-      if (args.set) {
-        Object.entries(args.set).forEach(([k, v]) => {
-          cmd += ` --set ${k}=${v}`;
+      try {
+        const result = updateArtefact(id, {
+          status: args.status,
+          title: args.title,
+          assignee: args.assignee,
+          effort: args.effort,
+          priority: args.priority,
+          set: args.set
         });
-      }
-      cmd += ' --json';
 
-      return fromRunResult(runRudder(cmd, { json: false }));
+        return ok({ success: true, data: result });
+      } catch (error: any) {
+        return err(error.message);
+      }
     }
   },
   {
     tool: {
       name: 'artefact_edit',
-      description: 'Edit artefact body section (no SEARCH/REPLACE needed)',
+      description: 'Edit artefact body - supports multi-section editing with ## headers. Preferred format: "## Section1\\nContent...\\n## Section2 [append]\\nMore content"',
       inputSchema: {
         type: 'object',
         properties: {
           id: { type: 'string', description: 'Artefact ID' },
-          section: { type: 'string', description: 'Section name (Description, Deliverables, Acceptance Criteria, Technical Notes, etc.)' },
-          content: { type: 'string', description: 'New section content' },
+          content: { type: 'string', description: 'Content with ## Section headers (multi-section) OR single section content if "section" param provided' },
+          section: { type: 'string', description: 'Single section name (optional - omit for multi-section mode)' },
           mode: { type: 'string', enum: ['replace', 'append', 'prepend'], description: 'Edit mode (default: replace)' }
         },
-        required: ['id', 'section', 'content']
+        required: ['id', 'content']
       }
     },
     handler: (args) => {
@@ -243,13 +319,21 @@ export const ARTEFACT_TOOLS: ToolDefinition[] = [
         return err(`Cannot detect artefact type from ID: ${id}`);
       }
 
-      const mode = args.mode || 'replace';
-      const modeFlag = mode === 'append' ? ' --append' : mode === 'prepend' ? ' --prepend' : '';
+      try {
+        // If section is provided, use single-section mode
+        if (args.section) {
+          const result = editArtefactSection(id, args.section, args.content, {
+            mode: args.mode || 'replace'
+          });
+          return ok({ success: true, data: result });
+        }
 
-      // Use edit command with content
-      const result = runRudder(`${type}:edit ${id} --section "${args.section}" --content "${args.content.replace(/"/g, '\\"').replace(/\n/g, '\\n')}"${modeFlag} --json`, { json: false });
-
-      return fromRunResult(result);
+        // Otherwise, use multi-section mode (preferred)
+        const result = editArtefactMultiSection(id, args.content, args.mode || 'replace');
+        return ok({ success: true, data: result });
+      } catch (error: any) {
+        return err(error.message);
+      }
     }
   }
 ];

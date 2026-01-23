@@ -377,7 +377,7 @@ export async function handleTaskClaim(taskId: string, options: TaskClaimOptions)
       taskId,
       pendingMemory: memoryCheck.pending,
       pendingEpics: memoryCheck.epics
-    });
+    }, process.cwd());
     handleGuardResult(guardResult);
   }
 

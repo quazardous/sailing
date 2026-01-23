@@ -38,9 +38,6 @@ import type {
 // Singleton Liquid engine
 let liquidEngine: Liquid | null = null;
 
-// Cached guards config
-let guardsCache: GuardsConfig | null = null;
-
 /**
  * Get or create Liquid engine instance
  */
@@ -57,52 +54,195 @@ function getLiquid(): Liquid {
 }
 
 /**
- * Find prompting directory (search up from cwd)
+ * GuardChecker - Pure guard evaluation with injected startDir
+ *
+ * Usage:
+ *   const checker = new GuardChecker(process.cwd());
+ *   const result = await checker.check('agent:spawn', context);
  */
-function findPromptingDir(): string | null {
-  let dir = process.cwd();
-  while (dir !== '/') {
-    const promptingDir = path.join(dir, 'prompting');
-    if (fs.existsSync(promptingDir)) {
-      return promptingDir;
+export class GuardChecker {
+  private guardsCache: GuardsConfig | null = null;
+
+  constructor(private startDir: string) {}
+
+  /**
+   * Find prompting directory (search up from startDir)
+   */
+  private findPromptingDir(): string | null {
+    let dir = this.startDir;
+    while (dir !== '/') {
+      const promptingDir = path.join(dir, 'prompting');
+      if (fs.existsSync(promptingDir)) {
+        return promptingDir;
+      }
+      // Also check .sailing for installed projects
+      const sailingPrompting = path.join(dir, '.sailing', 'prompting');
+      if (fs.existsSync(sailingPrompting)) {
+        return sailingPrompting;
+      }
+      dir = path.dirname(dir);
     }
-    // Also check .sailing for installed projects
-    const sailingPrompting = path.join(dir, '.sailing', 'prompting');
-    if (fs.existsSync(sailingPrompting)) {
-      return sailingPrompting;
-    }
-    dir = path.dirname(dir);
-  }
-  return null;
-}
-
-/**
- * Load guards.yaml configuration
- */
-export function loadGuardsConfig(): GuardsConfig | null {
-  if (guardsCache) return guardsCache;
-
-  const promptingDir = findPromptingDir();
-  if (!promptingDir) return null;
-
-  const guardsFile = path.join(promptingDir, 'guards.yaml');
-  if (!fs.existsSync(guardsFile)) return null;
-
-  try {
-    const content = fs.readFileSync(guardsFile, 'utf8');
-    guardsCache = yaml.load(content) as GuardsConfig;
-    return guardsCache;
-  } catch (err) {
-    console.error(`Error loading guards.yaml: ${err}`);
     return null;
   }
+
+  /**
+   * Load guards.yaml configuration
+   */
+  loadConfig(): GuardsConfig | null {
+    if (this.guardsCache) return this.guardsCache;
+
+    const promptingDir = this.findPromptingDir();
+    if (!promptingDir) return null;
+
+    const guardsFile = path.join(promptingDir, 'guards.yaml');
+    if (!fs.existsSync(guardsFile)) return null;
+
+    try {
+      const content = fs.readFileSync(guardsFile, 'utf8');
+      this.guardsCache = yaml.load(content) as GuardsConfig;
+      return this.guardsCache;
+    } catch (err) {
+      console.error(`Error loading guards.yaml: ${err}`);
+      return null;
+    }
+  }
+
+  /**
+   * Clear guards cache
+   */
+  clearCache(): void {
+    this.guardsCache = null;
+  }
+
+  /**
+   * Check guards for a command
+   */
+  async check(command: string, context: GuardContext): Promise<GuardResult> {
+    const result: GuardResult = {
+      ok: true,
+      exitCode: 0,
+      output: '',
+      checks: [],
+      posts: [],
+      errors: [],
+      warnings: [],
+      actions: []
+    };
+
+    const config = this.loadConfig();
+    if (!config) return result;
+
+    const guard = config[command];
+    if (!guard) return result;
+
+    context.command = command;
+
+    const validation = validateContext(command, guard, context);
+    if (!validation.valid) {
+      result.ok = false;
+      result.exitCode = 1;
+      result.output = validation.errors.join('\n');
+      return result;
+    }
+
+    if (guard.checks) {
+      for (const check of guard.checks) {
+        const checkResult = await evaluateCheck(check, context);
+        result.checks.push(checkResult);
+
+        if (checkResult.triggered) {
+          if (checkResult.level === 'error') {
+            result.errors.push(checkResult);
+            result.ok = false;
+            if (checkResult.exit) {
+              result.exitCode = checkResult.exit;
+            }
+            break;
+          } else if (checkResult.level === 'warn') {
+            result.warnings.push(checkResult);
+          }
+
+          if (checkResult.actions) {
+            result.actions.push(...checkResult.actions);
+          }
+        }
+      }
+    }
+
+    result.output = formatGuardOutput(result);
+    return result;
+  }
+
+  /**
+   * Check post-prompts for a command
+   */
+  async checkPosts(command: string, context: GuardContext): Promise<PostResult[]> {
+    const results: PostResult[] = [];
+
+    const config = this.loadConfig();
+    if (!config) return results;
+
+    const guard = config[command];
+    if (!guard || !guard.posts) return results;
+
+    context.command = command;
+
+    for (const post of guard.posts) {
+      const postResult = await evaluatePost(post, context);
+      results.push(postResult);
+    }
+
+    return results;
+  }
+
+  /**
+   * Synchronous check (blocking - use async version when possible)
+   */
+  checkSync(command: string, context: GuardContext): GuardResult {
+    let result: GuardResult | null = null;
+    let error: Error | null = null;
+
+    const promise = this.check(command, context);
+    promise.then(r => { result = r; }).catch(e => { error = e; });
+
+    const start = Date.now();
+    while (result === null && error === null && Date.now() - start < 5000) {
+      // Busy wait
+    }
+
+    if (error) throw error;
+    if (!result) {
+      return {
+        ok: true,
+        exitCode: 0,
+        output: '',
+        checks: [],
+        posts: [],
+        errors: [],
+        warnings: [],
+        actions: []
+      };
+    }
+
+    return result;
+  }
+}
+
+// Legacy function exports for backward compatibility (delegate to class)
+// These will be removed after migration
+
+/**
+ * @deprecated Use GuardChecker class instead
+ */
+export function loadGuardsConfig(startDir: string): GuardsConfig | null {
+  return new GuardChecker(startDir).loadConfig();
 }
 
 /**
- * Clear guards cache (for testing)
+ * @deprecated Use GuardChecker class instead
  */
 export function clearGuardsCache(): void {
-  guardsCache = null;
+  // No-op for legacy - each instance has its own cache now
 }
 
 /**
@@ -319,80 +459,15 @@ export function formatPostOutput(posts: PostResult[]): string {
  *
  * @param command - Command name (e.g., 'agent:spawn')
  * @param context - Runtime variables
+ * @param startDir - Directory to start searching for guards.yaml (required for purity)
  * @returns Guard evaluation result
  */
 export async function checkGuards(
   command: string,
-  context: GuardContext
+  context: GuardContext,
+  startDir: string
 ): Promise<GuardResult> {
-  const result: GuardResult = {
-    ok: true,
-    exitCode: 0,
-    output: '',
-    checks: [],
-    posts: [],
-    errors: [],
-    warnings: [],
-    actions: []
-  };
-
-  // Load guards config
-  const config = loadGuardsConfig();
-  if (!config) {
-    // No guards.yaml found - pass through
-    return result;
-  }
-
-  // Get guard definition for command
-  const guard = config[command];
-  if (!guard) {
-    // No guards defined for this command - pass through
-    return result;
-  }
-
-  // Add implicit context
-  context.command = command;
-
-  // Validate context
-  const validation = validateContext(command, guard, context);
-  if (!validation.valid) {
-    result.ok = false;
-    result.exitCode = 1;
-    result.output = validation.errors.join('\n');
-    return result;
-  }
-
-  // Evaluate checks
-  if (guard.checks) {
-    for (const check of guard.checks) {
-      const checkResult = await evaluateCheck(check, context);
-      result.checks.push(checkResult);
-
-      if (checkResult.triggered) {
-        if (checkResult.level === 'error') {
-          result.errors.push(checkResult);
-          result.ok = false;
-          if (checkResult.exit) {
-            result.exitCode = checkResult.exit;
-          }
-          // Stop on first error
-          break;
-        } else if (checkResult.level === 'warn') {
-          result.warnings.push(checkResult);
-        }
-
-        // Collect actions
-        if (checkResult.actions) {
-          result.actions.push(...checkResult.actions);
-        }
-      }
-    }
-  }
-
-  // Format output
-  result.output = formatGuardOutput(result);
-
-  return result;
+  return new GuardChecker(startDir).check(command, context);
 }
 
 /**
@@ -400,32 +475,15 @@ export async function checkGuards(
  *
  * @param command - Command name
  * @param context - Runtime variables (including result state)
+ * @param startDir - Directory to start searching for guards.yaml (required for purity)
  * @returns Post evaluation results
  */
 export async function checkPosts(
   command: string,
-  context: GuardContext
+  context: GuardContext,
+  startDir: string
 ): Promise<PostResult[]> {
-  const results: PostResult[] = [];
-
-  // Load guards config
-  const config = loadGuardsConfig();
-  if (!config) return results;
-
-  // Get guard definition for command
-  const guard = config[command];
-  if (!guard || !guard.posts) return results;
-
-  // Add implicit context
-  context.command = command;
-
-  // Evaluate posts
-  for (const post of guard.posts) {
-    const postResult = await evaluatePost(post, context);
-    results.push(postResult);
-  }
-
-  return results;
+  return new GuardChecker(startDir).checkPosts(command, context);
 }
 
 /**
@@ -433,39 +491,14 @@ export async function checkPosts(
  *
  * Note: This uses a sync hack and should be avoided if possible.
  * Prefer the async checkGuards() in new code.
+ * @param startDir - Directory to start searching for guards.yaml (required for purity)
  */
 export function checkGuardsSync(
   command: string,
-  context: GuardContext
+  context: GuardContext,
+  startDir: string
 ): GuardResult {
-  // Use a simple blocking approach
-  let result: GuardResult | null = null;
-  let error: Error | null = null;
-
-  const promise = checkGuards(command, context);
-  promise.then(r => { result = r; }).catch(e => { error = e; });
-
-  // Spin wait (not ideal but works for CLI)
-  const start = Date.now();
-  while (result === null && error === null && Date.now() - start < 5000) {
-    // Busy wait
-  }
-
-  if (error) throw error;
-  if (!result) {
-    return {
-      ok: true,
-      exitCode: 0,
-      output: '',
-      checks: [],
-      posts: [],
-      errors: [],
-      warnings: [],
-      actions: []
-    };
-  }
-
-  return result;
+  return new GuardChecker(startDir).checkSync(command, context);
 }
 
 /**

@@ -77,6 +77,10 @@ export function prdMemoryFilePath(prdId: string): string {
   return path.join(getMemoryDirPath(), `${normalizeId(prdId)}.md`);
 }
 
+export function epicMemoryFilePath(epicId: string): string {
+  return path.join(getMemoryDirPath(), `${normalizeId(epicId)}.md`);
+}
+
 export function projectMemoryFilePath(): string {
   const artefactsPath = resolvePath('artefacts') || resolvePlaceholders('${haven}/artefacts');
   return path.join(artefactsPath, 'MEMORY.md');
@@ -413,6 +417,47 @@ updated: '${now}'
 ## Decisions
 
 ## Escalation
+`;
+  }
+
+  fs.writeFileSync(mdPath, content);
+  return mdPath;
+}
+
+export function createEpicMemoryFile(epicId: string): string {
+  ensureMemoryDir();
+  const normalized = normalizeId(epicId);
+  const mdPath = epicMemoryFilePath(normalized);
+
+  // Don't overwrite existing memory file
+  if (fs.existsSync(mdPath)) {
+    return mdPath;
+  }
+
+  const now = new Date().toISOString();
+
+  let content = loadTemplate('memory-epic.md');
+  if (content) {
+    content = content
+      .replace(/E000/g, normalized)
+      .replace(/created: ''/g, `created: '${now}'`)
+      .replace(/updated: ''/g, `updated: '${now}'`);
+  } else {
+    content = `---
+epic: ${normalized}
+created: '${now}'
+updated: '${now}'
+---
+
+# Memory: ${normalized}
+
+## Tips
+
+## Commands
+
+## Issues
+
+## Solutions
 `;
   }
 
