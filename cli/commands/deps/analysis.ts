@@ -2,7 +2,7 @@
  * Deps analysis commands (impact, ready, critical)
  */
 import { jsonOut } from '../../managers/core-manager.js';
-import { normalizeId, parentContainsEpic } from '../../lib/normalize.js';
+import { normalizeId } from '../../lib/normalize.js';
 import { isStatusDone, isStatusNotStarted, isStatusInProgress, isStatusCancelled } from '../../lib/lexicon.js';
 import { buildDependencyGraph, blockersResolved, longestPath, countTotalUnblocked } from '../../managers/graph-manager.js';
 import { buildEpicDependencyMap } from './helpers.js';

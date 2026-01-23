@@ -7,11 +7,10 @@
  *   rudder find epic --prd PRD-001 --no-story --exec "epic:show {}"
  */
 import { execSync } from 'child_process';
-import path from 'path';
 import type { Command } from 'commander';
 import { findProjectRoot, jsonOut } from '../managers/core-manager.js';
-import { normalizeId, parentContainsEpic, matchesPrd } from '../lib/normalize.js';
-import { getAllEpics, getAllTasks, getAllPrds, getAllStories, getPrd } from '../managers/artefacts-manager.js';
+import { normalizeId } from '../lib/normalize.js';
+import { getAllEpics, getAllTasks, getAllPrds, getAllStories, getPrd, matchesEpic, matchesPrd } from '../managers/artefacts-manager.js';
 
 // ============================================================================
 // TYPES
@@ -181,9 +180,9 @@ function findTasks(filters: FindFilters): TaskResult[] {
     const data = taskEntry.data;
     if (!data) continue;
 
-    // Filter by epic (format-agnostic: E1 matches E001 in parent)
+    // Filter by epic (format-agnostic: E1 matches E001)
     if (filters.epic) {
-      if (!parentContainsEpic(data.parent, filters.epic)) continue;
+      if (!matchesEpic(taskEntry.epicId, filters.epic)) continue;
     }
 
     if (!matchesFilters(data, filters)) continue;

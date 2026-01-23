@@ -2,7 +2,8 @@
  * Task workflow commands (next, start, done)
  */
 import { loadFile, saveFile, jsonOut } from '../../managers/core-manager.js';
-import { normalizeId, parentContainsEpic } from '../../lib/normalize.js';
+import { normalizeId } from '../../lib/normalize.js';
+import { matchesEpic } from '../../managers/artefacts-manager.js';
 import { hasPendingMemoryLogs } from '../../managers/memory-manager.js';
 import { isStatusDone, isStatusNotStarted, isStatusCancelled } from '../../lib/lexicon.js';
 import { buildDependencyGraph, blockersResolved } from '../../managers/graph-manager.js';
@@ -40,9 +41,9 @@ export function registerWorkflowCommands(task: Command): void {
           if (!graphTask.prd?.toUpperCase().includes(prdId.replace('PRD-', ''))) continue;
         }
 
-        // Epic filter (format-agnostic: E1 matches E001 in parent)
+        // Epic filter (format-agnostic: E1 matches E001)
         if (options.epic) {
-          if (!parentContainsEpic(graphTask.parent, options.epic)) continue;
+          if (!matchesEpic(graphTask.epic, options.epic)) continue;
         }
 
         if (isStatusNotStarted(graphTask.status) &&

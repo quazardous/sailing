@@ -6,7 +6,7 @@ import path from 'path';
 import { findPrdDirs, loadFile, saveFile, toKebab, loadTemplate, formatId } from '../core-manager.js';
 import { nextId } from '../state-manager.js';
 import { extractIdKey } from '../../lib/artefacts.js';
-import { normalizeId } from '../../lib/normalize.js';
+import { normalizeId, extractEpicId } from '../../lib/normalize.js';
 import { _taskIndex, setTaskIndex, clearCache } from './common.js';
 import { getEpic } from './epic.js';
 import { prdIdFromDir } from './prd.js';
@@ -55,6 +55,7 @@ export function buildTaskIndex(): Map<string, TaskIndexEntry> {
         id,
         file: filePath,
         prdId: prdIdFromDir(prdDir),
+        epicId: extractEpicId(loaded?.data?.parent),
         prdDir,
         data: loaded?.data || {}
       });

@@ -11,7 +11,6 @@ import { buildConflictMatrix, suggestMergeOrder } from '../../managers/conflict-
 import { diagnoseWorktreeState } from '../../lib/state-machine/index.js';
 import { detectProvider } from '../../managers/pr-manager.js';
 import { getMainBranchStatus, getPrStatus } from './helpers.js';
-import type { AgentRecord } from '../../lib/types/agent.js';
 import type { StatusOptions, PreflightOptions, PrStatus } from './helpers.js';
 
 /**
@@ -46,7 +45,7 @@ export function registerStatusCommands(worktree: Command): void {
         pr: { url: string; state?: string; mergeable?: boolean } | null;
       }> = [];
 
-      for (const [taskId, info] of Object.entries(agents as Record<string, AgentRecord>)) {
+      for (const [taskId, info] of Object.entries(agents)) {
         if (!info.worktree) continue;
 
         const worktreePath = getWorktreePath(taskId);
@@ -211,7 +210,7 @@ export function registerStatusCommands(worktree: Command): void {
         blockers.push('No commits in repository (git worktree requires at least one commit)');
       }
 
-      for (const [taskId, info] of Object.entries(agents as Record<string, AgentRecord>)) {
+      for (const [taskId, info] of Object.entries(agents)) {
         if (info.status === 'running') {
           runningAgents.push(taskId);
         }

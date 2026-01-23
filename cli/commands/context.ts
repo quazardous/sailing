@@ -332,7 +332,7 @@ export function registerContextCommands(program: Command) {
 
       console.log('\nFragment Sets:\n');
       for (const [name, fragments] of Object.entries(config.sets || {})) {
-        const frags = fragments as string[];
+        const frags = fragments;
         if (options.sets) {
           console.log(`  ${name}: [${frags.join(', ')}]`);
         } else {
@@ -341,7 +341,7 @@ export function registerContextCommands(program: Command) {
       }
 
       console.log('\nOperations by Role:\n');
-      const byRole = listOperations(config as WorkflowsConfig);
+      const byRole = listOperations(config);
       for (const [role, ops] of Object.entries(byRole)) {
         console.log(`  ${role.toUpperCase()}:`);
         for (const op of ops) {

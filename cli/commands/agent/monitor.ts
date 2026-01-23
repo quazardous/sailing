@@ -333,7 +333,7 @@ export function registerMonitorCommands(agent) {
         if (agentLogFile && fs.existsSync(agentLogFile)) {
           lastActivity = fs.statSync(agentLogFile).mtime;
         } else if (a.spawned_at || a.started_at) {
-          lastActivity = new Date((a.spawned_at || a.started_at) as string);
+          lastActivity = new Date((a.spawned_at || a.started_at));
         }
         return { ...a, last_activity: lastActivity };
       });
@@ -905,7 +905,7 @@ export function registerMonitorCommands(agent) {
       }
 
       // 3. Git worktree list (raw)
-      let gitWorktrees: { path: string; commit: string; branch: string; prunable: boolean }[] = [];
+      const gitWorktrees: { path: string; commit: string; branch: string; prunable: boolean }[] = [];
       try {
         const output = execSync('git worktree list --porcelain', { cwd: projectRoot, encoding: 'utf-8' });
         const entries = output.trim().split('\n\n').filter(Boolean);
@@ -939,7 +939,7 @@ export function registerMonitorCommands(agent) {
       const gitWorktreeIds = new Set(gitWorktrees.map(w => {
         const match = w.path.match(/\/(T\d+)$/i);
         return match ? match[1].toUpperCase() : null;
-      }).filter(Boolean) as string[]);
+      }).filter(Boolean));
 
       // Orphans: in dirs but not in state
       const orphanAgentDirs = [...agentDirIds].filter(id => !dbIds.has(id) && !dbIds.has(normalizeId(id) || id));

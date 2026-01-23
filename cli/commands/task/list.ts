@@ -2,8 +2,8 @@
  * Task list command
  */
 import { jsonOut } from '../../managers/core-manager.js';
-import { normalizeId, matchesPrd, parentContainsEpic } from '../../lib/normalize.js';
-import { getAllTasks } from '../../managers/artefacts-manager.js';
+import { normalizeId } from '../../lib/normalize.js';
+import { getAllTasks, matchesEpic, matchesPrd } from '../../managers/artefacts-manager.js';
 import { STATUS, normalizeStatus, isStatusDone, isStatusCancelled, statusSymbol } from '../../lib/lexicon.js';
 import { buildDependencyGraph, blockersResolved } from '../../managers/graph-manager.js';
 import { Task } from '../../lib/types/entities.js';
@@ -46,9 +46,9 @@ export function registerListCommand(task: Command): void {
           if (targetStatus !== taskStatus) continue;
         }
 
-        // Epic filter (format-agnostic: E1 matches E001 in parent)
+        // Epic filter (format-agnostic: E1 matches E001)
         if (options.epic) {
-          if (!parentContainsEpic(data.parent, options.epic)) continue;
+          if (!matchesEpic(taskEntry.epicId, options.epic)) continue;
         }
 
         // Assignee filter
@@ -71,7 +71,7 @@ export function registerListCommand(task: Command): void {
           parent: (data.parent) || '',
           assignee: (data.assignee) || 'unassigned',
           effort: (data.effort) || null,
-          priority: (data.priority as "critical" | "low" | "normal" | "high") || 'normal',
+          priority: (data.priority) || 'normal',
           blocked_by: (data.blocked_by) || [],
           prd: taskEntry.prdId
         };

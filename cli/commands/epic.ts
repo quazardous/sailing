@@ -4,14 +4,14 @@
 import fs from 'fs';
 import path from 'path';
 import { findPrdDirs, loadFile, saveFile, toKebab, loadTemplate, jsonOut, getMemoryDir, stripComments } from '../managers/core-manager.js';
-import { normalizeId, matchesPrd, matchesPrdDir } from '../lib/normalize.js';
+import { normalizeId, matchesPrdDir } from '../lib/normalize.js';
 import { STATUS, normalizeStatus, statusSymbol } from '../lib/lexicon.js';
 import { nextId } from '../managers/state-manager.js';
 import { parseUpdateOptions } from '../lib/update.js';
 import { addDynamicHelp, withModifies } from '../lib/help.js';
 import { formatId } from '../managers/core-manager.js';
 import { parseSearchReplace, editArtifact, parseMultiSectionContent, processMultiSectionOps } from '../lib/artifact.js';
-import { getEpic, getAllEpics, getTasksForEpic, prdIdFromDir } from '../managers/artefacts-manager.js';
+import { getEpic, getAllEpics, getTasksForEpic, prdIdFromDir, matchesPrd } from '../managers/artefacts-manager.js';
 import { Epic } from '../lib/types/entities.js';
 import { getEpicMemory } from '../managers/memory-manager.js';
 import { Command } from 'commander';

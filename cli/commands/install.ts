@@ -89,7 +89,7 @@ function isRudderMcpValid(server: McpServer): boolean {
 function checkMcp(): { configured: boolean; hasRudder: boolean; isValid: boolean; config: McpConfig } {
   const config = loadMcpConfig();
   const hasRudder = !!config.mcpServers?.rudder;
-  const isValid = hasRudder && isRudderMcpValid(config.mcpServers!.rudder);
+  const isValid = hasRudder && isRudderMcpValid(config.mcpServers.rudder);
   return {
     configured: fs.existsSync(getMcpConfigPath()),
     hasRudder,

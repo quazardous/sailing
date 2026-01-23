@@ -9,12 +9,12 @@
 import fs from 'fs';
 import path from 'path';
 import { Readable } from 'stream';
-import readline from 'readline';
 import { eventBus } from '../lib/event-bus.js';
 import { getAgentLifecycle, type ReapResult, type KillResult } from './agent-manager.js';
-import { getAgentFromDb, getAllAgentsFromDb, getAgentsArray, saveAgentToDb, deleteAgentFromDb } from './db-manager.js';
+import { getAgentFromDb, getAllAgentsFromDb, getAgentsArray, saveAgentToDb } from './db-manager.js';
 import { findProjectRoot, getAgentsDir, getAgentConfig, resolvePlaceholders } from './core-manager.js';
-import { normalizeId, parseTaskNum, extractPrdId, extractEpicId } from '../lib/normalize.js';
+import { normalizeId, extractPrdId, extractEpicId } from '../lib/normalize.js';
+import { parseTaskNum } from '../lib/agent-paths.js';
 import { spawnClaude, getLogFilePath } from '../lib/claude.js';
 import { buildAgentSpawnPrompt } from './compose-manager.js';
 import { createWorktree, removeWorktree, getWorktreePath, getBranchName, worktreeExists, getMainBranch, getParentBranch, ensureBranchHierarchy, syncParentBranch } from './worktree-manager.js';
@@ -582,10 +582,10 @@ export class ConductorManager {
     return {
       [Symbol.asyncIterator](): AsyncIterator<LogLine> {
         let closed = false;
-        let lineQueue: LogLine[] = [];
+        const lineQueue: LogLine[] = [];
         let resolveNext: ((value: IteratorResult<LogLine>) => void) | null = null;
         let watcher: fs.FSWatcher | null = null;
-        let readStream: Readable | null = null;
+        const readStream: Readable | null = null;
         let initialized = false;
 
         const pushLine = (line: string) => {
@@ -667,7 +667,7 @@ export class ConductorManager {
             }
 
             if (lineQueue.length > 0) {
-              return { value: lineQueue.shift()!, done: false };
+              return { value: lineQueue.shift(), done: false };
             }
 
             if (!follow) {

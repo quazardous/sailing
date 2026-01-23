@@ -790,18 +790,18 @@ export function editMemorySection(
   // Get or create memory file (using find functions to handle ID format mismatches)
   try {
     if (level === 'epic') {
-      const found = findEpicMemoryFile(normalized!);
+      const found = findEpicMemoryFile(normalized);
       if (!found.exists) {
-        createEpicMemoryFile(normalized!);
-        memoryPath = epicMemoryFilePath(normalized!);
+        createEpicMemoryFile(normalized);
+        memoryPath = epicMemoryFilePath(normalized);
       } else {
         memoryPath = found.path;
       }
     } else if (level === 'prd') {
-      const found = findPrdMemoryFile(normalized!);
+      const found = findPrdMemoryFile(normalized);
       if (!found.exists) {
-        createPrdMemoryFile(normalized!);
-        memoryPath = prdMemoryFilePath(normalized!);
+        createPrdMemoryFile(normalized);
+        memoryPath = prdMemoryFilePath(normalized);
       } else {
         memoryPath = found.path;
       }

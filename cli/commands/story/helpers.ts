@@ -1,8 +1,8 @@
 /**
  * Story command helpers and types
  */
-import { normalizeId, matchesPrd } from '../../lib/normalize.js';
-import { getAllEpics, getAllTasks, getStory, getAllStories as getStoriesFromIndex, getPrd } from '../../managers/artefacts-manager.js';
+import { normalizeId } from '../../lib/normalize.js';
+import { getAllEpics, getAllTasks, getStory, getAllStories as getStoriesFromIndex, getPrd, matchesPrd } from '../../managers/artefacts-manager.js';
 import { Story } from '../../lib/types/entities.js';
 
 export const STORY_TYPES = ['user', 'technical', 'api'];
@@ -201,7 +201,7 @@ export function buildStoryTree(stories: StoryWithPrd[]) {
     if (s.parent_story) {
       const parentId = normalizeId(s.parent_story);
       if (children.has(parentId)) {
-        children.get(parentId)!.push(s);
+        children.get(parentId).push(s);
       }
     } else {
       roots.push(s);

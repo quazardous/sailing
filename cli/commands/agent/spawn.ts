@@ -20,7 +20,8 @@ import {
 import { WorktreeOps } from '../../lib/worktree.js';
 import { spawnClaude, getLogFilePath } from '../../lib/claude.js';
 import { checkMcpAgentServer } from '../../lib/srt.js';
-import { extractPrdId, extractEpicId, normalizeId, parseTaskNum } from '../../lib/normalize.js';
+import { extractPrdId, extractEpicId, normalizeId } from '../../lib/normalize.js';
+import { parseTaskNum } from '../../lib/agent-paths.js';
 import { findDevMd, findToolset } from '../../managers/core-manager.js';
 import { getTask, getEpic, getMemoryFile, getPrdBranching } from '../../managers/artefacts-manager.js';
 import { AgentUtils, getProcessStats, formatDuration } from '../../lib/agent-utils.js';

@@ -5,7 +5,7 @@ import fs from 'fs';
 import path from 'path';
 import { findPrdDirs, loadFile, saveFile, toKebab, loadTemplate, jsonOut, formatId } from '../../managers/core-manager.js';
 import { normalizeId, matchesPrdDir } from '../../lib/normalize.js';
-import { STATUS, normalizeStatus } from '../../lib/lexicon.js';
+import { STATUS } from '../../lib/lexicon.js';
 import { nextId } from '../../managers/state-manager.js';
 import { parseUpdateOptions } from '../../lib/update.js';
 import { withModifies } from '../../lib/help.js';

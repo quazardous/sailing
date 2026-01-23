@@ -4,8 +4,8 @@
 import fs from 'fs';
 import path from 'path';
 import { loadFile, saveFile, jsonOut } from '../../managers/core-manager.js';
-import { normalizeId, extractTaskId, matchesPrd } from '../../lib/normalize.js';
-import { getAllEpics } from '../../managers/artefacts-manager.js';
+import { normalizeId, extractTaskId } from '../../lib/normalize.js';
+import { getAllEpics, matchesPrd } from '../../managers/artefacts-manager.js';
 import { STATUS, normalizeStatus, isStatusDone, isStatusNotStarted, isStatusInProgress, isStatusCancelled } from '../../lib/lexicon.js';
 import { buildDependencyGraph, detectCycles, type TaskNode } from '../../managers/graph-manager.js';
 import { withModifies } from '../../lib/help.js';
@@ -231,7 +231,7 @@ export function registerValidateCommand(deps: Command): void {
         if (epicMatch) {
           const epicId = normalizeId(`E${epicMatch[1]}`);
           if (!tasksByEpic.has(epicId)) tasksByEpic.set(epicId, []);
-          (tasksByEpic.get(epicId))!.push(task);
+          (tasksByEpic.get(epicId)).push(task);
         }
       }
 
@@ -322,7 +322,7 @@ export function registerValidateCommand(deps: Command): void {
                 break;
               }
               case 'remove_self': {
-                const filtered = file.data.blocked_by.filter(b => extractTaskId(b as string) !== fix.task);
+                const filtered = file.data.blocked_by.filter(b => extractTaskId(b) !== fix.task);
                 if (filtered.length !== file.data.blocked_by.length) {
                   file.data.blocked_by = filtered;
                   updated = true;
@@ -332,7 +332,7 @@ export function registerValidateCommand(deps: Command): void {
               }
               case 'remove_missing':
               case 'remove_cancelled': {
-                const filtered = file.data.blocked_by.filter(b => extractTaskId(b as string) !== fix.blockerId);
+                const filtered = file.data.blocked_by.filter(b => extractTaskId(b) !== fix.blockerId);
                 if (filtered.length !== file.data.blocked_by.length) {
                   file.data.blocked_by = filtered;
                   updated = true;

@@ -14,7 +14,7 @@ import {
 } from '../managers/db-manager.js';
 import { addDynamicHelp, withModifies } from '../lib/help.js';
 import type { AgentRecord } from '../lib/types/agent.js';
-import { parseTaskNum, formatTaskId } from '../lib/normalize.js';
+import { parseTaskNum, formatTaskId } from '../lib/agent-paths.js';
 
 /**
  * Register database commands

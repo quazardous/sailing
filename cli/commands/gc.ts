@@ -5,13 +5,12 @@
 import fs from 'fs';
 import path from 'path';
 import os from 'os';
-import { findProjectRoot, jsonOut, computeProjectHash, getAgentsDir, getWorktreesDir } from '../managers/core-manager.js';
+import { jsonOut, computeProjectHash, getAgentsDir, getWorktreesDir } from '../managers/core-manager.js';
 import { getAllAgentsFromDb, deleteAgentFromDb, getAgentsArray } from '../managers/db-manager.js';
 import { listAgentWorktrees, pruneWorktrees } from '../managers/worktree-manager.js';
 import { getTask } from '../managers/artefacts-manager.js';
 import { normalizeId } from '../lib/normalize.js';
 import { checkPosts, formatPostOutput } from '../lib/guards.js';
-import type { AgentRecord } from '../lib/types/agent.js';
 import type { Command } from 'commander';
 
 /**

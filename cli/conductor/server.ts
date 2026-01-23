@@ -16,11 +16,10 @@ import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { createRoutes, type RoutesOptions } from '../dashboard/routes.js';
-import { html, json } from '../dashboard/server.js';
+import { json } from '../dashboard/server.js';
 import { getConductorManager } from '../managers/conductor-manager.js';
-import { eventBus, type EventType, type EventPayload } from '../lib/event-bus.js';
-import { WebSocketHandler, type WebSocketClient } from './websocket-handler.js';
-import { normalizeId } from '../lib/normalize.js';
+import { eventBus, type EventType } from '../lib/event-bus.js';
+import { WebSocketHandler } from './websocket-handler.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -148,7 +147,7 @@ export function createConductorServer(
 
     server.on('upgrade', (req, socket, head) => {
       // Cast Duplex to Socket - the upgrade event always provides a net.Socket
-      wsHandler!.handleUpgrade(req, socket as import('net').Socket, head);
+      wsHandler.handleUpgrade(req, socket as import('net').Socket, head);
     });
 
     // Subscribe to events and broadcast
@@ -222,7 +221,7 @@ function createAgentRoutes(): Record<string, RouteHandler> {
         return;
       }
 
-      const taskId = extractParam(req.url!, 'taskId');
+      const taskId = extractParam(req.url, 'taskId');
       const body = await parseBody(req);
 
       const result = await conductor.spawn(taskId, {
@@ -242,7 +241,7 @@ function createAgentRoutes(): Record<string, RouteHandler> {
         return;
       }
 
-      const taskId = extractParam(req.url!, 'taskId');
+      const taskId = extractParam(req.url, 'taskId');
       const body = await parseBody(req);
 
       const result = await conductor.reap(taskId, {
@@ -260,7 +259,7 @@ function createAgentRoutes(): Record<string, RouteHandler> {
         return;
       }
 
-      const taskId = extractParam(req.url!, 'taskId');
+      const taskId = extractParam(req.url, 'taskId');
       const result = await conductor.kill(taskId);
 
       json(res, result, result.success ? 200 : 400);
@@ -268,7 +267,7 @@ function createAgentRoutes(): Record<string, RouteHandler> {
 
     // Get agent status
     '/api/agents/:taskId': async (req, res) => {
-      const taskId = extractParam(req.url!, 'taskId');
+      const taskId = extractParam(req.url, 'taskId');
       const status = conductor.getStatus(taskId);
 
       if (status) {
@@ -280,8 +279,8 @@ function createAgentRoutes(): Record<string, RouteHandler> {
 
     // Get agent log
     '/api/agents/:taskId/log': async (req, res) => {
-      const taskId = extractParam(req.url!, 'taskId');
-      const url = new URL(req.url!, 'http://localhost');
+      const taskId = extractParam(req.url, 'taskId');
+      const url = new URL(req.url, 'http://localhost');
       const tail = parseInt(url.searchParams.get('tail') || '100', 10);
 
       const lines = conductor.getLog(taskId, { tail });
@@ -290,7 +289,7 @@ function createAgentRoutes(): Record<string, RouteHandler> {
 
     // Stream agent log (SSE)
     '/api/agents/:taskId/log/stream': async (req, res) => {
-      const taskId = extractParam(req.url!, 'taskId');
+      const taskId = extractParam(req.url, 'taskId');
 
       // SSE headers
       res.writeHead(200, {

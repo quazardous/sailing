@@ -7,7 +7,7 @@ import { execSync } from 'child_process';
 import type { Command } from 'commander';
 import { findProjectRoot, loadFile, jsonOut } from '../managers/core-manager.js';
 import { getAgentFromDb } from '../managers/db-manager.js';
-import { getAgentConfig, getGitConfig } from '../managers/core-manager.js';
+import { getAgentConfig } from '../managers/core-manager.js';
 import { addDynamicHelp } from '../lib/help.js';
 import { getBranchName,
   getParentBranch, getBranchHierarchy, getMainBranch

@@ -41,6 +41,7 @@ export interface TaskIndexEntry {
   id: string;
   file: string;
   prdId: string;
+  epicId: string | null;  // Normalized epic ID extracted from parent
   prdDir: string;  // Internal use only - managers
   data: Partial<Task>;
 }

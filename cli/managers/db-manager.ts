@@ -8,7 +8,7 @@
  * Primary key: taskNum (number) - the numeric part of task ID (5 for T005)
  * All public APIs accept both taskId (string) and taskNum (number) for convenience.
  */
-import { resolvePlaceholders, resolvePath, getAgentConfig } from './core-manager.js';
+import { resolvePlaceholders, resolvePath } from './core-manager.js';
 import { DbOps } from '../lib/db.js';
 import type { AgentRecord } from '../lib/types/agent.js';
 import {
@@ -19,7 +19,7 @@ import {
   getLogFilePath,
   getSrtConfigPath,
   getMcpConfigPath
-} from '../lib/normalize.js';
+} from '../lib/agent-paths.js';
 
 // Re-export types and class for direct usage
 export { DbOps };

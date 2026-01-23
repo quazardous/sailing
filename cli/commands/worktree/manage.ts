@@ -9,7 +9,6 @@ import { getAgentConfig } from '../../managers/core-manager.js';
 import { getWorktreePath, cleanupWorktree } from '../../managers/worktree-manager.js';
 import { detectProvider } from '../../managers/pr-manager.js';
 import { getPrStatus } from './helpers.js';
-import type { AgentRecord } from '../../lib/types/agent.js';
 import type { CleanupOptions, SyncOptions, PrStatus } from './helpers.js';
 
 /**
@@ -79,7 +78,7 @@ export function registerManageCommands(worktree: Command): void {
 
       const actions: Array<{ action: string; taskId: string; reason: string }> = [];
 
-      for (const [taskId, info] of Object.entries(agents as Record<string, AgentRecord>)) {
+      for (const [taskId, info] of Object.entries(agents)) {
         if (info.status === 'merged' || info.status === 'rejected') continue;
 
         if (info.pr_url && provider) {

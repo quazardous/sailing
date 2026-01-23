@@ -4,7 +4,7 @@
  * MANAGER: Has config access, encapsulates service start/stop/status logic.
  * Extracted from rdrctl.ts to follow Commands → Managers → Libs architecture.
  */
-import { spawn, ChildProcess } from 'child_process';
+import { spawn } from 'child_process';
 import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
@@ -151,7 +151,7 @@ export class ServiceManager {
         const port = portStart + offset;
         return ['--port', String(port)];
       } else {
-        const socketPath = path.join(this.haven!, `mcp-${service}.sock`);
+        const socketPath = path.join(this.haven, `mcp-${service}.sock`);
         if (fs.existsSync(socketPath)) {
           fs.unlinkSync(socketPath);
         }

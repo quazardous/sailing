@@ -132,7 +132,7 @@ class EventBus {
     if (!this.history.has(event)) {
       this.history.set(event, []);
     }
-    const eventHistory = this.history.get(event)!;
+    const eventHistory = this.history.get(event);
     eventHistory.push({ payload, timestamp: Date.now() });
     if (eventHistory.length > this.historyLimit) {
       eventHistory.shift();

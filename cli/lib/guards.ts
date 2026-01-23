@@ -30,9 +30,7 @@ import type {
   GuardContext,
   GuardResult,
   CheckResult,
-  PostResult,
-  GuardAction,
-  VarDefinition
+  PostResult
 } from './types/guards.js';
 
 // Singleton Liquid engine

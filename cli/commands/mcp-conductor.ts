@@ -114,7 +114,7 @@ function formatSchema(toolName: string): string {
   if (Object.keys(props).length === 0) {
     lines.push('  (none)');
   } else {
-    for (const [name, prop] of Object.entries(props) as [string, any][]) {
+    for (const [name, prop] of Object.entries(props) as [string, { enum?: string[]; type?: string; description?: string }][]) {
       const isRequired = required.includes(name);
       const reqStr = isRequired ? ' (required)' : '';
       const typeStr = prop.enum ? prop.enum.join('|') : prop.type;

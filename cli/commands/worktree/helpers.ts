@@ -3,7 +3,6 @@
  *
  * Shared types and utility functions for worktree subcommands.
  */
-import { findProjectRoot } from '../../managers/core-manager.js';
 import { getTask } from '../../managers/artefacts-manager.js';
 import { extractPrdId, extractEpicId } from '../../lib/normalize.js';
 import { getGit } from '../../lib/git.js';

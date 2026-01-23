@@ -2,7 +2,8 @@
  * Deps modification commands (add, show)
  */
 import { loadFile, saveFile, jsonOut } from '../../managers/core-manager.js';
-import { normalizeId, parentContainsEpic } from '../../lib/normalize.js';
+import { normalizeId } from '../../lib/normalize.js';
+import { matchesEpic } from '../../managers/artefacts-manager.js';
 import { isStatusDone, statusSymbol } from '../../lib/lexicon.js';
 import { buildDependencyGraph, blockersResolved } from '../../managers/graph-manager.js';
 import { withModifies } from '../../lib/help.js';
@@ -171,7 +172,7 @@ export function registerModifyCommands(deps: Command): void {
         }
 
         const epicTasks = [...tasks.values()].filter(t => {
-          return t.epic === epicId || parentContainsEpic(t.parent, epicId);
+          return matchesEpic(t.epic, epicId);
         });
 
         const epicBlockers = epic.blockedBy.map(bid => {

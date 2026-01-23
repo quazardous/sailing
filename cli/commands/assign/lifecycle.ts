@@ -5,7 +5,7 @@ import fs from 'fs';
 import path from 'path';
 import yaml from 'js-yaml';
 import { Command } from 'commander';
-import { jsonOut, loadFile, saveFile, getAssignmentsDir, ensureDir, computeProjectHash } from '../../managers/core-manager.js';
+import { jsonOut, loadFile, saveFile, ensureDir, computeProjectHash } from '../../managers/core-manager.js';
 import { normalizeId } from '../../lib/normalize.js';
 import { withModifies } from '../../lib/help.js';
 import { countTaskTips } from '../../managers/memory-manager.js';

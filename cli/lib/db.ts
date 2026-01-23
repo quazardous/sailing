@@ -13,7 +13,7 @@
  */
 import path from 'path';
 import { Collection } from './jsondb.js';
-import { parseTaskNum, formatTaskId } from './normalize.js';
+import { parseTaskNum } from './agent-paths.js';
 
 export interface DbOptions {
   status?: string;

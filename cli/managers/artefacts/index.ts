@@ -101,7 +101,24 @@ export {
 import { getPrd } from './prd.js';
 import { getAllTasks } from './task.js';
 import { getAllStories } from './story.js';
+import { normalizeId, matchesPrd as matchesPrdLib } from '../../lib/normalize.js';
 import type { TaskIndexEntry, StoryIndexEntry } from '../../lib/types/entities.js';
+
+/**
+ * Match PRD ID (handles format variations: PRD-1, PRD-001, 1)
+ */
+export function matchesPrd(prdId: string | null | undefined, filter: string | null | undefined): boolean {
+  if (!prdId || !filter) return false;
+  return matchesPrdLib(prdId, filter);
+}
+
+/**
+ * Match epic ID (handles format variations: E1, E001, E01)
+ */
+export function matchesEpic(epicId: string | null | undefined, filter: string | null | undefined): boolean {
+  if (!epicId || !filter) return false;
+  return normalizeId(epicId) === normalizeId(filter);
+}
 
 /**
  * Get all tasks for a specific PRD

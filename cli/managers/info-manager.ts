@@ -10,7 +10,6 @@ import type { PathsInfo, ConfigInfo } from '../lib/types/config.js';
 import {
   findProjectRoot,
   loadPathsConfig,
-  getArtefactsDir,
   getTemplates,
   getPrompting,
   isDevInstall,
