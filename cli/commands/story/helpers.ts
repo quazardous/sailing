@@ -1,8 +1,7 @@
 /**
  * Story command helpers and types
  */
-import path from 'path';
-import { normalizeId, matchesPrdDir } from '../../lib/normalize.js';
+import { normalizeId, matchesPrd } from '../../lib/normalize.js';
 import { getAllEpics, getAllTasks, getStory, getAllStories as getStoriesFromIndex, getPrd } from '../../managers/artefacts-manager.js';
 import { Story } from '../../lib/types/entities.js';
 
@@ -110,10 +109,10 @@ export type StoryWithPrd = Story & { prd: string; file?: string };
 /**
  * Find a story file by ID (uses artefacts.ts contract)
  */
-export function findStoryFile(storyId: string): { file: string; prdDir: string } | null {
+export function findStoryFile(storyId: string): { file: string; prdDir: string; prdId: string } | null {
   const storyEntry = getStory(storyId);
   if (!storyEntry) return null;
-  return { file: storyEntry.file, prdDir: storyEntry.prdDir };
+  return { file: storyEntry.file, prdDir: storyEntry.prdDir, prdId: storyEntry.prdId };
 }
 
 /**
@@ -128,15 +127,14 @@ export function getAllStories(prdFilter: string | null = null, includePath = fal
   if (prdFilter) {
     const prd = getPrd(prdFilter);
     if (prd) {
-      storyEntries = storyEntries.filter(s => s.prdDir === prd.dir);
+      storyEntries = storyEntries.filter(s => s.prdId === prd.id);
     } else {
-      // Fallback: filter by prdDir path containing prdFilter
-      storyEntries = storyEntries.filter(s => matchesPrdDir(s.prdDir, prdFilter));
+      // Fallback: filter by prdId
+      storyEntries = storyEntries.filter(s => matchesPrd(s.prdId, prdFilter));
     }
   }
 
   return storyEntries.map(entry => {
-    const prdName = path.basename(entry.prdDir);
     const storyEntry: StoryWithPrd = {
       id: entry.data?.id || entry.id,
       title: entry.data?.title || '',
@@ -144,7 +142,7 @@ export function getAllStories(prdFilter: string | null = null, includePath = fal
       type: entry.data?.type || 'user',
       parent: entry.data?.parent || '',
       parent_story: entry.data?.parent_story || null,
-      prd: prdName
+      prd: entry.prdId
     };
     if (includePath) storyEntry.file = entry.file;
     return storyEntry;

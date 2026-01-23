@@ -1,13 +1,12 @@
 /**
  * MCP Conductor Tools - Dependency operations
  */
-import { runRudder } from '../../mcp-manager.js';
-import { buildDependencyGraph, blockersResolved, longestPath } from '../../graph-manager.js';
+import { showDeps, addDependency } from '../../../operations/deps-ops.js';
+import { buildDependencyGraph, longestPath } from '../../graph-manager.js';
 import { isStatusDone, isStatusCancelled } from '../../../lib/lexicon.js';
 import {
   ok,
   err,
-  fromRunResult,
   normalizeId
 } from '../types.js';
 import type { ToolDefinition, NextAction } from '../types.js';
@@ -26,27 +25,20 @@ export const DEPS_TOOLS: ToolDefinition[] = [
       }
     },
     handler: (args) => {
-      const id = normalizeId(args.id);
-      const { tasks, blocks } = buildDependencyGraph();
-      const task = tasks.get(id);
+      const result = showDeps(args.id as string);
 
-      if (!task) {
-        return err(`Not found: ${id}`);
+      if (!result) {
+        return err(`Not found: ${args.id}`);
       }
-
-      const blockers = task.blockedBy || [];
-      const dependents = [...blocks.entries()]
-        .filter(([_, blockedBy]) => blockedBy.includes(id))
-        .map(([taskId]) => taskId);
 
       return ok({
         success: true,
         data: {
-          id,
-          blockers,
-          blockers_resolved: blockersResolved(task, tasks),
-          dependents,
-          impact: dependents.length
+          id: result.id,
+          blockers: result.blockers,
+          blockers_resolved: result.blockersResolved,
+          dependents: result.dependents,
+          impact: result.impact
         }
       });
     }
@@ -65,14 +57,23 @@ export const DEPS_TOOLS: ToolDefinition[] = [
       }
     },
     handler: (args) => {
-      const result = runRudder(`deps:add ${normalizeId(args.task_id)} --blocked-by ${normalizeId(args.blocked_by)}`);
+      const result = addDependency(args.task_id as string, args.blocked_by as string);
       const nextActions: NextAction[] = [{
         tool: 'workflow_validate',
         args: {},
         reason: 'Validate dependency graph after adding',
         priority: 'normal'
       }];
-      return fromRunResult(result, nextActions);
+
+      if (!result.added) {
+        return err(result.message, nextActions);
+      }
+
+      return ok({
+        success: true,
+        data: { message: result.message },
+        next_actions: nextActions
+      });
     }
   },
   {
@@ -89,8 +90,8 @@ export const DEPS_TOOLS: ToolDefinition[] = [
     },
     handler: (args) => {
       const { tasks, blocks } = buildDependencyGraph();
-      const limit = args.limit || 5;
-      const prdFilter = args.scope ? normalizeId(args.scope) : null;
+      const limit = (args.limit as number) || 5;
+      const prdFilter = args.scope ? normalizeId(args.scope as string) : null;
 
       const scores: Array<{
         id: string;

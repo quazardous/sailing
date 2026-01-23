@@ -87,6 +87,16 @@ export function getPrd(prdId: string | number): PrdIndexEntry | null {
   return index.get(num) || null;
 }
 
+/**
+ * Extract PRD ID from a prdDir path
+ * E.g., "/path/to/PRD-001-my-project" → "PRD-001"
+ */
+export function prdIdFromDir(prdDir: string): string {
+  const dirname = path.basename(prdDir);
+  const match = dirname.match(/^(PRD-\d+)/i);
+  return match ? match[1] : dirname;
+}
+
 // ============================================================================
 // QUERY
 // ============================================================================

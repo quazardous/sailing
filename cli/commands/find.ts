@@ -10,7 +10,7 @@ import { execSync } from 'child_process';
 import path from 'path';
 import type { Command } from 'commander';
 import { findProjectRoot, jsonOut } from '../managers/core-manager.js';
-import { normalizeId, parentContainsEpic } from '../lib/normalize.js';
+import { normalizeId, parentContainsEpic, matchesPrd } from '../lib/normalize.js';
 import { getAllEpics, getAllTasks, getAllPrds, getAllStories, getPrd } from '../managers/artefacts-manager.js';
 
 // ============================================================================
@@ -144,8 +144,7 @@ function findEpics(filters: FindFilters): EpicResult[] {
   for (const epicEntry of getAllEpics()) {
     // Filter by PRD if specified
     if (filters.prd) {
-      const prdDir = epicEntry.prdDir.toLowerCase();
-      if (!prdDir.includes(normalizeId(filters.prd).toLowerCase())) continue;
+      if (!matchesPrd(epicEntry.prdId, filters.prd)) continue;
     }
 
     const data = epicEntry.data;
@@ -176,8 +175,7 @@ function findTasks(filters: FindFilters): TaskResult[] {
   for (const taskEntry of getAllTasks()) {
     // Filter by PRD if specified
     if (filters.prd) {
-      const prdDir = path.dirname(path.dirname(taskEntry.file)).toLowerCase();
-      if (!prdDir.includes(normalizeId(filters.prd).toLowerCase())) continue;
+      if (!matchesPrd(taskEntry.prdId, filters.prd)) continue;
     }
 
     const data = taskEntry.data;
@@ -218,12 +216,10 @@ function findStories(filters: FindFilters): StoryResult[] {
   if (filters.prd) {
     const prd = getPrd(filters.prd);
     if (prd) {
-      storyEntries = storyEntries.filter(s => s.prdDir === prd.dir);
+      storyEntries = storyEntries.filter(s => s.prdId === prd.id);
     } else {
-      // Fallback: filter by prdDir path containing prd filter
-      storyEntries = storyEntries.filter(s =>
-        s.prdDir.toLowerCase().includes(normalizeId(filters.prd).toLowerCase())
-      );
+      // Fallback: filter by prdId
+      storyEntries = storyEntries.filter(s => matchesPrd(s.prdId, filters.prd));
     }
   }
 

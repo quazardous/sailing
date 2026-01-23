@@ -9,6 +9,7 @@
 export {
   clearCache,
   updateArtefact,
+  getArtefactBody,
   editArtefactSection,
   editArtefactMultiSection,
   setGetters
@@ -29,8 +30,10 @@ export {
   getTasksForEpic,
   getTaskEpic,
   countTasks,
-  createTask
+  createTask,
+  addTaskDependency
 } from './task.js';
+export type { AddDependencyResult } from './task.js';
 export type {
   TaskQueryOptions,
   CreateTaskOptions,
@@ -57,6 +60,7 @@ export type {
 export {
   buildPrdIndex,
   getPrd,
+  prdIdFromDir,
   getAllPrds,
   getPrdBranching,
   getFullPrd,
@@ -87,7 +91,10 @@ export type {
 // Memory operations
 export {
   buildMemoryIndex,
-  getMemoryFile
+  getMemoryFile,
+  buildLogIndex,
+  getLogFile,
+  invalidateLogIndex
 } from './memory.js';
 
 // Relationship queries that span multiple types

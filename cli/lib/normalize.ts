@@ -137,9 +137,35 @@ export function matchesId(filename: string, rawId: string, digitConfig: DigitCon
 }
 
 /**
+ * Check if a PRD ID matches a filter (flexible matching)
+ * e.g., matchesPrd("PRD-001", "PRD-1") => true
+ * e.g., matchesPrd("PRD-001", "1") => true
+ */
+export function matchesPrd(prdId: string, filter: string, digitConfig: DigitConfig = DEFAULT_DIGITS): boolean {
+  // Try normalized PRD ID match (PRD-1 → PRD-001)
+  const filterMatch = filter.match(/^PRD-?(\d+)/i);
+  if (filterMatch) {
+    return normalizeId(prdId, digitConfig) === normalizeId(filter, digitConfig);
+  }
+
+  // Try numeric-only match (e.g., "1" matches "PRD-001")
+  const numericMatch = filter.match(/^(\d+)$/);
+  if (numericMatch) {
+    const prdNum = prdId.match(/PRD-0*(\d+)/i);
+    return prdNum ? prdNum[1] === numericMatch[1] : false;
+  }
+
+  // Fall back to case-insensitive comparison
+  return prdId.toLowerCase() === filter.toLowerCase();
+}
+
+/**
  * Check if a PRD directory matches a PRD ID (flexible matching)
  * e.g., matchesPrdDir("PRD-001-foundation", "PRD-1") => true
  * Also accepts partial name match: "foundation" matches "PRD-001-foundation"
+ *
+ * NOTE: Prefer matchesPrd() when you have a prdId. Use this only when
+ * you need to find a directory from findPrdDirs().
  */
 export function matchesPrdDir(dirname: string, rawId: string, digitConfig: DigitConfig = DEFAULT_DIGITS): boolean {
   const basename = path.basename(dirname);

@@ -4,7 +4,7 @@
 import fs from 'fs';
 import path from 'path';
 import { loadFile, saveFile, jsonOut } from '../../managers/core-manager.js';
-import { normalizeId, extractTaskId, matchesPrdDir } from '../../lib/normalize.js';
+import { normalizeId, extractTaskId, matchesPrd } from '../../lib/normalize.js';
 import { getAllEpics } from '../../managers/artefacts-manager.js';
 import { STATUS, normalizeStatus, isStatusDone, isStatusNotStarted, isStatusInProgress, isStatusCancelled } from '../../lib/lexicon.js';
 import { buildDependencyGraph, detectCycles, type TaskNode } from '../../managers/graph-manager.js';
@@ -236,7 +236,7 @@ export function registerValidateCommand(deps: Command): void {
       }
 
       for (const epicEntry of getAllEpics()) {
-        if (prdFilter && !matchesPrdDir(epicEntry.prdDir, options.prd)) continue;
+        if (prdFilter && !matchesPrd(epicEntry.prdId, options.prd)) continue;
 
         const epicId = normalizeId(epicEntry.data?.id);
         if (!epicId) continue;

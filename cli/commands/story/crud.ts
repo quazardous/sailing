@@ -8,6 +8,7 @@ import { findPrdDirs, loadFile, saveFile, toKebab, loadTemplate, jsonOut, stripC
 import { normalizeId, matchesPrdDir } from '../../lib/normalize.js';
 import { nextId } from '../../managers/state-manager.js';
 import { Story } from '../../lib/types/entities.js';
+import { prdIdFromDir } from '../../managers/artefacts-manager.js';
 import {
   STORY_TYPES,
   findStoryFile,
@@ -101,7 +102,7 @@ export function registerCrudCommands(story: Command): void {
 
       const output: Record<string, unknown> = {
         ...file.data,
-        prd: path.basename(result.prdDir),
+        prd: result.prdId,
         children: childrenList.map(c => c.id),
         referencedByEpics: epicRefs,
         referencedByTasks: taskRefs,
@@ -115,7 +116,7 @@ export function registerCrudCommands(story: Command): void {
         const typeIcon = file.data.type === 'user' ? '👤' : file.data.type === 'technical' ? '⚙️' : '🔌';
         console.log(`# ${typeIcon} ${file.data.id}: ${file.data.title}\n`);
         console.log(`Type: ${file.data.type || 'user'}`);
-        console.log(`PRD: ${path.basename(result.prdDir)}`);
+        console.log(`PRD: ${result.prdId}`);
         if (file.data.parent_story) {
           console.log(`Parent Story: ${file.data.parent_story}`);
         }
@@ -170,7 +171,7 @@ export function registerCrudCommands(story: Command): void {
         id: storyId,
         title,
         status: 'Draft',
-        parent: path.basename(prdDir).split('-').slice(0, 2).join('-'),
+        parent: prdIdFromDir(prdDir),
         parent_story: options.parentStory ? normalizeId(options.parentStory) : null,
         type: options.type as 'user' | 'technical' | 'api'
       };

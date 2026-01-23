@@ -1,12 +1,8 @@
 /**
  * MCP Conductor Tools - Story operations
  */
-import { runRudder } from '../../mcp-manager.js';
-import {
-  ok,
-  fromRunResult,
-  normalizeId
-} from '../types.js';
+import { getOrphanStories, validateStories } from '../../../operations/story-ops.js';
+import { ok } from '../types.js';
 import type { ToolDefinition, NextAction } from '../types.js';
 
 export const STORY_TOOLS: ToolDefinition[] = [
@@ -22,28 +18,23 @@ export const STORY_TOOLS: ToolDefinition[] = [
       }
     },
     handler: (args) => {
-      let cmd = 'story:orphans';
-      if (args.scope) cmd += ` ${normalizeId(args.scope)}`;
-      cmd += ' --json';
-
-      const result = runRudder(cmd, { json: false });
+      const result = getOrphanStories({ prd: args.scope as string | undefined });
       const nextActions: NextAction[] = [];
 
-      if (result.success) {
-        try {
-          const orphans = JSON.parse(result.output || '[]');
-          if (orphans.length > 0) {
-            nextActions.push({
-              tool: 'artefact_show',
-              args: { id: orphans[0].id },
-              reason: `Review first orphan story: ${orphans[0].id}`,
-              priority: 'normal'
-            });
-          }
-        } catch { /* ignore */ }
+      if (result.orphans.length > 0) {
+        nextActions.push({
+          tool: 'artefact_show',
+          args: { id: result.orphans[0].id },
+          reason: `Review first orphan story: ${result.orphans[0].id}`,
+          priority: 'normal'
+        });
       }
 
-      return fromRunResult(result, nextActions);
+      return ok({
+        success: true,
+        data: result,
+        next_actions: nextActions
+      });
     }
   },
   {
@@ -58,32 +49,26 @@ export const STORY_TOOLS: ToolDefinition[] = [
       }
     },
     handler: (args) => {
-      let cmd = 'story:validate';
-      if (args.scope) cmd += ` ${normalizeId(args.scope)}`;
-      cmd += ' --json';
-
-      const result = runRudder(cmd, { json: false });
+      const result = validateStories({ prd: args.scope as string | undefined });
       const nextActions: NextAction[] = [];
 
-      if (result.success) {
-        try {
-          const data = JSON.parse(result.output || '{}');
-          if (!data.valid && data.issues?.length > 0) {
-            // Suggest fixing orphans
-            const orphanIssues = data.issues.filter((i: any) => i.type === 'orphan');
-            if (orphanIssues.length > 0) {
-              nextActions.push({
-                tool: 'story_orphans',
-                args: { scope: args.scope },
-                reason: `${orphanIssues.length} orphan stories need linking`,
-                priority: 'high'
-              });
-            }
-          }
-        } catch { /* ignore */ }
+      if (!result.valid && result.issues.length > 0) {
+        const orphanIssues = result.issues.filter(i => i.type === 'orphan');
+        if (orphanIssues.length > 0) {
+          nextActions.push({
+            tool: 'story_orphans',
+            args: { scope: args.scope },
+            reason: `${orphanIssues.length} orphan stories need linking`,
+            priority: 'high'
+          });
+        }
       }
 
-      return fromRunResult(result, nextActions);
+      return ok({
+        success: true,
+        data: result,
+        next_actions: nextActions
+      });
     }
   }
 ];

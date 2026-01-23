@@ -1,10 +1,16 @@
 /**
  * MCP Conductor Tools - Workflow operations
  */
-import { runRudder } from '../../mcp-manager.js';
 import { getTask } from '../../artefacts-manager.js';
 import {
-  fromRunResult,
+  getReadyTasks,
+  validateDeps,
+  startTask,
+  completeTask
+} from '../../../operations/index.js';
+import {
+  ok,
+  err,
   normalizeId,
   detectType
 } from '../types.js';
@@ -25,66 +31,60 @@ export const WORKFLOW_TOOLS: ToolDefinition[] = [
       }
     },
     handler: (args) => {
-      let cmd = 'deps:ready';
-      if (args.scope) {
-        const type = detectType(args.scope);
-        if (type === 'prd') cmd += ` --prd ${args.scope}`;
-        else if (type === 'epic') cmd += ` --epic ${args.scope}`;
-      }
-      cmd += ` --limit ${args.limit || 6}`;
-      if (args.include_started) cmd += ' --include-started';
-      cmd += ' --json';
+      const type = args.scope ? detectType(args.scope as string) : null;
 
-      const result = runRudder(cmd, { json: false });
+      const result = getReadyTasks({
+        prd: type === 'prd' ? args.scope as string : undefined,
+        epic: type === 'epic' ? args.scope as string : undefined,
+        limit: (args.limit as number) || 6,
+        includeStarted: args.include_started as boolean | undefined
+      });
+
       const nextActions: NextAction[] = [];
 
-      if (result.success) {
-        try {
-          const tasks = JSON.parse(result.output || '[]');
-          if (tasks.length > 0) {
-            nextActions.push({
-              tool: 'workflow_start',
-              args: { task_id: tasks[0].id || tasks[0].taskId },
-              reason: `Start highest impact task`,
-              priority: 'high'
-            });
-          }
-          if (tasks.length === 0) {
-            nextActions.push({
-              tool: 'memory_status',
-              args: {},
-              reason: 'No ready tasks - check if logs need consolidation',
-              priority: 'normal'
-            });
-          }
-        } catch { /* ignore */ }
+      if (result.tasks.length > 0) {
+        nextActions.push({
+          tool: 'workflow_start',
+          args: { task_id: result.tasks[0].id },
+          reason: `Start highest impact task`,
+          priority: 'high'
+        });
+      }
+      if (result.tasks.length === 0) {
+        nextActions.push({
+          tool: 'memory_status',
+          args: {},
+          reason: 'No ready tasks - check if logs need consolidation',
+          priority: 'normal'
+        });
       }
 
-      return fromRunResult(result, nextActions);
+      return ok({
+        success: true,
+        data: result.tasks,
+        next_actions: nextActions
+      });
     }
   },
   {
     tool: {
       name: 'workflow_validate',
-      description: 'Validate dependencies and optionally auto-fix issues',
+      description: 'Validate dependencies and report issues',
       inputSchema: {
         type: 'object',
         properties: {
-          scope: { type: 'string', description: 'Filter by PRD' },
-          fix: { type: 'boolean', description: 'Auto-fix issues' }
+          scope: { type: 'string', description: 'Filter by PRD' }
         }
       }
     },
     handler: (args) => {
-      let cmd = 'deps:validate';
-      if (args.scope) cmd += ` --prd ${args.scope}`;
-      if (args.fix) cmd += ' --fix';
-      cmd += ' --json';
+      const result = validateDeps({
+        prd: args.scope as string | undefined
+      });
 
-      const result = runRudder(cmd, { json: false });
       const nextActions: NextAction[] = [];
 
-      if (result.success) {
+      if (result.valid) {
         nextActions.push({
           tool: 'workflow_ready',
           args: { scope: args.scope },
@@ -93,7 +93,11 @@ export const WORKFLOW_TOOLS: ToolDefinition[] = [
         });
       }
 
-      return fromRunResult(result, nextActions);
+      return ok({
+        success: true,
+        data: result,
+        next_actions: nextActions
+      });
     }
   },
   {
@@ -110,23 +114,26 @@ export const WORKFLOW_TOOLS: ToolDefinition[] = [
       }
     },
     handler: (args) => {
-      const id = normalizeId(args.task_id);
-      const assignee = args.assignee || 'agent';
+      try {
+        const result = startTask(args.task_id as string, {
+          assignee: (args.assignee as string) || 'agent'
+        });
 
-      // Use task:start which does status + assignee + blocker check
-      const result = runRudder(`task:start ${id} --assignee "${assignee}" --json`, { json: false });
-      const nextActions: NextAction[] = [];
-
-      if (result.success) {
-        nextActions.push({
+        const nextActions: NextAction[] = [{
           tool: 'agent_spawn',
-          args: { task_id: id },
+          args: { task_id: result.id },
           reason: 'Spawn agent to execute task',
           priority: 'high'
-        });
-      }
+        }];
 
-      return fromRunResult(result, nextActions);
+        return ok({
+          success: true,
+          data: result,
+          next_actions: nextActions
+        });
+      } catch (error) {
+        return err(error instanceof Error ? error.message : String(error));
+      }
     }
   },
   {
@@ -143,15 +150,14 @@ export const WORKFLOW_TOOLS: ToolDefinition[] = [
       }
     },
     handler: (args) => {
-      const id = normalizeId(args.task_id);
-      let cmd = `task:done ${id}`;
-      if (args.message) cmd += ` --message "${args.message.replace(/"/g, '\\"')}"`;
-      cmd += ' --json';
+      try {
+        const id = normalizeId(args.task_id as string);
+        const result = completeTask(id, {
+          message: args.message as string | undefined
+        });
 
-      const result = runRudder(cmd, { json: false });
-      const nextActions: NextAction[] = [];
+        const nextActions: NextAction[] = [];
 
-      if (result.success) {
         // Get epic from task to suggest memory sync
         const task = getTask(id);
         const epicId = task?.data?.parent?.match(/E\d+/)?.[0];
@@ -168,9 +174,15 @@ export const WORKFLOW_TOOLS: ToolDefinition[] = [
           reason: 'Check if logs need consolidation',
           priority: 'normal'
         });
-      }
 
-      return fromRunResult(result, nextActions);
+        return ok({
+          success: true,
+          data: result,
+          next_actions: nextActions
+        });
+      } catch (error) {
+        return err(error instanceof Error ? error.message : String(error));
+      }
     }
   }
 ];

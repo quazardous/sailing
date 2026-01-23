@@ -15,7 +15,7 @@ export interface EpicDependency {
   file: string;
   status: string;
   blockedBy: string[];
-  prdDir: string;
+  prdId: string;
 }
 
 export interface TaskFrontmatter {
@@ -121,7 +121,7 @@ export function buildEpicDependencyMap(): Map<string, EpicDependency> {
       file: epicEntry.file,
       status: data.status || 'Not Started',
       blockedBy,
-      prdDir: epicEntry.prdDir
+      prdId: epicEntry.prdId
     });
   }
 

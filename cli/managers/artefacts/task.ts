@@ -9,6 +9,7 @@ import { extractIdKey } from '../../lib/artefacts.js';
 import { normalizeId } from '../../lib/normalize.js';
 import { _taskIndex, setTaskIndex, clearCache } from './common.js';
 import { getEpic } from './epic.js';
+import { prdIdFromDir } from './prd.js';
 import type { Task, TaskIndexEntry } from '../../lib/types/entities.js';
 
 // ============================================================================
@@ -53,6 +54,7 @@ export function buildTaskIndex(): Map<string, TaskIndexEntry> {
         key,
         id,
         file: filePath,
+        prdId: prdIdFromDir(prdDir),
         prdDir,
         data: loaded?.data || {}
       });
@@ -236,4 +238,52 @@ export function createTask(epicId: string, title: string, options: CreateTaskOpt
   clearCache();
 
   return { id, title, parent: data.parent, file: taskPath };
+}
+
+// ============================================================================
+// DEPENDENCIES
+// ============================================================================
+
+export interface AddDependencyResult {
+  taskId: string;
+  blockedBy: string;
+  added: boolean;
+  message: string;
+}
+
+/**
+ * Add a dependency between tasks
+ */
+export function addTaskDependency(taskId: string, blockedBy: string): AddDependencyResult {
+  const id = normalizeId(taskId);
+  const blockerId = normalizeId(blockedBy);
+
+  const task = getTask(id);
+  if (!task) {
+    return { taskId: id, blockedBy: blockerId, added: false, message: `Task not found: ${id}` };
+  }
+
+  const blocker = getTask(blockerId);
+  if (!blocker) {
+    return { taskId: id, blockedBy: blockerId, added: false, message: `Blocker task not found: ${blockerId}` };
+  }
+
+  const file = loadFile<{ blocked_by?: string[] }>(task.file);
+  if (!file) {
+    return { taskId: id, blockedBy: blockerId, added: false, message: `Could not load task file` };
+  }
+
+  if (!Array.isArray(file.data.blocked_by)) {
+    file.data.blocked_by = [];
+  }
+
+  if (file.data.blocked_by.includes(blockerId)) {
+    return { taskId: id, blockedBy: blockerId, added: false, message: `Dependency already exists` };
+  }
+
+  file.data.blocked_by.push(blockerId);
+  saveFile(task.file, file.data, file.body);
+  clearCache();
+
+  return { taskId: id, blockedBy: blockerId, added: true, message: `Added: ${id} blocked by ${blockerId}` };
 }

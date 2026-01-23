@@ -1,17 +1,21 @@
 /**
  * MCP Agent Tools - Limited tools for sandbox agents
  */
-import { runRudder } from '../mcp-manager.js';
 import { getConductorManager } from '../conductor-manager.js';
 import { getAllPrds, getAllTasks } from '../artefacts-manager.js';
 import {
+  logTask,
+  showArtefact,
+  showDeps,
+  loadContext,
+  showMemory
+} from '../../operations/index.js';
+import type { LogLevel } from '../memory-manager.js';
+import {
   ok,
-  err,
-  fromRunResult,
-  normalizeId,
-  detectType
+  err
 } from './types.js';
-import type { ToolDefinition, ArtefactType } from './types.js';
+import type { ToolDefinition } from './types.js';
 
 export const AGENT_TOOLS: ToolDefinition[] = [
   {
@@ -31,11 +35,21 @@ export const AGENT_TOOLS: ToolDefinition[] = [
       }
     },
     handler: (args) => {
-      let cmd = `task:log ${args.task_id} "${args.message.replace(/"/g, '\\"')}"`;
-      if (args.level) cmd += ` --${args.level}`;
-      if (args.file) cmd += ` -f "${args.file}"`;
-      if (args.command) cmd += ` -c "${args.command}"`;
-      return fromRunResult(runRudder(cmd));
+      const level = (args.level?.toUpperCase() || 'INFO') as LogLevel;
+      const result = logTask(
+        args.task_id as string,
+        args.message as string,
+        level,
+        {
+          file: args.file as string | undefined,
+          command: args.command as string | undefined
+        }
+      );
+
+      return ok({
+        success: true,
+        data: result
+      });
     }
   },
   {
@@ -52,23 +66,16 @@ export const AGENT_TOOLS: ToolDefinition[] = [
       }
     },
     handler: (args) => {
-      const id = normalizeId(args.id);
-      const type = detectType(id);
+      const result = showArtefact(args.id as string, { raw: args.raw as boolean | undefined });
 
-      const cmdMap: Record<ArtefactType, string> = {
-        task: `task:show ${id} --json`,
-        epic: `epic:show ${id} --json`,
-        prd: `prd:show ${id} --json`,
-        story: `story:show ${id} --json`,
-        unknown: ''
-      };
-
-      if (type === 'unknown') {
-        return err(`Cannot detect artefact type from ID: ${id}`);
+      if (!result.exists) {
+        return err(`Artefact not found: ${args.id}`);
       }
 
-      const cmd = args.raw ? cmdMap[type].replace('--json', '--raw') : cmdMap[type];
-      return fromRunResult(runRudder(cmd, { json: false }));
+      return ok({
+        success: true,
+        data: result
+      });
     }
   },
   {
@@ -84,8 +91,16 @@ export const AGENT_TOOLS: ToolDefinition[] = [
       }
     },
     handler: (args) => {
-      const id = normalizeId(args.id);
-      return fromRunResult(runRudder(`deps:show ${id} --json`, { json: false }));
+      const result = showDeps(args.id as string);
+
+      if (!result) {
+        return err(`Task not found: ${args.id}`);
+      }
+
+      return ok({
+        success: true,
+        data: result
+      });
     }
   },
   {
@@ -102,7 +117,18 @@ export const AGENT_TOOLS: ToolDefinition[] = [
       }
     },
     handler: (args) => {
-      return fromRunResult(runRudder(`context:load ${args.operation} --role ${args.role || 'agent'}`));
+      const result = loadContext(args.operation as string, {
+        role: args.role as string | undefined
+      });
+
+      if (!result) {
+        return err(`No context defined for operation: ${args.operation}`);
+      }
+
+      return ok({
+        success: true,
+        data: result
+      });
     }
   },
   {
@@ -119,10 +145,21 @@ export const AGENT_TOOLS: ToolDefinition[] = [
       }
     },
     handler: (args) => {
-      let cmd = `memory:show ${args.scope}`;
-      if (args.full) cmd += ' --full';
-      cmd += ' --json';
-      return fromRunResult(runRudder(cmd, { json: false }));
+      const result = showMemory(args.scope as string, {
+        full: args.full as boolean | undefined
+      });
+
+      if (!result.exists) {
+        return ok({
+          success: true,
+          data: { exists: false, message: `No memory found for: ${args.scope}` }
+        });
+      }
+
+      return ok({
+        success: true,
+        data: result
+      });
     }
   },
   {

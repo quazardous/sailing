@@ -8,7 +8,7 @@ import { nextId } from '../state-manager.js';
 import { extractIdKey } from '../../lib/artefacts.js';
 import { normalizeId } from '../../lib/normalize.js';
 import { _storyIndex, setStoryIndex, clearCache } from './common.js';
-import { getPrd } from './prd.js';
+import { getPrd, prdIdFromDir } from './prd.js';
 import type { Story, StoryIndexEntry } from '../../lib/types/entities.js';
 
 // ============================================================================
@@ -48,6 +48,7 @@ export function buildStoryIndex(): Map<string, StoryIndexEntry> {
         key,
         id,
         file: filePath,
+        prdId: prdIdFromDir(prdDir),
         prdDir,
         data: loaded?.data || {}
       });

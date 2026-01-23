@@ -88,7 +88,7 @@ function buildProjectStructure(): PrdInfo[] {
   // Group epics by PRD
   const prdEpicsMap = new Map<string, EpicInfo[]>();
   for (const [, epic] of epicIndex) {
-    const prdId = extractPrdId(epic.prdDir);
+    const prdId = epic.prdId;
     if (!prdEpicsMap.has(prdId)) {
       prdEpicsMap.set(prdId, []);
     }
@@ -106,7 +106,7 @@ function buildProjectStructure(): PrdInfo[] {
     const epicId = extractEpicId(task.data?.parent);
     if (!epicId) continue;
 
-    const prdId = extractPrdId(task.prdDir);
+    const prdId = task.prdId;
     const epics = prdEpicsMap.get(prdId);
     if (!epics) continue;
 

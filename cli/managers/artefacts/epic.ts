@@ -7,8 +7,9 @@ import { findPrdDirs, loadFile, saveFile, toKebab, loadTemplate, formatId } from
 import { nextId } from '../state-manager.js';
 import { createEpicMemoryFile } from '../memory-manager.js';
 import { extractIdKey } from '../../lib/artefacts.js';
+import { normalizeId } from '../../lib/normalize.js';
 import { _epicIndex, setEpicIndex, clearCache } from './common.js';
-import { getPrd } from './prd.js';
+import { getPrd, prdIdFromDir } from './prd.js';
 import type { Epic, EpicIndexEntry } from '../../lib/types/entities.js';
 
 // ============================================================================
@@ -53,6 +54,7 @@ export function buildEpicIndex(): Map<string, EpicIndexEntry> {
         key,
         id,
         file: filePath,
+        prdId: prdIdFromDir(prdDir),
         prdDir,
         data: loaded?.data || {}
       });

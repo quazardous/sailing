@@ -20,6 +20,7 @@ export let _epicIndex: Map<string, EpicIndexEntry> | null = null;
 export let _prdIndex: Map<number, PrdIndexEntry> | null = null;
 export let _storyIndex: Map<string, StoryIndexEntry> | null = null;
 export let _memoryIndex: Map<string, { key: string; type: 'epic' | 'prd'; file: string }> | null = null;
+export let _logIndex: Map<string, { key: string; type: 'epic' | 'task'; file: string }> | null = null;
 
 /**
  * Clear all caches (call after artefact changes)
@@ -30,6 +31,7 @@ export function clearCache() {
   _prdIndex = null;
   _storyIndex = null;
   _memoryIndex = null;
+  _logIndex = null;
 }
 
 export function setTaskIndex(index: Map<string, TaskIndexEntry>) { _taskIndex = index; }
@@ -37,6 +39,7 @@ export function setEpicIndex(index: Map<string, EpicIndexEntry>) { _epicIndex = 
 export function setPrdIndex(index: Map<number, PrdIndexEntry>) { _prdIndex = index; }
 export function setStoryIndex(index: Map<string, StoryIndexEntry>) { _storyIndex = index; }
 export function setMemoryIndex(index: Map<string, { key: string; type: 'epic' | 'prd'; file: string }>) { _memoryIndex = index; }
+export function setLogIndex(index: Map<string, { key: string; type: 'epic' | 'task'; file: string }>) { _logIndex = index; }
 
 // ============================================================================
 // UPDATE FUNCTIONS (shared across types)
@@ -145,6 +148,39 @@ export function updateArtefact(id: string, options: UpdateArtefactOptions): Upda
   }
 
   return { id: normalized, updated, data };
+}
+
+/**
+ * Get artefact body (markdown content without frontmatter)
+ */
+export function getArtefactBody(id: string): string | null {
+  if (!_getTask || !_getEpic || !_getPrd || !_getStory) {
+    throw new Error('Getters not initialized. Call setGetters first.');
+  }
+
+  const normalized = normalizeId(id);
+  let filePath: string | null = null;
+
+  if (normalized.startsWith('T')) {
+    const task = _getTask(normalized);
+    if (task) filePath = task.file;
+  } else if (normalized.startsWith('E')) {
+    const epic = _getEpic(normalized);
+    if (epic) filePath = epic.file;
+  } else if (normalized.startsWith('PRD-')) {
+    const prd = _getPrd(normalized);
+    if (prd) filePath = prd.file;
+  } else if (normalized.startsWith('S')) {
+    const story = _getStory(normalized);
+    if (story) filePath = story.file;
+  }
+
+  if (!filePath) {
+    return null;
+  }
+
+  const file = loadFile(filePath);
+  return file?.body || null;
 }
 
 // ============================================================================

@@ -1,9 +1,8 @@
 /**
  * Task list command
  */
-import path from 'path';
 import { jsonOut } from '../../managers/core-manager.js';
-import { normalizeId, matchesPrdDir, parentContainsEpic } from '../../lib/normalize.js';
+import { normalizeId, matchesPrd, parentContainsEpic } from '../../lib/normalize.js';
 import { getAllTasks } from '../../managers/artefacts-manager.js';
 import { STATUS, normalizeStatus, isStatusDone, isStatusCancelled, statusSymbol } from '../../lib/lexicon.js';
 import { buildDependencyGraph, blockersResolved } from '../../managers/graph-manager.js';
@@ -34,13 +33,8 @@ export function registerListCommand(task: Command): void {
 
       // Use artefacts.ts contract - single entry point
       for (const taskEntry of getAllTasks()) {
-        // Extract prdDir from task file path
-        const tasksDir = path.dirname(taskEntry.file);
-        const prdDir = path.dirname(tasksDir);
-        const prdName = path.basename(prdDir);
-
         // PRD filter
-        if (prd && !matchesPrdDir(prdDir, prd)) continue;
+        if (prd && !matchesPrd(taskEntry.prdId, prd)) continue;
 
         const data = taskEntry.data;
         if (!data) continue;
@@ -79,7 +73,7 @@ export function registerListCommand(task: Command): void {
           effort: (data.effort) || null,
           priority: (data.priority as "critical" | "low" | "normal" | "high") || 'normal',
           blocked_by: (data.blocked_by) || [],
-          prd: prdName
+          prd: taskEntry.prdId
         };
         if (options.path) taskResult.file = taskEntry.file;
         tasks.push(taskResult);

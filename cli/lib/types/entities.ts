@@ -40,7 +40,8 @@ export interface TaskIndexEntry {
   key: string;
   id: string;
   file: string;
-  prdDir: string;
+  prdId: string;
+  prdDir: string;  // Internal use only - managers
   data: Partial<Task>;
 }
 
@@ -48,7 +49,8 @@ export interface EpicIndexEntry {
   key: string;
   id: string;
   file: string;
-  prdDir: string;
+  prdId: string;
+  prdDir: string;  // Internal use only - managers
   data: Partial<Epic>;
 }
 
@@ -64,7 +66,8 @@ export interface StoryIndexEntry {
   key: string;
   id: string;
   file: string;
-  prdDir: string;
+  prdId: string;
+  prdDir: string;  // Internal use only - managers
   data: Partial<Story>;
 }
 

@@ -3,7 +3,7 @@
  *
  * Shared utility functions for task subcommands.
  */
-import { getTask, getEpic, getEpicPrd } from '../../managers/artefacts-manager.js';
+import { getTask, getEpic } from '../../managers/artefacts-manager.js';
 import type { EpicParentInfo } from '../../lib/types/task-options.js';
 
 /**
@@ -20,10 +20,9 @@ export function findEpicParent(epicId: string): EpicParentInfo | null {
   const epic = getEpic(epicId);
   if (!epic) return null;
 
-  const prdInfo = getEpicPrd(epic.id);
   return {
     prdDir: epic.prdDir,
     epicFile: epic.file,
-    prdId: prdInfo?.prdId || 'unknown'
+    prdId: epic.prdId
   };
 }

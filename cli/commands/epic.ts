@@ -4,14 +4,14 @@
 import fs from 'fs';
 import path from 'path';
 import { findPrdDirs, loadFile, saveFile, toKebab, loadTemplate, jsonOut, getMemoryDir, stripComments } from '../managers/core-manager.js';
-import { normalizeId, matchesPrdDir } from '../lib/normalize.js';
+import { normalizeId, matchesPrd, matchesPrdDir } from '../lib/normalize.js';
 import { STATUS, normalizeStatus, statusSymbol } from '../lib/lexicon.js';
 import { nextId } from '../managers/state-manager.js';
 import { parseUpdateOptions } from '../lib/update.js';
 import { addDynamicHelp, withModifies } from '../lib/help.js';
 import { formatId } from '../managers/core-manager.js';
 import { parseSearchReplace, editArtifact, parseMultiSectionContent, processMultiSectionOps } from '../lib/artifact.js';
-import { getEpic, getAllEpics, getTasksForEpic } from '../managers/artefacts-manager.js';
+import { getEpic, getAllEpics, getTasksForEpic, prdIdFromDir } from '../managers/artefacts-manager.js';
 import { Epic } from '../lib/types/entities.js';
 import { getEpicMemory } from '../managers/memory-manager.js';
 import { Command } from 'commander';
@@ -59,12 +59,12 @@ interface EpicCreateOptions {
 
 /**
  * Find an epic file by ID (format-agnostic via index library)
- * Returns { file, prdDir } for compatibility with existing code
+ * Returns { file, prdDir, prdId } for compatibility with existing code
  */
 function findEpicFile(epicId) {
   const epic = getEpic(epicId);
   if (!epic) return null;
-  return { file: epic.file, prdDir: epic.prdDir };
+  return { file: epic.file, prdDir: epic.prdDir, prdId: epic.prdId };
 }
 
 /**
@@ -94,7 +94,7 @@ export function registerEpicCommands(program: Command) {
       // Use artefacts.ts contract - single entry point
       for (const epicEntry of getAllEpics()) {
         // PRD filter
-        if (prd && !matchesPrdDir(epicEntry.prdDir, prd)) continue;
+        if (prd && !matchesPrd(epicEntry.prdId, prd)) continue;
 
         const data = epicEntry.data;
         if (!data) continue;
@@ -116,13 +116,12 @@ export function registerEpicCommands(program: Command) {
         // Count tasks (artefacts.ts contract)
         const taskCount = getTasksForEpic(epicEntry.id).length;
 
-        const prdName = path.basename(epicEntry.prdDir);
         const epicResult: Epic & { file?: string; prd: string; tasks: number } = {
           id: data.id,
           title: data.title || '',
           status: data.status || 'Unknown',
           parent: data.parent || '',
-          prd: prdName,
+          prd: epicEntry.prdId,
           tasks: taskCount
         };
         if (options.path) epicResult.file = epicEntry.file;
@@ -179,7 +178,7 @@ export function registerEpicCommands(program: Command) {
         process.exit(1);
       }
 
-      const { file: epicFile, prdDir } = result;
+      const { file: epicFile, prdDir, prdId } = result;
 
       // Raw mode: dump file content
       if (options.raw) {
@@ -206,7 +205,7 @@ export function registerEpicCommands(program: Command) {
 
       const output: any = {
         ...file.data,
-        prd: path.basename(prdDir),
+        prd: prdId,
         taskCount: tasks.length,
         tasksByStatus
       };
@@ -217,7 +216,7 @@ export function registerEpicCommands(program: Command) {
       } else {
         console.log(`# ${file.data.id}: ${file.data.title}\n`);
         console.log(`Status: ${file.data.status}`);
-        console.log(`PRD: ${path.basename(prdDir)}`);
+        console.log(`PRD: ${prdId}`);
         console.log(`\nTasks: ${tasks.length}`);
         Object.entries(tasksByStatus).forEach(([status, count]) => {
           console.log(`  ${statusSymbol(status)} ${status}: ${count}`);
@@ -255,7 +254,7 @@ export function registerEpicCommands(program: Command) {
         id,
         title,
         status: 'Not Started',
-        parent: path.basename(prdDir).split('-').slice(0,2).join('-'),
+        parent: prdIdFromDir(prdDir),
         blocked_by: [],
         stories: [],
         tags: [],

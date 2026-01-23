@@ -11,10 +11,24 @@
 
 **You MUST consolidate before continuing:**
 
-1. **Read** the pending log content shown
-2. **Synthesize** insights (tips, gotchas, patterns)
-3. **Execute** the `artefact_edit` commands shown to update memory
-4. **Re-run** `memory_sync {}` to confirm "✓ No pending logs"
+1. **Review** pending logs with `memory_pending_logs { "epic_id": "E001" }`
+2. **Synthesize** insights (tips, gotchas, patterns) from the log entries
+3. **Write** synthesized content to memory sections:
+   ```json
+   // MCP: memory_consolidate
+   { "level": "epic", "target_id": "E001", "section": "Agent Context", "content": "- Key insight from logs..." }
+   ```
+4. **Escalate** important patterns to PRD level if cross-epic:
+   ```json
+   // MCP: memory_consolidate
+   { "level": "prd", "target_id": "PRD-001", "section": "Cross-Epic Patterns", "content": "..." }
+   ```
+5. **Flush** logs once all relevant content is consolidated:
+   ```json
+   // MCP: memory_flush_logs
+   { "epic_id": "E001" }
+   ```
+6. **Re-run** `memory_sync {}` to confirm "✓ No pending logs"
 
 ⚠️ **Do NOT spawn agent until memory_sync shows "✓ No pending logs".**
 
