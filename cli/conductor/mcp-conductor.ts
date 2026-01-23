@@ -28,7 +28,7 @@ import {
 import {
   getConductorTools,
   handleConductorTool,
-} from '../managers/mcp-tools-manager.js';
+} from '../managers/mcp-tools-manager/index.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 

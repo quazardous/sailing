@@ -32,7 +32,7 @@ import {
 import {
   getAgentTools,
   handleAgentTool,
-} from './managers/mcp-tools-manager.js';
+} from './managers/mcp-tools-manager/index.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 

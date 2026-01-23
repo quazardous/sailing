@@ -17,7 +17,7 @@ import {
   handleConductorTool,
   formatToolHelp,
   getToolSchema
-} from '../managers/mcp-tools-manager.js';
+} from '../managers/mcp-tools-manager/index.js';
 
 // Lazy initialization flag
 let mcpInitialized = false;
