@@ -3,11 +3,9 @@
  */
 import { getConductorManager } from '../../conductor-manager.js';
 import { getAllPrds, getAllTasks } from '../../artefacts-manager.js';
-import { composeContext } from '../../compose-manager.js';
 import { getAllVersions } from '../../version-manager.js';
 import {
-  ok,
-  err
+  ok
 } from '../types.js';
 import type { ToolDefinition, NextAction } from '../types.js';
 
@@ -18,34 +16,6 @@ export function setConductorToolsRef(tools: ToolDefinition[]): void {
 }
 
 export const SYSTEM_TOOLS: ToolDefinition[] = [
-  // ========== CONTEXT ==========
-  {
-    tool: {
-      name: 'context_load',
-      description: 'Load execution context for operation',
-      inputSchema: {
-        type: 'object',
-        properties: {
-          operation: { type: 'string', description: 'Operation name or task ID' },
-          role: { type: 'string', enum: ['agent', 'skill', 'coordinator'], description: 'Role (default: coordinator)' }
-        },
-        required: ['operation']
-      }
-    },
-    handler: (args) => {
-      const result = composeContext({
-        operation: args.operation,
-        role: args.role || 'coordinator'
-      });
-
-      if (!result) {
-        return err(`Failed to load context: ${args.operation}`);
-      }
-
-      return ok({ success: true, data: { content: result.content } });
-    }
-  },
-
   // ========== SYSTEM ==========
   {
     tool: {
