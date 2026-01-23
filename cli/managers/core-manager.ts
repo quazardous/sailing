@@ -485,6 +485,22 @@ export function clearPlaceholderCache(): void {
 }
 
 /**
+ * Clear paths config cache (useful for testing)
+ */
+export function clearPathsCache(): void {
+  _config = null;
+  clearPlaceholderCache();
+}
+
+/**
+ * Reset all path overrides (useful for testing cleanup)
+ */
+export function resetPathOverrides(): void {
+  _pathOverrides = {};
+  clearPathsCache();
+}
+
+/**
  * Ensure a directory exists, creating it if necessary
  * Resolves placeholders in the path
  *
