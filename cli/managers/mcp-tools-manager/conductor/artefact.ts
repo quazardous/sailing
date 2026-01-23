@@ -2,6 +2,7 @@
  * MCP Conductor Tools - Artefact operations
  */
 import { loadFile } from '../../core-manager.js';
+import { logDebug } from '../../mcp-manager.js';
 import {
   getAllTasks,
   getAllEpics,
@@ -315,23 +316,40 @@ export const ARTEFACT_TOOLS: ToolDefinition[] = [
       const id = normalizeId(args.id);
       const type = detectType(id);
 
+      logDebug(`artefact_edit: id=${id}, type=${type}`, {
+        hasSection: !!args.section,
+        mode: args.mode || 'replace',
+        contentLength: args.content?.length || 0
+      });
+
       if (type === 'unknown') {
         return err(`Cannot detect artefact type from ID: ${id}`);
+      }
+
+      // Get artefact to log file path for debugging
+      if (type === 'prd') {
+        const prd = getPrd(id);
+        logDebug(`artefact_edit: PRD lookup`, { id, found: !!prd, file: prd?.file, title: prd?.data?.title });
       }
 
       try {
         // If section is provided, use single-section mode
         if (args.section) {
+          logDebug(`artefact_edit: single-section mode`, { section: args.section });
           const result = editArtefactSection(id, args.section, args.content, {
             mode: args.mode || 'replace'
           });
+          logDebug(`artefact_edit: result`, { result });
           return ok({ success: true, data: result });
         }
 
         // Otherwise, use multi-section mode (preferred)
+        logDebug(`artefact_edit: multi-section mode`);
         const result = editArtefactMultiSection(id, args.content, args.mode || 'replace');
+        logDebug(`artefact_edit: result`, { result });
         return ok({ success: true, data: result });
       } catch (error: any) {
+        logDebug(`artefact_edit: error`, { error: error.message, stack: error.stack });
         return err(error.message);
       }
     }

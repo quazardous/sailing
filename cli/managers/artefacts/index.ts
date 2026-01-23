@@ -12,6 +12,7 @@ export {
   getArtefactBody,
   editArtefactSection,
   editArtefactMultiSection,
+  addArtefactDependency,
   setGetters
 } from './common.js';
 export type {
@@ -19,7 +20,8 @@ export type {
   UpdateArtefactResult,
   EditSectionOptions,
   EditSectionResult,
-  EditMultiSectionResult
+  EditMultiSectionResult,
+  AddDependencyResult as ArtefactDependencyResult
 } from './common.js';
 
 // Task operations

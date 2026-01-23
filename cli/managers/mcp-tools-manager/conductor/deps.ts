@@ -1,7 +1,8 @@
 /**
  * MCP Conductor Tools - Dependency operations
  */
-import { showDeps, addDependency } from '../../../operations/deps-ops.js';
+import { showDeps } from '../../../operations/deps-ops.js';
+import { addArtefactDependency } from '../../artefacts/common.js';
 import { buildDependencyGraph, longestPath } from '../../graph-manager.js';
 import { isStatusDone, isStatusCancelled } from '../../../lib/lexicon.js';
 import {
@@ -46,18 +47,29 @@ export const DEPS_TOOLS: ToolDefinition[] = [
   {
     tool: {
       name: 'deps_add',
-      description: 'Add dependency between tasks',
+      description: 'Add dependency between Tasks (T001) or Epics (E001). NOT for PRDs.',
       inputSchema: {
         type: 'object',
         properties: {
-          task_id: { type: 'string', description: 'Task ID' },
-          blocked_by: { type: 'string', description: 'Blocking task ID' }
+          id: { type: 'string', description: 'Task or Epic ID (T001, E001)' },
+          blocked_by: { type: 'string', description: 'Blocking Task or Epic ID (T001, E001)' }
         },
-        required: ['task_id', 'blocked_by']
+        required: ['id', 'blocked_by']
       }
     },
     handler: (args) => {
-      const result = addDependency(args.task_id as string, args.blocked_by as string);
+      const id = normalizeId(args.id as string);
+      const blockedBy = normalizeId(args.blocked_by as string);
+
+      // Validate IDs are tasks or epics, not PRDs or stories
+      if (!id.startsWith('T') && !id.startsWith('E')) {
+        return err(`Invalid id: ${id}. Must be a Task (T001) or Epic (E001), not a PRD or Story.`);
+      }
+      if (!blockedBy.startsWith('T') && !blockedBy.startsWith('E')) {
+        return err(`Invalid blocked_by: ${blockedBy}. Must be a Task (T001) or Epic (E001), not a PRD or Story.`);
+      }
+
+      const result = addArtefactDependency(id, blockedBy);
       const nextActions: NextAction[] = [{
         tool: 'workflow_validate',
         args: {},

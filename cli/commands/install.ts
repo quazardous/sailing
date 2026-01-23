@@ -409,6 +409,32 @@ async function checkPermissions(): Promise<{ ok: boolean; required: number; pres
 const BASE_PERMISSIONS = [
   // MCP Conductor (all tools)
   'mcp__rudder__*',
+  // Sailing skill
+  'Skill(sailing)',
+  // Dev commands (slash commands)
+  'Skill(dev:prd-create)',
+  'Skill(dev:prd-review)',
+  'Skill(dev:prd-breakdown)',
+  'Skill(dev:prd-story)',
+  'Skill(dev:prd-story-finalize)',
+  'Skill(dev:epic-create)',
+  'Skill(dev:epic-review)',
+  'Skill(dev:epic-breakdown)',
+  'Skill(dev:task-create)',
+  'Skill(dev:task-start)',
+  'Skill(dev:task-done)',
+  'Skill(dev:tasks-batch)',
+  'Skill(dev:tasks-rewrite)',
+  'Skill(dev:merge)',
+  'Skill(dev:next)',
+  'Skill(dev:status)',
+  'Skill(dev:versions)',
+  'Skill(dev:version-bump)',
+  'Skill(dev:milestone-validate)',
+  'Skill(dev:roadmap-sync)',
+  'Skill(dev:tech-audit)',
+  'Skill(dev:test-audit)',
+  'Skill(dev:test-debug)',
   // Rudder CLI
   'Bash(bin/rudder:*)',
   'Bash(bin/rudder *:*)',

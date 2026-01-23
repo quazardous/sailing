@@ -316,3 +316,118 @@ export function editArtefactMultiSection(id: string, content: string, defaultOp:
     updated: true
   };
 }
+
+// ============================================================================
+// ADD DEPENDENCY (for Tasks and Epics)
+// ============================================================================
+
+export interface AddDependencyResult {
+  id: string;
+  blockedBy: string;
+  added: boolean;
+  message: string;
+}
+
+/**
+ * Add a dependency between artefacts (Tasks or Epics)
+ * Updates the blocked_by field in the artefact's frontmatter
+ */
+export function addArtefactDependency(id: string, blockedBy: string): AddDependencyResult {
+  if (!_getTask || !_getEpic || !_getPrd || !_getStory) {
+    throw new Error('Getters not initialized. Call setGetters first.');
+  }
+
+  const normalizedId = normalizeId(id);
+  const normalizedBlocker = normalizeId(blockedBy);
+
+  // Determine type and get file path
+  let filePath: string | null = null;
+  let blockerFilePath: string | null = null;
+  let idType: 'task' | 'epic' | null = null;
+  let blockerType: 'task' | 'epic' | null = null;
+
+  // Get source artefact
+  if (normalizedId.startsWith('T')) {
+    const task = _getTask(normalizedId);
+    if (task) {
+      filePath = task.file;
+      idType = 'task';
+    }
+  } else if (normalizedId.startsWith('E')) {
+    const epic = _getEpic(normalizedId);
+    if (epic) {
+      filePath = epic.file;
+      idType = 'epic';
+    }
+  }
+
+  // Get blocker artefact
+  if (normalizedBlocker.startsWith('T')) {
+    const task = _getTask(normalizedBlocker);
+    if (task) {
+      blockerFilePath = task.file;
+      blockerType = 'task';
+    }
+  } else if (normalizedBlocker.startsWith('E')) {
+    const epic = _getEpic(normalizedBlocker);
+    if (epic) {
+      blockerFilePath = epic.file;
+      blockerType = 'epic';
+    }
+  }
+
+  // Validate source
+  if (!filePath || !idType) {
+    return {
+      id: normalizedId,
+      blockedBy: normalizedBlocker,
+      added: false,
+      message: `Artefact not found: ${normalizedId}. Only Tasks (T001) and Epics (E001) can have dependencies.`
+    };
+  }
+
+  // Validate blocker
+  if (!blockerFilePath || !blockerType) {
+    return {
+      id: normalizedId,
+      blockedBy: normalizedBlocker,
+      added: false,
+      message: `Blocker not found: ${normalizedBlocker}. Only Tasks (T001) and Epics (E001) can be blockers.`
+    };
+  }
+
+  // Load and update
+  const file = loadFile<{ blocked_by?: string[] }>(filePath);
+  if (!file) {
+    return {
+      id: normalizedId,
+      blockedBy: normalizedBlocker,
+      added: false,
+      message: `Could not load artefact file`
+    };
+  }
+
+  if (!Array.isArray(file.data.blocked_by)) {
+    file.data.blocked_by = [];
+  }
+
+  if (file.data.blocked_by.includes(normalizedBlocker)) {
+    return {
+      id: normalizedId,
+      blockedBy: normalizedBlocker,
+      added: false,
+      message: `Dependency already exists`
+    };
+  }
+
+  file.data.blocked_by.push(normalizedBlocker);
+  saveFile(filePath, file.data, file.body);
+  clearCache();
+
+  return {
+    id: normalizedId,
+    blockedBy: normalizedBlocker,
+    added: true,
+    message: `Added: ${normalizedId} (${idType}) blocked by ${normalizedBlocker} (${blockerType})`
+  };
+}

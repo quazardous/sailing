@@ -12,7 +12,7 @@
  * - CONDUCTOR_TOOLS: Full tools for orchestrator
  */
 import type { Tool } from '@modelcontextprotocol/sdk/types.js';
-import { log } from '../mcp-manager.js';
+import { log, logDebug } from '../mcp-manager.js';
 
 // Re-export types
 export type {
@@ -99,7 +99,10 @@ export async function handleConductorTool(name: string, args: Record<string, any
   }
   try {
     log('INFO', `Conductor tool: ${name}`, args);
-    return await toolDef.handler(args);
+    logDebug(`Calling handler for: ${name}`, { args });
+    const result = await toolDef.handler(args);
+    logDebug(`Handler result for: ${name}`, { result: JSON.stringify(result).substring(0, 500) });
+    return result;
   } catch (error: any) {
     log('ERROR', `Conductor tool failed: ${name}`, { error: error.message });
     return err(error.message);

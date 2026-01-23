@@ -11,7 +11,7 @@ import { execaSync } from 'execa';
 import fs from 'fs';
 import path from 'path';
 import net from 'net';
-import { findProjectRoot } from './core-manager.js';
+import { findProjectRoot, setProjectRoot as setCoreProjectRoot, clearPathsCache } from './core-manager.js';
 
 // =============================================================================
 // Types
@@ -65,6 +65,9 @@ let _projectRoot: string | null = null;
 
 export function setProjectRoot(root: string) {
   _projectRoot = root;
+  // Also set core-manager's project root and clear its caches
+  setCoreProjectRoot(root);
+  clearPathsCache();
 }
 
 export function getProjectRoot(): string {
@@ -184,6 +187,23 @@ export interface McpCliArgs {
   port: number | null;
   socketPath: string | null;
   taskId: string | null;
+  debug: boolean;
+}
+
+let _debugEnabled = false;
+
+export function isDebugEnabled(): boolean {
+  return _debugEnabled;
+}
+
+export function setDebugEnabled(enabled: boolean): void {
+  _debugEnabled = enabled;
+}
+
+export function logDebug(context: string, data?: Record<string, unknown>): void {
+  if (_debugEnabled) {
+    log('DEBUG', context, data);
+  }
 }
 
 export function parseMcpCliArgs(defaultProjectRoot: string): McpCliArgs {
@@ -192,6 +212,7 @@ export function parseMcpCliArgs(defaultProjectRoot: string): McpCliArgs {
   let port: number | null = null;
   let socketPath: string | null = null;
   let taskId: string | null = null;
+  let debug = false;
 
   for (let i = 0; i < args.length; i++) {
     switch (args[i]) {
@@ -207,10 +228,16 @@ export function parseMcpCliArgs(defaultProjectRoot: string): McpCliArgs {
       case '--task-id':
         if (args[i + 1]) taskId = args[++i];
         break;
+      case '--debug':
+        debug = true;
+        break;
     }
   }
 
-  return { projectRoot, port, socketPath, taskId };
+  // Enable debug mode globally
+  setDebugEnabled(debug);
+
+  return { projectRoot, port, socketPath, taskId, debug };
 }
 
 // =============================================================================

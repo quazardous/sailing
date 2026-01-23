@@ -232,6 +232,66 @@ describe('MCP Conductor - Artefact Tools', () => {
       assert.ok(content.includes('This is the summary'), 'Summary should be updated');
       assert.ok(content.includes('- Goal 1'), 'Goals should be updated');
     });
+
+    it('should add new section when it does not exist', async () => {
+      // First create a PRD (template has: Problem Statement, Goals, Non-Goals, Solution Overview)
+      const createTool = getTool('artefact_create');
+      const createResult = await createTool.handler({
+        type: 'prd',
+        title: 'New Section Test PRD'
+      });
+      const created = parseResult(createResult);
+      assert.strictEqual(created.success, true);
+
+      // Edit with a section that doesn't exist in template
+      const editTool = getTool('artefact_edit');
+      const editResult = await editTool.handler({
+        id: created.data.id,
+        content: '## Technical Approach\n\nThis is the technical approach.\n\n### Key Decisions\n\n- Decision 1'
+      });
+
+      const edited = parseResult(editResult);
+      assert.strictEqual(edited.success, true);
+
+      // Verify new section was added
+      const content = fs.readFileSync(created.data.file, 'utf8');
+      assert.ok(content.includes('## Technical Approach'), 'New section should be added');
+      assert.ok(content.includes('This is the technical approach'), 'Section content should be present');
+      assert.ok(content.includes('- Decision 1'), 'Subsection content should be present');
+    });
+
+    it('should find PRD by ID regardless of directory name', async () => {
+      // Create a PRD, then manually rename its directory to simulate corrupted title
+      const createTool = getTool('artefact_create');
+      const createResult = await createTool.handler({
+        type: 'prd',
+        title: 'Original Title for Rename Test'
+      });
+      const created = parseResult(createResult);
+      assert.strictEqual(created.success, true);
+
+      const originalDir = path.dirname(created.data.file);
+      const prdNum = created.data.id.match(/PRD-(\d+)/)[1];
+      const newDir = path.join(path.dirname(originalDir), `PRD-${prdNum.padStart(3, '0')}-corrupted-name`);
+
+      // Rename directory to simulate corrupted state
+      fs.renameSync(originalDir, newDir);
+      clearCache(); // Clear cache so index is rebuilt
+
+      // Now edit by ID - should still find it
+      const editTool = getTool('artefact_edit');
+      const editResult = await editTool.handler({
+        id: created.data.id,
+        content: '## Summary\n\nEdited after rename.'
+      });
+
+      const edited = parseResult(editResult);
+      assert.strictEqual(edited.success, true, 'Edit should succeed even with renamed directory');
+
+      // Verify content was updated
+      const content = fs.readFileSync(path.join(newDir, 'prd.md'), 'utf8');
+      assert.ok(content.includes('Edited after rename'), 'Content should be updated');
+    });
   });
 
   // --------------------------------------------------------------------------
