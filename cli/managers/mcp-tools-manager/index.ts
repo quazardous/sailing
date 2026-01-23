@@ -40,6 +40,7 @@ import { WORKFLOW_TOOLS } from './conductor/workflow.js';
 import { AGENT_CONDUCTOR_TOOLS } from './conductor/agent.js';
 import { MEMORY_TOOLS } from './conductor/memory.js';
 import { DEPS_TOOLS } from './conductor/deps.js';
+import { STORY_TOOLS } from './conductor/story.js';
 import { SYSTEM_TOOLS, setConductorToolsRef } from './conductor/system.js';
 
 import type { ToolDefinition, ToolResponse } from './types.js';
@@ -55,6 +56,7 @@ export const CONDUCTOR_TOOLS: ToolDefinition[] = [
   ...AGENT_CONDUCTOR_TOOLS,
   ...MEMORY_TOOLS,
   ...DEPS_TOOLS,
+  ...STORY_TOOLS,
   ...SYSTEM_TOOLS
 ];
 
