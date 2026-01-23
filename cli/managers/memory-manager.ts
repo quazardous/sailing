@@ -618,3 +618,57 @@ export function getLogStats(id: string): {
   };
 }
 
+// ============================================================================
+// Task Log Entry
+// ============================================================================
+
+export type LogLevel = 'INFO' | 'TIP' | 'WARN' | 'ERROR' | 'CRITICAL';
+
+export interface TaskLogMeta {
+  files?: string[];
+  snippet?: string;
+  cmd?: string;
+}
+
+/**
+ * Append a log entry for a task.
+ * Creates memory directory if needed.
+ *
+ * @param taskId - Task ID (e.g., T042)
+ * @param level - Log level
+ * @param message - Log message
+ * @param meta - Optional metadata (files, snippet, cmd)
+ * @returns The formatted entry that was written
+ */
+export function appendTaskLog(
+  taskId: string,
+  level: LogLevel,
+  message: string,
+  meta?: TaskLogMeta
+): string {
+  ensureMemoryDir();
+
+  const normalizedId = normalizeId(taskId);
+  const timestamp = new Date().toISOString();
+
+  let entry = `${timestamp} [${level}] ${message}`;
+
+  // Add metadata as JSON suffix if present
+  if (meta && Object.keys(meta).length > 0) {
+    const cleanMeta: Record<string, unknown> = {};
+    if (meta.files?.length) cleanMeta.files = meta.files;
+    if (meta.snippet) cleanMeta.snippet = meta.snippet;
+    if (meta.cmd) cleanMeta.cmd = meta.cmd;
+
+    if (Object.keys(cleanMeta).length > 0) {
+      entry += ` {{${JSON.stringify(cleanMeta)}}}`;
+    }
+  }
+
+  entry += '\n';
+
+  appendLogFile(normalizedId, entry);
+
+  return entry;
+}
+

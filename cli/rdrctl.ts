@@ -15,18 +15,20 @@
  *   rdrctl stop <service>
  *   rdrctl status [service]
  *   rdrctl list
+ *
+ * ARCHITECTURE: This file is a CLI entry point.
+ * Business logic is delegated to managers (ServiceManager, etc.).
  */
 
 import { Command } from 'commander';
-import { fork, ChildProcess, spawn } from 'child_process';
+import { fork } from 'child_process';
 import path from 'path';
-import fs from 'fs';
 import { fileURLToPath } from 'url';
 import { createConductorServer } from './conductor/server.js';
 import { createServer as createDashboardServer } from './dashboard/server.js';
 import { createRoutes } from './dashboard/routes.js';
-import { getAgentConfig } from './managers/config-manager.js';
-import { getPath, findProjectRoot, setProjectRoot, setScriptDir } from './managers/core-manager.js';
+import { setProjectRoot, setScriptDir } from './managers/core-manager.js';
+import { getServiceManager } from './managers/service-manager.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -46,11 +48,19 @@ const DEFAULT_TIMEOUT = 300;
 const DEFAULT_CACHE = 300;
 
 // Service definitions
-const SERVICES = {
+type ServiceName = 'mcp' | 'agents' | 'conductor' | 'dashboard' | 'serve';
+
+interface ServiceDefinition {
+  name: string;
+  description: string;
+  start: (options: Record<string, unknown>) => Promise<void>;
+}
+
+const SERVICES: Record<ServiceName, ServiceDefinition> = {
   mcp: {
     name: 'mcp',
     description: 'MCP servers (conductor + agent if subprocess mode)',
-    start: startMcpServices
+    start: startMcpService
   },
   agents: {
     name: 'agents',
@@ -74,241 +84,104 @@ const SERVICES = {
   }
 };
 
-// MCP state file for client discovery
-interface McpState {
-  conductor?: { socket?: string; port?: number; pid?: number };
-  agent?: { socket?: string; port?: number; pid?: number };
-  pid: number;  // Main PID (conductor) for quick status check
-  startedAt: string;
-}
-
-type ServiceName = keyof typeof SERVICES;
-
 // ============================================================================
-// Service implementations
+// Service Starters (thin wrappers that delegate to managers)
 // ============================================================================
 
 /**
- * Start MCP servers based on config (daemonized)
- * - Always starts conductor MCP
- * - Starts agent MCP only if use_subprocess is enabled
- * - Uses socket transport by default (configurable via mcp_mode)
- * - Runs as daemon (detached), returns immediately
+ * Start MCP services - delegates to ServiceManager
  */
-async function startMcpServices(options: Record<string, unknown>) {
-  const config = getAgentConfig();
-  const haven = getPath('haven');
-  const projectRoot = findProjectRoot();
+async function startMcpService(options: Record<string, unknown>) {
+  const manager = getServiceManager();
   const foreground = options.foreground as boolean;
 
-  if (!haven) {
-    console.error('[rdrctl] Cannot determine haven path');
-    process.exit(1);
-  }
-
-  // Check if already running
-  const stateFile = path.join(haven, 'mcp-state.json');
-  if (fs.existsSync(stateFile)) {
-    try {
-      const state: McpState = JSON.parse(fs.readFileSync(stateFile, 'utf-8'));
-      // Check if process is still alive
-      try {
-        process.kill(state.pid, 0);
-
-        // Check if config has changed
-        const agentExpected = config.use_subprocess;
-        const agentRunning = !!state.agent;
-
-        if (agentExpected !== agentRunning) {
-          console.log(`[rdrctl] MCP servers running but config changed:`);
-          console.log(`  - use_subprocess: ${agentExpected} (config) vs ${agentRunning} (running)`);
-          console.log('[rdrctl] Use "rdrctl restart" to apply new config');
-          process.exit(1);
-        }
-
-        console.log(`[rdrctl] MCP servers already running (pid ${state.pid})`);
-        console.log('[rdrctl] Use "rdrctl stop" first, or "rdrctl restart"');
-        process.exit(1);
-      } catch {
-        // Process dead, clean up stale state
-        fs.unlinkSync(stateFile);
-      }
-    } catch {
-      // Corrupted state file, remove it
-      fs.unlinkSync(stateFile);
-    }
-  }
-
-  // Ensure haven directory exists
-  fs.mkdirSync(haven, { recursive: true });
-
-  // Use CLI option if provided, otherwise config, otherwise default to socket
-  const mcpMode = (options.mcpMode as string) || config.mcp_mode || 'socket';
-  const portRange = config.mcp_port_range || '9100-9199';
-  const [portStart] = portRange.split('-').map(Number);
-
-  // Determine transport args based on config
-  const getTransportArgs = (service: 'conductor' | 'agent', offset: number): string[] => {
-    if (mcpMode === 'port') {
-      const port = portStart + offset;
-      return ['--port', String(port)];
-    } else {
-      const socketPath = path.join(haven, `mcp-${service}.sock`);
-      // Remove stale socket
-      if (fs.existsSync(socketPath)) {
-        fs.unlinkSync(socketPath);
-      }
-      return ['--socket', socketPath];
-    }
-  };
-
-  // Prepare log files
-  const conductorLog = path.join(haven, 'mcp-conductor.log');
-  const agentLog = path.join(haven, 'mcp-agent.log');
-
-  // Build state object
-  const mcpState: McpState = {
-    pid: 0, // Will be set after spawn
-    startedAt: new Date().toISOString()
-  };
-
-  const pids: number[] = [];
-
-  // Start conductor MCP
-  console.log('[rdrctl] Starting MCP conductor...');
-  const conductorArgs = getTransportArgs('conductor', 0);
-  conductorArgs.push('--project-root', projectRoot);
-
-  const mcpConductorPath = path.join(__dirname, 'conductor', 'mcp-conductor.ts');
-  const conductorOut = fs.openSync(conductorLog, 'a');
-  const conductorChild = spawn('npx', ['tsx', mcpConductorPath, ...conductorArgs], {
-    stdio: ['ignore', conductorOut, conductorOut],
-    cwd: projectRoot,
-    detached: !foreground
+  const result = await manager.startMcp({
+    mcpMode: options.mcpMode as string,
+    foreground
   });
 
-  if (conductorChild.pid) {
-    pids.push(conductorChild.pid);
-    if (!foreground) conductorChild.unref();
-  }
-
-  if (mcpMode === 'port') {
-    mcpState.conductor = { port: portStart, pid: conductorChild.pid };
-    console.log(`[rdrctl] Conductor: port ${portStart} (pid ${conductorChild.pid})`);
-  } else {
-    mcpState.conductor = { socket: path.join(haven, 'mcp-conductor.sock'), pid: conductorChild.pid };
-    console.log(`[rdrctl] Conductor: ${mcpState.conductor.socket} (pid ${conductorChild.pid})`);
-  }
-
-  // Start agent MCP only if subprocess mode is enabled
-  if (config.use_subprocess) {
-    console.log('[rdrctl] Starting MCP agent...');
-    const agentArgs = getTransportArgs('agent', 1);
-    agentArgs.push('--project-root', projectRoot);
-
-    const mcpAgentPath = path.join(__dirname, 'mcp-agent.ts');
-    const agentOut = fs.openSync(agentLog, 'a');
-    const agentChild = spawn('npx', ['tsx', mcpAgentPath, ...agentArgs], {
-      stdio: ['ignore', agentOut, agentOut],
-      cwd: projectRoot,
-      detached: !foreground
-    });
-
-    if (agentChild.pid) {
-      pids.push(agentChild.pid);
-      if (!foreground) agentChild.unref();
-    }
-
-    if (mcpMode === 'port') {
-      mcpState.agent = { port: portStart + 1, pid: agentChild.pid };
-      console.log(`[rdrctl] Agent: port ${portStart + 1} (pid ${agentChild.pid})`);
+  if (!result.success) {
+    if (result.alreadyRunning && result.configChanged) {
+      console.log(`[rdrctl] MCP servers running but config changed:`);
+      console.log(`  ${result.error}`);
+      console.log('[rdrctl] Use "rdrctl restart" to apply new config');
+      process.exit(1);
+    } else if (result.alreadyRunning) {
+      console.log(`[rdrctl] ${result.error}`);
+      console.log('[rdrctl] Use "rdrctl stop" first, or "rdrctl restart"');
+      process.exit(1);
     } else {
-      mcpState.agent = { socket: path.join(haven, 'mcp-agent.sock'), pid: agentChild.pid };
-      console.log(`[rdrctl] Agent: ${mcpState.agent.socket} (pid ${agentChild.pid})`);
+      console.error(`[rdrctl] ${result.error}`);
+      process.exit(1);
     }
+  }
+
+  // Output success info
+  console.log('[rdrctl] Starting MCP conductor...');
+  if (result.conductor) {
+    const transport = result.conductor.socket
+      ? result.conductor.socket
+      : `port ${result.conductor.port}`;
+    console.log(`[rdrctl] Conductor: ${transport} (pid ${result.conductor.pid})`);
+  }
+
+  if (result.agent) {
+    console.log('[rdrctl] Starting MCP agent...');
+    const transport = result.agent.socket
+      ? result.agent.socket
+      : `port ${result.agent.port}`;
+    console.log(`[rdrctl] Agent: ${transport} (pid ${result.agent.pid})`);
   } else {
     console.log('[rdrctl] Agent: skipped (use_subprocess=false)');
   }
 
-  // Use first PID as main state PID (for status check)
-  mcpState.pid = pids[0] || 0;
-
-  // Write MCP state file for client discovery
-  fs.writeFileSync(stateFile, JSON.stringify(mcpState, null, 2));
-
   if (foreground) {
     console.log('[rdrctl] Running in foreground (Ctrl+C to stop)');
-    // Wait for exit
-    await new Promise<void>((resolve) => {
-      conductorChild.on('exit', resolve);
-    });
   } else {
+    const haven = manager.getHaven();
+    if (haven) {
+      console.log(`[rdrctl] Logs: ${path.join(haven, 'mcp-conductor.log')}`);
+    }
     console.log('[rdrctl] MCP servers started (daemonized)');
-    console.log(`[rdrctl] Logs: ${conductorLog}`);
     console.log('[rdrctl] Use "rdrctl status" to check, "rdrctl stop" to stop');
   }
 }
 
+/**
+ * Start agents stdio service - forks mcp-server.ts
+ */
 async function startAgentsService(_options: Record<string, unknown>) {
-  // Start MCP server for agents (stdio mode)
-  // Fork the mcp-server.ts script and pass through stdio
   console.error('[rdrctl] Starting MCP agents server (stdio)...');
 
   const mcpServerPath = path.join(__dirname, 'mcp-server.ts');
-
-  // Fork with inherited stdio for MCP protocol
   const child = fork(mcpServerPath, ['start', '-f'], {
     stdio: 'inherit',
     execArgv: ['--import', 'tsx']
   });
 
-  child.on('error', (err) => {
-    console.error(`[rdrctl] MCP agents server error: ${err.message}`);
-    process.exit(1);
-  });
-
-  child.on('exit', (code) => {
-    process.exit(code || 0);
-  });
-
-  // Forward signals
-  process.on('SIGINT', () => child.kill('SIGINT'));
-  process.on('SIGTERM', () => child.kill('SIGTERM'));
-
-  // Keep process alive
-  await new Promise(() => {});
+  setupChildHandlers(child, 'agents');
+  await new Promise(() => {}); // Keep alive
 }
 
+/**
+ * Start conductor stdio service - forks mcp-conductor.ts
+ */
 async function startConductorMcpService(_options: Record<string, unknown>) {
-  // Start MCP server for conductor (stdio mode)
-  // This exposes all rudder commands via MCP for the orchestrator
   console.error('[rdrctl] Starting MCP conductor server (stdio)...');
 
   const mcpConductorPath = path.join(__dirname, 'conductor', 'mcp-conductor.ts');
-
-  // Fork with inherited stdio for MCP protocol
   const child = fork(mcpConductorPath, [], {
     stdio: 'inherit',
     execArgv: ['--import', 'tsx']
   });
 
-  child.on('error', (err) => {
-    console.error(`[rdrctl] MCP conductor server error: ${err.message}`);
-    process.exit(1);
-  });
-
-  child.on('exit', (code) => {
-    process.exit(code || 0);
-  });
-
-  // Forward signals
-  process.on('SIGINT', () => child.kill('SIGINT'));
-  process.on('SIGTERM', () => child.kill('SIGTERM'));
-
-  // Keep process alive
-  await new Promise(() => {});
+  setupChildHandlers(child, 'conductor');
+  await new Promise(() => {}); // Keep alive
 }
 
+/**
+ * Start dashboard HTTP service
+ */
 async function startDashboardService(options: Record<string, unknown>) {
   const port = (options.port as number) || DEFAULT_PORT;
   const timeout = (options.timeout as number) ?? DEFAULT_TIMEOUT;
@@ -320,19 +193,19 @@ async function startDashboardService(options: Record<string, unknown>) {
   const routes = createRoutes({ cacheTTL });
   const server = createDashboardServer(port, routes, { timeout });
 
-  setupShutdown(() => {
-    server.stop();
-  });
+  setupShutdown(() => server.stop());
 
   server.start(async (actualPort) => {
     console.log(`[rdrctl] Dashboard: http://127.0.0.1:${actualPort}`);
-
     if (openBrowser) {
       await openUrl(`http://127.0.0.1:${actualPort}`);
     }
   }, () => process.exit(0));
 }
 
+/**
+ * Start full conductor server
+ */
 async function startServeService(options: Record<string, unknown>) {
   const port = (options.port as number) || DEFAULT_PORT;
   const timeout = (options.timeout as number) ?? DEFAULT_TIMEOUT;
@@ -347,14 +220,11 @@ async function startServeService(options: Record<string, unknown>) {
     websocket: true
   });
 
-  setupShutdown(() => {
-    server.stop();
-  });
+  setupShutdown(() => server.stop());
 
   server.start(async (actualPort) => {
     console.log(`[rdrctl] Conductor: http://127.0.0.1:${actualPort}`);
     console.log(`[rdrctl] WebSocket: ws://127.0.0.1:${actualPort}`);
-
     if (openBrowser) {
       await openUrl(`http://127.0.0.1:${actualPort}`);
     }
@@ -364,6 +234,20 @@ async function startServeService(options: Record<string, unknown>) {
 // ============================================================================
 // Helpers
 // ============================================================================
+
+function setupChildHandlers(child: ReturnType<typeof fork>, name: string) {
+  child.on('error', (err) => {
+    console.error(`[rdrctl] ${name} error: ${err.message}`);
+    process.exit(1);
+  });
+
+  child.on('exit', (code) => {
+    process.exit(code || 0);
+  });
+
+  process.on('SIGINT', () => child.kill('SIGINT'));
+  process.on('SIGTERM', () => child.kill('SIGTERM'));
+}
 
 function setupShutdown(cleanup: () => void) {
   process.on('SIGINT', () => {
@@ -410,9 +294,8 @@ program
   .option('--mcp-mode <mode>', 'MCP transport mode: socket or port (default: from config)')
   .option('-f, --foreground', 'Run in foreground (do not daemonize)')
   .action(async (service: string | undefined, options) => {
-    // Default to 'mcp' if no service specified
-    const serviceName = service || 'mcp';
-    const serviceDef = SERVICES[serviceName as ServiceName];
+    const serviceName = (service || 'mcp') as ServiceName;
+    const serviceDef = SERVICES[serviceName];
 
     if (!serviceDef) {
       console.error(`Unknown service: ${serviceName}`);
@@ -440,54 +323,25 @@ program
     const serviceName = service || 'mcp';
 
     if (serviceName === 'mcp') {
-      const haven = getPath('haven');
-      if (!haven) {
-        console.error('[rdrctl] Cannot determine haven path');
-        process.exit(1);
-      }
+      const manager = getServiceManager();
+      const result = manager.stopMcp();
 
-      const stateFile = path.join(haven, 'mcp-state.json');
-      if (!fs.existsSync(stateFile)) {
+      if (result.notRunning) {
         console.log('[rdrctl] MCP servers not running');
         process.exit(0);
       }
 
-      try {
-        const state: McpState = JSON.parse(fs.readFileSync(stateFile, 'utf-8'));
-        const pidsToKill: number[] = [];
-
-        // Collect PIDs
-        if (state.conductor?.pid) pidsToKill.push(state.conductor.pid);
-        if (state.agent?.pid) pidsToKill.push(state.agent.pid);
-
-        // Kill processes
-        for (const pid of pidsToKill) {
-          try {
-            process.kill(pid, 'SIGTERM');
-            console.log(`[rdrctl] Stopped process ${pid}`);
-          } catch (e: any) {
-            if (e.code !== 'ESRCH') {
-              console.error(`[rdrctl] Failed to stop process ${pid}: ${e.message}`);
-            }
-          }
-        }
-
-        // Clean up state file
-        fs.unlinkSync(stateFile);
-
-        // Clean up sockets
-        if (state.conductor?.socket && fs.existsSync(state.conductor.socket)) {
-          fs.unlinkSync(state.conductor.socket);
-        }
-        if (state.agent?.socket && fs.existsSync(state.agent.socket)) {
-          fs.unlinkSync(state.agent.socket);
-        }
-
-        console.log('[rdrctl] MCP servers stopped');
-      } catch (e: any) {
-        console.error(`[rdrctl] Error stopping MCP: ${e.message}`);
+      if (!result.success) {
+        console.error(`[rdrctl] Error stopping MCP: ${result.error}`);
         process.exit(1);
       }
+
+      if (result.stoppedPids?.length) {
+        result.stoppedPids.forEach(pid => {
+          console.log(`[rdrctl] Stopped process ${pid}`);
+        });
+      }
+      console.log('[rdrctl] MCP servers stopped');
     } else {
       console.log(`[rdrctl] Stop not implemented for service: ${serviceName}`);
       console.log('Use Ctrl+C to stop foreground services.');
@@ -502,97 +356,50 @@ program
   .option('-p, --port <port>', 'Port to check', String(DEFAULT_PORT))
   .action(async (service: string | undefined, options) => {
     const port = parseInt(options.port, 10);
+    const manager = getServiceManager();
 
-    // Check MCP servers status
+    // MCP status
     if (service === 'mcp' || !service) {
-      const haven = getPath('haven');
-      if (haven) {
-        const stateFile = path.join(haven, 'mcp-state.json');
-        if (fs.existsSync(stateFile)) {
-          try {
-            const state: McpState = JSON.parse(fs.readFileSync(stateFile, 'utf-8'));
+      const status = manager.getMcpStatus();
 
-            // Helper to check if process is alive
-            const isAlive = (pid?: number): boolean => {
-              if (!pid) return false;
-              try {
-                process.kill(pid, 0);
-                return true;
-              } catch {
-                return false;
-              }
-            };
-
-            // Check conductor
-            const conductorAlive = isAlive(state.conductor?.pid);
-            const agentAlive = isAlive(state.agent?.pid);
-
-            if (!conductorAlive && !agentAlive) {
-              console.log('mcp: stopped (stale state file)');
-              fs.unlinkSync(stateFile);
-            } else {
-              console.log(`mcp: running (started ${state.startedAt})`);
-
-              // Show conductor status
-              if (state.conductor) {
-                const transport = state.conductor.socket
-                  ? `socket ${state.conductor.socket}`
-                  : `port ${state.conductor.port}`;
-                const status = conductorAlive ? '✓ running' : '✗ dead';
-                console.log(`  conductor: pid ${state.conductor.pid} ${status}`);
-                console.log(`             ${transport}`);
-              }
-
-              // Show agent status
-              if (state.agent) {
-                const transport = state.agent.socket
-                  ? `socket ${state.agent.socket}`
-                  : `port ${state.agent.port}`;
-                const status = agentAlive ? '✓ running' : '✗ dead';
-                console.log(`  agent:     pid ${state.agent.pid} ${status}`);
-                console.log(`             ${transport}`);
-              } else {
-                console.log('  agent:     not configured (use_subprocess=false)');
-              }
-            }
-          } catch {
-            console.log('mcp: state file corrupted');
-          }
-        } else {
-          console.log('mcp: stopped');
-        }
+      if (!status.running) {
+        console.log('mcp: stopped');
       } else {
-        console.log('mcp: haven not configured');
+        console.log(`mcp: running (started ${status.startedAt})`);
+
+        if (status.conductor) {
+          const alive = status.conductor.alive ? '✓ running' : '✗ dead';
+          console.log(`  conductor: pid ${status.conductor.pid} ${alive}`);
+          console.log(`             ${status.conductor.transport}`);
+        }
+
+        if (status.agent) {
+          const alive = status.agent.alive ? '✓ running' : '✗ dead';
+          console.log(`  agent:     pid ${status.agent.pid} ${alive}`);
+          console.log(`             ${status.agent.transport}`);
+        } else if (status.agent === null) {
+          console.log('  agent:     not configured (use_subprocess=false)');
+        }
       }
     }
 
+    // Dashboard status
     if (service === 'dashboard' || service === 'serve' || !service) {
-      try {
-        const response = await fetch(`http://127.0.0.1:${port}/api/health`);
-        if (response.ok) {
-          const data = await response.json();
-          console.log(`dashboard: running (port ${port})`);
-          console.log(`  status: ${data.status}`);
-          console.log(`  timestamp: ${data.timestamp}`);
+      const dashStatus = await manager.getDashboardStatus(port);
 
-          // Try to get agent stats
-          try {
-            const agentsResponse = await fetch(`http://127.0.0.1:${port}/api/system/status`);
-            if (agentsResponse.ok) {
-              const agentsData = await agentsResponse.json();
-              console.log(`  agents: ${agentsData.agents.running}/${agentsData.agents.total}`);
-            }
-          } catch {
-            // Ignore
-          }
-        } else {
-          console.log(`dashboard: not responding (port ${port})`);
+      if (dashStatus.running) {
+        console.log(`dashboard: running (port ${dashStatus.port})`);
+        console.log(`  status: ${dashStatus.status}`);
+        console.log(`  timestamp: ${dashStatus.timestamp}`);
+        if (dashStatus.agents) {
+          console.log(`  agents: ${dashStatus.agents.running}/${dashStatus.agents.total}`);
         }
-      } catch {
+      } else {
         console.log(`dashboard: stopped`);
       }
     }
 
+    // Stdio services
     if (service === 'agents' || service === 'conductor') {
       console.log(`${service}: stdio service (run with 'rdrctl start ${service}')`);
     }
@@ -607,20 +414,22 @@ program
     const serviceName = service || 'mcp';
 
     if (serviceName === 'mcp') {
-      // Stop first
-      const haven = getPath('haven');
-      if (haven) {
-        const stateFile = path.join(haven, 'mcp-state.json');
-        if (fs.existsSync(stateFile)) {
-          console.log('[rdrctl] Stopping MCP servers...');
-          // Trigger stop logic
-          program.parse(['node', 'rdrctl', 'stop', 'mcp']);
+      const manager = getServiceManager();
+
+      // Stop first (if running)
+      const stopResult = manager.stopMcp();
+      if (!stopResult.notRunning) {
+        console.log('[rdrctl] Stopping MCP servers...');
+        if (stopResult.stoppedPids?.length) {
+          stopResult.stoppedPids.forEach(pid => {
+            console.log(`[rdrctl] Stopped process ${pid}`);
+          });
         }
       }
 
       // Then start
       console.log('[rdrctl] Starting MCP servers...');
-      await startMcpServices({ mcpMode: options.mcpMode });
+      await startMcpService({ mcpMode: options.mcpMode });
     } else {
       console.error(`[rdrctl] Restart not implemented for: ${serviceName}`);
       process.exit(1);
@@ -634,36 +443,28 @@ program
   .option('-f, --follow', 'Follow log output (like tail -f)')
   .option('-n, --lines <n>', 'Number of lines to show', '50')
   .action(async (service: string, options) => {
-    const haven = getPath('haven');
-    if (!haven) {
-      console.error('[rdrctl] Cannot determine haven path');
-      process.exit(1);
-    }
-
-    // Validate service name
     if (service !== 'conductor' && service !== 'agent') {
       console.error(`[rdrctl] Unknown service: ${service}`);
       console.error('Available: conductor, agent');
       process.exit(1);
     }
 
-    const logFile = path.join(haven, `mcp-${service}.log`);
+    const manager = getServiceManager();
+    const logFile = manager.getLogFile(service);
 
-    if (!fs.existsSync(logFile)) {
-      console.error(`[rdrctl] Log file not found: ${logFile}`);
-      console.error(`[rdrctl] Service "${service}" may not have been started yet`);
+    if (!logFile) {
+      console.error(`[rdrctl] Log file not found for service "${service}"`);
+      console.error(`[rdrctl] Service may not have been started yet`);
       process.exit(1);
     }
 
     if (options.follow) {
-      // Use tail -f
       const { spawn } = await import('child_process');
       const tail = spawn('tail', ['-f', '-n', options.lines, logFile], {
         stdio: 'inherit'
       });
       tail.on('exit', (code) => process.exit(code || 0));
     } else {
-      // Just read last N lines
       const { execSync } = await import('child_process');
       const output = execSync(`tail -n ${options.lines} "${logFile}"`, { encoding: 'utf-8' });
       console.log(output);

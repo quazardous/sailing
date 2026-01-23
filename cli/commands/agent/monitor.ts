@@ -22,170 +22,36 @@ import {
 } from '../../managers/diagnose-manager.js';
 import { summarizeEvent } from './diagnose.js';
 import { checkPosts, formatPostOutput } from '../../lib/guards.js';
+import {
+  showRecentTextLog,
+  showRecentJsonLog,
+  createTextLogTailer,
+  createJsonLogTailer,
+  type LogTailOptions,
+  type LogTailerResult,
+  type JsonLogProcessor
+} from '../../lib/log-tail.js';
 
 // ============================================================================
-// Log Tailing Helpers
+// Agent-Specific Log Processor
 // ============================================================================
 
-export interface LogTailOptions {
-  events?: boolean;      // Use jsonlog instead of raw log
-  raw?: boolean;         // With events: output raw JSON lines (no summarizing)
-  lines?: number;        // Number of recent lines to show
-}
-
-export interface LogTailerResult {
-  watcher: fs.FSWatcher;
-  cleanup: () => void;
-}
-
 /**
- * Show recent lines from a text log file
+ * Create a JsonLogProcessor for agent logs with noise filtering.
+ * Bridges lib/log-tail.ts with diagnose-manager's filtering logic.
  */
-export function showRecentTextLog(logFile: string, lines: number = 20): void {
-  if (!fs.existsSync(logFile)) return;
-  const content = fs.readFileSync(logFile, 'utf8');
-  const allLines = content.split('\n');
-  const recentLines = allLines.slice(-lines).join('\n');
-  if (recentLines.trim()) {
-    console.log('[...recent output...]\n');
-    console.log(recentLines);
-  }
-}
-
-/**
- * Show recent events from a jsonlog file
- * @param rawOutput - If true, output raw JSON lines without parsing/summarizing
- */
-export function showRecentJsonLog(
-  jsonLogFile: string,
-  lines: number = 20,
-  noiseFilters: any[] = [],
-  rawOutput: boolean = false
-): void {
-  if (!fs.existsSync(jsonLogFile)) return;
-
-  if (rawOutput) {
-    // Raw mode: just output the last N lines as-is
-    const content = fs.readFileSync(jsonLogFile, 'utf8');
-    const allLines = content.split('\n').filter(l => l.trim());
-    const recentLines = allLines.slice(-lines);
-    for (const line of recentLines) {
-      console.log(line);
-    }
-    return;
-  }
-
-  const { events, lines: rawLines } = parseJsonLog(jsonLogFile);
-  const recentEvents = events.slice(-lines);
-  const recentRawLines = rawLines.slice(-lines);
-
-  let shown = 0;
-  for (let i = 0; i < recentEvents.length; i++) {
-    const event = recentEvents[i];
-    const line = recentRawLines[i];
-    let isNoise = false;
-    for (const filter of noiseFilters) {
-      if (matchesNoiseFilter(line, event, filter)) {
-        isNoise = true;
-        break;
+function createAgentLogProcessor(noiseFilters: any[]): JsonLogProcessor {
+  return {
+    parse: parseJsonLog,
+    isNoise: (line: string, event: any) => {
+      for (const filter of noiseFilters) {
+        if (matchesNoiseFilter(line, event, filter)) {
+          return true;
+        }
       }
-    }
-    if (!isNoise) {
-      console.log(summarizeEvent(event, line));
-      shown++;
-    }
-  }
-  if (shown > 0) {
-    console.log(''); // blank line after recent events
-  }
-}
-
-/**
- * Create a watcher for text log file tailing
- */
-export function createTextLogTailer(logFile: string): LogTailerResult {
-  let lastSize = fs.statSync(logFile).size;
-
-  const watcher = fs.watch(logFile, (eventType) => {
-    if (eventType === 'change') {
-      try {
-        const newSize = fs.statSync(logFile).size;
-        if (newSize > lastSize) {
-          const fd = fs.openSync(logFile, 'r');
-          const buffer = Buffer.alloc(newSize - lastSize);
-          fs.readSync(fd, buffer, 0, buffer.length, lastSize);
-          fs.closeSync(fd);
-          process.stdout.write(buffer.toString());
-          lastSize = newSize;
-        }
-      } catch { /* ignore */ }
-    }
-  });
-
-  return {
-    watcher,
-    cleanup: () => watcher.close()
-  };
-}
-
-/**
- * Create a watcher for jsonlog file tailing with noise filtering
- * @param rawOutput - If true, output raw JSON lines without parsing/summarizing
- */
-export function createJsonLogTailer(
-  jsonLogFile: string,
-  noiseFilters: any[] = [],
-  rawOutput: boolean = false
-): LogTailerResult {
-  let lastSize = fs.statSync(jsonLogFile).size;
-  let buffer = '';
-
-  const watcher = fs.watch(jsonLogFile, (eventType) => {
-    if (eventType === 'change') {
-      try {
-        const newSize = fs.statSync(jsonLogFile).size;
-        if (newSize > lastSize) {
-          const fd = fs.openSync(jsonLogFile, 'r');
-          const readBuffer = Buffer.alloc(newSize - lastSize);
-          fs.readSync(fd, readBuffer, 0, readBuffer.length, lastSize);
-          fs.closeSync(fd);
-          buffer += readBuffer.toString();
-          lastSize = newSize;
-
-          // Process complete lines
-          let newlineIndex;
-          while ((newlineIndex = buffer.indexOf('\n')) !== -1) {
-            const line = buffer.slice(0, newlineIndex);
-            buffer = buffer.slice(newlineIndex + 1);
-            if (line.trim()) {
-              if (rawOutput) {
-                // Raw mode: output line as-is
-                console.log(line);
-              } else {
-                try {
-                  const event = JSON.parse(line);
-                  let isNoise = false;
-                  for (const filter of noiseFilters) {
-                    if (matchesNoiseFilter(line, event, filter)) {
-                      isNoise = true;
-                      break;
-                    }
-                  }
-                  if (!isNoise) {
-                    console.log(summarizeEvent(event, line));
-                  }
-                } catch { /* ignore parse errors */ }
-              }
-            }
-          }
-        }
-      } catch { /* ignore */ }
-    }
-  });
-
-  return {
-    watcher,
-    cleanup: () => watcher.close()
+      return false;
+    },
+    summarize: summarizeEvent
   };
 }
 
@@ -215,12 +81,13 @@ export function setupAgentLogTail(
     const taskEpic = getTaskEpic(taskId);
     const epicId = taskEpic?.epicId || null;
     const noiseFilters = (useRaw || rawJsonOutput) ? [] : getDiagnoseOps().loadNoiseFilters(epicId);
+    const processor = createAgentLogProcessor(noiseFilters);
 
     // Show recent events
-    showRecentJsonLog(jsonLogFile, lines, noiseFilters, rawJsonOutput);
+    showRecentJsonLog(jsonLogFile, lines, processor, rawJsonOutput);
 
     // Create tailer
-    return createJsonLogTailer(jsonLogFile, noiseFilters, rawJsonOutput);
+    return createJsonLogTailer(jsonLogFile, processor, rawJsonOutput);
   } else {
     if (!fs.existsSync(logFile)) {
       return null;
@@ -889,14 +756,15 @@ export function registerMonitorCommands(agent) {
         const taskEpic = getTaskEpic(normalizedId);
         const epicId = taskEpic?.epicId || null;
         const noiseFilters = options.raw ? [] : getDiagnoseOps().loadNoiseFilters(epicId);
+        const processor = createAgentLogProcessor(noiseFilters);
 
         // Tail mode for events: follow jsonlog in real-time
         if (options.tail) {
           // Show recent lines/events
-          showRecentJsonLog(jsonLogFile, options.lines ?? 20, noiseFilters, options.raw);
+          showRecentJsonLog(jsonLogFile, options.lines ?? 20, processor, options.raw);
 
           // Start tailing (raw mode = output lines as-is)
-          const tailer = createJsonLogTailer(jsonLogFile, noiseFilters, options.raw);
+          const tailer = createJsonLogTailer(jsonLogFile, processor, options.raw);
 
           process.on('SIGINT', () => {
             tailer.cleanup();
