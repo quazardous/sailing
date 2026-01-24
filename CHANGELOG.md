@@ -4,6 +4,26 @@ All notable changes to the Sailing Framework will be documented in this file.
 
 <!-- NOTE: This is a USER changelog, not a commit log. Focus on user-visible features and benefits, not implementation details. -->
 
+## [1.15.0] - 2026-01-24
+
+### Added
+- `agent_reset` MCP tool to reset agent state (kill, discard work, clear db, reset task)
+- `normalizeId()` now supports numeric-only input with `defaultType` parameter (e.g., `"1"` → `"T001"` when defaultType is `'task'`)
+- `agent_spawn` now validates pending memory logs before spawning (must analyze logs first)
+- `devinstall.sh` postflight message for worktree mode (git init instructions)
+- Mandatory delegation rules in skill: review/breakdown/merge MUST be delegated to coordinators
+
+### Changed
+- MCP documentation split into `mcp_conductor.md` and `mcp_agent.md` for clarity
+- `mcp.md` is now an index pointing to conductor/agent docs
+- `rudder.md` now indicates CLI is for humans/scripts, agents use MCP tools
+- `/dev:*` commands now explicitly state delegation requirement and escalation contract
+- Skill rebuilt with "What Skill Does NOT Do" section
+
+### Fixed
+- CLI agent commands (`agent:log`, `agent:status`, etc.) now normalize numeric IDs correctly
+- Conductor git validation now includes "at least one commit" check
+
 ## [1.14.0] - 2026-01-23
 
 ### Added
