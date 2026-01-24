@@ -72,15 +72,28 @@ Commands → Managers → Libs
 | Manager | Domain |
 |---------|--------|
 | `agent-manager` | Agent lifecycle (reap, kill, merge, wait) |
-| `artefacts-manager` | Tasks, epics, PRDs access (index, lookup) |
+| `artefacts-manager` | Tasks, epics, PRDs access (index, lookup, matchesPrd, matchesEpic) |
 | `compose-manager` | Prompt/context composition |
-| `worktree-manager` | Git worktree operations |
-| `pr-manager` | PR/MR operations (GitHub, GitLab) |
+| `conductor-manager` | Orchestration of agents and MCP conductor |
 | `config-manager` | Config semantic accessors |
+| `conflict-manager` | Git conflict detection and resolution |
+| `core-manager` | Project root, paths, placeholders, path overrides |
 | `db-manager` | Agent CRUD (taskNum-based, replaces state.agents) |
-| `status-manager` | Status transitions cascade |
-| `memory-manager` | Memory/logs operations |
 | `diagnose-manager` | Log analysis, noise filters |
+| `discovery-manager` | Project discovery and context loading |
+| `fileio-manager` | File read/write operations |
+| `graph-manager` | Dependency graph operations |
+| `info-manager` | Project info and status display |
+| `mcp-manager` | MCP server lifecycle |
+| `memory-manager` | Memory/logs operations |
+| `pr-manager` | PR/MR operations (GitHub, GitLab) |
+| `reconciliation-manager` | State reconciliation |
+| `service-manager` | Background service management |
+| `state-manager` | State persistence (counters) |
+| `status-manager` | Status transitions cascade |
+| `template-manager` | Template loading and rendering |
+| `version-manager` | Component version bumping |
+| `worktree-manager` | Git worktree operations |
 
 ---
 

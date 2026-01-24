@@ -2,9 +2,20 @@
 
 Rudder is the state management CLI for the sailing skill. It's the single source of truth for PRDs, Epics, Tasks, and dependencies.
 
+## Who Uses What
+
+| Audience | Tool | Documentation |
+|----------|------|---------------|
+| **Humans** | CLI (`bin/rudder`) | This document |
+| **Scripts** | CLI (`bin/rudder`) | This document |
+| **Agents (sandboxed)** | MCP tools (`mcp__rudder__*`) | [mcp_agent.md](mcp_agent.md) |
+| **Conductor/Skill** | MCP tools (`mcp__rudder__*`) | [mcp_conductor.md](mcp_conductor.md) |
+
+> **Note**: Agents should NOT call the CLI directly. Use MCP tools instead - they handle sandbox restrictions and provide structured responses.
+
 ## Core Principle
 
-**Rudder manages state, Claude executes.** All status changes, entity creation, and dependency tracking go through Rudder.
+**Rudder manages state, Claude executes.** All status changes, entity creation, and dependency tracking go through Rudder (via CLI or MCP).
 
 ## Usage
 
@@ -46,6 +57,7 @@ bin/rudder deps:validate --fix   # Fix cycles/issues
 | `task` | Task operations (list, show, create, update, next, start, done, log) |
 | `deps` | Dependency graph (tree, validate, impact, ready, critical) |
 | `artifact` | Edit PRD/Epic/Task content (show, edit, check, patch, ops) |
+| `agent` | Agent lifecycle (spawn, reap, kill, status, log, wait) |
 | `memory` | Memory sync operations |
 | `permissions` | Claude Code permissions management |
 
@@ -163,6 +175,32 @@ bin/rudder deps:validate --fix
 bin/rudder deps:show T042
 bin/rudder deps:tree T042
 ```
+
+## Agent Management
+
+Spawn and manage sandboxed agents for task execution:
+
+```bash
+# Spawn agent for task
+bin/rudder agent:spawn T042
+
+# Monitor agent
+bin/rudder agent:status T042          # Check status
+bin/rudder agent:log T042             # View log
+bin/rudder agent:log T042 -t          # Tail log
+bin/rudder agent:log T042 -e          # JSON events
+bin/rudder agent:wait T042            # Wait for completion
+
+# Harvest results
+bin/rudder agent:reap T042            # Merge work, update status
+bin/rudder agent:reject T042          # Discard work
+
+# List agents
+bin/rudder agent:status               # All agents
+bin/rudder agent:status --active      # Running agents
+```
+
+Note: Numeric IDs are auto-normalized (e.g., `1` → `T001`).
 
 ## Full Documentation
 
