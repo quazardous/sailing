@@ -2,11 +2,13 @@
  * MCP Conductor Tools - Agent operations
  */
 import { getConductorManager } from '../../conductor-manager.js';
+import { getAgentLifecycle } from '../../agent-manager.js';
+import { updateArtefact } from '../../artefacts/common.js';
 import {
   ok,
-  err,
-  normalizeId
+  err
 } from '../types.js';
+import { normalizeId } from '../../../lib/normalize.js';
 import type { ToolDefinition, NextAction } from '../types.js';
 
 export const AGENT_CONDUCTOR_TOOLS: ToolDefinition[] = [
@@ -27,7 +29,7 @@ export const AGENT_CONDUCTOR_TOOLS: ToolDefinition[] = [
     },
     handler: async (args) => {
       const conductor = getConductorManager();
-      const result = await conductor.spawn(normalizeId(args.task_id), {
+      const result = await conductor.spawn(args.task_id as string, {
         timeout: args.timeout,
         resume: args.resume,
         worktree: args.worktree
@@ -67,7 +69,7 @@ export const AGENT_CONDUCTOR_TOOLS: ToolDefinition[] = [
     },
     handler: async (args) => {
       const conductor = getConductorManager();
-      const result = await conductor.reap(normalizeId(args.task_id), {
+      const result = await conductor.reap(args.task_id as string, {
         wait: args.wait,
         timeout: args.timeout
       });
@@ -108,7 +110,7 @@ export const AGENT_CONDUCTOR_TOOLS: ToolDefinition[] = [
     },
     handler: async (args) => {
       const conductor = getConductorManager();
-      const result = await conductor.kill(normalizeId(args.task_id));
+      const result = await conductor.kill(args.task_id as string);
       return ok({ success: result.success, data: result, error: result.error });
     }
   },
@@ -124,7 +126,7 @@ export const AGENT_CONDUCTOR_TOOLS: ToolDefinition[] = [
     },
     handler: (args) => {
       const conductor = getConductorManager();
-      const status = conductor.getStatus(normalizeId(args.task_id));
+      const status = conductor.getStatus(args.task_id as string);
 
       if (!status) {
         return err('Agent not found');
@@ -158,7 +160,7 @@ export const AGENT_CONDUCTOR_TOOLS: ToolDefinition[] = [
     },
     handler: (args) => {
       const conductor = getConductorManager();
-      const lines = conductor.getLog(normalizeId(args.task_id), { tail: args.tail });
+      const lines = conductor.getLog(args.task_id as string, { tail: args.tail });
       return ok({ success: true, data: { lines, count: lines.length } });
     }
   },
@@ -179,6 +181,66 @@ export const AGENT_CONDUCTOR_TOOLS: ToolDefinition[] = [
         ? conductor.getAgentsByStatus(args.status)
         : conductor.getAllAgents();
       return ok({ success: true, data: agents });
+    }
+  },
+  {
+    tool: {
+      name: 'agent_reset',
+      description: 'Reset agent state: kill process, discard work, clear db entry, reset task to Not Started. Use this instead of rm -rf on agent directories.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          task_id: { type: 'string', description: 'Task ID' },
+          reason: { type: 'string', description: 'Reason for reset (optional)' }
+        },
+        required: ['task_id']
+      }
+    },
+    handler: async (args) => {
+      const taskId = normalizeId(args.task_id as string, undefined, 'task');
+      const reason = args.reason as string | undefined;
+      const conductor = getConductorManager();
+      const lifecycle = getAgentLifecycle(taskId);
+
+      const results: string[] = [];
+
+      // 1. Kill agent if running
+      const status = conductor.getStatus(taskId);
+      if (status?.isRunning && status.pid) {
+        const killResult = await conductor.kill(taskId);
+        if (killResult.success) {
+          results.push(`Killed process ${status.pid}`);
+        }
+      }
+
+      // 2. Reject work (removes worktree, marks as rejected)
+      const rejectResult = await lifecycle.reject(reason || 'Reset by agent_reset');
+      if (rejectResult.success) {
+        results.push('Discarded worktree and work');
+      }
+
+      // 3. Clear agent from db
+      const cleared = await lifecycle.clear();
+      if (cleared) {
+        results.push('Cleared agent from db');
+      }
+
+      // 4. Reset task status to Not Started
+      try {
+        updateArtefact(taskId, { status: 'Not Started', assignee: '' });
+        results.push('Reset task status to Not Started');
+      } catch (e) {
+        results.push(`Warning: Could not reset task status: ${e instanceof Error ? e.message : e}`);
+      }
+
+      return ok({
+        success: true,
+        data: {
+          task_id: taskId,
+          actions: results,
+          message: `Agent ${taskId} reset successfully`
+        }
+      });
     }
   }
 ];

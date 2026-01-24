@@ -85,13 +85,16 @@ export function extractEpicId(parent: string | null | undefined): string | null 
 // ID Normalization
 // ============================================================================
 
+export type EntityType = 'prd' | 'epic' | 'task' | 'story';
+
 /**
  * Normalize entity IDs to canonical format (pure function)
  * Accepts any number of digits, outputs configured padding
  * @param id - ID to normalize
  * @param digitConfig - Optional digit configuration (defaults to 3 digits each)
+ * @param defaultType - Optional default type for numeric-only input (e.g., "1" → "T001" if defaultType is 'task')
  */
-export function normalizeId(id: string | null | undefined, digitConfig: DigitConfig = DEFAULT_DIGITS): string | null {
+export function normalizeId(id: string | null | undefined, digitConfig: DigitConfig = DEFAULT_DIGITS, defaultType?: EntityType): string | null {
   if (!id) return id ?? null;
 
   // PRD format
@@ -116,6 +119,18 @@ export function normalizeId(id: string | null | undefined, digitConfig: DigitCon
   const storyMatch = id.match(/^S(\d+)$/i);
   if (storyMatch) {
     return formatIdFrom('S', parseInt(storyMatch[1], 10), digitConfig);
+  }
+
+  // Numeric-only format with defaultType
+  const numericMatch = id.match(/^(\d+)$/);
+  if (numericMatch && defaultType) {
+    const prefixMap: Record<EntityType, string> = {
+      'prd': 'PRD-',
+      'epic': 'E',
+      'task': 'T',
+      'story': 'S'
+    };
+    return formatIdFrom(prefixMap[defaultType], parseInt(numericMatch[1], 10), digitConfig);
   }
 
   return id;

@@ -66,7 +66,7 @@ export function registerSpawnCommand(agent) {
         process.exit(1);
       }
 
-      taskId = normalizeId(taskId);
+      taskId = normalizeId(taskId, undefined, 'task');
 
       // Find task file
       const taskFile = getTask(taskId)?.file;

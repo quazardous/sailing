@@ -176,7 +176,7 @@ export function registerMonitorCommands(agent) {
       const agentUtils = new AgentUtils(getAgentsDir());
 
       if (taskId) {
-        taskId = normalizeId(taskId);
+        taskId = normalizeId(taskId, undefined, 'task');
 
         const agentData = agents[taskId];
         if (!agentData) {
@@ -431,7 +431,7 @@ export function registerMonitorCommands(agent) {
       raw?: boolean;
       json?: boolean;
     }) => {
-      taskId = normalizeId(taskId);
+      taskId = normalizeId(taskId, undefined, 'task');
 
       const agentInfo = getAgentFromDb(taskId);
       const projectRoot = findProjectRoot();
@@ -740,7 +740,7 @@ export function registerMonitorCommands(agent) {
     .option('--raw', 'With --events: output raw JSON lines (no summarizing)')
     .option('--json', 'JSON output')
     .action((taskId: string, options: { lines?: number; tail?: boolean; events?: boolean; raw?: boolean; json?: boolean }) => {
-      const normalizedId = normalizeId(taskId);
+      const normalizedId = normalizeId(taskId, undefined, 'task');
       const agentUtils = new AgentUtils(getAgentsDir());
 
       // Events mode: show filtered JSON events from run.jsonlog

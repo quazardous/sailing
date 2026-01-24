@@ -11,9 +11,9 @@ import {
 import {
   ok,
   err,
-  normalizeId,
   detectType
 } from '../types.js';
+import { normalizeId } from '../../../lib/normalize.js';
 import type { ToolDefinition, NextAction } from '../types.js';
 
 export const WORKFLOW_TOOLS: ToolDefinition[] = [
@@ -151,7 +151,7 @@ export const WORKFLOW_TOOLS: ToolDefinition[] = [
     },
     handler: (args) => {
       try {
-        const id = normalizeId(args.task_id as string);
+        const id = normalizeId(args.task_id as string, undefined, 'task')!;
         const result = completeTask(id, {
           message: args.message as string | undefined
         });

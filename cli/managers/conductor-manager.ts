@@ -110,7 +110,7 @@ export class ConductorManager {
    * Emits: agent:spawned
    */
   async spawn(taskId: string, options: SpawnOptions = {}): Promise<SpawnResult> {
-    taskId = normalizeId(taskId);
+    taskId = normalizeId(taskId, undefined, 'task');
     const agentConfig = getAgentConfig();
 
     // Find task
@@ -202,16 +202,47 @@ export class ConductorManager {
         return {
           success: false,
           taskId,
-          error: 'use_worktrees requires a git repository'
+          escalate: {
+            reason: 'use_worktrees requires a git repository',
+            nextSteps: [
+              'git init',
+              'git add .',
+              'git commit -m "Initial commit"'
+            ]
+          }
         };
       }
 
       const gitStatus = await git.status();
       if (!gitStatus.isClean()) {
+        const allFiles = [...gitStatus.modified, ...gitStatus.created, ...gitStatus.deleted, ...gitStatus.not_added];
         return {
           success: false,
           taskId,
-          error: 'Working directory has uncommitted changes'
+          escalate: {
+            reason: 'Working directory has uncommitted changes',
+            nextSteps: [
+              'Commit or stash changes before spawning agents',
+              `Files: ${allFiles.slice(0, 5).join(', ')}${allFiles.length > 5 ? ` (+${allFiles.length - 5} more)` : ''}`
+            ]
+          }
+        };
+      }
+
+      // Check for at least one commit (git worktree requires commits to create branches)
+      const repoLog = await git.log().catch(() => ({ total: 0 }));
+      if ((repoLog as { total: number }).total === 0) {
+        return {
+          success: false,
+          taskId,
+          escalate: {
+            reason: 'No commits in repository',
+            nextSteps: [
+              'Git worktree requires at least one commit to create branches',
+              'git add .',
+              'git commit -m "Initial commit"'
+            ]
+          }
         };
       }
     }
@@ -469,7 +500,7 @@ export class ConductorManager {
    * Emits: agent:reaped
    */
   async reap(taskId: string, options: { wait?: boolean; timeout?: number } = {}): Promise<ReapResult> {
-    taskId = normalizeId(taskId);
+    taskId = normalizeId(taskId, undefined, 'task');
     const lifecycle = getAgentLifecycle(taskId);
     const result = await lifecycle.reap(options);
 
@@ -490,7 +521,7 @@ export class ConductorManager {
    * Emits: agent:killed
    */
   async kill(taskId: string): Promise<KillResult> {
-    taskId = normalizeId(taskId);
+    taskId = normalizeId(taskId, undefined, 'task');
 
     // Try to kill tracked process first
     const process = this.activeProcesses.get(taskId);
@@ -520,7 +551,7 @@ export class ConductorManager {
    * Get agent status
    */
   getStatus(taskId: string): AgentStatus | null {
-    taskId = normalizeId(taskId);
+    taskId = normalizeId(taskId, undefined, 'task');
     const agent = getAgentFromDb(taskId);
     if (!agent) return null;
 
@@ -573,7 +604,7 @@ export class ConductorManager {
    * Returns an async iterator that yields log lines
    */
   createLogStream(taskId: string, options: LogStreamOptions = {}): AsyncIterable<LogLine> {
-    taskId = normalizeId(taskId);
+    taskId = normalizeId(taskId, undefined, 'task');
     const { follow = true, tail = 100 } = options;
     const logFile = getLogFilePath(this.agentsDir, taskId);
 
@@ -700,7 +731,7 @@ export class ConductorManager {
    * Get log content (non-streaming)
    */
   getLog(taskId: string, options: { tail?: number } = {}): string[] {
-    taskId = normalizeId(taskId);
+    taskId = normalizeId(taskId, undefined, 'task');
     const { tail } = options;
     const logFile = getLogFilePath(this.agentsDir, taskId);
 

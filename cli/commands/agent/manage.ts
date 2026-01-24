@@ -138,7 +138,7 @@ export function registerManageCommands(agent) {
       }
 
       if (taskId) {
-        taskId = normalizeId(taskId);
+        taskId = normalizeId(taskId, undefined, 'task');
 
         if (!agents[taskId]) {
           console.error(`No agent found for task: ${taskId}`);
@@ -159,7 +159,7 @@ export function registerManageCommands(agent) {
   // agent:kill
   withModifies(agent.command('kill <task-id>'), ['db'])
     .action(async (taskId: string, options: { json?: boolean }) => {
-      taskId = normalizeId(taskId);
+      taskId = normalizeId(taskId, undefined, 'task');
 
       const agentInfo = getAgentFromDb(taskId);
 

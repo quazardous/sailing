@@ -43,7 +43,7 @@ export function registerHarvestCommands(agent) {
         process.exit(1);
       }
 
-      taskId = normalizeId(taskId);
+      taskId = normalizeId(taskId, undefined, 'task');
 
       const agentInfo = getAgentFromDb(taskId);
       const projectRoot = findProjectRoot();
@@ -244,7 +244,7 @@ export function registerHarvestCommands(agent) {
       console.error('⚠️  DEPRECATED: agent:merge is deprecated. Use agent:reap instead.');
       console.error('   agent:reap handles merge, cleanup, and status update.\n');
 
-      taskId = normalizeId(taskId);
+      taskId = normalizeId(taskId, undefined, 'task');
       const agentInfo = getAgentFromDb(taskId);
       const agentUtilsMerge = new AgentUtils(getAgentsDir());
 
@@ -323,7 +323,7 @@ export function registerHarvestCommands(agent) {
     .option('--status <status>', 'New task status: blocked|not-started (default: blocked)', 'blocked')
     .option('--json', 'JSON output')
     .action(async (taskId: string, options: { reason?: string; status: string; json?: boolean }) => {
-      taskId = normalizeId(taskId);
+      taskId = normalizeId(taskId, undefined, 'task');
       const agentInfo = getAgentFromDb(taskId);
 
       if (!agentInfo) {
@@ -359,7 +359,7 @@ export function registerHarvestCommands(agent) {
       console.error('⚠️  DEPRECATED: agent:collect is deprecated. Use agent:reap instead.');
       console.error('   agent:reap collects, merges, cleans up, and updates status.\n');
 
-      taskId = normalizeId(taskId);
+      taskId = normalizeId(taskId, undefined, 'task');
       const agentInfo = getAgentFromDb(taskId);
       const agentUtilsCollect = new AgentUtils(getAgentsDir());
 
