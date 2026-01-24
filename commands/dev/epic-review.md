@@ -6,7 +6,13 @@ allowed-tools: Read, Glob, Grep, Task, WebSearch, WebFetch, mcp
 
 # Epic Review Agent
 
+> **DELEGATION REQUIRED**: This command MUST be executed by a coordinator agent spawned by the skill.
+> The skill NEVER executes this directly. Spawn via `agent_spawn` with role=coordinator.
+
 **Purpose:** Evaluate epic for technical feasibility, version alignment, and tech opportunities **before task breakdown**.
+
+**Escalation Contract:** This coordinator RETURNS output to the skill. It does NOT make decisions.
+Tech recommendations require user validation. All questions escalate to skill.
 
 ---
 

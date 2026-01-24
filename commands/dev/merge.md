@@ -6,9 +6,18 @@ allowed-tools: mcp, Bash
 
 # Merge Agent
 
+> **DELEGATION REQUIRED**: This command MUST be executed by a coordinator agent spawned by the skill.
+> The skill NEVER executes merge operations directly. Spawn via `agent_spawn` with role=coordinator.
+
 **Purpose:** Merge agent work into the target branch, handling conflicts with full context.
 
-**Authority:** This command is executed by main thread or authorized coordinator. It MUST NOT be invoked by agents.
+**Escalation Contract:** This coordinator handles git merge and conflict resolution.
+- Simple merges: completed automatically
+- Conflicts: resolved with context, logged
+- Ambiguous conflicts: ESCALATE to skill (do not guess)
+- Architectural conflicts: ESCALATE to skill (require decision)
+
+**Authority:** This command is executed by authorized coordinator. It MUST NOT be invoked by task agents.
 
 ---
 

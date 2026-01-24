@@ -6,7 +6,14 @@ allowed-tools: Read, Write, Edit, Task, mcp
 
 # PRD Breakdown Agent
 
+> **DELEGATION REQUIRED**: This command MUST be executed by a coordinator agent spawned by the skill.
+> The skill NEVER executes this directly. Spawn via `agent_spawn` with role=coordinator.
+
 **Purpose:** Decompose a PRD into epics using MCP tools. Parallelize agents where possible.
+
+**Escalation Contract:** This coordinator may spawn sub-agents for parallel epic creation.
+All scope questions, boundary ambiguities, and sizing concerns escalate to skill.
+The skill receives a structured report and decides next action.
 
 This command creates **epics only**. Use `/dev:epic-breakdown` to create tasks after epic review.
 

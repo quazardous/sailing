@@ -6,7 +6,13 @@ allowed-tools: Read, Edit, Glob, Grep, Task, mcp
 
 # PRD Review Agent
 
+> **DELEGATION REQUIRED**: This command MUST be executed by a coordinator agent spawned by the skill.
+> The skill NEVER executes this directly. Spawn via `agent_spawn` with role=coordinator.
+
 **Purpose:** Ensure PRD is complete, consistent, and aligned. Validate milestones and versions.
+
+**Escalation Contract:** This coordinator RETURNS output to the skill. It does NOT make decisions.
+All questions, ambiguities, and approval requests are returned as structured escalations.
 
 ---
 

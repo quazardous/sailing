@@ -6,6 +6,13 @@ allowed-tools: Read, Write, Edit, Task, mcp
 
 # Epic Breakdown
 
+> **DELEGATION REQUIRED**: This command MUST be executed by a coordinator agent spawned by the skill.
+> The skill NEVER executes this directly. Spawn via `agent_spawn` with role=coordinator.
+
+**Escalation Contract:** This coordinator creates tasks and dependencies.
+All sizing questions, scope ambiguities, and dependency concerns escalate to skill.
+The skill receives a structured report and decides next action.
+
 Decompose epic into tasks. Coordination only, no implementation.
 
 ## Pre-flight

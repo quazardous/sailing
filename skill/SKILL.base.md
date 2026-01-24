@@ -38,6 +38,34 @@ These invariants are immutable. Everything else submits to them.
 
 ---
 
+## Mandatory Delegation (NON-NEGOTIABLE)
+
+**The skill MUST delegate these operations to coordinator agents. NEVER execute directly.**
+
+| Operation | Delegate To | Why |
+|-----------|-------------|-----|
+| `/dev:prd-review` | Coordinator | Complex analysis, may escalate questions |
+| `/dev:epic-review` | Coordinator | Tech research, web search, may escalate |
+| `/dev:prd-breakdown` | Coordinator | Spawns sub-agents, manages parallelism |
+| `/dev:epic-breakdown` | Coordinator | Creates tasks, manages dependencies |
+| `/dev:merge` | Coordinator | Conflict resolution, git operations |
+| `/dev:tasks-batch` | Coordinator | Parallel agent spawning |
+
+**Pattern:**
+```
+Skill → agent_spawn(coordinator) → Coordinator executes → Returns output → Skill decides
+```
+
+**Coordinators ESCALATE, they don't DECIDE:**
+- Questions about scope → escalate to skill
+- Ambiguous specs → escalate to skill
+- Conflicts requiring judgment → escalate to skill
+- User approval needed → escalate to skill
+
+**The skill receives escalations and makes decisions. Coordinators are workers, not decision-makers.**
+
+---
+
 ## Role Model
 
 | Role | Description | Can Spawn | Can Decide | Sees Memory |
@@ -166,6 +194,34 @@ The MCP tool provides:
 - **Guess** when specs unclear
 
 If blocked → log, return output, let skill handle.
+
+---
+
+## What Skill Does NOT Do (Directly)
+
+**The skill orchestrates but NEVER implements these operations directly:**
+
+| Forbidden Action | Must Delegate To |
+|------------------|------------------|
+| Review PRD/Epic content | Coordinator (`/dev:prd-review`, `/dev:epic-review`) |
+| Create epics from PRD | Coordinator (`/dev:prd-breakdown`) |
+| Create tasks from Epic | Coordinator (`/dev:epic-breakdown`) |
+| Merge agent work | Coordinator (`/dev:merge`) |
+| Resolve git conflicts | Coordinator (`/dev:merge`) |
+| Batch task execution | Coordinator (`/dev:tasks-batch`) |
+
+**Why?** These operations are complex, require context loading, and may produce escalations. The skill must remain a decision-maker, not an executor.
+
+**If the skill tries to execute directly:**
+1. Context is incomplete (no `context_load`)
+2. Escalations are lost (no structured output)
+3. State tracking breaks (no proper MCP flow)
+
+**Correct pattern:**
+```
+❌ Skill reads PRD, analyzes, decides (WRONG)
+✅ Skill spawns coordinator → coordinator analyzes → returns output → skill decides (CORRECT)
+```
 
 ---
 
