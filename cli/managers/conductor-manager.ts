@@ -19,6 +19,7 @@ import { spawnClaude, getLogFilePath } from '../lib/claude.js';
 import { buildAgentSpawnPrompt } from './compose-manager.js';
 import { createWorktree, removeWorktree, getWorktreePath, getBranchName, worktreeExists, getMainBranch, getParentBranch, ensureBranchHierarchy, syncParentBranch } from './worktree-manager.js';
 import { getTask, getEpic, getMemoryFile, getPrdBranching } from './artefacts-manager.js';
+import { checkPendingMemory } from './memory-manager.js';
 import { loadFile, ensureDir, getPathsInfo, findDevMd, findToolset } from './core-manager.js';
 import { createMission } from '../lib/agent-schema.js';
 import { AgentUtils } from '../lib/agent-utils.js';
@@ -245,6 +246,23 @@ export class ConductorManager {
           }
         };
       }
+    }
+
+    // Check for pending memory logs (must be analyzed before spawning new agents)
+    const pendingMemory = checkPendingMemory(epicId);
+    if (pendingMemory.pending) {
+      return {
+        success: false,
+        taskId,
+        escalate: {
+          reason: `Pending memory logs for epic(s): ${pendingMemory.epics.join(', ')}`,
+          nextSteps: [
+            'Memory logs must be analyzed before spawning new agents',
+            `memory_analyze ${pendingMemory.epics[0]}   # Analyze and consolidate logs`,
+            'memory_status                             # Check memory status'
+          ]
+        }
+      };
     }
 
     // Get branching strategy

@@ -24,6 +24,7 @@ import { extractPrdId, extractEpicId, normalizeId } from '../../lib/normalize.js
 import { parseTaskNum } from '../../lib/agent-paths.js';
 import { findDevMd, findToolset } from '../../managers/core-manager.js';
 import { getTask, getEpic, getMemoryFile, getPrdBranching } from '../../managers/artefacts-manager.js';
+import { checkPendingMemory } from '../../managers/memory-manager.js';
 import { AgentUtils, getProcessStats, formatDuration } from '../../lib/agent-utils.js';
 import type { AgentRecord } from '../../lib/types/agent.js';
 import { getDiagnoseOps, printDiagnoseResult } from '../../managers/diagnose-manager.js';
@@ -300,6 +301,19 @@ export function registerSpawnCommand(agent) {
           console.error('Escalate for resolution.');
           process.exit(1);
         }
+      }
+
+      // Check for pending memory logs (must be analyzed before spawning new agents)
+      const pendingMemory = checkPendingMemory(epicId);
+      if (pendingMemory.pending) {
+        console.error('BLOCKED: Pending memory logs require analysis\n');
+        console.error(`Epic(s) with unprocessed logs: ${pendingMemory.epics.join(', ')}`);
+        console.error('\nMemory logs must be analyzed before spawning new agents.');
+        console.error('Escalate for resolution.\n');
+        console.error('Next steps:');
+        console.error(`  bin/rudder memory:analyze ${pendingMemory.epics[0]}  # Analyze and consolidate`);
+        console.error('  bin/rudder memory:status                           # Check status');
+        process.exit(1);
       }
 
       // Get branching strategy from PRD
