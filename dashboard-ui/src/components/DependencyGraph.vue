@@ -437,8 +437,8 @@ function truncateTitle(title: string, maxLen: number = 16): string {
 }
 
 .dag-node-epic .dag-node-bg {
-  fill: #10B981;
-  stroke: #047857;
+  fill: #A78BFA;
+  stroke: #7C3AED;
   stroke-width: 2;
 }
 
@@ -533,7 +533,7 @@ function truncateTitle(title: string, maxLen: number = 16): string {
 }
 
 .dag-color-prd { background: #3B82F6; }
-.dag-color-epic { background: #10B981; }
+.dag-color-epic { background: #A78BFA; }
 .dag-color-task { background: #4B5563; }
 .dag-color-done { background: #059669; }
 .dag-color-wip { background: #F59E0B; }
