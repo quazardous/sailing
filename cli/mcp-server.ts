@@ -6,14 +6,14 @@
  * Uses the same project detection logic as rudder CLI.
  *
  * Usage:
- *   rudder-mcp                     # Start server (daemon, default)
- *   rudder-mcp start               # Start server (daemon)
- *   rudder-mcp start -f            # Start server (foreground)
- *   rudder-mcp status              # Check if running
- *   rudder-mcp stop                # Stop server
- *   rudder-mcp restart             # Stop + start server
- *   rudder-mcp --socket /path      # Custom socket path
- *   rudder-mcp --port 9999         # TCP mode
+ *   rdrctl                     # Start server (daemon, default)
+ *   rdrctl start               # Start server (daemon)
+ *   rdrctl start -f            # Start server (foreground)
+ *   rdrctl status              # Check if running
+ *   rdrctl stop                # Stop server
+ *   rdrctl restart             # Stop + start server
+ *   rdrctl --socket /path      # Custom socket path
+ *   rdrctl --port 9999         # TCP mode
  *
  * Project detection (same as rudder):
  *   1. --root flag
@@ -74,7 +74,7 @@ function showHelp() {
   console.log(`Rudder MCP Server
 
 Usage:
-  rudder-mcp [command] [options]
+  rdrctl [command] [options]
 
 Commands:
   start     Start MCP server (default, daemon mode)
@@ -91,13 +91,13 @@ Options:
   -h, --help         Show this help
 
 Examples:
-  rudder-mcp               # Start as daemon (default)
-  rudder-mcp start         # Same as above
-  rudder-mcp start -f      # Start in foreground
-  rudder-mcp restart       # Stop + start
-  rudder-mcp status        # Check status
-  rudder-mcp stop          # Stop server
-  rudder-mcp log           # Tail logs
+  rdrctl               # Start as daemon (default)
+  rdrctl start         # Same as above
+  rdrctl start -f      # Start in foreground
+  rdrctl restart       # Stop + start
+  rdrctl status        # Check status
+  rdrctl stop          # Stop server
+  rdrctl log           # Tail logs
 `);
 }
 
@@ -410,7 +410,7 @@ function handleLog() {
 
   if (!fs.existsSync(logFile)) {
     console.error(`Log file not found: ${logFile}`);
-    console.error('Start the MCP server first: rudder-mcp start');
+    console.error('Start the MCP server first: rdrctl start');
     process.exit(1);
   }
 

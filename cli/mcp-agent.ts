@@ -62,7 +62,7 @@ function createConnectionHandler(mode: 'tcp' | 'unix') {
     log('INFO', `Client #${connId} connected`, { mode });
 
     const clientServer = new Server(
-      { name: 'rudder-mcp-agent', version: '1.0.0' },
+      { name: 'rdrctl-agent', version: '1.0.0' },
       { capabilities: { tools: {} } }
     );
 
@@ -108,7 +108,7 @@ async function main() {
   } else {
     // Stdio mode
     const server = new Server(
-      { name: 'rudder-mcp-agent', version: '1.0.0' },
+      { name: 'rdrctl-agent', version: '1.0.0' },
       { capabilities: { tools: {} } }
     );
     server.setRequestHandler(ListToolsRequestSchema, async () => ({ tools: TOOLS }));

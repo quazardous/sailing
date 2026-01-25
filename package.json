@@ -9,7 +9,7 @@
   "description": "Project governance CLI for sailing workflow - PRD/Epic/Task management",
   "bin": {
     "rudder": "./bin/rudder",
-    "rudder-mcp": "./mcp/rudder-server.js"
+    "rdrctl": "./mcp/rudder-server.js"
   },
   "scripts": {
     "rudder": "node dist/cli/rudder.js",
