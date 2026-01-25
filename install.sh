@@ -745,6 +745,9 @@ echo "  bin/rudder versions --components  # Show/configure version tracking"
 echo "  bin/rudder prd:create \"My first PRD\""
 echo "  bin/rudder prd:list"
 echo
+echo "Dashboard (visualize project, Gantt, dependency graph):"
+echo "  bin/rudder dashboard"
+echo
 
 # Show sandbox setup steps for worktree mode
 if [ "$USE_WORKTREE" = true ]; then

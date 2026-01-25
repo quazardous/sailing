@@ -51,12 +51,19 @@ rm -rf "$WORK_DIR"/*
 mkdir -p "$WORK_DIR/dist"
 cp -r dist/cli "$WORK_DIR/dist/"
 
+# Dashboard UI (Vue.js built files)
+if [ -d "dashboard-ui/dist" ]; then
+  mkdir -p "$WORK_DIR/dashboard-ui"
+  cp -r dashboard-ui/dist "$WORK_DIR/dashboard-ui/"
+  echo "  ✓ Dashboard UI included"
+fi
+
 # Distribution templates
 cp dist/*.yaml-dist dist/*.md-dist "$WORK_DIR/dist/" 2>/dev/null || true
 
-# CLI wrappers
-mkdir -p "$WORK_DIR/bin"
-cp bin/rudder bin/rudder-mcp "$WORK_DIR/bin/"
+# CLI wrappers (from scripts/*.dist)
+mkdir -p "$WORK_DIR/scripts"
+cp scripts/rudder.dist scripts/rdrctl.dist "$WORK_DIR/scripts/"
 
 # Prompting fragments
 cp -r prompting "$WORK_DIR/"
