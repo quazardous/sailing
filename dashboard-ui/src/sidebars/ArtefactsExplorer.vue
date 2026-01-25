@@ -94,7 +94,7 @@ function getIcon(_type: 'prd' | 'epic' | 'task', status: string): string {
 function getIconColor(status: string): string {
   switch (status) {
     case 'Done': return 'green';
-    case 'Blocked': return 'red';
+    case 'Blocked': return 'orange';
     default: return 'gray';
   }
 }
