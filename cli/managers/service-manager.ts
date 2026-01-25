@@ -13,6 +13,19 @@ import { getPath, findProjectRoot } from './core-manager.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
+// Detect if running from source (.ts) or dist (.js)
+function getScriptInfo(basePath: string): { cmd: string; args: string[]; ext: string } {
+  const tsPath = basePath + '.ts';
+  const jsPath = basePath + '.js';
+
+  // Check if .ts file exists (dev mode)
+  if (fs.existsSync(tsPath)) {
+    return { cmd: 'npx', args: ['tsx', tsPath], ext: '.ts' };
+  }
+  // Otherwise use .js (dist mode)
+  return { cmd: 'node', args: [jsPath], ext: '.js' };
+}
+
 // =============================================================================
 // Types
 // =============================================================================
@@ -175,9 +188,9 @@ export class ServiceManager {
     const conductorArgs = getTransportArgs('conductor', 0);
     conductorArgs.push('--project-root', this.projectRoot);
 
-    const mcpConductorPath = path.join(this.cliDir, 'conductor', 'mcp-conductor.ts');
+    const conductorScript = getScriptInfo(path.join(this.cliDir, 'conductor', 'mcp-conductor'));
     const conductorOut = fs.openSync(conductorLog, 'a');
-    const conductorChild = spawn('npx', ['tsx', mcpConductorPath, ...conductorArgs], {
+    const conductorChild = spawn(conductorScript.cmd, [...conductorScript.args, ...conductorArgs], {
       stdio: ['ignore', conductorOut, conductorOut],
       cwd: this.projectRoot,
       detached: !foreground
@@ -199,9 +212,9 @@ export class ServiceManager {
       const agentArgs = getTransportArgs('agent', 1);
       agentArgs.push('--project-root', this.projectRoot);
 
-      const mcpAgentPath = path.join(this.cliDir, 'mcp-agent.ts');
+      const agentScript = getScriptInfo(path.join(this.cliDir, 'mcp-agent'));
       const agentOut = fs.openSync(agentLog, 'a');
-      const agentChild = spawn('npx', ['tsx', mcpAgentPath, ...agentArgs], {
+      const agentChild = spawn(agentScript.cmd, [...agentScript.args, ...agentArgs], {
         stdio: ['ignore', agentOut, agentOut],
         cwd: this.projectRoot,
         detached: !foreground
