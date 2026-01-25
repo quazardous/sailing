@@ -4,6 +4,11 @@ All notable changes to the Sailing Framework will be documented in this file.
 
 <!-- NOTE: This is a USER changelog, not a commit log. Focus on user-visible features and benefits, not implementation details. -->
 
+## [1.17.1] - 2026-01-25
+
+### Changed
+- Dashboard: PRD Overview Gantt simplified (span bar with status color, progress fills box)
+
 ## [1.17.0] - 2026-01-25
 
 ### Added
