@@ -73,6 +73,20 @@ async function computeLayout() {
 
   isLoading.value = true;
 
+  // Build set of valid node IDs to filter edges
+  const validNodeIds = new Set(props.data.nodes.map(n => n.id));
+
+  // Filter edges to only include those with valid source and target nodes
+  const validEdges = props.data.edges.filter(edge => {
+    const hasSource = validNodeIds.has(edge.from);
+    const hasTarget = validNodeIds.has(edge.to);
+    if (!hasSource || !hasTarget) {
+      console.warn(`Skipping edge ${edge.from} -> ${edge.to}: missing node(s)`);
+      return false;
+    }
+    return true;
+  });
+
   const graph = {
     id: 'root',
     layoutOptions: {
@@ -92,7 +106,7 @@ async function computeLayout() {
       nodeStatus: node.status,
       nodeLevel: node.level
     })),
-    edges: props.data.edges.map((edge, i) => ({
+    edges: validEdges.map((edge, i) => ({
       id: `e${i}`,
       sources: [edge.from],
       targets: [edge.to],
