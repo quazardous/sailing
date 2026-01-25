@@ -8,7 +8,7 @@ import type { PrdData, EpicData, TaskData, StructuredDagResult, DagNode, DagEdge
 /**
  * Generate structured DAG for a PRD
  */
-export function generateStructuredPrdDag(prd: PrdData, showTasks: boolean = true): StructuredDagResult {
+export function generateStructuredPrdDag(prd: PrdData, showTasks: boolean = true, criticalPath?: string[]): StructuredDagResult {
   const nodes: DagNode[] = [];
   const edges: DagEdge[] = [];
 
@@ -74,7 +74,7 @@ export function generateStructuredPrdDag(prd: PrdData, showTasks: boolean = true
     }
   }
 
-  return { nodes, edges };
+  return { nodes, edges, criticalPath };
 }
 
 /**
@@ -82,7 +82,8 @@ export function generateStructuredPrdDag(prd: PrdData, showTasks: boolean = true
  */
 export function generateStructuredEpicDag(
   epic: EpicData,
-  parentPrd: { id: string; title: string; status?: string }
+  parentPrd: { id: string; title: string; status?: string },
+  criticalPath?: string[]
 ): StructuredDagResult {
   const nodes: DagNode[] = [];
   const edges: DagEdge[] = [];
@@ -145,7 +146,7 @@ export function generateStructuredEpicDag(
     }
   }
 
-  return { nodes, edges };
+  return { nodes, edges, criticalPath };
 }
 
 /**

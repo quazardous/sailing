@@ -112,6 +112,7 @@ export interface DagEdge {
 export interface StructuredDagResult {
   nodes: DagNode[];
   edges: DagEdge[];
+  criticalPath?: string[];
 }
 
 /**

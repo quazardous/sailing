@@ -295,8 +295,8 @@ export function createApiV2Routes(): Record<string, (req: http.IncomingMessage, 
           return;
         }
 
-        const dagData = generateStructuredPrdDag(prd, true);
         const ganttData = generatePrdGantt(prd, getEffortConfig());
+        const dagData = generateStructuredPrdDag(prd, true, ganttData.criticalPath);
 
         const response: ArtefactResponse = {
           type: 'prd',
@@ -313,8 +313,8 @@ export function createApiV2Routes(): Record<string, (req: http.IncomingMessage, 
         for (const prd of prds) {
           const epic = prd.epics.find(e => e.id === id);
           if (epic) {
-            const dagData = generateStructuredEpicDag(epic, { id: prd.id, title: prd.title, status: prd.status });
             const ganttData = generateEpicGantt(epic, getEffortConfig());
+            const dagData = generateStructuredEpicDag(epic, { id: prd.id, title: prd.title, status: prd.status }, ganttData.criticalPath);
 
             const response: ArtefactResponse = {
               type: 'epic',

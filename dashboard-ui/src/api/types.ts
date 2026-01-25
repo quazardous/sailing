@@ -67,6 +67,7 @@ export interface DagEdge {
 export interface DagData {
   nodes: DagNode[];
   edges: DagEdge[];
+  criticalPath?: string[];
 }
 
 // Artefact detail response
