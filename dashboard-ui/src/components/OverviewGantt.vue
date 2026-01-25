@@ -100,6 +100,12 @@ function getStatusClass(status: string): string {
 function formatProgress(progress: number): string {
   return `${Math.round(progress)}%`;
 }
+
+function formatEffort(hours: number | undefined): string {
+  if (!hours) return '';
+  if (hours < 1) return `${Math.round(hours * 60)}m`;
+  return `${Math.round(hours * 10) / 10}h`;
+}
 </script>
 
 <template>
@@ -169,12 +175,15 @@ function formatProgress(progress: number): string {
             class="critical-line"
           />
 
-          <!-- Progress text -->
+          <!-- Progress and effort text -->
           <text
             :x="labelWidth + (task.endHour - displayStartHour) * unitWidth + 4"
             :y="headerHeight + index * rowHeight + rowHeight / 2 + 4"
             class="progress-label"
-          >{{ formatProgress(task.progress) }}</text>
+          >
+            <tspan>{{ formatProgress(task.progress) }}</tspan>
+            <tspan v-if="task.criticalTimespanHours" class="effort-label" dx="4">{{ formatEffort(task.criticalTimespanHours) }}</tspan>
+          </text>
         </g>
       </g>
 
@@ -259,6 +268,12 @@ function formatProgress(progress: number): string {
   fill: var(--text-dim, #888);
   font-size: 10px;
   font-weight: 500;
+}
+
+.effort-label {
+  fill: var(--text-dim, #666);
+  font-size: 9px;
+  font-weight: 400;
 }
 
 /* Today line - blue dashed, on top with slight transparency */
