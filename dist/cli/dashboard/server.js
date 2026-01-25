@@ -153,9 +153,14 @@ export function html(res, content, status = 200) {
     res.writeHead(status, { 'Content-Type': 'text/html; charset=utf-8' });
     res.end(content);
 }
-// Helper to send JSON response
+// Helper to send JSON response (no-cache for live updates)
 export function json(res, data, status = 200) {
-    res.writeHead(status, { 'Content-Type': 'application/json' });
+    res.writeHead(status, {
+        'Content-Type': 'application/json',
+        'Cache-Control': 'no-store, no-cache, must-revalidate',
+        'Pragma': 'no-cache',
+        'Expires': '0'
+    });
     res.end(JSON.stringify(data));
 }
 // Vue app directory (built assets)
