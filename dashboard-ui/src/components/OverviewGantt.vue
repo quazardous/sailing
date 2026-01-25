@@ -144,35 +144,36 @@ function formatEffort(hours: number | undefined): string {
             <tspan dx="6">{{ task.name }}</tspan>
           </text>
 
-          <!-- Task bar background -->
+          <!-- Task bar: full span background (dim) -->
           <rect
             :x="labelWidth + (task.startHour - displayStartHour) * unitWidth"
             :y="headerHeight + index * rowHeight + 6"
             :width="Math.max((task.endHour - task.startHour) * unitWidth, 4)"
             :height="rowHeight - 12"
             :rx="3"
+            class="task-bar-span"
+          />
+
+          <!-- Effort bar (criticalTimespanHours) - shows planned effort -->
+          <rect
+            v-if="task.criticalTimespanHours"
+            :x="labelWidth + (task.startHour - displayStartHour) * unitWidth"
+            :y="headerHeight + index * rowHeight + 6"
+            :width="Math.max(task.criticalTimespanHours * unitWidth, 4)"
+            :height="rowHeight - 12"
+            :rx="3"
             :class="['task-bar', getStatusClass(task.status)]"
           />
 
-          <!-- Progress fill -->
+          <!-- Progress fill (within effort) -->
           <rect
-            v-if="task.progress > 0"
+            v-if="task.progress > 0 && task.criticalTimespanHours"
             :x="labelWidth + (task.startHour - displayStartHour) * unitWidth"
             :y="headerHeight + index * rowHeight + 6"
-            :width="Math.max((task.endHour - task.startHour) * unitWidth * (task.progress / 100), 2)"
+            :width="Math.max(task.criticalTimespanHours * unitWidth * (task.progress / 100), 2)"
             :height="rowHeight - 12"
             :rx="3"
             class="task-bar-progress"
-          />
-
-          <!-- Critical line (if exceeded) -->
-          <line
-            v-if="task.criticalTimespanHours && (task.endHour - task.startHour) > task.criticalTimespanHours * 1.1"
-            :x1="labelWidth + (task.startHour - displayStartHour) * unitWidth + task.criticalTimespanHours * unitWidth"
-            :y1="headerHeight + index * rowHeight + 4"
-            :x2="labelWidth + (task.startHour - displayStartHour) * unitWidth + task.criticalTimespanHours * unitWidth"
-            :y2="headerHeight + index * rowHeight + rowHeight - 4"
-            class="critical-line"
           />
 
           <!-- Progress and effort text -->
@@ -180,10 +181,7 @@ function formatEffort(hours: number | undefined): string {
             :x="labelWidth + (task.endHour - displayStartHour) * unitWidth + 4"
             :y="headerHeight + index * rowHeight + rowHeight / 2 + 4"
             class="progress-label"
-          >
-            <tspan>{{ formatProgress(task.progress) }}</tspan>
-            <tspan v-if="task.criticalTimespanHours" class="effort-label" dx="4">{{ formatEffort(task.criticalTimespanHours) }}</tspan>
-          </text>
+          >{{ formatProgress(task.progress) }}<template v-if="task.criticalTimespanHours"> · {{ formatEffort(task.criticalTimespanHours) }}</template></text>
         </g>
       </g>
 
@@ -233,8 +231,15 @@ function formatEffort(hours: number | undefined): string {
   fill: var(--accent, #4fc3f7);
 }
 
+/* Span bar - full duration (very dim background) */
+.task-bar-span {
+  fill: #374151;
+  opacity: 0.3;
+}
+
+/* Effort bar - planned work duration */
 .task-bar {
-  opacity: 0.4;
+  opacity: 0.6;
 }
 
 .task-bar.pending {
