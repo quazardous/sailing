@@ -135,7 +135,7 @@ function getChildExpanded(childId: string): boolean {
         v-if="node.icon"
         class="tree-icon"
         :class="node.iconColor ? 'icon-' + node.iconColor : ''"
-        :title="node.statusText"
+        :data-tooltip="node.statusText"
       >
         {{ node.icon }}
       </span>
@@ -282,6 +282,32 @@ function getChildExpanded(childId: string): boolean {
   flex-shrink: 0;
   font-size: 12px;
   margin-left: 2px;
+  position: relative;
+}
+
+/* Material Design tooltip */
+.tree-icon[data-tooltip]:hover::after {
+  content: attr(data-tooltip);
+  position: absolute;
+  left: 50%;
+  bottom: calc(100% + 6px);
+  transform: translateX(-50%);
+  background: #616161;
+  color: #fff;
+  font-size: 11px;
+  font-weight: 400;
+  padding: 4px 8px;
+  border-radius: 2px;
+  white-space: nowrap;
+  z-index: 1000;
+  pointer-events: none;
+  opacity: 0;
+  animation: tooltip-fade-in 0.15s ease forwards;
+  animation-delay: 0.3s;
+}
+
+@keyframes tooltip-fade-in {
+  to { opacity: 1; }
 }
 
 .tree-icon.icon-blue { color: #60a5fa; }

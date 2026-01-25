@@ -81,13 +81,13 @@ function getIcon(_type: 'prd' | 'epic' | 'task', status: string): string {
     case 'Done': return '✓';
     case 'Blocked': return '⊘';
     case 'In Progress':
-    case 'WIP': return '⏱';
-    case 'Cancelled': return '⊗';
-    case 'Draft': return '◌';
+    case 'WIP': return '◔';
+    case 'Cancelled': return '✕';
+    case 'Draft': return '◇';
     case 'In Review': return '◈';
-    case 'Approved': return '●';
+    case 'Approved': return '◆';
     case 'Auto-Done': return '◉';
-    default: return '⏸'; // Not Started
+    default: return '○'; // Not Started
   }
 }
 
@@ -95,14 +95,7 @@ function getIconColor(status: string): string {
   switch (status) {
     case 'Done': return 'green';
     case 'Blocked': return 'red';
-    case 'In Progress':
-    case 'WIP': return 'yellow';
-    case 'Cancelled': return 'gray';
-    case 'Draft': return 'purple';
-    case 'In Review': return 'blue';
-    case 'Approved': return 'cyan';
-    case 'Auto-Done': return 'lime';
-    default: return 'gray'; // Not Started
+    default: return 'gray';
   }
 }
 
