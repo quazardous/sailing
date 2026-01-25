@@ -27,7 +27,7 @@ const startDate = computed(() => new Date(props.data?.t0 || new Date().toISOStri
 const rowHeight = 32;
 const labelWidth = 280;
 const headerHeight = 24;
-const paddingRight = 20;
+const paddingRight = 70; // Space for "0% · 11h" text
 
 // Fixed unit width for simplicity
 const tasks = computed(() => props.data?.tasks || []);
@@ -39,9 +39,16 @@ const displayStartHour = computed(() => {
   return Math.max(0, minStart - 1); // 1 hour margin, but never negative
 });
 
-// Adjusted total hours for display
+// Adjusted total hours for display - consider both span and effort
 const displayTotalHours = computed(() => {
-  return (props.data?.totalHours || 8) - displayStartHour.value;
+  if (tasks.value.length === 0) return 8;
+  // Find max end considering both endHour (span) and startHour + effort
+  let maxEnd = props.data?.totalHours || 0;
+  for (const task of tasks.value) {
+    const effortEnd = task.startHour + (task.criticalTimespanHours || 0);
+    if (effortEnd > maxEnd) maxEnd = effortEnd;
+  }
+  return maxEnd - displayStartHour.value;
 });
 
 const unitWidth = computed(() => {
