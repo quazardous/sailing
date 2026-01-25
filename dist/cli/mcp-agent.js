@@ -36,7 +36,7 @@ function createConnectionHandler(mode) {
         const connId = ++connectionCounter;
         let clientTaskId = null;
         log('INFO', `Client #${connId} connected`, { mode });
-        const clientServer = new Server({ name: 'rudder-mcp-agent', version: '1.0.0' }, { capabilities: { tools: {} } });
+        const clientServer = new Server({ name: 'rdrctl-agent', version: '1.0.0' }, { capabilities: { tools: {} } });
         clientServer.setRequestHandler(ListToolsRequestSchema, async () => {
             return { tools: TOOLS };
         });
@@ -73,7 +73,7 @@ async function main() {
     }
     else {
         // Stdio mode
-        const server = new Server({ name: 'rudder-mcp-agent', version: '1.0.0' }, { capabilities: { tools: {} } });
+        const server = new Server({ name: 'rdrctl-agent', version: '1.0.0' }, { capabilities: { tools: {} } });
         server.setRequestHandler(ListToolsRequestSchema, async () => ({ tools: TOOLS }));
         server.setRequestHandler(CallToolRequestSchema, async (request) => {
             const { name, arguments: callArgs } = request.params;
