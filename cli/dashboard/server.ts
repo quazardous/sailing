@@ -189,8 +189,8 @@ export function json(res: http.ServerResponse, data: unknown, status = 200) {
 function getVueDistDir(): string {
   // Check multiple locations
   const locations = [
-    path.resolve(__dirname, '../../dashboard-ui/dist'),  // From dist/cli/dashboard
-    path.resolve(__dirname, '../../../dashboard-ui/dist'),  // Alternative
+    path.resolve(__dirname, '../../dashboard-ui/dist'),  // Installed: .sailing/rudder/../dashboard-ui/dist
+    path.resolve(__dirname, '../../../dashboard-ui/dist'),  // Dev: dist/cli/dashboard/../../../dashboard-ui/dist
   ];
   for (const loc of locations) {
     if (fs.existsSync(loc)) return loc;

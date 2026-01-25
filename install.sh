@@ -366,6 +366,13 @@ copy_dir() {
 echo "Installing Rudder CLI..."
 copy_dir "$SRC/dist/cli" "$RUDDER"
 
+# Dashboard UI (Vue.js built files)
+if [ -d "$SRC/dashboard-ui/dist" ]; then
+  echo "Installing Dashboard UI..."
+  create_dir "$DEFAULT_SAILING_DIR/dashboard-ui/dist"
+  copy_dir "$SRC/dashboard-ui/dist" "$DEFAULT_SAILING_DIR/dashboard-ui/dist"
+fi
+
 # Create bin wrappers and config files
 if [ "$DRY_RUN" = true ]; then
   echo "  Would copy: bin/rudder (from rudder.dist)"
