@@ -744,13 +744,11 @@ echo
 # =============================================================================
 echo -e "${GREEN}Installation complete!${NC}"
 echo
-echo "Usage:"
-echo "  bin/rudder --help"
+echo "MANDATORY -> Rudder mcp (artefacts manipulation):"
+echo "  bin/rdrctl start"
 echo
-echo "Quick start:"
-echo "  bin/rudder versions --components  # Show/configure version tracking"
-echo "  bin/rudder prd:create \"My first PRD\""
-echo "  bin/rudder prd:list"
+echo "Rudder cli (direct control):"
+echo "  bin/rudder --help"
 echo
 echo "Dashboard (visualize project, Gantt, dependency graph):"
 echo "  bin/rdrctl dashboard"
@@ -800,12 +798,7 @@ if [ "$USE_WORKTREE" = true ]; then
   echo "${STEP}. Verify setup:"
   echo "   bin/rudder sandbox:check"
   echo
-  STEP=$((STEP + 1))
 
-  echo "${STEP}. Before spawning agents, start the MCP server:"
-  echo "   bin/rdrctl start agents"
-  echo "   (keep it running in a terminal)"
-  echo
   echo "Documentation: docs/sandbox.md"
   echo
 fi
