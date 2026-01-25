@@ -60,3 +60,43 @@ export function stripComments(content: string): string {
 export function jsonOut(data: any): void {
   console.log(JSON.stringify(data, null, 2));
 }
+
+/**
+ * Validate HTML comments are properly closed
+ * Returns list of unclosed comment positions
+ */
+export function validateHtmlComments(content: string): { valid: boolean; unclosedAt: number[] } {
+  const unclosedAt: number[] = [];
+  let pos = 0;
+
+  while (pos < content.length) {
+    const openIdx = content.indexOf('<!--', pos);
+    if (openIdx === -1) break;
+
+    const closeIdx = content.indexOf('-->', openIdx + 4);
+    if (closeIdx === -1) {
+      unclosedAt.push(openIdx);
+      break; // No more closing tags possible
+    }
+
+    pos = closeIdx + 3;
+  }
+
+  return { valid: unclosedAt.length === 0, unclosedAt };
+}
+
+/**
+ * Check if content has unclosed HTML comments
+ * Throws error with details if invalid
+ */
+export function assertValidHtmlComments(content: string, context?: string): void {
+  const result = validateHtmlComments(content);
+  if (!result.valid) {
+    const positions = result.unclosedAt.map(pos => {
+      const lineNum = content.slice(0, pos).split('\n').length;
+      const preview = content.slice(pos, pos + 50).replace(/\n/g, '\\n');
+      return `line ${lineNum}: "${preview}..."`;
+    }).join(', ');
+    throw new Error(`Unclosed HTML comment${context ? ` in ${context}` : ''}: ${positions}`);
+  }
+}

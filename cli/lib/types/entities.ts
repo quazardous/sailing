@@ -36,7 +36,13 @@ export interface Story extends BaseEntity {
   parent_story?: string | null;
 }
 
-export interface TaskIndexEntry {
+/** File timestamps */
+export interface FileTimestamps {
+  createdAt: string;   // ISO date string
+  modifiedAt: string;  // ISO date string
+}
+
+export interface TaskIndexEntry extends FileTimestamps {
   key: string;
   id: string;
   file: string;
@@ -46,7 +52,7 @@ export interface TaskIndexEntry {
   data: Partial<Task>;
 }
 
-export interface EpicIndexEntry {
+export interface EpicIndexEntry extends FileTimestamps {
   key: string;
   id: string;
   file: string;
@@ -55,7 +61,7 @@ export interface EpicIndexEntry {
   data: Partial<Epic>;
 }
 
-export interface PrdIndexEntry {
+export interface PrdIndexEntry extends FileTimestamps {
   num: number;
   id: string;
   dir: string;
@@ -63,7 +69,7 @@ export interface PrdIndexEntry {
   data: Partial<Prd>;
 }
 
-export interface StoryIndexEntry {
+export interface StoryIndexEntry extends FileTimestamps {
   key: string;
   id: string;
   file: string;
@@ -75,7 +81,7 @@ export interface StoryIndexEntry {
 /**
  * Full task with all metadata for display/scheduling
  */
-export interface FullTask {
+export interface FullTask extends FileTimestamps {
   id: string;
   title: string;
   status: string;
@@ -86,7 +92,7 @@ export interface FullTask {
 /**
  * Full epic with its tasks
  */
-export interface FullEpic {
+export interface FullEpic extends FileTimestamps {
   id: string;
   title: string;
   status: string;
@@ -98,7 +104,7 @@ export interface FullEpic {
 /**
  * Full PRD with epics and tasks hierarchy
  */
-export interface FullPrd {
+export interface FullPrd extends FileTimestamps {
   id: string;
   title: string;
   status: string;

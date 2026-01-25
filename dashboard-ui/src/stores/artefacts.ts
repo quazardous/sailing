@@ -17,6 +17,7 @@ export const useArtefactsStore = defineStore('artefacts', () => {
   const selectedArtefact = ref<ArtefactResponse | null>(null);
   const loading = ref(false);
   const error = ref<string | null>(null);
+  const lastRefresh = ref<number>(Date.now()); // For forcing re-renders
 
   // Computed
   const selectedType = computed<ArtefactType | null>(() => {
@@ -48,11 +49,11 @@ export const useArtefactsStore = defineStore('artefacts', () => {
       if (prd.status === 'Blocked') {
         blocked.push({ id: prd.id, title: prd.title, type: 'prd' });
       }
-      for (const epic of prd.epics) {
+      for (const epic of (prd.epics || [])) {
         if (epic.status === 'Blocked') {
           blocked.push({ id: epic.id, title: epic.title, type: 'epic' });
         }
-        for (const task of epic.tasks) {
+        for (const task of (epic.tasks || [])) {
           if (task.status === 'Blocked') {
             blocked.push({ id: task.id, title: task.title, type: 'task' });
           }
@@ -71,12 +72,58 @@ export const useArtefactsStore = defineStore('artefacts', () => {
     try {
       const response = await api.getTree();
       prds.value = response.prds;
+      lastRefresh.value = Date.now(); // Trigger reactivity
+
+      // Debug: check if timestamps are present
+      if (response.prds.length > 0) {
+        const prd = response.prds[0];
+        console.log(`[ArtefactsStore] Sample PRD timestamps: createdAt=${prd.createdAt}, modifiedAt=${prd.modifiedAt}`);
+        if (prd.epics && prd.epics.length > 0) {
+          const epic = prd.epics[0];
+          console.log(`[ArtefactsStore] Sample Epic timestamps: createdAt=${epic.createdAt}, modifiedAt=${epic.modifiedAt}`);
+        }
+      }
+
+      // Update "new" flags based on timestamps
+      updateNewFlags();
     } catch (e) {
       error.value = e instanceof Error ? e.message : 'Failed to fetch tree';
       console.error('[ArtefactsStore] fetchTree error:', e);
     } finally {
       loading.value = false;
     }
+  }
+
+  /**
+   * Extract all artefacts with timestamps and update notifications
+   */
+  function updateNewFlags(): void {
+    const notificationsStore = useNotificationsStore();
+    const artefacts: Array<{ id: string; createdAt?: string; modifiedAt?: string }> = [];
+
+    for (const prd of prds.value) {
+      artefacts.push({
+        id: prd.id,
+        createdAt: prd.createdAt,
+        modifiedAt: prd.modifiedAt,
+      });
+      for (const epic of (prd.epics || [])) {
+        artefacts.push({
+          id: epic.id,
+          createdAt: epic.createdAt,
+          modifiedAt: epic.modifiedAt,
+        });
+        for (const task of (epic.tasks || [])) {
+          artefacts.push({
+            id: task.id,
+            createdAt: task.createdAt,
+            modifiedAt: task.modifiedAt,
+          });
+        }
+      }
+    }
+
+    notificationsStore.updateNewArtefacts(artefacts);
   }
 
   async function selectArtefact(id: string): Promise<void> {
@@ -108,7 +155,7 @@ export const useArtefactsStore = defineStore('artefacts', () => {
 
   function findEpic(epicId: string): { epic: EpicData; prd: PrdData } | null {
     for (const prd of prds.value) {
-      const epic = prd.epics.find((e) => e.id === epicId);
+      const epic = (prd.epics || []).find((e) => e.id === epicId);
       if (epic) {
         return { epic, prd };
       }
@@ -118,8 +165,8 @@ export const useArtefactsStore = defineStore('artefacts', () => {
 
   function findTask(taskId: string): { task: TaskData; epic: EpicData; prd: PrdData } | null {
     for (const prd of prds.value) {
-      for (const epic of prd.epics) {
-        const task = epic.tasks.find((t) => t.id === taskId);
+      for (const epic of (prd.epics || [])) {
+        const task = (epic.tasks || []).find((t) => t.id === taskId);
         if (task) {
           return { task, epic, prd };
         }
@@ -129,12 +176,35 @@ export const useArtefactsStore = defineStore('artefacts', () => {
   }
 
   async function refresh(): Promise<void> {
-    await api.refresh();
-    await fetchTree();
+    console.log('[ArtefactsStore] refresh() called');
 
-    // Refresh selected artefact if any
+    // Note: Cache is already cleared by the watcher on file changes
+    // We just need to re-fetch the data
+    await fetchTree();
+    console.log('[ArtefactsStore] fetchTree() done, prds count:', prds.value.length);
+
+    // Refresh selected artefact if any (force re-fetch)
     if (selectedId.value) {
-      await selectArtefact(selectedId.value);
+      await refetchSelectedArtefact();
+    }
+  }
+
+  /**
+   * Force re-fetch the currently selected artefact
+   */
+  async function refetchSelectedArtefact(): Promise<void> {
+    if (!selectedId.value) return;
+
+    loading.value = true;
+    error.value = null;
+
+    try {
+      selectedArtefact.value = await api.getArtefact(selectedId.value);
+    } catch (e) {
+      error.value = e instanceof Error ? e.message : 'Failed to fetch artefact';
+      console.error('[ArtefactsStore] refetchSelectedArtefact error:', e);
+    } finally {
+      loading.value = false;
     }
   }
 
@@ -145,6 +215,7 @@ export const useArtefactsStore = defineStore('artefacts', () => {
     selectedArtefact,
     loading,
     error,
+    lastRefresh,
     // Computed
     selectedType,
     totalTasks,

@@ -8,6 +8,8 @@ export interface TaskData {
   status: string;
   description: string;
   meta: Record<string, unknown>;
+  createdAt?: string;
+  modifiedAt?: string;
 }
 
 export interface EpicData {
@@ -17,6 +19,8 @@ export interface EpicData {
   description: string;
   meta: Record<string, unknown>;
   tasks: TaskData[];
+  createdAt?: string;
+  modifiedAt?: string;
 }
 
 export interface PrdData {
@@ -29,6 +33,8 @@ export interface PrdData {
   totalTasks: number;
   doneTasks: number;
   progress: number;
+  createdAt?: string;
+  modifiedAt?: string;
 }
 
 export interface BlockerData {

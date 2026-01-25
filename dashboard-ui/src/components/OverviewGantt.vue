@@ -32,38 +32,55 @@ const paddingRight = 20;
 // Fixed unit width for simplicity
 const tasks = computed(() => props.data?.tasks || []);
 
+// Calculate display offset - start at first task minus 1 hour margin
+const displayStartHour = computed(() => {
+  if (tasks.value.length === 0) return 0;
+  const minStart = Math.min(...tasks.value.map(t => t.startHour));
+  return Math.max(0, minStart - 1); // 1 hour margin, but never negative
+});
+
+// Adjusted total hours for display
+const displayTotalHours = computed(() => {
+  return (props.data?.totalHours || 8) - displayStartHour.value;
+});
+
 const unitWidth = computed(() => {
-  const hours = props.data?.totalHours || 8;
+  const hours = displayTotalHours.value || 8;
   const availableWidth = 400; // Target width
   return Math.max(2, Math.min(10, availableWidth / hours));
 });
 
 const chartWidth = computed(() => {
-  return labelWidth + (props.data?.totalHours || 8) * unitWidth.value + paddingRight;
+  return labelWidth + displayTotalHours.value * unitWidth.value + paddingRight;
 });
 
 const chartHeight = computed(() => {
   return headerHeight + tasks.value.length * rowHeight + 10;
 });
 
-// Today line position
+// Today line position - adjusted for display offset
 const todayLineX = computed(() => {
   const now = new Date();
   const hoursSinceT0 = (now.getTime() - startDate.value.getTime()) / (1000 * 60 * 60);
-  if (hoursSinceT0 >= 0 && hoursSinceT0 <= (props.data?.totalHours || 0)) {
-    return labelWidth + hoursSinceT0 * unitWidth.value;
+  const adjustedHours = hoursSinceT0 - displayStartHour.value;
+  if (adjustedHours >= 0 && hoursSinceT0 <= (props.data?.totalHours || 0)) {
+    return labelWidth + adjustedHours * unitWidth.value;
   }
   return null;
 });
 
-// Time labels (simplified - just show start/end dates)
+// Time labels (simplified - just show start/end dates) - adjusted for display offset
 const timeLabels = computed(() => {
   const labels: Array<{ x: number; label: string }> = [];
-  const hours = props.data.totalHours || 8;
-  const interval = Math.max(Math.ceil(hours / 5), 24); // At most 5 labels
+  const startH = displayStartHour.value;
+  const endH = props.data.totalHours || 8;
+  const interval = Math.max(Math.ceil(displayTotalHours.value / 5), 24); // At most 5 labels
 
-  for (let h = 0; h <= hours; h += interval) {
-    const x = labelWidth + h * unitWidth.value;
+  // Align to interval boundary
+  const firstLabel = Math.ceil(startH / interval) * interval;
+
+  for (let h = firstLabel; h <= endH; h += interval) {
+    const x = labelWidth + (h - startH) * unitWidth.value;
     const d = new Date(startDate.value);
     d.setHours(d.getHours() + h);
     const day = d.getDate();
@@ -123,7 +140,7 @@ function formatProgress(progress: number): string {
 
           <!-- Task bar background -->
           <rect
-            :x="labelWidth + task.startHour * unitWidth"
+            :x="labelWidth + (task.startHour - displayStartHour) * unitWidth"
             :y="headerHeight + index * rowHeight + 6"
             :width="Math.max((task.endHour - task.startHour) * unitWidth, 4)"
             :height="rowHeight - 12"
@@ -134,7 +151,7 @@ function formatProgress(progress: number): string {
           <!-- Progress fill -->
           <rect
             v-if="task.progress > 0"
-            :x="labelWidth + task.startHour * unitWidth"
+            :x="labelWidth + (task.startHour - displayStartHour) * unitWidth"
             :y="headerHeight + index * rowHeight + 6"
             :width="Math.max((task.endHour - task.startHour) * unitWidth * (task.progress / 100), 2)"
             :height="rowHeight - 12"
@@ -145,16 +162,16 @@ function formatProgress(progress: number): string {
           <!-- Critical line (if exceeded) -->
           <line
             v-if="task.criticalTimespanHours && (task.endHour - task.startHour) > task.criticalTimespanHours * 1.1"
-            :x1="labelWidth + task.startHour * unitWidth + task.criticalTimespanHours * unitWidth"
+            :x1="labelWidth + (task.startHour - displayStartHour) * unitWidth + task.criticalTimespanHours * unitWidth"
             :y1="headerHeight + index * rowHeight + 4"
-            :x2="labelWidth + task.startHour * unitWidth + task.criticalTimespanHours * unitWidth"
+            :x2="labelWidth + (task.startHour - displayStartHour) * unitWidth + task.criticalTimespanHours * unitWidth"
             :y2="headerHeight + index * rowHeight + rowHeight - 4"
             class="critical-line"
           />
 
           <!-- Progress text -->
           <text
-            :x="labelWidth + task.endHour * unitWidth + 4"
+            :x="labelWidth + (task.endHour - displayStartHour) * unitWidth + 4"
             :y="headerHeight + index * rowHeight + rowHeight / 2 + 4"
             class="progress-label"
           >{{ formatProgress(task.progress) }}</text>

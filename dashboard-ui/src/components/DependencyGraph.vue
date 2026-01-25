@@ -104,6 +104,26 @@ async function computeLayout() {
     const layoutResult: any = await elk.layout(graph);
     const criticalSet = new Set(props.data.criticalPath || []);
 
+    // Expand critical set to include parent epics/prds of critical tasks
+    // Find hierarchy edges to determine parent-child relationships
+    const childToParent = new Map<string, string>();
+    for (const edge of props.data.edges) {
+      if (edge.type === 'hierarchy') {
+        childToParent.set(edge.to, edge.from);
+      }
+    }
+
+    // For each critical node, mark its ancestors as critical too
+    const expandedCriticalSet = new Set(criticalSet);
+    for (const nodeId of criticalSet) {
+      let current = nodeId;
+      while (childToParent.has(current)) {
+        const parent = childToParent.get(current)!;
+        expandedCriticalSet.add(parent);
+        current = parent;
+      }
+    }
+
     // Extract positioned nodes
     layoutNodes.value = (layoutResult.children || []).map((child: any) => ({
       id: child.id,
@@ -113,15 +133,15 @@ async function computeLayout() {
       level: child.nodeLevel,
       x: child.x || 0,
       y: child.y || 0,
-      isCritical: criticalSet.has(child.id)
+      isCritical: expandedCriticalSet.has(child.id)
     }));
 
-    // Extract positioned edges
+    // Extract positioned edges - critical if both ends are in expanded critical set
     layoutEdges.value = (layoutResult.edges || []).map((edge: any) => ({
       from: edge.sources[0],
       to: edge.targets[0],
       type: edge.edgeType,
-      isCritical: criticalSet.has(edge.sources[0]) && criticalSet.has(edge.targets[0]),
+      isCritical: expandedCriticalSet.has(edge.sources[0]) && expandedCriticalSet.has(edge.targets[0]),
       sections: edge.sections || []
     }));
 

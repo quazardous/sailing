@@ -12,6 +12,8 @@ export interface TaskData {
   status: ArtefactStatus;
   description?: string;
   meta?: Record<string, unknown>;
+  createdAt?: string;
+  modifiedAt?: string;
 }
 
 export interface EpicData {
@@ -21,6 +23,8 @@ export interface EpicData {
   description?: string;
   meta?: Record<string, unknown>;
   tasks: TaskData[];
+  createdAt?: string;
+  modifiedAt?: string;
 }
 
 export interface PrdData {
@@ -33,6 +37,8 @@ export interface PrdData {
   totalTasks: number;
   doneTasks: number;
   epics: EpicData[];
+  createdAt?: string;
+  modifiedAt?: string;
 }
 
 // Tree response
@@ -136,8 +142,16 @@ export interface WsMessage {
   line?: string;
   status?: AgentStatus;
   id?: string;
+  artefactType?: ArtefactType;
   message?: string;
   timestamp?: string;
+}
+
+// Project info
+export interface ProjectInfo {
+  path: string;
+  relativePath: string;
+  name: string;
 }
 
 // API response wrapper

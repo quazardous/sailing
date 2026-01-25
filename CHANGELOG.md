@@ -4,6 +4,26 @@ All notable changes to the Sailing Framework will be documented in this file.
 
 <!-- NOTE: This is a USER changelog, not a commit log. Focus on user-visible features and benefits, not implementation details. -->
 
+## [1.17.0] - 2026-01-25
+
+### Added
+- Dashboard: "New" indicator system based on file timestamps (createdAt/modifiedAt vs viewedAt)
+- Dashboard: Orange background tint for new/unviewed items in tree explorer
+- Dashboard: New descendants count badge on collapsed folders with unviewed children
+- Dashboard: Project-scoped localStorage (storage keys use hash of project path)
+- Dashboard: Tree state persistence (expanded/collapsed state survives refresh and WebSocket events)
+- Dashboard: Critical path now propagates to parent nodes (epics/PRDs containing critical tasks are highlighted)
+
+### Changed
+- Dashboard: Gantt charts now start at first detected task hour (with 1h margin) instead of 00:00
+- Dashboard: Task span in Gantt stats now calculated from actual tasks (min start to max end)
+- Dashboard: WebSocket file change events no longer reset explorer expanded state
+- Dashboard: Collapsed parent inherits orange "new" style only when children are new
+
+### Fixed
+- Dashboard: Null safety for `epic.tasks` and `prd.epics` arrays throughout codebase
+- Dashboard: Watcher now clears both dashboard cache AND artefacts manager cache on file changes
+
 ## [1.16.0] - 2026-01-25
 
 ### Added

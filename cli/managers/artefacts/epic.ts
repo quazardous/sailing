@@ -3,7 +3,7 @@
  */
 import fs from 'fs';
 import path from 'path';
-import { findPrdDirs, loadFile, saveFile, toKebab, loadTemplate, formatId } from '../core-manager.js';
+import { findPrdDirs, loadFile, saveFile, toKebab, loadTemplate, formatId, getFileTimestamps } from '../core-manager.js';
 import { nextId } from '../state-manager.js';
 import { createEpicMemoryFile } from '../memory-manager.js';
 import { extractIdKey } from '../../lib/artefacts.js';
@@ -50,13 +50,16 @@ export function buildEpicIndex(): Map<string, EpicIndexEntry> {
         }
       }
 
+      const timestamps = getFileTimestamps(filePath);
       index.set(key, {
         key,
         id,
         file: filePath,
         prdId: prdIdFromDir(prdDir),
         prdDir,
-        data: loaded?.data || {}
+        data: loaded?.data || {},
+        createdAt: timestamps.createdAt,
+        modifiedAt: timestamps.modifiedAt
       });
     }
   }

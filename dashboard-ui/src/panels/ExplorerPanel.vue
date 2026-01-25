@@ -26,7 +26,7 @@ const treeNodes = computed<TreeNodeData[]>(() => {
     badge: `${prd.progress}%`,
     badgeVariant: getBadgeVariant(prd.progress),
     data: { type: 'prd' },
-    children: prd.epics.map(epic => ({
+    children: (prd.epics || []).map(epic => ({
       id: epic.id,
       label: epic.id,
       secondaryLabel: epic.title,
@@ -34,7 +34,7 @@ const treeNodes = computed<TreeNodeData[]>(() => {
       iconColor: getIconColor(epic.status),
       status: getStatusVariant(epic.status),
       data: { type: 'epic' },
-      children: epic.tasks.map(task => ({
+      children: (epic.tasks || []).map(task => ({
         id: task.id,
         label: task.id,
         secondaryLabel: task.title,

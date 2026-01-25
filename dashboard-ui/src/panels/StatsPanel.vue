@@ -33,9 +33,14 @@ const taskData = computed(() => {
 });
 
 function calculateEpicProgress(epic: EpicData): number {
-  if (epic.tasks.length === 0) return 0;
-  const done = epic.tasks.filter(t => t.status === 'Done').length;
-  return Math.round((done / epic.tasks.length) * 100);
+  const tasks = epic.tasks || [];
+  if (tasks.length === 0) return 0;
+  const done = tasks.filter(t => t.status === 'Done').length;
+  return Math.round((done / tasks.length) * 100);
+}
+
+function getTasksCount(epic: EpicData): number {
+  return epic.tasks?.length || 0;
 }
 </script>
 
@@ -70,7 +75,7 @@ function calculateEpicProgress(epic: EpicData): number {
               <div class="kpi-label">Tasks Done</div>
             </div>
             <div class="kpi-item">
-              <div class="kpi-value">{{ prdData.epics.length }}</div>
+              <div class="kpi-value">{{ (prdData.epics || []).length }}</div>
               <div class="kpi-label">Epics</div>
             </div>
           </div>
@@ -79,7 +84,7 @@ function calculateEpicProgress(epic: EpicData): number {
           <h3 class="section-title">Epics</h3>
           <div class="epics-list">
             <div
-              v-for="epic in prdData.epics"
+              v-for="epic in (prdData.epics || [])"
               :key="epic.id"
               class="epic-card"
               @click="artefactsStore.selectArtefact(epic.id)"
@@ -90,7 +95,7 @@ function calculateEpicProgress(epic: EpicData): number {
                 <span>{{ epic.title }}</span>
               </div>
               <ProgressBar :value="calculateEpicProgress(epic)" size="sm" />
-              <div class="epic-tasks-count">{{ epic.tasks.length }} tasks</div>
+              <div class="epic-tasks-count">{{ getTasksCount(epic) }} tasks</div>
             </div>
           </div>
         </template>
@@ -103,7 +108,7 @@ function calculateEpicProgress(epic: EpicData): number {
               <div class="kpi-label">Progress</div>
             </div>
             <div class="kpi-item">
-              <div class="kpi-value">{{ epicData.tasks.length }}</div>
+              <div class="kpi-value">{{ getTasksCount(epicData) }}</div>
               <div class="kpi-label">Tasks</div>
             </div>
           </div>
@@ -112,7 +117,7 @@ function calculateEpicProgress(epic: EpicData): number {
           <h3 class="section-title">Tasks</h3>
           <div class="tasks-list">
             <div
-              v-for="task in epicData.tasks"
+              v-for="task in (epicData.tasks || [])"
               :key="task.id"
               class="task-item"
               @click="artefactsStore.selectArtefact(task.id)"

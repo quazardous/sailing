@@ -8,6 +8,7 @@ import type {
   TreeResponse,
   ArtefactResponse,
   AgentsResponse,
+  ProjectInfo,
   WsMessage,
 } from './types';
 
@@ -55,6 +56,13 @@ class ApiClient {
    */
   async getAgents(): Promise<AgentsResponse> {
     return this.fetch<AgentsResponse>('/v2/agents');
+  }
+
+  /**
+   * Get project info
+   */
+  async getProject(): Promise<ProjectInfo> {
+    return this.fetch<ProjectInfo>('/v2/project');
   }
 
   /**

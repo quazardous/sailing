@@ -1,7 +1,13 @@
 <script setup lang="ts">
+import { computed } from 'vue';
 import { useActivitiesStore } from '../stores/activities';
+import { useProjectStore } from '../stores/project';
 
 const activitiesStore = useActivitiesStore();
+const projectStore = useProjectStore();
+
+const projectPath = computed(() => projectStore.projectPath);
+const projectName = computed(() => projectStore.projectName);
 
 function goToArtefacts() {
   activitiesStore.setActivity('artefacts');
@@ -18,6 +24,15 @@ function goToAgents() {
       <span class="sidebar-title">Welcome</span>
     </div>
     <div class="sidebar-content">
+      <!-- Project Info -->
+      <div class="project-info">
+        <div class="project-icon">⛵</div>
+        <div class="project-details">
+          <div class="project-name">{{ projectName }}</div>
+          <div class="project-path">{{ projectPath }}</div>
+        </div>
+      </div>
+
       <div class="quick-actions">
         <h3 class="section-title">Quick Actions</h3>
 
@@ -79,6 +94,39 @@ function goToAgents() {
   flex: 1;
   overflow: auto;
   padding: var(--spacing-md, 12px);
+}
+
+.project-info {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-md, 12px);
+  padding: var(--spacing-md, 12px);
+  background: var(--bg-secondary, #1e1e1e);
+  border: 1px solid var(--border, #333);
+  border-radius: var(--radius-md, 6px);
+  margin-bottom: var(--spacing-lg, 20px);
+}
+
+.project-icon {
+  font-size: 32px;
+  flex-shrink: 0;
+}
+
+.project-details {
+  min-width: 0;
+}
+
+.project-name {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text, #fff);
+}
+
+.project-path {
+  font-size: 11px;
+  color: var(--accent, #0078d4);
+  font-family: var(--font-mono, monospace);
+  word-break: break-all;
 }
 
 .section-title {

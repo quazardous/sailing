@@ -8,6 +8,7 @@ import http from 'http';
 import { json } from './server.js';
 import { createApiV2Routes } from './api.js';
 import { setCacheTTL, clearCache } from './lib/index.js';
+import { clearCache as clearArtefactsCache } from '../managers/artefacts/index.js';
 
 // Routes configuration options
 export interface RoutesOptions {
@@ -27,7 +28,8 @@ export function createRoutes(options: RoutesOptions = {}) {
 
   // Refresh cache endpoint (kept for compatibility)
   routes['/api/refresh'] = (_req, res) => {
-    clearCache();
+    clearArtefactsCache(); // Clear managers cache (task/epic/prd indices)
+    clearCache();          // Clear dashboard lib cache
     json(res, { status: 'ok', message: 'Cache cleared' });
   };
 

@@ -48,8 +48,20 @@ const paddingBottom = 20;
 // Safe accessor for tasks
 const tasks = computed(() => props.data?.tasks || []);
 
+// Calculate display offset - start at first task minus 1 hour margin
+const displayStartHour = computed(() => {
+  if (tasks.value.length === 0) return 0;
+  const minStart = Math.min(...tasks.value.map(t => t.startHour));
+  return Math.max(0, minStart - 1); // 1 hour margin, but never negative
+});
+
+// Adjusted total hours for display (from displayStartHour to end)
+const displayTotalHours = computed(() => {
+  return (props.data?.totalHours || 8) - displayStartHour.value;
+});
+
 const chartWidth = computed(() => {
-  return labelWidth + (props.data?.totalHours || 8) * config.value.unitWidth + paddingRight;
+  return labelWidth + displayTotalHours.value * config.value.unitWidth + paddingRight;
 });
 
 const chartHeight = computed(() => {
@@ -84,8 +96,8 @@ const dependencyLines = computed(() => {
     const taskIndex = taskIndexMap.value.get(task.id);
     if (taskIndex === undefined) continue;
 
-    // Task bar start position (left edge)
-    const toX = labelWidth + task.startHour * config.value.unitWidth;
+    // Task bar start position (left edge) - adjusted for display offset
+    const toX = labelWidth + (task.startHour - displayStartHour.value) * config.value.unitWidth;
     const toY = headerHeight + taskIndex * rowHeight + rowHeight / 2;
 
     for (const depId of task.dependencies) {
@@ -94,8 +106,8 @@ const dependencyLines = computed(() => {
 
       const depTask = tasks.value[depIndex];
 
-      // Dependency bar end position (right edge)
-      const fromX = labelWidth + depTask.endHour * config.value.unitWidth;
+      // Dependency bar end position (right edge) - adjusted for display offset
+      const fromX = labelWidth + (depTask.endHour - displayStartHour.value) * config.value.unitWidth;
       const fromY = headerHeight + depIndex * rowHeight + rowHeight / 2;
 
       // Check if this is a critical path dependency
@@ -126,13 +138,18 @@ function getDependencyPath(line: DependencyLine): string {
   return `M ${fromX} ${fromY} H ${dropX - r} Q ${dropX} ${fromY} ${dropX} ${fromY + r} V ${targetY}`;
 }
 
-// Time labels
+// Time labels - start from displayStartHour
 const timeLabels = computed(() => {
   const labels: Array<{ x: number; label: string }> = [];
   const interval = config.value.labelInterval;
+  const startH = displayStartHour.value;
+  const endH = props.data.totalHours;
 
-  for (let h = 0; h <= props.data.totalHours; h += interval) {
-    const x = labelWidth + h * config.value.unitWidth;
+  // Align to interval boundary
+  const firstLabel = Math.ceil(startH / interval) * interval;
+
+  for (let h = firstLabel; h <= endH; h += interval) {
+    const x = labelWidth + (h - startH) * config.value.unitWidth;
     const d = new Date(startDate.value);
     d.setHours(d.getHours() + h);
 
@@ -150,28 +167,34 @@ const timeLabels = computed(() => {
   return labels;
 });
 
-// Grid lines
+// Grid lines - start from displayStartHour
 const gridLines = computed(() => {
   const lines: number[] = [];
   const interval = config.value.labelInterval;
+  const startH = displayStartHour.value;
+  const endH = props.data.totalHours;
 
-  for (let h = 0; h <= props.data.totalHours; h += interval) {
-    lines.push(labelWidth + h * config.value.unitWidth);
+  // Align to interval boundary
+  const firstLine = Math.ceil(startH / interval) * interval;
+
+  for (let h = firstLine; h <= endH; h += interval) {
+    lines.push(labelWidth + (h - startH) * config.value.unitWidth);
   }
   return lines;
 });
 
-// Today line position
+// Today line position - adjusted for display offset
 const todayLineX = computed(() => {
   const now = new Date();
   const hoursSinceT0 = (now.getTime() - startDate.value.getTime()) / (1000 * 60 * 60);
-  if (hoursSinceT0 >= 0 && hoursSinceT0 <= props.data.totalHours) {
-    return labelWidth + hoursSinceT0 * config.value.unitWidth;
+  const adjustedHours = hoursSinceT0 - displayStartHour.value;
+  if (adjustedHours >= 0 && hoursSinceT0 <= props.data.totalHours) {
+    return labelWidth + adjustedHours * config.value.unitWidth;
   }
   return null;
 });
 
-// Critical span end line position
+// Critical span end line position - adjusted for display offset
 const criticalLineX = computed(() => {
   const criticalHours = props.data?.criticalTimespanHours;
   if (!criticalHours || criticalHours <= 0 || tasks.value.length === 0) return null;
@@ -180,18 +203,18 @@ const criticalLineX = computed(() => {
   const criticalEndHour = earliestStartHour + criticalHours;
 
   if (criticalEndHour >= 0 && criticalEndHour <= props.data.totalHours) {
-    return labelWidth + criticalEndHour * config.value.unitWidth;
+    return labelWidth + (criticalEndHour - displayStartHour.value) * config.value.unitWidth;
   }
   return null;
 });
 
-// Critical span arrow data
+// Critical span arrow data - adjusted for display offset
 const criticalArrow = computed(() => {
   const criticalHours = props.data?.criticalTimespanHours;
   if (!criticalHours || criticalHours <= 0 || tasks.value.length === 0) return null;
 
   const earliestStartHour = Math.min(...tasks.value.map(t => t.startHour));
-  const startX = labelWidth + earliestStartHour * config.value.unitWidth;
+  const startX = labelWidth + (earliestStartHour - displayStartHour.value) * config.value.unitWidth;
   const endX = startX + criticalHours * config.value.unitWidth;
   const y = headerHeight - 4;
 
@@ -215,6 +238,14 @@ function formatDuration(hours: number): string {
   return `${Math.round(hours * 10) / 10}h`;
 }
 
+// Calculate actual task span (from first task start to last task end)
+const actualTaskSpan = computed(() => {
+  if (tasks.value.length === 0) return 0;
+  const minStart = Math.min(...tasks.value.map(t => t.startHour));
+  const maxEnd = Math.max(...tasks.value.map(t => t.endHour));
+  return maxEnd - minStart;
+});
+
 // Stats
 const stats = computed(() => {
   const items: string[] = [];
@@ -222,7 +253,7 @@ const stats = computed(() => {
   items.push(`${criticalPath.length} tasks on critical path`);
   items.push(`${formatDuration(props.data?.durationHours || 0)} effort`);
   items.push(`${formatDuration(props.data?.criticalTimespanHours || 0)} critical`);
-  items.push(`${formatDuration(props.data?.totalHours || 0)} span`);
+  items.push(`${formatDuration(actualTaskSpan.value)} span`);
   return items;
 });
 
@@ -519,14 +550,14 @@ function formatDate(hours: number): string {
           <g v-for="(task, index) in tasks" :key="'bar-' + task.id">
             <!-- Task ref before bar (discrete, aligned to top) -->
             <text
-              :x="labelWidth + task.startHour * config.unitWidth - 8"
+              :x="labelWidth + (task.startHour - displayStartHour) * config.unitWidth - 8"
               :y="headerHeight + index * rowHeight + 16"
               class="task-ref"
               text-anchor="end"
             >{{ task.id }}</text>
             <!-- Main bar -->
             <rect
-              :x="labelWidth + task.startHour * config.unitWidth"
+              :x="labelWidth + (task.startHour - displayStartHour) * config.unitWidth"
               :y="headerHeight + index * rowHeight + 8"
               :width="Math.max(task.durationHours * config.unitWidth, 4)"
               :height="rowHeight - 16"
@@ -543,7 +574,7 @@ function formatDate(hours: number): string {
             <!-- Critical glow overlay -->
             <rect
               v-if="task.isCritical"
-              :x="labelWidth + task.startHour * config.unitWidth - 1"
+              :x="labelWidth + (task.startHour - displayStartHour) * config.unitWidth - 1"
               :y="headerHeight + index * rowHeight + 7"
               :width="Math.max(task.durationHours * config.unitWidth, 4) + 2"
               :height="rowHeight - 14"
@@ -554,7 +585,7 @@ function formatDate(hours: number): string {
             <!-- Duration label inside bar -->
             <text
               v-if="task.durationHours * config.unitWidth > 30"
-              :x="labelWidth + task.startHour * config.unitWidth + (task.durationHours * config.unitWidth) / 2"
+              :x="labelWidth + (task.startHour - displayStartHour) * config.unitWidth + (task.durationHours * config.unitWidth) / 2"
               :y="headerHeight + index * rowHeight + rowHeight / 2 + 4"
               class="bar-label"
             >{{ formatDuration(task.durationHours) }}</text>

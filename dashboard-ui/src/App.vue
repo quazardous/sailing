@@ -8,9 +8,13 @@ import {
 import { useArtefactsStore } from './stores/artefacts';
 import { useAgentsStore } from './stores/agents';
 import { useActivitiesStore } from './stores/activities';
+import { useProjectStore } from './stores/project';
 import { useEventBus } from './stores/eventBus';
+import { useNotificationsStore } from './stores/notifications';
+import { useTreeStateStore } from './stores/treeState';
 
 import ActivityBar from './components/ActivityBar.vue';
+import StatusBar from './components/StatusBar.vue';
 import WelcomeSidebar from './sidebars/WelcomeSidebar.vue';
 import ArtefactsExplorer from './sidebars/ArtefactsExplorer.vue';
 import AgentsExplorer from './sidebars/AgentsExplorer.vue';
@@ -210,7 +214,17 @@ onMounted(async () => {
   // Initialize stores
   const artefactsStore = useArtefactsStore();
   const agentsStore = useAgentsStore();
+  const projectStore = useProjectStore();
   const eventBus = useEventBus();
+  const notificationsStore = useNotificationsStore();
+  const treeStateStore = useTreeStateStore();
+
+  // Load project first (sets storage key hash)
+  await projectStore.fetchProject();
+
+  // Initialize storage-dependent stores
+  notificationsStore.init();
+  treeStateStore.loadState();
 
   // Load initial data
   await artefactsStore.fetchTree();
@@ -248,36 +262,48 @@ onMounted(async () => {
 </script>
 
 <template>
-  <div class="app-container">
-    <!-- Activity Bar (fixed left) -->
-    <ActivityBar />
+  <div class="app-wrapper">
+    <div class="app-container">
+      <!-- Activity Bar (fixed left) -->
+      <ActivityBar />
 
-    <!-- Sidebar (resizable, content depends on activity) -->
-    <div
-      class="sidebar"
-      :style="{ width: sidebarWidth + 'px' }"
-    >
-      <component :is="currentSidebarComponent" />
+      <!-- Sidebar (resizable, content depends on activity) -->
       <div
-        class="sidebar-resize-handle"
-        @mousedown="startResize"
-      ></div>
+        class="sidebar"
+        :style="{ width: sidebarWidth + 'px' }"
+      >
+        <component :is="currentSidebarComponent" />
+        <div
+          class="sidebar-resize-handle"
+          @mousedown="startResize"
+        ></div>
+      </div>
+
+      <!-- Main area (Dockview) -->
+      <div class="main-area">
+        <DockviewVue
+          class="dockview-theme-dark"
+          @ready="onReady"
+        />
+      </div>
     </div>
 
-    <!-- Main area (Dockview) -->
-    <div class="main-area">
-      <DockviewVue
-        class="dockview-theme-dark"
-        @ready="onReady"
-      />
-    </div>
+    <!-- Status Bar (bottom) -->
+    <StatusBar />
   </div>
 </template>
 
 <style scoped>
-.app-container {
+.app-wrapper {
   width: 100%;
   height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+.app-container {
+  flex: 1;
+  min-height: 0;
   display: flex;
 }
 

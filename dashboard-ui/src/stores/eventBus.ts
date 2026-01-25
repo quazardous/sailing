@@ -74,6 +74,8 @@ export const useEventBus = defineStore('eventBus', () => {
     ws.on('artefact:updated', (msg) => {
       lastArtefactUpdate.value = msg.id || '*';
 
+      console.log(`[EventBus] artefact:updated - ${msg.id || '*'} (${msg.artefactType || 'unknown'})`);
+
       // Mark artefact as new (not viewed yet)
       const notifications = useNotificationsStore();
       if (msg.id && msg.id !== '*') {

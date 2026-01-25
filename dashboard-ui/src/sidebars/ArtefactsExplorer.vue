@@ -1,17 +1,41 @@
 <script setup lang="ts">
-import { computed } from 'vue';
+import { computed, watch } from 'vue';
 import { useArtefactsStore } from '../stores/artefacts';
 import { useNotificationsStore } from '../stores/notifications';
+import { useTreeStateStore } from '../stores/treeState';
 import TreeView, { type TreeNodeData } from '../components/TreeView.vue';
 
 const artefactsStore = useArtefactsStore();
 const notificationsStore = useNotificationsStore();
+const treeStateStore = useTreeStateStore();
 
 const prds = computed(() => artefactsStore.prds);
 
+// Reactive set of new artefacts (triggers re-render when notifications change)
+const newArtefactsSet = computed(() => notificationsStore.newArtefacts);
+
+// Expanded state from store
+const expandedIds = computed(() => treeStateStore.expandedIds);
+
+// Auto-expand all PRDs/Epics on first load if no saved state
+watch(prds, (newPrds) => {
+  if (!treeStateStore.initialized || treeStateStore.expandedIds.size > 0) return;
+  // First load with no saved state - expand all folders
+  const allFolderIds: string[] = [];
+  for (const prd of newPrds) {
+    allFolderIds.push(prd.id);
+    for (const epic of (prd.epics || [])) {
+      allFolderIds.push(epic.id);
+    }
+  }
+  if (allFolderIds.length > 0) {
+    treeStateStore.expandAll(allFolderIds);
+  }
+}, { immediate: true });
+
 // Check if artefact is new (updated but not viewed)
 function isNewArtefact(id: string): boolean {
-  return notificationsStore.isNew(id);
+  return newArtefactsSet.value.has(id);
 }
 const loading = computed(() => artefactsStore.loading);
 const selectedId = computed(() => artefactsStore.selectedId);
@@ -28,7 +52,7 @@ const treeNodes = computed<TreeNodeData[]>(() => {
     badge: `${prd.progress}%`,
     badgeVariant: getBadgeVariant(prd.progress),
     data: { type: 'prd' },
-    children: prd.epics.map(epic => ({
+    children: (prd.epics || []).map(epic => ({
       id: epic.id,
       label: epic.id,
       secondaryLabel: epic.title,
@@ -36,7 +60,7 @@ const treeNodes = computed<TreeNodeData[]>(() => {
       iconColor: getIconColor(epic.status),
       status: getStatusVariant(epic.status),
       data: { type: 'epic' },
-      children: epic.tasks.map(task => ({
+      children: (epic.tasks || []).map(task => ({
         id: task.id,
         label: task.id,
         secondaryLabel: task.title,
@@ -83,6 +107,10 @@ function handleSelect(node: TreeNodeData) {
   artefactsStore.selectArtefact(node.id);
 }
 
+function handleToggle(id: string) {
+  treeStateStore.toggle(id);
+}
+
 function handleRefresh() {
   artefactsStore.refresh();
 }
@@ -123,9 +151,10 @@ function handleRefresh() {
         <TreeView
           :nodes="treeNodes"
           :selected-id="selectedId"
-          :default-expanded="true"
+          :expanded-ids="expandedIds"
           :is-new-fn="isNewArtefact"
           @select="handleSelect"
+          @toggle="handleToggle"
         />
       </div>
     </div>

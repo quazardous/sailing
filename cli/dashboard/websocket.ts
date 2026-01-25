@@ -29,6 +29,7 @@ export interface WsMessage {
   line?: string;
   status?: string;
   id?: string;
+  artefactType?: 'prd' | 'epic' | 'task';
   message?: string;
   timestamp: string;
 }

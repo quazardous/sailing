@@ -26,8 +26,42 @@ const emit = defineEmits<{
 }>();
 
 const hasChildren = computed(() => props.node.children && props.node.children.length > 0);
+// Show chevron for folders (prd/epic) even if empty - they can have children
+const isFolder = computed(() => {
+  const type = props.node.data?.type;
+  return type === 'prd' || type === 'epic';
+});
+const showChevron = computed(() => hasChildren.value || isFolder.value);
 const isSelected = computed(() => props.selectedId === props.node.id);
 const isNew = computed(() => props.isNewFn(props.node.id));
+
+// Count new items in all descendants (recursive)
+function countNewDescendants(node: TreeNodeData): number {
+  let count = 0;
+  if (node.children) {
+    for (const child of node.children) {
+      if (props.isNewFn(child.id)) count++;
+      count += countNewDescendants(child);
+    }
+  }
+  return count;
+}
+
+// Number of new descendants (only counted when collapsed)
+const newDescendantsCount = computed(() => {
+  if (props.isExpanded) return 0;
+  return countNewDescendants(props.node);
+});
+
+// Should show orange "new" style?
+// - If node itself is new: always orange
+// - If collapsed with new descendants: orange (inherited from children)
+// - If expanded with new descendants but not new itself: NOT orange
+const showNewStyle = computed(() => {
+  if (isNew.value) return true;
+  if (!props.isExpanded && newDescendantsCount.value > 0) return true;
+  return false;
+});
 
 // Build guides for children:
 // - Keep ancestor guides
@@ -63,11 +97,9 @@ function getChildExpanded(childId: string): boolean {
   <div class="tree-node-wrapper">
     <div
       class="tree-node"
-      :class="{ selected: isSelected, expandable: hasChildren, 'is-new': isNew }"
+      :class="{ selected: isSelected, expandable: hasChildren, 'is-new': showNewStyle }"
       @click="handleClick"
     >
-      <!-- New indicator (orange dot on left) -->
-      <span v-if="isNew" class="tree-new-indicator">●</span>
       <!-- Spacers: empty bricks for indentation, each can show a vertical line -->
       <div
         v-for="(spacer, idx) in spacers"
@@ -80,9 +112,9 @@ function getChildExpanded(childId: string): boolean {
       <!-- Chevron cell: same size as spacers -->
       <div class="tree-spacer tree-chevron-cell">
         <span
-          v-if="hasChildren"
+          v-if="showChevron"
           class="tree-chevron"
-          :class="{ expanded: isExpanded }"
+          :class="{ expanded: isExpanded && hasChildren, empty: !hasChildren }"
           @click="handleToggle"
         >
           <svg width="16" height="16" viewBox="0 0 16 16">
@@ -128,6 +160,11 @@ function getChildExpanded(childId: string): boolean {
       >
         {{ node.badge }}
       </span>
+
+      <!-- New indicator (orange dot on right) -->
+      <span v-if="isNew" class="tree-new-indicator">●</span>
+      <!-- New descendants count (shown when collapsed) -->
+      <span v-else-if="newDescendantsCount > 0" class="tree-new-count">{{ newDescendantsCount }}</span>
     </div>
 
     <!-- Children (recursive) -->
@@ -174,6 +211,19 @@ function getChildExpanded(childId: string): boolean {
 
 .tree-node.selected .tree-label-secondary {
   color: rgba(255, 255, 255, 0.8);
+}
+
+/* New (unviewed) item - slight orange tint */
+.tree-node.is-new {
+  background: rgba(251, 147, 60, 0.1);
+}
+
+.tree-node.is-new:hover {
+  background: rgba(251, 147, 60, 0.15);
+}
+
+.tree-node.is-new.selected {
+  background: var(--accent, #0078d4);
 }
 
 .tree-node.selected .tree-chevron {
@@ -223,6 +273,10 @@ function getChildExpanded(childId: string): boolean {
 
 .tree-chevron:hover {
   color: var(--text, #fff);
+}
+
+.tree-chevron.empty {
+  opacity: 0.4;
 }
 
 .tree-icon {
@@ -328,26 +382,22 @@ function getChildExpanded(childId: string): boolean {
 }
 
 /* New indicator styles */
-.tree-node.is-new {
-  border-left: 2px solid #fb923c;
-  margin-left: -2px;
-}
-
 .tree-new-indicator {
   color: #fb923c;
-  font-size: 8px;
-  position: absolute;
-  left: 4px;
-  top: 50%;
-  transform: translateY(-50%);
+  font-size: 10px;
+  flex-shrink: 0;
+  margin-left: 4px;
 }
 
-.tree-node {
-  position: relative;
-}
-
-.tree-node.selected.is-new {
-  border-left-color: #fb923c;
+.tree-new-count {
+  font-size: 10px;
+  padding: 0 5px;
+  border-radius: 8px;
+  background: rgba(251, 147, 60, 0.2);
+  color: #fb923c;
+  flex-shrink: 0;
+  margin-left: 4px;
+  font-weight: 500;
 }
 
 /* Ensure no offset from wrapper/children */

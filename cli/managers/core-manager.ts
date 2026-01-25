@@ -640,10 +640,11 @@ export {
   saveFile,
   loadTemplate,
   loadComponents,
-  saveComponents
+  saveComponents,
+  getFileTimestamps
 } from './fileio-manager.js';
 
-export type { LoadedDoc } from './fileio-manager.js';
+export type { LoadedDoc, FileTimestamps } from './fileio-manager.js';
 
 // ============================================================================
 // CONFIGURATION (re-exported from config-manager.ts)

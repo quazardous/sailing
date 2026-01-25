@@ -6,6 +6,7 @@
  */
 
 import fs from 'fs';
+import { validateHtmlComments } from './strings.js';
 
 interface ArtifactOp {
   op: string;
@@ -559,6 +560,22 @@ export function editArtifact(filePath: string, ops: EditOp[]): ApplyOpsResult {
     if (result.applied > 0) {
       content = serializeSections(parsed);
     }
+  }
+
+  // Validate HTML comments before writing
+  const commentValidation = validateHtmlComments(content);
+  if (!commentValidation.valid) {
+    const positions = commentValidation.unclosedAt.map(pos => {
+      const lineNum = content.slice(0, pos).split('\n').length;
+      return `line ${lineNum}`;
+    }).join(', ');
+    errors.push(`Unclosed HTML comment detected at ${positions}. Add closing --> tag.`);
+    console.error(`[artifact] Unclosed HTML comment at ${positions} - operation cancelled`);
+    return {
+      success: false,
+      applied: 0,
+      errors
+    };
   }
 
   // Write back if any ops applied
