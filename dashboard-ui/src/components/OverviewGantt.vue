@@ -6,10 +6,11 @@ interface SimpleGanttTask {
   name: string;
   startHour: number;
   endHour: number;
-  durationHours: number;
+  durationHours: number;       // Total effort (sum of task durations)
+  doneEffortHours?: number;    // Effort completed (sum of Done task durations)
   status: string;
-  progress: number;
-  criticalTimespanHours?: number;
+  progress: number;            // Progress based on effort (doneEffortHours / durationHours)
+  criticalTimespanHours?: number;  // Critical path span (theoretical minimum)
 }
 
 interface OverviewGanttData {
@@ -113,6 +114,15 @@ function formatEffort(hours: number | undefined): string {
   if (hours < 1) return `${Math.round(hours * 60)}m`;
   return `${Math.round(hours * 10) / 10}h`;
 }
+
+/**
+ * Check if real span exceeds critical span by more than 10%
+ */
+function isOverCritical(task: SimpleGanttTask): boolean {
+  if (!task.criticalTimespanHours || task.criticalTimespanHours === 0) return false;
+  const realSpan = task.endHour - task.startHour;
+  return realSpan > task.criticalTimespanHours * 1.1;
+}
 </script>
 
 <template>
@@ -161,26 +171,36 @@ function formatEffort(hours: number | undefined): string {
             class="task-bar-span"
           />
 
-          <!-- Effort bar (criticalTimespanHours) - shows planned effort -->
+          <!-- Effort bar (durationHours) - shows total planned effort -->
           <rect
-            v-if="task.criticalTimespanHours"
+            v-if="task.durationHours"
             :x="labelWidth + (task.startHour - displayStartHour) * unitWidth"
             :y="headerHeight + index * rowHeight + 6"
-            :width="Math.max(task.criticalTimespanHours * unitWidth, 4)"
+            :width="Math.max(task.durationHours * unitWidth, 4)"
             :height="rowHeight - 12"
             :rx="3"
             :class="['task-bar', getStatusClass(task.status)]"
           />
 
-          <!-- Progress fill (within effort) -->
+          <!-- Progress fill (within effort bar) -->
           <rect
-            v-if="task.progress > 0 && task.criticalTimespanHours"
+            v-if="task.progress > 0 && task.durationHours"
             :x="labelWidth + (task.startHour - displayStartHour) * unitWidth"
             :y="headerHeight + index * rowHeight + 6"
-            :width="Math.max(task.criticalTimespanHours * unitWidth * (task.progress / 100), 2)"
+            :width="Math.max(task.durationHours * unitWidth * (task.progress / 100), 2)"
             :height="rowHeight - 12"
             :rx="3"
             class="task-bar-progress"
+          />
+
+          <!-- Critical span marker (red dashed line) when real span > critical * 1.1 -->
+          <line
+            v-if="isOverCritical(task) && task.criticalTimespanHours"
+            :x1="labelWidth + (task.startHour - displayStartHour + task.criticalTimespanHours) * unitWidth"
+            :y1="headerHeight + index * rowHeight + 4"
+            :x2="labelWidth + (task.startHour - displayStartHour + task.criticalTimespanHours) * unitWidth"
+            :y2="headerHeight + index * rowHeight + rowHeight - 4"
+            class="critical-marker"
           />
 
           <!-- Progress and effort text -->
@@ -188,7 +208,7 @@ function formatEffort(hours: number | undefined): string {
             :x="labelWidth + (task.endHour - displayStartHour) * unitWidth + 4"
             :y="headerHeight + index * rowHeight + rowHeight / 2 + 4"
             class="progress-label"
-          >{{ formatProgress(task.progress) }}<template v-if="task.criticalTimespanHours"> · {{ formatEffort(task.criticalTimespanHours) }}</template></text>
+          >{{ formatProgress(task.progress) }}<template v-if="task.durationHours"> · {{ formatEffort(task.durationHours) }}</template></text>
         </g>
       </g>
 
@@ -274,6 +294,14 @@ function formatEffort(hours: number | undefined): string {
   stroke: #EF4444;
   stroke-width: 2;
   stroke-dasharray: 3 2;
+}
+
+/* Critical span marker - red dashed vertical line when over critical */
+.critical-marker {
+  stroke: #EF4444;
+  stroke-width: 2;
+  stroke-dasharray: 3 2;
+  opacity: 0.9;
 }
 
 .progress-label {

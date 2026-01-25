@@ -71,12 +71,13 @@ export interface SimpleGanttTask {
   name: string;
   startHour: number;
   endHour: number;
-  durationHours: number;
+  durationHours: number;      // Total effort (sum of task durations)
+  doneEffortHours?: number;   // Effort completed (sum of Done task durations)
   status: string;
-  progress?: number;
+  progress?: number;          // Progress based on effort (doneEffortHours / durationHours)
   startedAt?: string;
   doneAt?: string;
-  criticalTimespanHours?: number;
+  criticalTimespanHours?: number;  // Critical path span (theoretical minimum)
 }
 
 export interface GanttResult {

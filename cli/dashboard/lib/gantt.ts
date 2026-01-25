@@ -334,6 +334,15 @@ export function generatePrdOverviewGantt(prds: PrdData[], effortConfig: EffortCo
     const theoreticalEnvelope = getScheduleEnvelope(theoreticalSchedule);
     const criticalTimespanHours = theoreticalEnvelope.weightedHours;
 
+    // Calculate done effort (sum of durations for Done tasks)
+    let doneEffortHours = 0;
+    for (const [taskId, taskSchedule] of schedule.entries()) {
+      const taskInfo = taskData.get(taskId);
+      if (taskInfo && taskInfo.status === 'Done') {
+        doneEffortHours += taskSchedule.durationHours;
+      }
+    }
+
     let status = 'Draft';
     if (prd.doneTasks === prd.totalTasks && prd.totalTasks > 0) {
       status = 'Done';
@@ -341,7 +350,8 @@ export function generatePrdOverviewGantt(prds: PrdData[], effortConfig: EffortCo
       status = 'In Progress';
     }
 
-    const progress = prd.totalTasks > 0 ? Math.round((prd.doneTasks / prd.totalTasks) * 100) : 0;
+    // Progress based on effort (doneEffortHours / totalEffortHours)
+    const progress = envelope.totalHours > 0 ? Math.round((doneEffortHours / envelope.totalHours) * 100) : 0;
 
     tasks.push({
       id: prd.id,
@@ -352,7 +362,8 @@ export function generatePrdOverviewGantt(prds: PrdData[], effortConfig: EffortCo
       status,
       progress,
       startedAt: earliestStartedAt,
-      criticalTimespanHours
+      criticalTimespanHours,
+      doneEffortHours
     });
 
     if (envelope.latestEnd > maxEndHour) maxEndHour = envelope.latestEnd;
