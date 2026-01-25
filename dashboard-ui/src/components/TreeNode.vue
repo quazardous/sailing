@@ -32,20 +32,12 @@ const isSelected = computed(() => props.selectedId === props.node.id);
 const childGuides = computed(() => [...props.guides, !props.isLast]);
 
 // Generate spacer array for rendering
-// Each spacer can show a vertical line:
-// - spacers[0..level-2]: based on ancestor guides (connections from grandparents)
-// - spacers[level-1] (last spacer): shows line if THIS node is NOT the last sibling
-//   This line is under the PARENT's chevron and connects siblings
+// Each spacer shows a vertical line based on guides array
+// guides[i] = true if ancestor at level i has siblings after this branch
 const spacers = computed(() => {
   const result: Array<{ showLine: boolean }> = [];
   for (let i = 0; i < props.level; i++) {
-    if (i === props.level - 1) {
-      // Last spacer: show line if we have siblings after us
-      result.push({ showLine: !props.isLast });
-    } else {
-      // Ancestor spacers: based on guides
-      result.push({ showLine: props.guides[i] || false });
-    }
+    result.push({ showLine: props.guides[i] || false });
   }
   return result;
 });
@@ -157,10 +149,10 @@ function getChildExpanded(childId: string): boolean {
   display: flex;
   align-items: center;
   gap: 0;
-  padding: 2px 12px 2px 4px;
+  padding: 2px 12px 2px 0;
   cursor: pointer;
   border-radius: 4px;
-  margin: 0 4px;
+  margin: 0;
   transition: background-color 0.1s ease;
   height: 24px;
 }
@@ -327,5 +319,16 @@ function getChildExpanded(childId: string): boolean {
 .tree-node.selected .tree-badge {
   background: rgba(255, 255, 255, 0.2);
   color: white;
+}
+
+/* Ensure no offset from wrapper/children */
+.tree-node-wrapper {
+  margin: 0;
+  padding: 0;
+}
+
+.tree-children {
+  margin: 0;
+  padding: 0;
 }
 </style>
