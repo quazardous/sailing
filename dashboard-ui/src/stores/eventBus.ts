@@ -8,6 +8,7 @@ import { defineStore } from 'pinia';
 import { ref } from 'vue';
 import { ws } from '../api';
 import type { WsMessage } from '../api';
+import { useNotificationsStore } from './notifications';
 
 // Debounce delays
 const ARTEFACT_DEBOUNCE_MS = 300;
@@ -72,6 +73,12 @@ export const useEventBus = defineStore('eventBus', () => {
     // Debounced artefact refresh
     ws.on('artefact:updated', (msg) => {
       lastArtefactUpdate.value = msg.id || '*';
+
+      // Mark artefact as new (not viewed yet)
+      const notifications = useNotificationsStore();
+      if (msg.id && msg.id !== '*') {
+        notifications.markNew(msg.id);
+      }
 
       // Clear existing timer
       if (artefactRefreshTimer) {

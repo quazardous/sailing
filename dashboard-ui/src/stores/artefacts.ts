@@ -8,6 +8,7 @@ import { defineStore } from 'pinia';
 import { ref, computed } from 'vue';
 import { api } from '../api';
 import type { PrdData, EpicData, TaskData, ArtefactResponse, ArtefactType } from '../api';
+import { useNotificationsStore } from './notifications';
 
 export const useArtefactsStore = defineStore('artefacts', () => {
   // State
@@ -79,6 +80,9 @@ export const useArtefactsStore = defineStore('artefacts', () => {
   }
 
   async function selectArtefact(id: string): Promise<void> {
+    // Mark as viewed (clear "new" flag)
+    useNotificationsStore().markViewed(id);
+
     if (selectedId.value === id && selectedArtefact.value) {
       return; // Already selected
     }

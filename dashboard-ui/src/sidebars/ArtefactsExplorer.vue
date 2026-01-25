@@ -1,11 +1,18 @@
 <script setup lang="ts">
 import { computed } from 'vue';
 import { useArtefactsStore } from '../stores/artefacts';
+import { useNotificationsStore } from '../stores/notifications';
 import TreeView, { type TreeNodeData } from '../components/TreeView.vue';
 
 const artefactsStore = useArtefactsStore();
+const notificationsStore = useNotificationsStore();
 
 const prds = computed(() => artefactsStore.prds);
+
+// Check if artefact is new (updated but not viewed)
+function isNewArtefact(id: string): boolean {
+  return notificationsStore.isNew(id);
+}
 const loading = computed(() => artefactsStore.loading);
 const selectedId = computed(() => artefactsStore.selectedId);
 
@@ -117,6 +124,7 @@ function handleRefresh() {
           :nodes="treeNodes"
           :selected-id="selectedId"
           :default-expanded="true"
+          :is-new-fn="isNewArtefact"
           @select="handleSelect"
         />
       </div>

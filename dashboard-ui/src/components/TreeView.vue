@@ -21,9 +21,11 @@ const props = withDefaults(defineProps<{
   selectedId?: string | null;
   expandedIds?: Set<string>;
   defaultExpanded?: boolean;
+  isNewFn?: (id: string) => boolean;
 }>(), {
   selectedId: null,
   defaultExpanded: true,
+  isNewFn: () => false,
 });
 
 const emit = defineEmits<{
@@ -79,6 +81,7 @@ function handleSelect(node: TreeNodeData) {
       :get-is-expanded="isExpanded"
       :is-last="idx === nodes.length - 1"
       :guides="[]"
+      :is-new-fn="isNewFn"
       @select="handleSelect"
       @toggle="handleToggle"
     />

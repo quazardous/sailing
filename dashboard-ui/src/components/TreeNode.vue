@@ -10,12 +10,14 @@ const props = withDefaults(defineProps<{
   getIsExpanded?: (id: string) => boolean;
   isLast?: boolean;
   guides?: boolean[];  // For each ancestor level: true = show vertical line
+  isNewFn?: (id: string) => boolean;  // Check if node has "new" flag
 }>(), {
   level: 0,
   selectedId: null,
   isExpanded: true,
   isLast: false,
   guides: () => [],
+  isNewFn: () => false,
 });
 
 const emit = defineEmits<{
@@ -25,6 +27,7 @@ const emit = defineEmits<{
 
 const hasChildren = computed(() => props.node.children && props.node.children.length > 0);
 const isSelected = computed(() => props.selectedId === props.node.id);
+const isNew = computed(() => props.isNewFn(props.node.id));
 
 // Build guides for children:
 // - Keep ancestor guides
@@ -60,9 +63,11 @@ function getChildExpanded(childId: string): boolean {
   <div class="tree-node-wrapper">
     <div
       class="tree-node"
-      :class="{ selected: isSelected, expandable: hasChildren }"
+      :class="{ selected: isSelected, expandable: hasChildren, 'is-new': isNew }"
       @click="handleClick"
     >
+      <!-- New indicator (orange dot on left) -->
+      <span v-if="isNew" class="tree-new-indicator">●</span>
       <!-- Spacers: empty bricks for indentation, each can show a vertical line -->
       <div
         v-for="(spacer, idx) in spacers"
@@ -137,6 +142,7 @@ function getChildExpanded(childId: string): boolean {
         :get-is-expanded="getIsExpanded"
         :is-last="idx === node.children!.length - 1"
         :guides="childGuides"
+        :is-new-fn="isNewFn"
         @select="(n: TreeNodeData) => emit('select', n)"
         @toggle="(n: TreeNodeData) => emit('toggle', n)"
       />
@@ -319,6 +325,29 @@ function getChildExpanded(childId: string): boolean {
 .tree-node.selected .tree-badge {
   background: rgba(255, 255, 255, 0.2);
   color: white;
+}
+
+/* New indicator styles */
+.tree-node.is-new {
+  border-left: 2px solid #fb923c;
+  margin-left: -2px;
+}
+
+.tree-new-indicator {
+  color: #fb923c;
+  font-size: 8px;
+  position: absolute;
+  left: 4px;
+  top: 50%;
+  transform: translateY(-50%);
+}
+
+.tree-node {
+  position: relative;
+}
+
+.tree-node.selected.is-new {
+  border-left-color: #fb923c;
 }
 
 /* Ensure no offset from wrapper/children */
