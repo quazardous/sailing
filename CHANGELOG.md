@@ -7,22 +7,25 @@ All notable changes to the Sailing Framework will be documented in this file.
 ## [1.17.0] - 2026-01-25
 
 ### Added
+- Dashboard: URL routing with pushState for deep linking (`/artefacts/T001`, `/agents/T002`)
+- Dashboard: Browser back/forward navigation support
+- Dashboard: Effort gauge in PRD overview Gantt (span + effort + progress)
+- Dashboard: Status symbols with tooltips in explorer tree
 - Dashboard: "New" indicator system based on file timestamps (createdAt/modifiedAt vs viewedAt)
-- Dashboard: Orange background tint for new/unviewed items in tree explorer
-- Dashboard: New descendants count badge on collapsed folders with unviewed children
 - Dashboard: Project-scoped localStorage (storage keys use hash of project path)
-- Dashboard: Tree state persistence (expanded/collapsed state survives refresh and WebSocket events)
-- Dashboard: Critical path now propagates to parent nodes (epics/PRDs containing critical tasks are highlighted)
+- Dashboard: Tree state persistence (expanded/collapsed state survives refresh)
+- Dashboard: Critical path propagation to parent nodes
 
 ### Changed
-- Dashboard: Gantt charts now start at first detected task hour (with 1h margin) instead of 00:00
-- Dashboard: Task span in Gantt stats now calculated from actual tasks (min start to max end)
-- Dashboard: WebSocket file change events no longer reset explorer expanded state
-- Dashboard: Collapsed parent inherits orange "new" style only when children are new
+- Dashboard: Monochrome status icons design (simpler, cleaner)
+- Dashboard: Orange color for Blocked status (instead of red)
+- Dashboard: Light purple for epics in dependency graph
+- Dashboard: Gantt charts start at first task hour (with 1h margin)
 
 ### Fixed
-- Dashboard: Null safety for `epic.tasks` and `prd.epics` arrays throughout codebase
-- Dashboard: Watcher now clears both dashboard cache AND artefacts manager cache on file changes
+- Markdown parser now ignores `## Headers` inside HTML comments (prevents artefact corruption)
+- Dashboard: Invalid edges filtered in dependency graph (prevents ELK errors)
+- Dashboard: Effort text visible in Overview Gantt (increased padding)
 
 ## [1.16.0] - 2026-01-25
 
