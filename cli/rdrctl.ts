@@ -471,6 +471,23 @@ program
     }
   });
 
+// rdrctl dashboard - direct command (not a daemon)
+program
+  .command('dashboard')
+  .description('Start web dashboard (not a daemon)')
+  .option('-p, --port <port>', 'Port number', String(DEFAULT_PORT))
+  .option('-t, --timeout <seconds>', 'Idle timeout (-1 for infinite)', String(DEFAULT_TIMEOUT))
+  .option('-c, --cache <seconds>', 'Cache TTL (0 to disable)', String(DEFAULT_CACHE))
+  .option('--no-open', 'Do not open browser')
+  .action(async (options) => {
+    await startDashboardService({
+      port: parseInt(options.port, 10),
+      timeout: parseInt(options.timeout, 10),
+      cache: parseInt(options.cache, 10),
+      open: options.open
+    });
+  });
+
 // rdrctl list
 program
   .command('list')
@@ -487,6 +504,7 @@ program
     console.log('  rdrctl stop            # Stop MCP servers');
     console.log('  rdrctl restart         # Restart MCP servers');
     console.log('  rdrctl status          # Show status');
+    console.log('  rdrctl dashboard       # Start web dashboard');
     console.log('  rdrctl log conductor   # Show conductor logs');
     console.log('  rdrctl log agent       # Show agent logs');
     console.log('  rdrctl log conductor -f # Follow logs (tail -f)');

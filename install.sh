@@ -746,7 +746,7 @@ echo "  bin/rudder prd:create \"My first PRD\""
 echo "  bin/rudder prd:list"
 echo
 echo "Dashboard (visualize project, Gantt, dependency graph):"
-echo "  bin/rudder dashboard"
+echo "  bin/rdrctl dashboard"
 echo
 
 # Show sandbox setup steps for worktree mode

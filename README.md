@@ -165,7 +165,7 @@ your-project/
 A fun dashboard to visualize your project (Gantt, etc):
 
 ```bash
-bin/rudder dashboard
+bin/rdrctl dashboard
 ```
 
 ## Requirements
