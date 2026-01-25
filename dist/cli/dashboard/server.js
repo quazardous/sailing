@@ -12,6 +12,7 @@ import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { handleWebSocketUpgrade, closeAll as closeWsConnections } from './websocket.js';
+import { startWatchers, stopWatchers } from './watcher.js';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const DEFAULT_TIMEOUT = 300; // 5 minutes
 export function createServer(port, routes, options = {}) {
@@ -122,6 +123,8 @@ export function createServer(port, routes, options = {}) {
                         console.log(`  Vue app: enabled`);
                     }
                     console.log(`  WebSocket: ws://127.0.0.1:${actualPort}/ws`);
+                    // Start file watchers for live reload
+                    startWatchers();
                     // Start initial timeout
                     resetTimeout();
                     if (callback)
@@ -135,6 +138,7 @@ export function createServer(port, routes, options = {}) {
                 clearTimeout(timeoutTimer);
                 timeoutTimer = null;
             }
+            stopWatchers();
             closeWsConnections();
             server.close();
         },
