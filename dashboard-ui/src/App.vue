@@ -8,6 +8,7 @@ import {
 import { useArtefactsStore } from './stores/artefacts';
 import { useAgentsStore } from './stores/agents';
 import { useActivitiesStore } from './stores/activities';
+import { ws } from './api';
 
 import ActivityBar from './components/ActivityBar.vue';
 import WelcomeSidebar from './sidebars/WelcomeSidebar.vue';
@@ -216,6 +217,12 @@ onMounted(async () => {
 
   // Connect WebSocket for real-time updates
   agentsStore.connectWebSocket();
+
+  // Listen for artefact updates (file watcher)
+  ws.on('artefact:updated', () => {
+    console.log('[App] Artefact update detected, refreshing...');
+    artefactsStore.refresh();
+  });
 
   // Apply saved theme
   const savedTheme = localStorage.getItem('theme') || 'dark';
