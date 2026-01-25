@@ -183,9 +183,14 @@ export function html(res: http.ServerResponse, content: string, status = 200) {
   res.end(content);
 }
 
-// Helper to send JSON response
+// Helper to send JSON response (no-cache for live updates)
 export function json(res: http.ServerResponse, data: unknown, status = 200) {
-  res.writeHead(status, { 'Content-Type': 'application/json' });
+  res.writeHead(status, {
+    'Content-Type': 'application/json',
+    'Cache-Control': 'no-store, no-cache, must-revalidate',
+    'Pragma': 'no-cache',
+    'Expires': '0'
+  });
   res.end(JSON.stringify(data));
 }
 
