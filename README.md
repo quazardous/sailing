@@ -20,6 +20,12 @@ curl -sSL https://raw.githubusercontent.com/quazardous/sailing/main/install.sh |
 ```
 > ⚠️ **Experimental**: Worktree mode enables git worktree isolation for parallel agent execution. Each agent works in its own branch. Requires [sandbox-runtime (srt)](https://github.com/anthropic-experimental/sandbox-runtime) for OS-level isolation. The installer will guide you through the setup.
 
+Launch rudder MCP **before** `claude`.
+
+```bash
+bin/rdrctl start
+```
+
 ### 2. Create a PRD (1 minute)
 
 Talk to Claude naturally — just mention "sailing" to activate the skill:
