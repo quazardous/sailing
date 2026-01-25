@@ -40,15 +40,10 @@ const displayStartHour = computed(() => {
   return Math.max(0, minStart - 1); // 1 hour margin, but never negative
 });
 
-// Adjusted total hours for display - consider both span and effort
+// Adjusted total hours for display - based on span (endHour)
 const displayTotalHours = computed(() => {
   if (tasks.value.length === 0) return 8;
-  // Find max end considering both endHour (span) and startHour + effort
-  let maxEnd = props.data?.totalHours || 0;
-  for (const task of tasks.value) {
-    const effortEnd = task.startHour + (task.criticalTimespanHours || 0);
-    if (effortEnd > maxEnd) maxEnd = effortEnd;
-  }
+  const maxEnd = props.data?.totalHours || 0;
   return maxEnd - displayStartHour.value;
 });
 
@@ -161,33 +156,22 @@ function isOverCritical(task: SimpleGanttTask): boolean {
             <tspan dx="6">{{ task.name }}</tspan>
           </text>
 
-          <!-- Task bar: full span background (dim) -->
+          <!-- Task bar: full span background (dim) - represents calendar duration -->
           <rect
             :x="labelWidth + (task.startHour - displayStartHour) * unitWidth"
             :y="headerHeight + index * rowHeight + 6"
             :width="Math.max((task.endHour - task.startHour) * unitWidth, 4)"
             :height="rowHeight - 12"
             :rx="3"
-            class="task-bar-span"
+            :class="['task-bar-span', getStatusClass(task.status)]"
           />
 
-          <!-- Effort bar (durationHours) - shows total planned effort -->
+          <!-- Progress fill (fills span box based on effort progress) -->
           <rect
-            v-if="task.durationHours"
+            v-if="task.progress > 0"
             :x="labelWidth + (task.startHour - displayStartHour) * unitWidth"
             :y="headerHeight + index * rowHeight + 6"
-            :width="Math.max(task.durationHours * unitWidth, 4)"
-            :height="rowHeight - 12"
-            :rx="3"
-            :class="['task-bar', getStatusClass(task.status)]"
-          />
-
-          <!-- Progress fill (within effort bar) -->
-          <rect
-            v-if="task.progress > 0 && task.durationHours"
-            :x="labelWidth + (task.startHour - displayStartHour) * unitWidth"
-            :y="headerHeight + index * rowHeight + 6"
-            :width="Math.max(task.durationHours * unitWidth * (task.progress / 100), 2)"
+            :width="Math.max((task.endHour - task.startHour) * unitWidth * (task.progress / 100), 2)"
             :height="rowHeight - 12"
             :rx="3"
             class="task-bar-progress"
@@ -203,7 +187,7 @@ function isOverCritical(task: SimpleGanttTask): boolean {
             class="critical-marker"
           />
 
-          <!-- Progress and effort text -->
+          <!-- Progress and effort text (positioned after the span bar) -->
           <text
             :x="labelWidth + (task.endHour - displayStartHour) * unitWidth + 4"
             :y="headerHeight + index * rowHeight + rowHeight / 2 + 4"
@@ -258,30 +242,24 @@ function isOverCritical(task: SimpleGanttTask): boolean {
   fill: var(--accent, #4fc3f7);
 }
 
-/* Span bar - full duration (very dim background) */
+/* Span bar - full calendar duration with status color */
 .task-bar-span {
-  fill: #374151;
-  opacity: 0.3;
+  opacity: 0.4;
 }
 
-/* Effort bar - planned work duration */
-.task-bar {
-  opacity: 0.6;
-}
-
-.task-bar.pending {
+.task-bar-span.pending {
   fill: #64748B;
 }
 
-.task-bar.active {
+.task-bar-span.active {
   fill: #FBBF24;
 }
 
-.task-bar.done {
+.task-bar-span.done {
   fill: #059669;
 }
 
-.task-bar.blocked {
+.task-bar-span.blocked {
   fill: #EF4444;
 }
 
