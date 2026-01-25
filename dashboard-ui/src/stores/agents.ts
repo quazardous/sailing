@@ -6,8 +6,8 @@
 
 import { defineStore } from 'pinia';
 import { ref, computed } from 'vue';
-import { api, ws } from '../api';
-import type { AgentInfo, AgentStatus, WsMessage } from '../api';
+import { api } from '../api';
+import type { AgentInfo, AgentStatus } from '../api';
 
 interface LogEntry {
   taskId: string;
@@ -68,34 +68,8 @@ export const useAgentsStore = defineStore('agents', () => {
     }
   }
 
-  function connectWebSocket(): void {
-    ws.connect();
-
-    ws.on('connected', () => {
-      connected.value = true;
-    });
-
-    ws.on('agent:log', (msg: WsMessage) => {
-      if (msg.taskId && msg.line) {
-        addLog(msg.taskId, msg.line);
-      }
-    });
-
-    ws.on('agent:status', (msg: WsMessage) => {
-      if (msg.taskId && msg.status) {
-        updateAgentStatus(msg.taskId, msg.status);
-      }
-    });
-
-    ws.on('artefact:updated', () => {
-      // Trigger artefact refresh
-      // This will be handled by the artefacts store
-    });
-  }
-
-  function disconnectWebSocket(): void {
-    ws.disconnect();
-    connected.value = false;
+  function setConnected(value: boolean): void {
+    connected.value = value;
   }
 
   function addLog(taskId: string, line: string): void {
@@ -165,8 +139,7 @@ export const useAgentsStore = defineStore('agents', () => {
     // Actions
     fetchAgents,
     refresh,
-    connectWebSocket,
-    disconnectWebSocket,
+    setConnected,
     addLog,
     updateAgentStatus,
     selectAgent,

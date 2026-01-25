@@ -8,7 +8,7 @@ import {
 import { useArtefactsStore } from './stores/artefacts';
 import { useAgentsStore } from './stores/agents';
 import { useActivitiesStore } from './stores/activities';
-import { ws } from './api';
+import { useEventBus } from './stores/eventBus';
 
 import ActivityBar from './components/ActivityBar.vue';
 import WelcomeSidebar from './sidebars/WelcomeSidebar.vue';
@@ -210,18 +210,32 @@ onMounted(async () => {
   // Initialize stores
   const artefactsStore = useArtefactsStore();
   const agentsStore = useAgentsStore();
+  const eventBus = useEventBus();
 
   // Load initial data
   await artefactsStore.fetchTree();
   await agentsStore.fetchAgents();
 
-  // Connect WebSocket for real-time updates
-  agentsStore.connectWebSocket();
+  // Initialize event bus (WebSocket + event handlers)
+  eventBus.init();
 
-  // Listen for artefact updates (file watcher)
-  ws.on('artefact:updated', () => {
-    console.log('[App] Artefact update detected, refreshing...');
+  // Register artefact refresh callback
+  eventBus.onArtefactRefresh(() => {
+    console.log('[App] Artefact refresh triggered by EventBus');
     artefactsStore.refresh();
+  });
+
+  // Register agent callbacks
+  eventBus.onAgentLog((msg) => {
+    if (msg.taskId && msg.line) {
+      agentsStore.addLog(msg.taskId, msg.line);
+    }
+  });
+
+  eventBus.onAgentStatus((msg) => {
+    if (msg.taskId && msg.status) {
+      agentsStore.updateAgentStatus(msg.taskId, msg.status as any);
+    }
   });
 
   // Apply saved theme

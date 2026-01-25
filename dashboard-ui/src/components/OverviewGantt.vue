@@ -30,18 +30,20 @@ const headerHeight = 24;
 const paddingRight = 20;
 
 // Fixed unit width for simplicity
+const tasks = computed(() => props.data?.tasks || []);
+
 const unitWidth = computed(() => {
-  const hours = props.data.totalHours || 8;
+  const hours = props.data?.totalHours || 8;
   const availableWidth = 400; // Target width
   return Math.max(2, Math.min(10, availableWidth / hours));
 });
 
 const chartWidth = computed(() => {
-  return labelWidth + (props.data.totalHours || 8) * unitWidth.value + paddingRight;
+  return labelWidth + (props.data?.totalHours || 8) * unitWidth.value + paddingRight;
 });
 
 const chartHeight = computed(() => {
-  return headerHeight + (props.data?.tasks?.length || 0) * rowHeight + 10;
+  return headerHeight + tasks.value.length * rowHeight + 10;
 });
 
 // Today line position
@@ -99,7 +101,7 @@ function formatProgress(progress: number): string {
 
       <!-- Task rows -->
       <g class="task-rows">
-        <g v-for="(task, index) in data.tasks" :key="task.id">
+        <g v-for="(task, index) in tasks" :key="task.id">
           <!-- Row background -->
           <rect
             :x="0"
