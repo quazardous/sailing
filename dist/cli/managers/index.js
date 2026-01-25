@@ -27,7 +27,7 @@ export { createWorktree, removeWorktree, cleanupWorktree, getParentBranch, ensur
 // Config-aware wrappers
 getWorktreePath, getBranchName, listWorktrees, listAgentWorktrees, pruneWorktrees, getWorktreeStatus, worktreeExists, branchExists, syncBranch, getBranchDivergence } from './worktree-manager.js';
 // PR/MR operations
-export { getProvider, create as createPr, getStatus as getPrStatus, detectProvider, checkCli, exists as prExists, isMerged, getUrlFromState } from './pr-manager.js';
+export { getProvider, create as createPr, getStatus as getPrStatus, detectProvider, checkCli, exists as prExists, isMerged, getUrlFromDb } from './pr-manager.js';
 // Config semantic accessors (from core-manager)
 export { getAgentConfig, getGitConfig, getMainBranch, getIdsConfig, getConfigValue, formatId, validateConfigCoherence, getConfigDisplay, getWorktreesDir, findProjectRoot } from './core-manager.js';
 // Status transition orchestration

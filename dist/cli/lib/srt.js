@@ -104,48 +104,96 @@ export function getAvailablePort() {
 }
 /**
  * Check if MCP server is already running for a haven
- * Supports both socket and port modes
+ * Reads state from mcp-state.json (created by rdrctl)
+ * Supports both socket and port modes for conductor and agent
  * @param {string} havenDir - Haven directory
  * @returns {{ running: boolean, mode?: string, socket?: string, port?: number, pid?: number }}
  */
 export function checkMcpServer(havenDir) {
-    const socketPath = path.join(havenDir, 'mcp.sock');
-    const portFile = path.join(havenDir, 'mcp.port');
-    const pidFile = path.join(havenDir, 'mcp.pid');
-    if (!fs.existsSync(pidFile)) {
+    const stateFile = path.join(havenDir, 'mcp-state.json');
+    if (!fs.existsSync(stateFile)) {
         return { running: false };
     }
-    // Check if PID is still running
     try {
-        const pid = parseInt(fs.readFileSync(pidFile, 'utf8').trim(), 10);
-        process.kill(pid, 0); // Signal 0 = check if process exists
-        // Determine mode
-        if (fs.existsSync(portFile)) {
-            const port = parseInt(fs.readFileSync(portFile, 'utf8').trim(), 10);
-            return { running: true, mode: 'port', port, pid };
+        const state = JSON.parse(fs.readFileSync(stateFile, 'utf8'));
+        // Check conductor (primary MCP for orchestrator)
+        if (state.conductor?.pid) {
+            try {
+                process.kill(state.conductor.pid, 0); // Signal 0 = check if process exists
+                if (state.conductor.socket) {
+                    return {
+                        running: true,
+                        mode: 'socket',
+                        socket: state.conductor.socket,
+                        pid: state.conductor.pid
+                    };
+                }
+                else if (state.conductor.port) {
+                    return {
+                        running: true,
+                        mode: 'port',
+                        port: state.conductor.port,
+                        pid: state.conductor.pid
+                    };
+                }
+            }
+            catch {
+                // Conductor not running
+            }
         }
-        else if (fs.existsSync(socketPath)) {
-            return { running: true, mode: 'socket', socket: socketPath, pid };
-        }
-        else {
-            // PID exists but no socket or port file - stale
-            throw new Error('Stale PID file');
-        }
+        // Conductor not running, clean up stale state
+        fs.unlinkSync(stateFile);
+        return { running: false };
     }
     catch {
-        // Process not running, clean up stale files
+        // Corrupted state file, clean up
         try {
-            fs.unlinkSync(socketPath);
+            fs.unlinkSync(stateFile);
         }
         catch { /* ignore */ }
-        try {
-            fs.unlinkSync(pidFile);
+        return { running: false };
+    }
+}
+/**
+ * Check if MCP agent server is running (for sandbox agents)
+ * @param {string} havenDir - Haven directory
+ * @returns {{ running: boolean, mode?: string, socket?: string, port?: number, pid?: number }}
+ */
+export function checkMcpAgentServer(havenDir) {
+    const stateFile = path.join(havenDir, 'mcp-state.json');
+    if (!fs.existsSync(stateFile)) {
+        return { running: false };
+    }
+    try {
+        const state = JSON.parse(fs.readFileSync(stateFile, 'utf8'));
+        // Check agent MCP (for sandbox agents)
+        if (state.agent?.pid) {
+            try {
+                process.kill(state.agent.pid, 0);
+                if (state.agent.socket) {
+                    return {
+                        running: true,
+                        mode: 'socket',
+                        socket: state.agent.socket,
+                        pid: state.agent.pid
+                    };
+                }
+                else if (state.agent.port) {
+                    return {
+                        running: true,
+                        mode: 'port',
+                        port: state.agent.port,
+                        pid: state.agent.pid
+                    };
+                }
+            }
+            catch {
+                // Agent not running
+            }
         }
-        catch { /* ignore */ }
-        try {
-            fs.unlinkSync(portFile);
-        }
-        catch { /* ignore */ }
+        return { running: false };
+    }
+    catch {
         return { running: false };
     }
 }
@@ -352,7 +400,9 @@ export function generateSrtConfig(options) {
             '/tmp', // Temp files
             `${homeDir}/.claude`, // Claude session data (required)
             `${homeDir}/.claude.json`, // Claude config (required)
-            `${homeDir}/.cache/claude-cli-nodejs` // Claude cache (required)
+            `${homeDir}/.cache/claude-cli-nodejs`, // Claude cache (required)
+            `${homeDir}/.gradle`, // Gradle build cache (Android builds)
+            `${homeDir}/.npm/_logs` // npm logs
         ];
         for (const p of additionalWritePaths) {
             if (p) {
@@ -432,7 +482,7 @@ export function generateSrtConfig(options) {
  * @returns {{ process: ChildProcess, pid: number, logFile?: string }}
  */
 export function spawnClaudeWithSrt(options) {
-    const { prompt, cwd, logFile, sandbox = false, srtConfigPath, riskyMode = false, extraArgs = [], debug = false, timeout, onStdout, onStderr, mcpConfigPath, sandboxHome, maxBudgetUsd, watchdogTimeout, noSessionPersistence = true } = options;
+    const { prompt, cwd, logFile, sandbox = false, srtConfigPath, riskyMode = false, extraArgs = [], debug = false, timeout, onStdout, onStderr, mcpConfigPath, sandboxHome, maxBudgetUsd, watchdogTimeout, noSessionPersistence = true, appendLogs = false } = options;
     // Build claude args
     const claudeArgs = [];
     if (riskyMode) {
@@ -506,10 +556,15 @@ export function spawnClaudeWithSrt(options) {
                 // Ignore rotation errors
             }
         };
-        rotateLog(jsonLogFile);
-        rotateLog(filteredLogFile);
-        jsonLogStream = fs.createWriteStream(jsonLogFile, { flags: 'w' });
-        filteredLogStream = fs.createWriteStream(filteredLogFile, { flags: 'w' });
+        // Rotate logs unless appending (resume mode)
+        if (!appendLogs) {
+            rotateLog(jsonLogFile);
+            rotateLog(filteredLogFile);
+        }
+        // Use append mode for resume, write mode for new sessions
+        const fileFlags = appendLogs ? 'a' : 'w';
+        jsonLogStream = fs.createWriteStream(jsonLogFile, { flags: fileFlags });
+        filteredLogStream = fs.createWriteStream(filteredLogFile, { flags: fileFlags });
         const startTime = new Date().toISOString();
         const header = [
             `\n=== Claude Started: ${startTime} ===`,
@@ -533,6 +588,7 @@ export function spawnClaudeWithSrt(options) {
     if (sandboxHome) {
         ensureDir(sandboxHome);
         ensureDir(path.join(sandboxHome, '.claude'));
+        ensureDir(path.join(sandboxHome, '.android')); // Android SDK metrics
         spawnEnv.HOME = sandboxHome;
         // Copy credentials from real ~/.claude.json and ~/.claude/.credentials.json
         const realHome = os.homedir();
@@ -555,6 +611,17 @@ export function spawnClaudeWithSrt(options) {
         if (fs.existsSync(realCredentials)) {
             try {
                 fs.copyFileSync(realCredentials, sandboxCredentialsPath);
+            }
+            catch {
+                // Ignore errors
+            }
+        }
+        // Copy .gitconfig for git identity (author name/email for commits)
+        const realGitConfig = path.join(realHome, '.gitconfig');
+        const sandboxGitConfig = path.join(sandboxHome, '.gitconfig');
+        if (fs.existsSync(realGitConfig)) {
+            try {
+                fs.copyFileSync(realGitConfig, sandboxGitConfig);
             }
             catch {
                 // Ignore errors

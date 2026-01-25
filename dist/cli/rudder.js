@@ -124,9 +124,9 @@ if (Object.keys(pathOverrides).length > 0) {
 import { getCliVersion } from './managers/version-manager.js';
 import { registerPrdCommands } from './commands/prd.js';
 import { registerEpicCommands } from './commands/epic.js';
-import { registerTaskCommands } from './commands/task.js';
-import { registerStoryCommands } from './commands/story.js';
-import { registerDepsCommands } from './commands/deps.js';
+import { registerTaskCommands } from './commands/task/index.js';
+import { registerStoryCommands } from './commands/story/index.js';
+import { registerDepsCommands } from './commands/deps/index.js';
 import { registerMemoryCommands } from './commands/memory.js';
 import { registerUtilCommands } from './commands/util.js';
 import { registerPermissionsCommands } from './commands/permissions.js';
@@ -134,9 +134,9 @@ import { registerContextCommands } from './commands/context.js';
 import { registerTagCommands } from './commands/tag.js';
 import { registerAgentCommands } from './commands/agent/index.js';
 import { registerGcCommands } from './commands/gc.js';
-import { registerAssignCommands } from './commands/assign.js';
+import { registerAssignCommands } from './commands/assign/index.js';
 import { registerSandboxCommands } from './commands/sandbox.js';
-import { registerWorktreeCommands } from './commands/worktree.js';
+import { registerWorktreeCommands } from './commands/worktree/index.js';
 import { registerSpawnCommands } from './commands/spawn.js';
 import { registerWorkflowCommands } from './commands/workflow.js';
 import { registerArtifactCommands } from './commands/artifact.js';
@@ -144,9 +144,12 @@ import { registerDbCommands } from './commands/db.js';
 import { registerFindCommands } from './commands/find.js';
 import { registerRenumberCommands } from './commands/renumber.js';
 import { registerArchiveCommands } from './commands/archive.js';
-import { registerDashboardCommands } from './commands/dashboard.js';
 import { registerDashboardDebugCommands } from './commands/dashboard-debug.js';
 import { registerAuditCommands } from './commands/audit.js';
+import { registerInstallCommands } from './commands/install.js';
+import { registerMcpConductorCommands } from './commands/mcp-conductor.js';
+import { registerMcpAgentCommands } from './commands/mcp-agent.js';
+// Dashboard and conductor moved to rdrctl
 // Expand colon syntax: task:list → task list (first arg only, if it looks like group:command)
 let commandExpanded = false;
 const expandedArgs = args.flatMap(arg => {
@@ -199,9 +202,12 @@ registerDbCommands(program);
 registerFindCommands(program);
 registerRenumberCommands(program);
 registerArchiveCommands(program);
-registerDashboardCommands(program);
 registerDashboardDebugCommands(program);
 registerAuditCommands(program);
+registerInstallCommands(program);
+registerMcpConductorCommands(program);
+registerMcpAgentCommands(program);
+// Dashboard and conductor now in rdrctl
 registerUtilCommands(program);
 registerPermissionsCommands(program);
 // Parse with expanded args

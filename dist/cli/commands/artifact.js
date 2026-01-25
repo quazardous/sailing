@@ -5,7 +5,7 @@
 import fs from 'fs';
 import { jsonOut, stripComments } from '../managers/core-manager.js';
 import { addDynamicHelp, withModifies } from '../lib/help.js';
-import { parseMarkdownSections, serializeSections, parseSearchReplace, applySearchReplace, editArtifact, listSections, getSection, parseMultiSectionContent, applySedCommands, parseCheckboxItems } from '../lib/artifact.js';
+import { parseMarkdownSections, serializeSections, parseSearchReplace, applySearchReplace, editArtifact, listSections, getSection, parseMultiSectionContent, applySedCommands, parseCheckboxItems, mergeDuplicateSectionsInFile } from '../lib/artifact.js';
 import { getTask, getEpic, getPrd } from '../managers/artefacts-manager.js';
 // ============================================================================
 // Helper Functions
@@ -127,6 +127,7 @@ export function registerArtifactCommands(program) {
         .option('-c, --content <text>', 'New content (or use stdin)')
         .option('-a, --append', 'Append to section instead of replace')
         .option('-p, --prepend', 'Prepend to section instead of replace')
+        .option('--merge-dedup-section', 'Merge duplicate sections (combine content)')
         .option('--json', 'JSON output')
         .addHelpText('after', `
 Multi-Section Format (omit --section):
@@ -134,9 +135,10 @@ Multi-Section Format (omit --section):
   Add [op] after section name to specify operation.
 
 Operations:
-  [replace]   Replace section content (default)
-  [append]    Add content at end of section
-  [prepend]   Add content at start of section
+  [replace]   Replace section content (default) - auto-creates if missing
+  [append]    Add content at end of section - auto-creates if missing
+  [prepend]   Add content at start of section - auto-creates if missing
+  [create]    Create new section (fails if exists)
   [delete]    Remove section entirely
   [sed]       Search/replace with regex: s/pattern/replacement/g
   [check]     Check checkbox items (partial match)
@@ -179,6 +181,26 @@ Examples:
         if (!resolved) {
             console.error(`Artifact not found: ${id}`);
             process.exit(1);
+        }
+        // Handle --merge-dedup-section as standalone operation
+        if (options.mergeDedupSection) {
+            const result = mergeDuplicateSectionsInFile(resolved.path);
+            if (options.json) {
+                jsonOut({ id, ...result });
+            }
+            else if (result.success) {
+                if (result.merged.length === 0) {
+                    console.log(`No duplicate sections found in ${id}`);
+                }
+                else {
+                    console.log(`✓ Merged duplicate sections in ${id}: ${result.merged.join(', ')}`);
+                }
+            }
+            else {
+                console.error(`Failed to merge sections: ${result.error}`);
+                process.exit(1);
+            }
+            return;
         }
         // Get content from option or stdin
         let content = options.content || '';

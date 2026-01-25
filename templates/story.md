@@ -4,17 +4,13 @@ title: Story Title
 parent: PRD-NNN
 parent_story: null
 type: user
-# Edit frontmatter: bin/rudder story:update <id> --set key=value
+# MCP: artefact_update { "id": "<id>", "status": "...", "set": {...} }
 ---
 
-<!-- Edit ALL sections in ONE command: bin/rudder story:edit <id> <<'EOF'
-## Story
-...
-## Acceptance Criteria
-- [ ] ...
-EOF
+<!--
+MCP multi-section edit (preferred):
+artefact_edit { "id": "<id>", "content": "## Story\n**As** user **I want** feature **So that** benefit\n\n## Acceptance Criteria\n- [ ] Given X, when Y, then Z" }
 -->
-<!-- Ops: [append], [sed], [check], [patch]... See: bin/rudder story edit --help -->
 
 ## Story
 

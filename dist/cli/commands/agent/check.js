@@ -15,7 +15,7 @@ export function registerCheckCommand(agent) {
         .option('--skip-spawn', 'Only check MCP server, skip agent spawn test')
         .option('--json', 'JSON output')
         .action(async (options) => {
-        const { checkMcpServer } = await import('../../lib/srt.js');
+        const { checkMcpAgentServer } = await import('../../lib/srt.js');
         const havenDir = resolvePlaceholders('${haven}');
         const projectRoot = findProjectRoot();
         const result = {
@@ -30,10 +30,10 @@ export function registerCheckCommand(agent) {
             if (options.debug && !options.json)
                 console.log(`  [debug] ${msg}`);
         };
-        // Step 1: Check MCP server process
+        // Step 1: Check MCP agent server process
         if (!options.json)
-            console.log('Checking MCP server...');
-        const mcpStatus = checkMcpServer(havenDir);
+            console.log('Checking MCP agent server...');
+        const mcpStatus = checkMcpAgentServer(havenDir);
         result.mcp = {
             running: mcpStatus.running,
             socket: mcpStatus.socket,
@@ -45,8 +45,8 @@ export function registerCheckCommand(agent) {
                 console.log(JSON.stringify(result, null, 2));
             }
             else {
-                console.error('\n❌ MCP server not running\n');
-                console.error('Fix: bin/rudder-mcp start');
+                console.error('\n❌ MCP agent server not running\n');
+                console.error('Fix: bin/rdrctl start');
             }
             process.exit(1);
         }

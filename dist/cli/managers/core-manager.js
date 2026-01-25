@@ -430,6 +430,20 @@ export function clearPlaceholderCache() {
     _projectHash = null;
 }
 /**
+ * Clear paths config cache (useful for testing)
+ */
+export function clearPathsCache() {
+    _config = null;
+    clearPlaceholderCache();
+}
+/**
+ * Reset all path overrides (useful for testing cleanup)
+ */
+export function resetPathOverrides() {
+    _pathOverrides = {};
+    clearPathsCache();
+}
+/**
  * Ensure a directory exists, creating it if necessary
  * Resolves placeholders in the path
  *

@@ -4,21 +4,24 @@
 import fs from 'fs';
 import path from 'path';
 import yaml from 'js-yaml';
-import { findProjectRoot, loadFile, jsonOut, resolvePlaceholders, getAgentConfig, ensureDir, getAgentsDir, getPathsInfo } from '../../managers/core-manager.js';
+import { findProjectRoot, loadFile, jsonOut, resolvePlaceholders, getAgentConfig, ensureDir, getAgentsDir, getPathsInfo, getWorktreesDir } from '../../managers/core-manager.js';
 import { getGit } from '../../lib/git.js';
 import { create as createPr } from '../../managers/pr-manager.js';
 import { AgentRunManager } from '../../lib/agent-run.js';
 import { getAgentLifecycle } from '../../managers/agent-manager.js';
 import { createMission } from '../../lib/agent-schema.js';
-import { loadState, saveState, updateStateAtomic } from '../../managers/state-manager.js';
+import { getAgentFromDb, saveAgentToDb, deleteAgentFromDb, updateAgentInDb } from '../../managers/db-manager.js';
 import { withModifies } from '../../lib/help.js';
 import { buildAgentSpawnPrompt } from '../../managers/compose-manager.js';
 import { createWorktree, getWorktreePath, getBranchName, worktreeExists, removeWorktree, ensureBranchHierarchy, syncParentBranch, getParentBranch, getMainBranch } from '../../managers/worktree-manager.js';
+import { WorktreeOps } from '../../lib/worktree.js';
 import { spawnClaude, getLogFilePath } from '../../lib/claude.js';
-import { checkMcpServer } from '../../lib/srt.js';
+import { checkMcpAgentServer } from '../../lib/srt.js';
 import { extractPrdId, extractEpicId, normalizeId } from '../../lib/normalize.js';
+import { parseTaskNum } from '../../lib/agent-paths.js';
 import { findDevMd, findToolset } from '../../managers/core-manager.js';
 import { getTask, getEpic, getMemoryFile, getPrdBranching } from '../../managers/artefacts-manager.js';
+import { checkPendingMemory } from '../../managers/memory-manager.js';
 import { AgentUtils, getProcessStats, formatDuration } from '../../lib/agent-utils.js';
 import { getDiagnoseOps, printDiagnoseResult } from '../../managers/diagnose-manager.js';
 export function registerSpawnCommand(agent) {
@@ -28,7 +31,6 @@ export function registerSpawnCommand(agent) {
         .option('--timeout <seconds>', 'Execution timeout (default: 600)', parseInt)
         .option('--worktree', 'Create isolated worktree (overrides config)')
         .option('--no-worktree', 'Skip worktree creation (overrides config)')
-        .option('--no-wait', 'Fire and forget (do not wait for completion)')
         .option('--no-log', 'Do not stream Claude stdout/stderr')
         .option('--no-heartbeat', 'Do not show periodic heartbeat')
         .option('--heartbeat <seconds>', 'Heartbeat interval (default: 60 quiet, 30 verbose)', parseInt)
@@ -48,7 +50,7 @@ export function registerSpawnCommand(agent) {
             console.error('Use Task tool with `rudder context:load <operation> --role agent` to spawn agents inline.');
             process.exit(1);
         }
-        taskId = normalizeId(taskId);
+        taskId = normalizeId(taskId, undefined, 'task');
         // Find task file
         const taskFile = getTask(taskId)?.file;
         if (!taskFile) {
@@ -68,10 +70,7 @@ export function registerSpawnCommand(agent) {
             console.error(`Could not extract PRD/Epic IDs from parent: ${task.data.parent}`);
             process.exit(1);
         }
-        // Optimistic spawn: check existing state and auto-handle simple cases
-        const state = loadState();
-        if (!state.agents)
-            state.agents = {};
+        // Optimistic spawn: check existing db and auto-handle simple cases
         const projectRoot = findProjectRoot();
         // Helper for escalation with next steps
         const escalate = (reason, nextSteps) => {
@@ -90,17 +89,18 @@ export function registerSpawnCommand(agent) {
             }
             process.exit(1);
         };
-        // Check MCP server is running (required for sandbox agents)
+        // Check MCP agent server is running (required for sandbox agents)
         const havenDir = resolvePlaceholders('${haven}');
-        const mcpStatus = checkMcpServer(havenDir);
+        const mcpStatus = checkMcpAgentServer(havenDir);
         if (!mcpStatus.running) {
-            escalate('MCP server not running', [
-                `bin/rudder-mcp start     # Start the MCP server`,
-                `bin/rudder-mcp status    # Check server status`
+            escalate('MCP agent server not running', [
+                `bin/rdrctl start     # Start MCP services`,
+                `bin/rdrctl status    # Check server status`
             ]);
         }
-        if (state.agents[taskId]) {
-            const agentInfo = state.agents[taskId];
+        const existingAgent = getAgentFromDb(taskId);
+        if (existingAgent) {
+            const agentInfo = existingAgent;
             const status = agentInfo.status;
             // Check if process is actually running
             let isRunning = false;
@@ -123,20 +123,44 @@ export function registerSpawnCommand(agent) {
                 const worktreePath = agentInfo.worktree.path;
                 const branch = agentInfo.worktree.branch;
                 if (fs.existsSync(worktreePath)) {
-                    // Check for uncommitted changes and commits ahead
+                    // Check for uncommitted changes, commits ahead, and merge status
                     const baseBranch = agentInfo.worktree.base_branch || 'main';
                     const worktreeGit = getGit(worktreePath);
                     const worktreeStatus = await worktreeGit.status();
                     const isDirty = !worktreeStatus.isClean();
                     const worktreeLog = await worktreeGit.log({ from: baseBranch, to: 'HEAD' });
                     const commitsAhead = worktreeLog.total;
-                    // Completed agent with work to merge
-                    if ((status === 'completed' || status === 'reaped') && (isDirty || commitsAhead > 0)) {
+                    // Check if branch is already merged into main (handles non-fast-forward merges)
+                    const ops = new WorktreeOps(projectRoot, getWorktreesDir());
+                    const isMerged = ops.branchExists(branch) ? ops.isAncestor(branch, baseBranch) : true;
+                    // Already merged and clean → auto-cleanup
+                    if (isMerged && !isDirty) {
+                        if (!options.json) {
+                            console.log(`Auto-cleaning previous ${taskId} (already merged)...`);
+                        }
+                        removeWorktree(taskId, { force: true });
+                        await deleteAgentFromDb(taskId);
+                    }
+                    // Already merged but dirty → escalate (uncommitted work after merge)
+                    else if (isMerged && isDirty) {
+                        if (options.resume) {
+                            if (!options.json) {
+                                console.log(`Resuming ${taskId} with uncommitted changes (branch already merged)...`);
+                            }
+                        }
+                        else {
+                            escalate(`Agent ${taskId} has uncommitted changes (branch already merged)`, [
+                                `agent:spawn ${taskId} --resume  # Continue with existing work`,
+                                `agent:reject ${taskId}          # Discard uncommitted work`
+                            ]);
+                        }
+                    }
+                    // Not merged: completed/reaped agent with work to merge
+                    else if ((status === 'completed' || status === 'reaped') && (isDirty || commitsAhead > 0)) {
                         if (options.resume) {
                             if (!options.json) {
                                 console.log(`Resuming ${taskId} with existing work (${isDirty ? 'uncommitted changes' : commitsAhead + ' commits'})...`);
                             }
-                            // Continue - reuse worktree
                         }
                         else {
                             escalate(`Agent ${taskId} has unmerged work`, [
@@ -146,13 +170,12 @@ export function registerSpawnCommand(agent) {
                             ]);
                         }
                     }
-                    // Agent has uncommitted work but didn't complete properly
-                    if (isDirty && !['completed', 'reaped'].includes(status)) {
+                    // Not merged: uncommitted work but didn't complete properly
+                    else if (isDirty && !['completed', 'reaped'].includes(status)) {
                         if (options.resume) {
                             if (!options.json) {
                                 console.log(`Resuming ${taskId} with uncommitted changes (status: ${status})...`);
                             }
-                            // Continue - reuse worktree
                         }
                         else {
                             escalate(`Agent ${taskId} has uncommitted changes (status: ${status})`, [
@@ -162,13 +185,12 @@ export function registerSpawnCommand(agent) {
                             ]);
                         }
                     }
-                    // Has commits but not merged
-                    if (commitsAhead > 0 && !['reaped'].includes(status)) {
+                    // Not merged: has commits but not reaped
+                    else if (commitsAhead > 0 && !['reaped'].includes(status)) {
                         if (options.resume) {
                             if (!options.json) {
                                 console.log(`Resuming ${taskId} with ${commitsAhead} commit(s)...`);
                             }
-                            // Continue - reuse worktree
                         }
                         else {
                             escalate(`Agent ${taskId} has ${commitsAhead} commit(s) not merged`, [
@@ -178,23 +200,21 @@ export function registerSpawnCommand(agent) {
                             ]);
                         }
                     }
-                    // Clean worktree, can reuse - auto-cleanup
-                    if (!isDirty && commitsAhead === 0) {
+                    // Clean worktree, no commits ahead - auto-cleanup
+                    else if (!isDirty && commitsAhead === 0) {
                         if (!options.json) {
                             console.log(`Auto-cleaning previous ${taskId} (no changes)...`);
                         }
                         removeWorktree(taskId, { force: true });
-                        delete state.agents[taskId];
-                        saveState(state);
+                        await deleteAgentFromDb(taskId);
                     }
                 }
                 else {
-                    // Worktree doesn't exist, just clear state
+                    // Worktree doesn't exist, just clear db entry
                     if (!options.json) {
-                        console.log(`Clearing stale state for ${taskId}...`);
+                        console.log(`Clearing stale entry for ${taskId}...`);
                     }
-                    delete state.agents[taskId];
-                    saveState(state);
+                    await deleteAgentFromDb(taskId);
                 }
             }
             else {
@@ -203,8 +223,7 @@ export function registerSpawnCommand(agent) {
                     if (!options.json) {
                         console.log(`Clearing previous ${taskId} (${status})...`);
                     }
-                    delete state.agents[taskId];
-                    saveState(state);
+                    await deleteAgentFromDb(taskId);
                 }
                 else {
                     escalate(`Agent ${taskId} in unexpected state: ${status}`, [
@@ -256,6 +275,18 @@ export function registerSpawnCommand(agent) {
                 console.error('Escalate for resolution.');
                 process.exit(1);
             }
+        }
+        // Check for pending memory logs (must be analyzed before spawning new agents)
+        const pendingMemory = checkPendingMemory(epicId);
+        if (pendingMemory.pending) {
+            console.error('BLOCKED: Pending memory logs require analysis\n');
+            console.error(`Epic(s) with unprocessed logs: ${pendingMemory.epics.join(', ')}`);
+            console.error('\nMemory logs must be analyzed before spawning new agents.');
+            console.error('Escalate for resolution.\n');
+            console.error('Next steps:');
+            console.error(`  bin/rudder memory:analyze ${pendingMemory.epics[0]}  # Analyze and consolidate`);
+            console.error('  bin/rudder memory:status                           # Check status');
+            process.exit(1);
         }
         // Get branching strategy from PRD
         const branching = getPrdBranching(prdId);
@@ -424,9 +455,8 @@ export function registerSpawnCommand(agent) {
         // Get log file path
         const logFile = getLogFilePath(getAgentsDir(), taskId);
         // Spawn Claude with bootstrap prompt
-        const shouldWait = options.wait !== false;
         const isQuiet = options.verbose !== true;
-        const shouldLog = options.log !== false && shouldWait && !isQuiet;
+        const shouldLog = options.log !== false && !isQuiet;
         const paths = getPathsInfo();
         const spawnResult = await spawnClaude({
             prompt: bootstrapPrompt,
@@ -442,29 +472,28 @@ export function registerSpawnCommand(agent) {
             sandbox: agentConfig.sandbox,
             maxBudgetUsd: agentConfig.max_budget_usd,
             watchdogTimeout: agentConfig.watchdog_timeout,
-            baseSrtConfigPath: paths.srtConfig?.absolute
+            baseSrtConfigPath: paths.srtConfig?.absolute,
+            appendLogs: worktreeInfo?.resumed // Don't rotate logs on resume
         });
-        // Update state atomically
+        // Save agent to db
+        const taskNum = parseTaskNum(taskId);
+        if (taskNum === null) {
+            console.error(`Invalid task ID: ${taskId}`);
+            process.exit(1);
+        }
         const agentEntry = {
+            taskNum,
             status: 'spawned',
             spawned_at: new Date().toISOString(),
             pid: spawnResult.pid,
-            mission_file: missionFile,
-            log_file: spawnResult.logFile,
-            srt_config: spawnResult.srtConfig,
-            mcp_config: spawnResult.mcpConfig,
+            agent_dir: agentDir,
             mcp_server: spawnResult.mcpServerPath || undefined,
             mcp_port: spawnResult.mcpPort ?? undefined,
             mcp_pid: spawnResult.mcpPid,
             timeout,
             ...(worktreeInfo && { worktree: worktreeInfo })
         };
-        updateStateAtomic(s => {
-            if (!s.agents)
-                s.agents = {};
-            s.agents[taskId] = agentEntry;
-            return s;
-        });
+        await saveAgentToDb(taskId, agentEntry);
         // Handle process exit
         spawnResult.process.on('exit', async (code, signal) => {
             const exitGit = getGit(cwd);
@@ -482,20 +511,22 @@ export function registerSpawnCommand(agent) {
                 const exitLog = await exitGit.log({ from: worktreeInfo.base_branch, to: 'HEAD' });
                 commitsAhead = exitLog.total;
             }
-            const updatedState = updateStateAtomic(s => {
-                if (s.agents?.[taskId]) {
-                    s.agents[taskId].status = code === 0 ? 'completed' : 'error';
-                    s.agents[taskId].exit_code = code;
-                    s.agents[taskId].exit_signal = signal;
-                    s.agents[taskId].ended_at = new Date().toISOString();
-                    delete s.agents[taskId].pid;
-                    if (dirtyWorktree) {
-                        s.agents[taskId].dirty_worktree = true;
-                        s.agents[taskId].uncommitted_files = uncommittedFiles;
-                    }
+            // Update agent in db
+            const currentAgent = getAgentFromDb(taskId);
+            if (currentAgent) {
+                const updates = {
+                    status: code === 0 ? 'completed' : 'error',
+                    exit_code: code,
+                    exit_signal: signal,
+                    ended_at: new Date().toISOString(),
+                    pid: undefined
+                };
+                if (dirtyWorktree) {
+                    updates.dirty_worktree = true;
+                    updates.uncommitted_files = uncommittedFiles;
                 }
-                return s;
-            });
+                await saveAgentToDb(taskId, { ...currentAgent, ...updates });
+            }
             // Auto-release if agent exited successfully with work done
             if (code === 0 && (dirtyWorktree || commitsAhead > 0)) {
                 const releaseResult = runManager.release(taskId);
@@ -507,19 +538,25 @@ export function registerSpawnCommand(agent) {
                 }
             }
             // Auto-create PR if enabled and agent completed successfully
-            if (code === 0 && agentConfig.auto_pr && updatedState.agents?.[taskId]?.worktree) {
-                const agentInfo = updatedState.agents[taskId];
+            const updatedAgent = getAgentFromDb(taskId);
+            if (code === 0 && agentConfig.auto_pr && updatedAgent?.worktree) {
+                // Get task info from artefacts (not stored in agent record)
+                const taskInfo = getTask(taskId);
+                const taskTitle = taskInfo?.data?.title;
+                const epicId = taskInfo?.data?.parent ? extractEpicId(taskInfo.data.parent) : null;
+                const prdId = taskInfo?.data?.parent ? extractPrdId(taskInfo.data.parent) : null;
                 const prResult = await createPr(taskId, {
                     cwd: projectRoot,
-                    title: agentInfo.task_title ? `${taskId}: ${agentInfo.task_title}` : undefined,
+                    title: taskTitle ? `${taskId}: ${taskTitle}` : undefined,
                     draft: agentConfig.pr_draft,
-                    epicId: agentInfo.epic_id,
-                    prdId: agentInfo.prd_id
+                    epicId: epicId || undefined,
+                    prdId: prdId || undefined
                 });
                 if ('url' in prResult) {
-                    updatedState.agents[taskId].pr_url = prResult.url;
-                    updatedState.agents[taskId].pr_created_at = new Date().toISOString();
-                    saveState(updatedState);
+                    await updateAgentInDb(taskId, {
+                        pr_url: prResult.url,
+                        pr_created_at: new Date().toISOString()
+                    });
                     console.log(`Auto-PR created for ${taskId}: ${prResult.url}`);
                 }
                 else {
@@ -541,35 +578,7 @@ export function registerSpawnCommand(agent) {
                 }
             }
         });
-        // === NO-WAIT MODE: fire and forget ===
-        if (!shouldWait) {
-            if (options.json) {
-                jsonOut({
-                    task_id: taskId,
-                    epic_id: epicId,
-                    prd_id: prdId,
-                    pid: spawnResult.pid,
-                    cwd,
-                    log_file: spawnResult.logFile,
-                    mission_file: missionFile,
-                    timeout,
-                    ...(worktreeInfo && { worktree: worktreeInfo })
-                });
-            }
-            else {
-                console.log(`Spawned: ${taskId}`);
-                console.log(`  PID: ${spawnResult.pid}`);
-                console.log(`  Timeout: ${timeout}s`);
-                console.log(`\nMonitor:`);
-                console.log(`  bin/rudder agent:status ${taskId}   # Check if running/complete`);
-                console.log(`  bin/rudder agent:log ${taskId} --tail   # Follow output (Ctrl+C to stop)`);
-                console.log(`  bin/rudder agent:log ${taskId}          # Show full log`);
-                console.log(`\nAfter completion:`);
-                console.log(`  bin/rudder agent:reap ${taskId}     # Merge work + cleanup`);
-            }
-            return;
-        }
-        // === WAIT MODE (default): wait with heartbeat, auto-reap ===
+        // === WAIT MODE: wait with heartbeat, auto-reap ===
         const startTime = Date.now();
         const defaultHeartbeat = isQuiet ? 60 : 30;
         const heartbeatSec = typeof options.heartbeat === 'number' ? options.heartbeat : defaultHeartbeat;

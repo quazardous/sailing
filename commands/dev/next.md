@@ -1,44 +1,40 @@
 ---
 description: Get next available task
-allowed-tools: Bash
+allowed-tools: mcp
 ---
 
 # Next Task
 
 **Purpose:** Identify the next task to work on based on availability or impact.
 
-> 📖 CLI reference: `bin/rudder -h`
-
 ---
 
-## Methods
+## Method
 
-### Quick (first available)
+### Ready tasks (impact-sorted)
 
-```bash
-bin/rudder task:next [--json]
+```json
+// MCP: workflow_ready
+{ "scope": "E001", "limit": 5 }
 ```
 
-- Returns the first ready task
-- Minimal processing, fast
-
-### Smart (impact-aware, sorted)
-
-```bash
-bin/rudder deps:ready [--tag <tag>] [--limit 5] [--json]
-```
-
-Returns tasks sorted by:
+Returns **all ready tasks** (unblocked, not started) sorted by:
 - **Impact**: number of downstream tasks unblocked (cascade potential)
 - **Critical path**: position in dependency chain (longest chains prioritized)
 
+**Use cases:**
+- `workflow_ready { "limit": 1 }` → single best task
+- `workflow_ready { "scope": "E001" }` → ready tasks in epic (for parallel spawn)
+- `workflow_ready {}` → full list for strategic planning
+
 ### Bottlenecks (blocking the most work)
 
-```bash
-bin/rudder deps:critical [--prd PRD-NNN] [--limit 5]
+```json
+// MCP: deps_critical
+{ "scope": "PRD-001", "limit": 5 }
 ```
 
-Returns tasks that block the most downstream work — graph-derived, not judgment.
+Returns incomplete tasks that block the most downstream work — graph-derived, not judgment.
 
 ---
 

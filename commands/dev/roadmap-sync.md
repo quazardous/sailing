@@ -1,11 +1,9 @@
 ---
 description: Sync ROADMAP with project reality
-allowed-tools: Read, Edit, Glob, Grep, Task, Bash
+allowed-tools: Read, Edit, Glob, Grep, Task, mcp
 ---
 
 **Verify and fix ROADMAP ↔ project sync.**
-
-> 📖 CLI reference: `bin/rudder -h`
 
 ## Agent prompt
 
@@ -13,9 +11,14 @@ allowed-tools: Read, Edit, Glob, Grep, Task, Bash
 Sync ROADMAP.md with current project state.
 
 1. **Read current state**
-   - `rudder status` for PRD/Epic/Task progress
-   - `rudder versions` for current component versions
-   - Read ROADMAP: `bin/rudder paths roadmap`
+   ```json
+   // MCP: system_status - for PRD/Epic/Task progress
+   {}
+
+   // MCP: system_versions - for current component versions
+   {}
+   ```
+   - Read ROADMAP.md
 
 2. **Check milestones table**
    - For each feature/phase in ROADMAP:

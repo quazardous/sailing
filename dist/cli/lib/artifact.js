@@ -7,6 +7,7 @@
 import fs from 'fs';
 /**
  * Parse markdown content into frontmatter and sections
+ * Auto-merges duplicate sections by combining their content.
  * @param {string} content - Raw markdown content
  * @returns {{ frontmatter: string, sections: Map<string, string>, order: string[] }}
  */
@@ -24,7 +25,7 @@ export function parseMarkdownSections(content) {
             }
         }
     }
-    // Parse sections (## headings)
+    // Parse sections (## headings) - auto-merge duplicates
     const sections = new Map();
     const order = [];
     let currentSection = null;
@@ -36,14 +37,24 @@ export function parseMarkdownSections(content) {
         if (headingMatch) {
             // Save previous section
             if (currentSection) {
-                sections.set(currentSection, currentContent.join('\n').trim());
+                const trimmedContent = currentContent.join('\n').trim();
+                if (sections.has(currentSection)) {
+                    // Merge with existing content
+                    const existing = sections.get(currentSection) || '';
+                    sections.set(currentSection, existing + (existing && trimmedContent ? '\n\n' : '') + trimmedContent);
+                }
+                else {
+                    sections.set(currentSection, trimmedContent);
+                }
             }
             else if (currentContent.length > 0) {
                 preamble = currentContent;
             }
-            // Start new section
+            // Start new section (only add to order if not seen before)
             currentSection = headingMatch[1].trim();
-            order.push(currentSection);
+            if (!order.includes(currentSection)) {
+                order.push(currentSection);
+            }
             currentContent = [];
         }
         else {
@@ -52,7 +63,15 @@ export function parseMarkdownSections(content) {
     }
     // Save last section
     if (currentSection) {
-        sections.set(currentSection, currentContent.join('\n').trim());
+        const trimmedContent = currentContent.join('\n').trim();
+        if (sections.has(currentSection)) {
+            // Merge with existing content
+            const existing = sections.get(currentSection) || '';
+            sections.set(currentSection, existing + (existing && trimmedContent ? '\n\n' : '') + trimmedContent);
+        }
+        else {
+            sections.set(currentSection, trimmedContent);
+        }
     }
     return {
         frontmatter,
@@ -91,6 +110,113 @@ export function serializeSections(parsed) {
     return parts.join('\n').trimEnd() + '\n';
 }
 /**
+ * Parse markdown preserving duplicate sections (for dedup detection)
+ */
+export function parseMarkdownSectionsRaw(content) {
+    const lines = content.split('\n');
+    let frontmatter = '';
+    let frontmatterEnd = 0;
+    // Extract frontmatter
+    if (lines[0] === '---') {
+        for (let i = 1; i < lines.length; i++) {
+            if (lines[i] === '---') {
+                frontmatterEnd = i + 1;
+                frontmatter = lines.slice(0, frontmatterEnd).join('\n');
+                break;
+            }
+        }
+    }
+    // Parse sections preserving duplicates
+    const sections = [];
+    let currentSection = null;
+    let currentContent = [];
+    let preamble = [];
+    for (let i = frontmatterEnd; i < lines.length; i++) {
+        const line = lines[i];
+        const headingMatch = line.match(/^## (.+)$/);
+        if (headingMatch) {
+            // Save previous section
+            if (currentSection) {
+                sections.push({ name: currentSection, content: currentContent.join('\n').trim() });
+            }
+            else if (currentContent.length > 0) {
+                preamble = currentContent;
+            }
+            // Start new section
+            currentSection = headingMatch[1].trim();
+            currentContent = [];
+        }
+        else {
+            currentContent.push(line);
+        }
+    }
+    // Save last section
+    if (currentSection) {
+        sections.push({ name: currentSection, content: currentContent.join('\n').trim() });
+    }
+    return {
+        frontmatter,
+        preamble: preamble.join('\n').trim(),
+        sections
+    };
+}
+/**
+ * Merge duplicate sections by combining their content
+ * @returns {{ parsed: ParsedMarkdown, merged: string[] }} - merged contains names of sections that were deduplicated
+ */
+export function mergeDuplicateSections(content) {
+    const raw = parseMarkdownSectionsRaw(content);
+    const sections = new Map();
+    const order = [];
+    const merged = [];
+    const seenSections = new Set();
+    for (const section of raw.sections) {
+        if (seenSections.has(section.name)) {
+            // Duplicate - merge content
+            const existing = sections.get(section.name) || '';
+            const combined = existing + (existing && section.content ? '\n\n' : '') + section.content;
+            sections.set(section.name, combined);
+            if (!merged.includes(section.name)) {
+                merged.push(section.name);
+            }
+        }
+        else {
+            // First occurrence
+            seenSections.add(section.name);
+            sections.set(section.name, section.content);
+            order.push(section.name);
+        }
+    }
+    return {
+        parsed: {
+            frontmatter: raw.frontmatter,
+            preamble: raw.preamble,
+            sections,
+            order
+        },
+        merged
+    };
+}
+/**
+ * Merge duplicate sections in a file
+ * @returns {{ success: boolean, merged: string[], error?: string }}
+ */
+export function mergeDuplicateSectionsInFile(filePath) {
+    try {
+        const content = fs.readFileSync(filePath, 'utf-8');
+        const { parsed, merged } = mergeDuplicateSections(content);
+        if (merged.length === 0) {
+            return { success: true, merged: [] };
+        }
+        const newContent = serializeSections(parsed);
+        fs.writeFileSync(filePath, newContent);
+        return { success: true, merged };
+    }
+    catch (e) {
+        return { success: false, merged: [], error: e.message };
+    }
+}
+/**
  * Apply a single operation to sections
  * @param {Map<string, string>} sections - Sections map
  * @param {string[]} order - Section order
@@ -100,15 +226,19 @@ export function serializeSections(parsed) {
 export function applyOp(sections, order, op) {
     switch (op.op) {
         case 'replace': {
+            // Auto-create section if it doesn't exist
             if (!sections.has(op.section)) {
-                return { success: false, error: `Section not found: ${op.section}` };
+                order.push(op.section);
             }
             sections.set(op.section, op.content ?? '');
             return { success: true };
         }
         case 'append': {
+            // Auto-create section if it doesn't exist
             if (!sections.has(op.section)) {
-                return { success: false, error: `Section not found: ${op.section}` };
+                order.push(op.section);
+                sections.set(op.section, op.content ?? '');
+                return { success: true };
             }
             const current = sections.get(op.section);
             const separator = current && !current.endsWith('\n') ? '\n' : '';
@@ -116,8 +246,11 @@ export function applyOp(sections, order, op) {
             return { success: true };
         }
         case 'prepend': {
+            // Auto-create section if it doesn't exist
             if (!sections.has(op.section)) {
-                return { success: false, error: `Section not found: ${op.section}` };
+                order.push(op.section);
+                sections.set(op.section, op.content ?? '');
+                return { success: true };
             }
             const current = sections.get(op.section);
             sections.set(op.section, (op.content ?? '') + (current ? '\n' + current : ''));
@@ -375,7 +508,7 @@ export function getSection(filePath, sectionName) {
 /**
  * Supported operations for multi-section editing
  */
-export const SECTION_OPS = ['replace', 'append', 'prepend', 'delete', 'sed', 'check', 'uncheck', 'toggle', 'patch'];
+export const SECTION_OPS = ['replace', 'append', 'prepend', 'delete', 'create', 'sed', 'check', 'uncheck', 'toggle', 'patch'];
 /**
  * Parse sed-like commands from content
  * Format: s/search/replace/ or s/search/replace/g

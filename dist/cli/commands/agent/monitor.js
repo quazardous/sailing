@@ -3,15 +3,79 @@
  */
 import fs from 'fs';
 import path from 'path';
+import { execSync } from 'child_process';
 import { findProjectRoot, jsonOut, getAgentsDir, getWorktreesDir } from '../../managers/core-manager.js';
-import { loadState } from '../../managers/state-manager.js';
+import { getAllAgentsFromDb, getAgentFromDb, getAgentsArray, getAgentLogFile, getAgentMissionFile } from '../../managers/db-manager.js';
 import { getAgentLifecycle } from '../../managers/agent-manager.js';
 import { normalizeId } from '../../lib/normalize.js';
 import { AgentUtils, getProcessStats, formatDuration } from '../../lib/agent-utils.js';
 import { WorktreeOps } from '../../lib/worktree.js';
+import { getWorktreePath } from '../../managers/worktree-manager.js';
+import { diagnoseWorktreeState } from '../../lib/state-machine/index.js';
 import { getTaskEpic } from '../../managers/artefacts-manager.js';
 import { getDiagnoseOps, matchesNoiseFilter, parseJsonLog } from '../../managers/diagnose-manager.js';
 import { summarizeEvent } from './diagnose.js';
+import { checkPosts, formatPostOutput } from '../../lib/guards.js';
+import { showRecentTextLog, showRecentJsonLog, createTextLogTailer, createJsonLogTailer } from '../../lib/log-tail.js';
+// ============================================================================
+// Agent-Specific Log Processor
+// ============================================================================
+/**
+ * Create a JsonLogProcessor for agent logs with noise filtering.
+ * Bridges lib/log-tail.ts with diagnose-manager's filtering logic.
+ */
+function createAgentLogProcessor(noiseFilters) {
+    return {
+        parse: parseJsonLog,
+        isNoise: (line, event) => {
+            for (const filter of noiseFilters) {
+                if (matchesNoiseFilter(line, event, filter)) {
+                    return true;
+                }
+            }
+            return false;
+        },
+        summarize: summarizeEvent
+    };
+}
+/**
+ * Setup log tailing for an agent (used by agent:wait and agent:log --tail)
+ * Returns cleanup function and watcher
+ */
+export function setupAgentLogTail(taskId, agentDir, logFile, options) {
+    const useEvents = options.events ?? false;
+    const useRaw = options.raw ?? false;
+    const rawJsonOutput = useEvents && useRaw; // --events --raw = raw JSON lines
+    const lines = options.lines ?? 20;
+    if (useEvents) {
+        const jsonLogFile = path.join(agentDir, 'run.jsonlog');
+        if (!fs.existsSync(jsonLogFile)) {
+            console.error(`JSON log file not found: ${jsonLogFile}`);
+            return null;
+        }
+        // Load noise filters (not used in raw JSON mode)
+        const taskEpic = getTaskEpic(taskId);
+        const epicId = taskEpic?.epicId || null;
+        const noiseFilters = (useRaw || rawJsonOutput) ? [] : getDiagnoseOps().loadNoiseFilters(epicId);
+        const processor = createAgentLogProcessor(noiseFilters);
+        // Show recent events
+        showRecentJsonLog(jsonLogFile, lines, processor, rawJsonOutput);
+        // Create tailer
+        return createJsonLogTailer(jsonLogFile, processor, rawJsonOutput);
+    }
+    else {
+        if (!fs.existsSync(logFile)) {
+            return null;
+        }
+        // Show recent lines
+        showRecentTextLog(logFile, lines);
+        // Create tailer
+        return createTextLogTailer(logFile);
+    }
+}
+// ============================================================================
+// Commands
+// ============================================================================
 /**
  * Parse duration string (e.g., "1h", "24h", "1d", "2d") to milliseconds
  */
@@ -33,7 +97,7 @@ function parseDuration(duration) {
  */
 function isInterestingAgent(agentData, maxAge = 24 * 60 * 60 * 1000) {
     // Active agents are always interesting
-    if (['dispatched', 'running'].includes(agentData.status))
+    if (['spawned', 'dispatched', 'running'].includes(agentData.status))
         return true;
     // Ready to reap (complete but not reaped)
     if (agentData.live_complete && agentData.status === 'dispatched')
@@ -68,27 +132,33 @@ function checkWorktreeMerged(agentData, ops) {
     return ops.isAncestor(branch, 'HEAD');
 }
 export function registerMonitorCommands(agent) {
-    // agent:status
+    // agent:status (alias: agent:list)
     agent.command('status [task-id]')
+        .alias('list')
         .description('Show agent status (all or specific task)')
         .option('--all', 'Show all agents (including old reaped)')
+        .option('--active', 'Show only agents with PID (running or dead)')
+        .option('--unmerged', 'Show only agents with unmerged worktrees')
         .option('--since <duration>', 'Show agents from last duration (e.g., 1h, 24h, 2d)')
+        .option('--git', 'Include git worktree details (branch, ahead/behind, dirty)')
         .option('--json', 'JSON output')
         .action((taskId, options) => {
-        const state = loadState();
-        const agents = state.agents || {};
+        const agents = getAllAgentsFromDb();
         const agentUtils = new AgentUtils(getAgentsDir());
         if (taskId) {
-            taskId = normalizeId(taskId);
+            taskId = normalizeId(taskId, undefined, 'task');
             const agentData = agents[taskId];
             if (!agentData) {
                 console.error(`No agent found for task: ${taskId}`);
                 process.exit(1);
             }
             const completion = agentUtils.checkCompletion(taskId, agentData);
-            const liveStatus = completion.complete ? 'complete' : agentData.status;
+            // Status-based completion: reaped/merged/collected means complete
+            const statusComplete = ['reaped', 'merged', 'collected'].includes(agentData.status);
+            const isComplete = completion.complete || statusComplete;
+            const liveStatus = isComplete ? 'complete' : agentData.status;
             // Check if process is actually running (only for active agents)
-            const isActive = ['dispatched', 'running'].includes(agentData.status);
+            const isActive = ['dispatched', 'running', 'spawned'].includes(agentData.status);
             const processInfo = (isActive && agentData.pid) ? getProcessStats(agentData.pid) : { running: false };
             if (options.json) {
                 jsonOut({
@@ -96,26 +166,70 @@ export function registerMonitorCommands(agent) {
                     ...agentData,
                     live_status: liveStatus,
                     ...(isActive && { process_running: processInfo.running }),
-                    ...completion
+                    ...completion,
+                    complete: isComplete
                 });
             }
             else {
                 console.log(`Agent: ${taskId}`);
-                console.log(`  Status: ${agentData.status}${completion.complete ? ' (complete)' : ''}`);
-                // Show PID only for active agents
+                console.log(`  Status: ${agentData.status}${isComplete ? ' (complete)' : ''}`);
+                // Show PID for active agents
                 if (agentData.pid && isActive) {
                     const procState = processInfo.running ? 'running' : 'not running';
                     console.log(`  PID: ${agentData.pid} (${procState})`);
                 }
-                console.log(`  Started: ${agentData.started_at}`);
-                console.log(`  Mission: ${agentData.mission_file}`);
-                console.log(`  Complete: ${completion.complete ? 'yes' : 'no'}`);
+                console.log(`  Started: ${agentData.spawned_at || agentData.started_at || 'unknown'}`);
+                // Show last activity from log file mtime
+                const logFilePath = getAgentLogFile(taskId);
+                if (logFilePath && fs.existsSync(logFilePath)) {
+                    const logStat = fs.statSync(logFilePath);
+                    console.log(`  Last activity: ${logStat.mtime.toISOString()}`);
+                }
+                const missionFilePath = getAgentMissionFile(taskId);
+                console.log(`  Mission: ${missionFilePath}`);
+                console.log(`  Complete: ${isComplete ? 'yes' : 'no'}`);
                 if (completion.hasResult)
                     console.log(`  Result: ${path.join(completion.agentDir, 'result.yaml')}`);
                 if (completion.hasSentinel)
                     console.log(`  Sentinel: ${path.join(completion.agentDir, 'done')}`);
                 if (agentData.completed_at) {
                     console.log(`  Collected: ${agentData.completed_at}`);
+                }
+                // Show git worktree details if --git flag
+                if (options.git && agentData.worktree) {
+                    const projectRoot = findProjectRoot();
+                    const worktreePath = getWorktreePath(taskId);
+                    const mainBranch = agentData.worktree.base_branch || 'main';
+                    const diagnosis = diagnoseWorktreeState(worktreePath, projectRoot, mainBranch);
+                    console.log(`  Worktree:`);
+                    console.log(`    Branch: ${diagnosis.details.branch || 'unknown'}`);
+                    console.log(`    Path: ${worktreePath}`);
+                    const gitParts = [];
+                    if (diagnosis.details.ahead > 0)
+                        gitParts.push(`↑${diagnosis.details.ahead}`);
+                    if (diagnosis.details.behind > 0)
+                        gitParts.push(`↓${diagnosis.details.behind}`);
+                    if (!diagnosis.details.clean)
+                        gitParts.push('dirty');
+                    if (gitParts.length > 0) {
+                        console.log(`    State: ${gitParts.join(' ')}`);
+                    }
+                    else {
+                        console.log(`    State: clean, up-to-date`);
+                    }
+                    // Show last commit date
+                    if (diagnosis.details.exists && fs.existsSync(worktreePath)) {
+                        try {
+                            const lastCommit = execSync('LC_ALL=C git log -1 --format=%cr 2>/dev/null', { cwd: worktreePath, encoding: 'utf-8' }).trim();
+                            if (lastCommit) {
+                                console.log(`    Last commit: ${lastCommit}`);
+                            }
+                        }
+                        catch { /* ignore */ }
+                    }
+                    if (diagnosis.details.conflictFiles?.length > 0) {
+                        console.log(`    Conflicts: ${diagnosis.details.conflictFiles.join(', ')}`);
+                    }
                 }
             }
             return;
@@ -146,105 +260,112 @@ export function registerMonitorCommands(agent) {
             // Default: only show interesting agents
             agentList = agentList.filter(a => isInterestingAgent(a));
         }
+        // Filter by active (has PID)
+        if (options.active) {
+            agentList = agentList.filter(a => a.pid);
+        }
+        // Filter by unmerged worktrees
+        if (options.unmerged) {
+            agentList = agentList.filter(a => a.worktree && !a.worktree_merged);
+        }
         if (options.json) {
             jsonOut(agentList);
             return;
         }
         if (agentList.length === 0) {
-            const hint = options.all ? '' : ' (use --all to show old agents)';
+            let hint = '';
+            if (options.unmerged) {
+                hint = ' (all worktrees merged)';
+            }
+            else if (options.active) {
+                hint = ' (no agents have PID)';
+            }
+            else if (!options.all) {
+                hint = ' (use --all to show old agents)';
+            }
             console.log(`No agents to show${hint}`);
             return;
         }
-        const title = options.all ? 'All agents' : (options.since ? `Agents (since ${options.since})` : 'Agents (recent/active)');
-        console.log(`${title}:\n`);
-        for (const agentData of agentList) {
-            let status;
-            if (agentData.live_complete) {
-                status = '✓';
+        // ANSI colors
+        const gray = '\x1b[90m';
+        const green = '\x1b[32m';
+        const yellow = '\x1b[33m';
+        const red = '\x1b[31m';
+        const cyan = '\x1b[36m';
+        const reset = '\x1b[0m';
+        const dim = '\x1b[2m';
+        // Add last activity and sort by most recent at bottom
+        const agentListWithActivity = agentList.map(a => {
+            let lastActivity = null;
+            const agentLogFile = getAgentLogFile(a.task_id);
+            if (agentLogFile && fs.existsSync(agentLogFile)) {
+                lastActivity = fs.statSync(agentLogFile).mtime;
             }
-            else if (agentData.status === 'dispatched') {
-                status = '●';
+            else if (a.spawned_at || a.started_at) {
+                lastActivity = new Date((a.spawned_at || a.started_at));
             }
-            else if (agentData.status === 'collected' || agentData.status === 'reaped') {
-                status = '✓';
-            }
-            else {
-                status = '✗';
-            }
-            const completeNote = agentData.live_complete && agentData.status === 'dispatched' ? ' [ready to reap]' : '';
-            // Show worktree merge status
-            const worktreeNote = (agentData.worktree && !agentData.worktree_merged) ? ' [worktree not merged]' : '';
-            // Show PID and process state only for active agents
-            let pidInfo = '';
-            if (agentData.pid && ['dispatched', 'running'].includes(agentData.status)) {
-                const processInfo = getProcessStats(agentData.pid);
-                pidInfo = ` [PID ${agentData.pid}: ${processInfo.running ? 'running' : 'stopped'}]`;
-            }
-            console.log(`  ${status} ${agentData.task_id}: ${agentData.status}${completeNote}${worktreeNote}${pidInfo}`);
-        }
-    });
-    // agent:list
-    agent.command('list')
-        .description('List all agents with status and details')
-        .option('--active', 'Only show active agents (dispatched/running)')
-        .option('--json', 'JSON output')
-        .action((options) => {
-        const state = loadState();
-        const agents = state.agents || {};
-        const agentUtils = new AgentUtils(getAgentsDir());
-        let agentList = Object.entries(agents).map(([id, info]) => {
-            const agentData = info;
-            const completion = agentUtils.checkCompletion(id, agentData);
-            const liveComplete = completion.complete;
-            return {
-                task_id: id,
-                status: agentData.status,
-                live_complete: liveComplete,
-                started_at: agentData.spawned_at,
-                pid: agentData.pid,
-                worktree: agentData.worktree?.path,
-                branch: agentData.worktree?.branch,
-                log_file: agentData.log_file
-            };
+            return { ...a, last_activity: lastActivity };
         });
-        if (options.active) {
-            agentList = agentList.filter(a => ['dispatched', 'running'].includes(a.status));
-        }
-        if (options.json) {
-            jsonOut(agentList);
-            return;
-        }
-        if (agentList.length === 0) {
-            console.log(options.active ? 'No active agents' : 'No agents');
-            return;
-        }
-        const timeAgo = (isoDate) => {
-            if (!isoDate)
-                return '-';
-            const diff = Date.now() - new Date(isoDate).getTime();
-            const mins = Math.floor(diff / 60000);
-            if (mins < 60)
-                return `${mins}m ago`;
-            const hours = Math.floor(mins / 60);
-            if (hours < 24)
-                return `${hours}h ago`;
-            const days = Math.floor(hours / 24);
-            return `${days}d ago`;
+        // Sort: oldest first, most recent at bottom
+        agentListWithActivity.sort((a, b) => {
+            const aTime = a.last_activity?.getTime() || 0;
+            const bTime = b.last_activity?.getTime() || 0;
+            return aTime - bTime;
+        });
+        const statusIconMap = {
+            'running': { icon: '●', color: green },
+            'spawned': { icon: '◐', color: yellow },
+            'dispatched': { icon: '◐', color: yellow },
+            'completed': { icon: '✓', color: green },
+            'reaped': { icon: '✓', color: green },
+            'merged': { icon: '✓✓', color: green },
+            'collected': { icon: '✓', color: green },
+            'failed': { icon: '✗', color: red },
+            'blocked': { icon: '⊘', color: red },
+            'rejected': { icon: '✗', color: red },
+            'dead': { icon: '✖', color: red }
         };
-        console.log('TASK    STATUS      STARTED     WORKTREE');
-        console.log('─'.repeat(60));
-        for (const agentData of agentList) {
-            const status = agentData.status.padEnd(11);
-            const started = timeAgo(agentData.started_at).padEnd(11);
-            const worktree = agentData.worktree || '-';
-            let statusIndicator = '';
+        let title = options.all ? 'All agents' : (options.since ? `Agents (since ${options.since})` : 'Agents (recent/active)');
+        if (options.active)
+            title += ' with PID';
+        if (options.unmerged)
+            title += ' unmerged';
+        console.log(`${title}:\n`);
+        for (let i = 0; i < agentListWithActivity.length; i++) {
+            const agentData = agentListWithActivity[i];
+            const isLast = i === agentListWithActivity.length - 1;
+            const treeChar = isLast ? '└── ' : '├── ';
+            // Check if agent is dead (has PID but process not running, and status suggests it should be)
+            const isActiveStatus = ['spawned', 'dispatched', 'running'].includes(agentData.status);
+            const processInfo = agentData.pid ? getProcessStats(agentData.pid) : { running: false };
+            const isDead = isActiveStatus && agentData.pid && !processInfo.running;
+            const displayStatus = isDead ? 'dead' : agentData.status;
+            const statusInfo = statusIconMap[displayStatus] || { icon: '○', color: gray };
+            // Build line
+            let line = `${gray}${treeChar}${reset}`;
+            line += `${statusInfo.color}${statusInfo.icon}${reset} `;
+            line += `${agentData.task_id}`;
+            line += `  ${isDead ? red : dim}${displayStatus}${reset}`;
+            // Ready to reap indicator
             if (agentData.live_complete && agentData.status === 'dispatched') {
-                statusIndicator = ' ✓';
+                line += `  ${green}[ready to reap]${reset}`;
             }
-            else if (agentData.pid) {
-                statusIndicator = ` (PID ${agentData.pid})`;
+            // Worktree not merged
+            if (agentData.worktree && !agentData.worktree_merged) {
+                line += `  ${yellow}[unmerged]${reset}`;
             }
-            console.log(`${agentData.task_id}    ${status} ${started} ${worktree}${statusIndicator}`);
+            // PID for active agents (show even if dead)
+            if (agentData.pid && isActiveStatus) {
+                const pidColor = processInfo.running ? green : red;
+                const pidStatus = processInfo.running ? 'running' : 'stopped';
+                line += `  ${dim}PID:${reset}${pidColor}${agentData.pid} (${pidStatus})${reset}`;
+            }
+            // Last activity
+            if (agentData.last_activity) {
+                const ago = formatDuration(Date.now() - agentData.last_activity.getTime());
+                line += `  ${dim}(${ago} ago)${reset}`;
+            }
+            console.log(line);
         }
     });
     // agent:wait - Reattach to running agent (tail + heartbeat + auto-reap)
@@ -254,10 +375,13 @@ export function registerMonitorCommands(agent) {
         .option('--no-log', 'Do not tail the log file')
         .option('--no-heartbeat', 'Do not show periodic heartbeat')
         .option('--heartbeat <seconds>', 'Heartbeat interval (default: 30)', parseInt, 30)
+        .option('-n, --lines <n>', 'Number of recent lines to show (default: 20)', parseInt)
+        .option('-e, --events', 'Use jsonlog instead of raw text log')
+        .option('--raw', 'With --events: output raw JSON lines (no summarizing)')
+        .option('--json', 'JSON output for wait result')
         .action(async (taskId, options) => {
-        taskId = normalizeId(taskId);
-        const state = loadState();
-        const agentInfo = state.agents?.[taskId];
+        taskId = normalizeId(taskId, undefined, 'task');
+        const agentInfo = getAgentFromDb(taskId);
         const projectRoot = findProjectRoot();
         const agentUtils = new AgentUtils(getAgentsDir());
         if (!agentInfo) {
@@ -292,37 +416,20 @@ export function registerMonitorCommands(agent) {
         const shouldLog = options.log !== false;
         let lastHeartbeat = startTime;
         const pid = agentInfo.pid;
-        const logFile = agentInfo.log_file;
-        if (!options.json) {
-            console.log(`Attaching to ${taskId}${pid ? ` (PID ${pid})` : ''}`);
+        const logFile = getAgentLogFile(taskId);
+        const agentDir = agentUtils.getAgentDir(taskId);
+        const rawJsonMode = options.events && options.raw;
+        if (!rawJsonMode) {
+            const logMode = options.events ? 'jsonlog' : 'log';
+            console.log(`Attaching to ${taskId}${pid ? ` (PID ${pid})` : ''} [${logMode}]`);
             console.log('─'.repeat(60));
         }
-        let logWatcher = null;
-        let lastLogSize = 0;
-        if (shouldLog && logFile && fs.existsSync(logFile)) {
-            lastLogSize = fs.statSync(logFile).size;
-            const content = fs.readFileSync(logFile, 'utf8');
-            const lines = content.split('\n');
-            const recentLines = lines.slice(-20).join('\n');
-            if (recentLines.trim()) {
-                console.log('[...recent output...]\n');
-                console.log(recentLines);
-            }
-            logWatcher = fs.watch(logFile, (eventType) => {
-                if (eventType === 'change') {
-                    try {
-                        const newSize = fs.statSync(logFile).size;
-                        if (newSize > lastLogSize) {
-                            const fd = fs.openSync(logFile, 'r');
-                            const buffer = Buffer.alloc(newSize - lastLogSize);
-                            fs.readSync(fd, buffer, 0, buffer.length, lastLogSize);
-                            fs.closeSync(fd);
-                            process.stdout.write(buffer.toString());
-                            lastLogSize = newSize;
-                        }
-                    }
-                    catch { /* ignore */ }
-                }
+        let logTailer = null;
+        if (shouldLog && logFile) {
+            logTailer = setupAgentLogTail(taskId, agentDir, logFile, {
+                events: options.events,
+                raw: options.raw,
+                lines: options.lines
             });
         }
         const emitHeartbeat = () => {
@@ -349,8 +456,8 @@ export function registerMonitorCommands(agent) {
         const cleanup = () => {
             process.off('SIGHUP', sighupHandler);
             process.off('SIGINT', sigintHandler);
-            if (logWatcher)
-                logWatcher.close();
+            if (logTailer)
+                logTailer.cleanup();
             if (heartbeatTimer)
                 clearInterval(heartbeatTimer);
             if (pollTimer)
@@ -375,12 +482,11 @@ export function registerMonitorCommands(agent) {
                     }
                     process.exit(2);
                 }
-                const currentState = loadState();
-                const currentAgentInfo = currentState.agents?.[taskId];
-                const completion = agentUtils.checkCompletion(taskId, currentAgentInfo);
+                const currentAgentRecord = getAgentFromDb(taskId);
+                const completion = agentUtils.checkCompletion(taskId, currentAgentRecord);
                 if (completion.complete) {
                     completed = true;
-                    exitCode = currentAgentInfo?.exit_code ?? 0;
+                    exitCode = currentAgentRecord?.exit_code ?? 0;
                     resolve();
                 }
             }, 1000);
@@ -428,8 +534,7 @@ export function registerMonitorCommands(agent) {
         .option('--heartbeat <seconds>', 'Heartbeat interval in seconds (default: 30)', parseInt, 30)
         .option('--json', 'JSON output')
         .action(async (taskIds, options) => {
-        const state = loadState();
-        const agents = state.agents || {};
+        const agents = getAllAgentsFromDb();
         const waitFor = taskIds.length > 0
             ? taskIds.map(id => normalizeId(id))
             : Object.entries(agents)
@@ -455,11 +560,10 @@ export function registerMonitorCommands(agent) {
         const agentsDir = getAgentsDir();
         const stateFile = path.join(agentsDir, '..', 'state.json');
         const checkAllCompletion = () => {
-            const currentState = loadState();
             for (const taskId of waitFor) {
                 if (completed.includes(taskId))
                     continue;
-                const agentInfo = currentState.agents?.[taskId];
+                const agentInfo = getAgentFromDb(taskId);
                 const completion = agentUtils.checkCompletion(taskId, agentInfo);
                 if (completion.complete) {
                     completed.push(taskId);
@@ -550,14 +654,14 @@ export function registerMonitorCommands(agent) {
     });
     // agent:log - Show agent log (with optional tail/events mode)
     agent.command('log <task-id>')
-        .description('Show agent log (--tail to follow, --events for JSON events)')
+        .description('Show agent log (--tail to follow, --events for JSON events, combine both to tail jsonlog)')
         .option('-n, --lines <n>', 'Last N lines (default: all, or 20 with --tail, or 50 with --events)', parseInt)
         .option('-t, --tail', 'Follow log in real-time (Ctrl+C to stop)')
         .option('-e, --events', 'Show filtered JSON events from run.jsonlog')
-        .option('--raw', 'With --events: show raw events (no noise filtering)')
+        .option('--raw', 'With --events: output raw JSON lines (no summarizing)')
         .option('--json', 'JSON output')
         .action((taskId, options) => {
-        const normalizedId = normalizeId(taskId);
+        const normalizedId = normalizeId(taskId, undefined, 'task');
         const agentUtils = new AgentUtils(getAgentsDir());
         // Events mode: show filtered JSON events from run.jsonlog
         if (options.events) {
@@ -570,6 +674,31 @@ export function registerMonitorCommands(agent) {
             const taskEpic = getTaskEpic(normalizedId);
             const epicId = taskEpic?.epicId || null;
             const noiseFilters = options.raw ? [] : getDiagnoseOps().loadNoiseFilters(epicId);
+            const processor = createAgentLogProcessor(noiseFilters);
+            // Tail mode for events: follow jsonlog in real-time
+            if (options.tail) {
+                // Show recent lines/events
+                showRecentJsonLog(jsonLogFile, options.lines ?? 20, processor, options.raw);
+                // Start tailing (raw mode = output lines as-is)
+                const tailer = createJsonLogTailer(jsonLogFile, processor, options.raw);
+                process.on('SIGINT', () => {
+                    tailer.cleanup();
+                    console.log('\n\nStopped.');
+                    process.exit(0);
+                });
+                return;
+            }
+            // Raw JSON mode (static): output raw jsonlog lines
+            if (options.raw) {
+                const content = fs.readFileSync(jsonLogFile, 'utf8');
+                const allLines = content.split('\n').filter(l => l.trim());
+                const limit = options.lines ?? allLines.length;
+                for (const line of allLines.slice(0, limit)) {
+                    console.log(line);
+                }
+                return;
+            }
+            // Static events display
             const { events, lines } = parseJsonLog(jsonLogFile);
             const limit = options.lines ?? 50;
             const output = [];
@@ -626,26 +755,13 @@ export function registerMonitorCommands(agent) {
         const allLines = content.split('\n');
         // Tail mode: follow in real-time
         if (options.tail) {
-            const tailLines = options.lines ?? 20;
             console.log(`Following ${normalizedId} log... (Ctrl+C to stop)\n`);
             console.log('─'.repeat(60) + '\n');
-            console.log(allLines.slice(-tailLines).join('\n'));
-            let lastSize = fs.statSync(logFile).size;
-            const watcher = fs.watch(logFile, (eventType) => {
-                if (eventType === 'change') {
-                    const newSize = fs.statSync(logFile).size;
-                    if (newSize > lastSize) {
-                        const fd = fs.openSync(logFile, 'r');
-                        const buffer = Buffer.alloc(newSize - lastSize);
-                        fs.readSync(fd, buffer, 0, buffer.length, lastSize);
-                        fs.closeSync(fd);
-                        process.stdout.write(buffer.toString());
-                        lastSize = newSize;
-                    }
-                }
-            });
+            // Show recent lines and start tailing
+            showRecentTextLog(logFile, options.lines ?? 20);
+            const tailer = createTextLogTailer(logFile);
             process.on('SIGINT', () => {
-                watcher.close();
+                tailer.cleanup();
                 console.log('\n\nStopped.');
                 process.exit(0);
             });
@@ -666,6 +782,149 @@ export function registerMonitorCommands(agent) {
             else {
                 console.log(content);
             }
+        }
+    });
+    // agent:debug - Raw debug info for troubleshooting
+    agent.command('debug')
+        .description('Show raw debug info (directories, git worktrees, state)')
+        .option('--json', 'JSON output')
+        .action(async (options) => {
+        const projectRoot = findProjectRoot();
+        const agentsDir = getAgentsDir();
+        const worktreesDir = getWorktreesDir();
+        // 1. Raw filesystem: agent directories
+        let rawAgentDirs = [];
+        if (fs.existsSync(agentsDir)) {
+            rawAgentDirs = fs.readdirSync(agentsDir)
+                .filter(d => fs.statSync(path.join(agentsDir, d)).isDirectory())
+                .sort();
+        }
+        // 2. Raw filesystem: worktree directories
+        let rawWorktreeDirs = [];
+        if (fs.existsSync(worktreesDir)) {
+            rawWorktreeDirs = fs.readdirSync(worktreesDir)
+                .filter(d => fs.statSync(path.join(worktreesDir, d)).isDirectory())
+                .sort();
+        }
+        // 3. Git worktree list (raw)
+        const gitWorktrees = [];
+        try {
+            const output = execSync('git worktree list --porcelain', { cwd: projectRoot, encoding: 'utf-8' });
+            const entries = output.trim().split('\n\n').filter(Boolean);
+            for (const entry of entries) {
+                const lines = entry.split('\n');
+                const wtPath = lines.find(l => l.startsWith('worktree '))?.replace('worktree ', '') || '';
+                const commit = lines.find(l => l.startsWith('HEAD '))?.replace('HEAD ', '') || '';
+                const branch = lines.find(l => l.startsWith('branch '))?.replace('branch refs/heads/', '') || '';
+                const prunable = lines.some(l => l === 'prunable');
+                if (wtPath && wtPath !== projectRoot) {
+                    gitWorktrees.push({ path: wtPath, commit: commit.slice(0, 7), branch, prunable });
+                }
+            }
+        }
+        catch { /* ignore */ }
+        // 4. DB agents
+        const dbAgents = getAgentsArray().map(agent => ({
+            id: agent.taskId,
+            status: agent.status,
+            worktree: agent.worktree,
+            worktree_merged: agent.worktree_merged,
+            spawned_at: agent.spawned_at,
+            completed_at: agent.completed_at,
+            merged_at: agent.merged_at
+        })).sort((a, b) => a.id.localeCompare(b.id));
+        // 5. Compute discrepancies
+        const dbIds = new Set(dbAgents.map(a => a.id));
+        const agentDirIds = new Set(rawAgentDirs.filter(d => d.match(/^T\d+$/i)));
+        const worktreeDirIds = new Set(rawWorktreeDirs.filter(d => d.match(/^T\d+$/i)));
+        const gitWorktreeIds = new Set(gitWorktrees.map(w => {
+            const match = w.path.match(/\/(T\d+)$/i);
+            return match ? match[1].toUpperCase() : null;
+        }).filter(Boolean));
+        // Orphans: in dirs but not in state
+        const orphanAgentDirs = [...agentDirIds].filter(id => !dbIds.has(id) && !dbIds.has(normalizeId(id) || id));
+        const orphanWorktreeDirs = [...worktreeDirIds].filter(id => !dbIds.has(id) && !dbIds.has(normalizeId(id) || id));
+        // Ghost state: in state but no dir
+        const ghostAgents = dbAgents.filter(a => !agentDirIds.has(a.id) && !agentDirIds.has(a.id.toLowerCase()));
+        // Git vs dirs mismatch
+        const gitNotInDirs = [...gitWorktreeIds].filter(id => !worktreeDirIds.has(id));
+        const dirsNotInGit = [...worktreeDirIds].filter(id => !gitWorktreeIds.has(id));
+        // Terminal agents with worktree dirs (should be cleaned)
+        const terminalStatuses = ['collected', 'merged', 'reaped', 'completed', 'rejected', 'killed', 'error'];
+        const terminalWithWorktree = dbAgents.filter(a => terminalStatuses.includes(a.status) &&
+            (worktreeDirIds.has(a.id) || gitWorktreeIds.has(a.id)));
+        if (options.json) {
+            jsonOut({
+                paths: { agentsDir, worktreesDir, projectRoot },
+                raw: {
+                    agentDirs: rawAgentDirs,
+                    worktreeDirs: rawWorktreeDirs,
+                    gitWorktrees
+                },
+                db: { agents: dbAgents },
+                analysis: {
+                    orphanAgentDirs,
+                    orphanWorktreeDirs,
+                    ghostAgents: ghostAgents.map(a => a.id),
+                    gitNotInDirs,
+                    dirsNotInGit,
+                    terminalWithWorktree: terminalWithWorktree.map(a => ({ id: a.id, status: a.status }))
+                }
+            });
+            return;
+        }
+        // Human-readable output
+        console.log('=== PATHS ===');
+        console.log(`Project root: ${projectRoot}`);
+        console.log(`Agents dir:   ${agentsDir}`);
+        console.log(`Worktrees dir: ${worktreesDir}`);
+        console.log('\n=== RAW FILESYSTEM ===');
+        console.log(`Agent dirs (${rawAgentDirs.length}): ${rawAgentDirs.join(', ') || '(none)'}`);
+        console.log(`Worktree dirs (${rawWorktreeDirs.length}): ${rawWorktreeDirs.join(', ') || '(none)'}`);
+        console.log('\n=== GIT WORKTREES ===');
+        if (gitWorktrees.length === 0) {
+            console.log('(none)');
+        }
+        else {
+            for (const wt of gitWorktrees) {
+                const pruneTag = wt.prunable ? ' [prunable]' : '';
+                console.log(`  ${wt.branch || '(detached)'} → ${wt.path}${pruneTag}`);
+            }
+        }
+        console.log('\n=== DB AGENTS ===');
+        console.log(`Total: ${dbAgents.length}`);
+        const byStatus = {};
+        for (const a of dbAgents) {
+            byStatus[a.status] = byStatus[a.status] || [];
+            byStatus[a.status].push(a.id);
+        }
+        for (const [status, ids] of Object.entries(byStatus).sort()) {
+            console.log(`  ${status} (${ids.length}): ${ids.join(', ')}`);
+        }
+        console.log('\n=== ANALYSIS ===');
+        // Git-specific warnings (not in guards.yaml)
+        if (gitNotInDirs.length > 0) {
+            console.log(`⚠ Git worktrees not in dirs: ${gitNotInDirs.join(', ')}`);
+        }
+        if (dirsNotInGit.length > 0) {
+            console.log(`⚠ Dirs not in git worktrees: ${dirsNotInGit.join(', ')}`);
+        }
+        // Post-prompts for analysis warnings (via guards)
+        const terminalWithWorktreeStrings = terminalWithWorktree.map(a => `${a.id} [${a.status}]`);
+        const posts = await checkPosts('agent:monitor', {
+            orphanAgentDirs,
+            orphanWorktreeDirs,
+            ghostAgents: ghostAgents.map(a => a.id),
+            terminalWithWorktree: terminalWithWorktreeStrings
+        }, process.cwd());
+        const postOutput = formatPostOutput(posts);
+        if (postOutput) {
+            console.log(postOutput);
+        }
+        if (orphanAgentDirs.length === 0 && orphanWorktreeDirs.length === 0 &&
+            ghostAgents.length === 0 && gitNotInDirs.length === 0 &&
+            dirsNotInGit.length === 0 && terminalWithWorktree.length === 0) {
+            console.log('✓ No issues detected');
         }
     });
 }

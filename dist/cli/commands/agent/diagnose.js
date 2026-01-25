@@ -69,7 +69,7 @@ export function registerDiagnoseCommands(agent) {
         .option('--max-line-len <n>', 'Max error line length', '500')
         .action(async (taskId, options) => {
         const maxLineLen = parseInt(options.maxLineLen) || 500;
-        const normalized = normalizeId(taskId);
+        const normalized = normalizeId(taskId, undefined, 'task');
         const agentUtils = new AgentUtils(getAgentsDir());
         const agentDir = agentUtils.getAgentDir(normalized);
         const logFile = path.join(agentDir, 'run.jsonlog');

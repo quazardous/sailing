@@ -14,6 +14,7 @@ import { addDynamicHelp, withModifies } from '../lib/help.js';
 import { checkPendingMemory, countTaskTips } from '../managers/memory-manager.js';
 import { addLogEntry } from '../lib/update.js';
 import { composeAgentContext } from '../managers/compose-manager.js';
+import { checkGuards, checkPosts, formatPostOutput, handleGuardResult } from '../lib/guards.js';
 /**
  * Find task file by ID (via index.ts)
  */
@@ -233,7 +234,7 @@ function getTaskDetails(taskId) {
 /**
  * Handle task claim (original behavior)
  */
-function handleTaskClaim(taskId, options) {
+async function handleTaskClaim(taskId, options) {
     const filePath = assignmentPath(taskId);
     const operation = options.operation || 'task-start';
     // Pre-flight: Auto-cleanup orphan run files (crashed agents that didn't release)
@@ -272,16 +273,15 @@ function handleTaskClaim(taskId, options) {
         epicId = epicMatch ? normalizeId(`E${epicMatch[1]}`) : null;
         assignment = { taskId, epicId, operation };
     }
-    // Pre-flight check 2: Pending memory
-    const memoryCheck = checkPendingMemory(epicId);
-    if (memoryCheck.pending && !options.force) {
-        console.error(`STOP: Pending memory consolidation required:`);
-        for (const e of memoryCheck.epics) {
-            console.error(`  ${e} - has unconsolidated logs`);
-        }
-        console.error(`\nRun: rudder memory:sync`);
-        console.error(`Use --force to bypass (not recommended).`);
-        process.exit(1);
+    // Pre-flight check 2: Pending memory (via guards)
+    if (!options.force) {
+        const memoryCheck = checkPendingMemory(epicId);
+        const guardResult = await checkGuards('assign:claim', {
+            taskId,
+            pendingMemory: memoryCheck.pending,
+            pendingEpics: memoryCheck.epics
+        });
+        handleGuardResult(guardResult);
     }
     // Build compiled prompt
     const promptParts = [];
@@ -560,7 +560,7 @@ export function registerAssignCommands(program) {
         .option('--sources', 'Show fragment sources used')
         .option('--debug', 'Add source comments to each section')
         .option('--json', 'JSON output')
-        .action((entityId, options) => {
+        .action(async (entityId, options) => {
         // Role enforcement: only agents claim - skill/coordinator MUST spawn an agent
         if (options.role !== 'agent') {
             console.error(`ERROR: assign:claim requires --role agent`);
@@ -578,7 +578,7 @@ export function registerAssignCommands(program) {
         }
         // Route to appropriate handler
         if (entity.type === 'task') {
-            handleTaskClaim(entity.id, options);
+            await handleTaskClaim(entity.id, options);
         }
         else if (entity.type === 'epic') {
             handleEpicClaim(entity.id, options);
@@ -592,7 +592,7 @@ export function registerAssignCommands(program) {
         .description('Release assignment (agent finished)')
         .option('--status <status>', 'Task completion status (Done or Blocked)', 'Done')
         .option('--json', 'JSON output')
-        .action((taskId, options) => {
+        .action(async (taskId, options) => {
         const normalized = normalizeId(taskId);
         // Check if run file exists
         if (!isRunning(normalized)) {
@@ -600,14 +600,8 @@ export function registerAssignCommands(program) {
             console.error(`Use assign:claim first to start.`);
             process.exit(1);
         }
-        // Check for TIP logs (warn if none)
+        // Count TIP logs for post-prompt
         const tipCount = countTaskTips(normalized);
-        if (tipCount === 0) {
-            console.error(`⚠ Warning: No TIP logs found for ${normalized}`);
-            console.error(`  Agents should log at least 1 tip during work.`);
-            console.error(`  Use: rudder task:log ${normalized} "insight" --tip`);
-            // Continue anyway - just a warning
-        }
         // Auto-log completion
         logToTask(normalized, 'Completed', 'INFO');
         // Update task status
@@ -642,11 +636,15 @@ export function registerAssignCommands(program) {
             return;
         }
         console.log(`✓ Released ${normalized} (${options.status})`);
-        if (tipCount === 0) {
-            console.log(`  ⚠ No TIP logs - consider adding insights for next agent`);
-        }
-        else {
-            console.log(`  ${tipCount} TIP log(s) recorded`);
+        console.log(`  ${tipCount} TIP log(s) recorded`);
+        // Post-prompts (via guards)
+        const posts = await checkPosts('assign:release', {
+            taskId: normalized,
+            hasTipLogs: tipCount > 0
+        });
+        const postOutput = formatPostOutput(posts);
+        if (postOutput) {
+            console.log(postOutput);
         }
     });
     // assign:show TNNN

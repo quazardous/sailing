@@ -1,22 +1,20 @@
 ---
 description: Validate milestone criteria (2 passes)
 argument-hint: <PRD-NNN> <M1|M2|...>
-allowed-tools: Read, Glob, Grep, Task, Bash
+allowed-tools: Read, Glob, Grep, Task, mcp
 ---
 
 # Milestone Validation Agent
 
 **Purpose:** Validate milestone acceptance criteria and report results to main thread.
 
-> 📖 CLI reference: `bin/rudder -h`
-> 📖 Context: `rudder context:load milestone-validate`
-
 ---
 
 ## Pre-flight
 
-```bash
-rudder context:load milestone-validate --role coordinator
+```json
+// MCP: context_load
+{ "operation": "milestone-validate", "role": "coordinator" }
 ```
 
 ---
@@ -51,7 +49,11 @@ prds/PRD-NNN/milestones/
    - **Option B:** Manual → follow CRITERIA.md "Validation Method"
    - **Option C:** Browser → execute javascript_tool tests
 
-4. **Check versions** (`rudder versions`)
+4. **Check versions** (`system_versions`)
+   ```json
+   // MCP: system_versions
+   {}
+   ```
    - Compare current versions vs milestone targets in PRD
    - Flag discrepancies
 
@@ -129,4 +131,3 @@ This command does **NOT**:
 - Reopen tasks or create bugfixes
 - Trigger other commands
 - Decide next steps
-

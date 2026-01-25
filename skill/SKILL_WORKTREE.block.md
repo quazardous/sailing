@@ -6,29 +6,26 @@
 **Skill orchestrates. Skill NEVER implements.**
 
 When working on tasks:
-1. Run `context:load task-start --role skill`
-2. Workflow shows `agent:spawn` → you MUST spawn
-3. Reap: `agent:reap TNNN` (waits, merges, cleans up, updates status)
-4. If reap fails → follow guidance or reject via `agent:reject`
+1. Run `context_load { "operation": "task-start", "role": "skill" }`
+2. Workflow shows `agent_spawn` → you MUST spawn
+3. Reap: `agent_reap { "task_id": "TNNN" }` (waits, merges, cleans up, updates status)
+4. If reap fails → follow guidance or reject via `agent_reject`
 
-**Conflict Resolution (MANDATORY):**
-- If `agent:reap` reports conflicts → **MUST use `/dev:merge TNNN`**
-- NEVER resolve conflicts manually without `/dev:merge`
-- `/dev:merge` loads coordinator context with merge guidelines
+**Merge = Agent Job (MANDATORY):**
+- `agent_reap` handles merge automatically → preferred path
+- If reap reports conflicts → **spawn agent with `/dev:merge TNNN`**
+- **NEVER merge manually** in the skill session
+- Skill orchestrates, agent merges
 
-**Merge Guidelines (for /dev:merge):**
-1. **Understand both sides** - Read task deliverables for each conflicting agent
-2. **Never prefer one entirely** - Combine changes when possible
-3. **If incompatible** - Escalate to user with analysis:
-   - What each agent added
-   - Why they conflict
-   - Suggested resolution
-4. **Log the merge** - `task:log TNNN "Merged T002 changes: ..." --info`
+**Unmerged Worktrees:**
+- Check: `agent_status { "unmerged": true }`
+- Each unmerged worktree needs: `agent_reap { "task_id": "TNNN" }` or `/dev:merge TNNN`
+- End of session reminder: "X worktrees unmerged - use `/dev:merge` to complete"
 
 **Violations:**
 - Reading task files "to help" without spawning
 - Implementing deliverables yourself
 - Any file modification outside status/memory/deps
-- Resolving merge conflicts without `/dev:merge`
+- **Merging or resolving conflicts yourself** (spawn agent with `/dev:merge`)
 
 Agents are disposable. Worktrees are disposable. Memory is not.

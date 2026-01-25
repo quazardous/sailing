@@ -6,7 +6,7 @@
  */
 import path from 'path';
 import fs from 'fs';
-import { spawnClaudeWithSrt, generateSrtConfig, generateAgentMcpConfig, checkMcpServer, startSocatBridge } from './srt.js';
+import { spawnClaudeWithSrt, generateSrtConfig, generateAgentMcpConfig, checkMcpAgentServer, startSocatBridge } from './srt.js';
 /**
  * Generate agent-specific srt config
  * When using external MCP (sandbox mode), agent only needs worktree write access
@@ -27,6 +27,35 @@ export function generateAgentSrtConfig(options) {
         cwd, // Worktree directory
         path.dirname(logFile) // Log directory
     ];
+    // For git worktrees: add necessary git directories for full git operations
+    // Git worktrees share objects/refs with main repo, so we need write access to:
+    // 1. .git/worktrees/<name>/ - worktree metadata (index.lock, HEAD, etc.)
+    // 2. .git/objects/ - shared object store (for commits)
+    // 3. .git/refs/ - references (for branch updates)
+    // Without these, git operations fail with "Read-only file system"
+    const gitFile = path.join(cwd, '.git');
+    if (fs.existsSync(gitFile) && fs.statSync(gitFile).isFile()) {
+        try {
+            const gitContent = fs.readFileSync(gitFile, 'utf8').trim();
+            const match = gitContent.match(/^gitdir:\s*(.+)$/);
+            if (match) {
+                const gitWorktreeDir = match[1].trim();
+                additionalWritePaths.push(gitWorktreeDir);
+                // gitWorktreeDir is like /path/to/repo/.git/worktrees/<name>
+                // Git needs write access to the main .git directory for:
+                // - objects/ (shared object store)
+                // - refs/ (references)
+                // - logs/ (ref logs)
+                // - config (locking)
+                // Simplest: allow entire .git directory
+                const mainGitDir = path.dirname(path.dirname(gitWorktreeDir)); // .git
+                additionalWritePaths.push(mainGitDir);
+            }
+        }
+        catch {
+            // Ignore errors reading .git file
+        }
+    }
     // Add MCP socket to allow socat to connect from inside sandbox
     if (mcpSocket) {
         additionalWritePaths.push(mcpSocket);
@@ -112,12 +141,12 @@ export function spawnClaude(options) {
     const isLinux = process.platform === 'linux';
     if (useExternalMcp) {
         const havenDir = getHavenDir(agentDir);
-        const mcpStatus = checkMcpServer(havenDir);
+        const mcpStatus = checkMcpAgentServer(havenDir);
         if (!mcpStatus.running) {
-            throw new Error('MCP server not running. Start it first:\n\n' +
-                '  bin/rudder-mcp start\n\n' +
-                'Then retry spawn. Check status with "bin/rudder-mcp status".\n' +
-                'Transport mode (socket/port) is set in .sailing/config.yaml (agent.mcp_mode).');
+            throw new Error('MCP agent server not running. Start it first:\n\n' +
+                '  bin/rdrctl start\n\n' +
+                'Then retry spawn. Check status with "bin/rdrctl status".\n' +
+                'Note: Agent MCP requires use_subprocess=true in config.');
         }
         mcpPid = mcpStatus.pid;
         // Generate MCP config based on mode (socket or port)
@@ -225,7 +254,8 @@ export function spawnClaude(options) {
         mcpConfigPath: mcpInfo?.configPath,
         sandboxHome,
         maxBudgetUsd,
-        watchdogTimeout
+        watchdogTimeout,
+        appendLogs: options.appendLogs
     });
     // Clean up bridge when process exits
     if (bridgeCleanup) {

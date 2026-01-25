@@ -1,7 +1,8 @@
 ## Check Before Starting
 
-```bash
-rudder deps:show TNNN
+```json
+// MCP: deps_show
+{ "id": "TNNN" }
 ```
 
 ## Rules

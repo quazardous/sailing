@@ -7,9 +7,16 @@
  * Convert string to kebab-case
  * "Hello World" → "hello-world"
  * "Some_Thing Here" → "some-thing-here"
+ * "Café à la crème" → "cafe-a-la-creme"
  */
 export function toKebab(str) {
-    return str.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+    return str
+        // Normalize to NFD (decomposed) then remove diacritical marks
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, '-')
+        .replace(/^-|-$/g, '');
 }
 /**
  * Strip HTML comments from markdown content

@@ -7,10 +7,9 @@
  *   rudder find epic --prd PRD-001 --no-story --exec "epic:show {}"
  */
 import { execSync } from 'child_process';
-import path from 'path';
 import { findProjectRoot, jsonOut } from '../managers/core-manager.js';
-import { normalizeId, parentContainsEpic } from '../lib/normalize.js';
-import { getAllEpics, getAllTasks, getAllPrds, getAllStories, getPrd } from '../managers/artefacts-manager.js';
+import { normalizeId } from '../lib/normalize.js';
+import { getAllEpics, getAllTasks, getAllPrds, getAllStories, getPrd, matchesEpic, matchesPrd } from '../managers/artefacts-manager.js';
 /**
  * Find PRDs matching filters
  * Uses artefacts.ts contract
@@ -39,8 +38,7 @@ function findEpics(filters) {
     for (const epicEntry of getAllEpics()) {
         // Filter by PRD if specified
         if (filters.prd) {
-            const prdDir = epicEntry.prdDir.toLowerCase();
-            if (!prdDir.includes(normalizeId(filters.prd).toLowerCase()))
+            if (!matchesPrd(epicEntry.prdId, filters.prd))
                 continue;
         }
         const data = epicEntry.data;
@@ -68,16 +66,15 @@ function findTasks(filters) {
     for (const taskEntry of getAllTasks()) {
         // Filter by PRD if specified
         if (filters.prd) {
-            const prdDir = path.dirname(path.dirname(taskEntry.file)).toLowerCase();
-            if (!prdDir.includes(normalizeId(filters.prd).toLowerCase()))
+            if (!matchesPrd(taskEntry.prdId, filters.prd))
                 continue;
         }
         const data = taskEntry.data;
         if (!data)
             continue;
-        // Filter by epic (format-agnostic: E1 matches E001 in parent)
+        // Filter by epic (format-agnostic: E1 matches E001)
         if (filters.epic) {
-            if (!parentContainsEpic(data.parent, filters.epic))
+            if (!matchesEpic(taskEntry.epicId, filters.epic))
                 continue;
         }
         if (!matchesFilters(data, filters))
@@ -106,11 +103,11 @@ function findStories(filters) {
     if (filters.prd) {
         const prd = getPrd(filters.prd);
         if (prd) {
-            storyEntries = storyEntries.filter(s => s.prdDir === prd.dir);
+            storyEntries = storyEntries.filter(s => s.prdId === prd.id);
         }
         else {
-            // Fallback: filter by prdDir path containing prd filter
-            storyEntries = storyEntries.filter(s => s.prdDir.toLowerCase().includes(normalizeId(filters.prd).toLowerCase()));
+            // Fallback: filter by prdId
+            storyEntries = storyEntries.filter(s => matchesPrd(s.prdId, filters.prd));
         }
     }
     for (const storyEntry of storyEntries) {

@@ -10,7 +10,7 @@ import { parseUpdateOptions } from '../../lib/update.js';
 import { getAgentLifecycle } from '../../managers/agent-manager.js';
 import { getGit } from '../../lib/git.js';
 import { validateResult } from '../../lib/agent-schema.js';
-import { loadState, saveState } from '../../managers/state-manager.js';
+import { getAgentFromDb, saveAgentToDb, getAllAgentsFromDb } from '../../managers/db-manager.js';
 import { withModifies } from '../../lib/help.js';
 import { getAgentConfig } from '../../managers/core-manager.js';
 import { removeWorktree } from '../../managers/worktree-manager.js';
@@ -20,7 +20,7 @@ import { AgentUtils } from '../../lib/agent-utils.js';
 import { getDiagnoseOps, printDiagnoseResult } from '../../managers/diagnose-manager.js';
 export function registerHarvestCommands(agent) {
     // agent:reap
-    withModifies(agent.command('reap <task-id>'), ['task', 'git', 'state'])
+    withModifies(agent.command('reap <task-id>'), ['task', 'git', 'db'])
         .description('Harvest agent work: wait, merge, cleanup, update status (or escalate)')
         .option('--role <role>', 'Role context (skill, coordinator) - agent role blocked')
         .option('--no-wait', 'Skip waiting if agent not complete')
@@ -34,9 +34,8 @@ export function registerHarvestCommands(agent) {
             console.error('Agents cannot harvest. Only skill or coordinator can reap.');
             process.exit(1);
         }
-        taskId = normalizeId(taskId);
-        const state = loadState();
-        const agentInfo = state.agents?.[taskId];
+        taskId = normalizeId(taskId, undefined, 'task');
+        const agentInfo = getAgentFromDb(taskId);
         const projectRoot = findProjectRoot();
         const config = getAgentConfig();
         const agentsDir = getAgentsDir();
@@ -197,13 +196,12 @@ export function registerHarvestCommands(agent) {
             if (!options.json)
                 console.error(`Warning: Could not find task file for ${taskId}`);
         }
-        state.agents[taskId] = {
+        await saveAgentToDb(taskId, {
             ...agentInfo,
             status: 'reaped',
             result_status: resultStatus,
             reaped_at: new Date().toISOString()
-        };
-        saveState(state);
+        });
         if (options.json) {
             jsonOut({
                 task_id: taskId,
@@ -233,17 +231,16 @@ export function registerHarvestCommands(agent) {
         }
     });
     // agent:merge (DEPRECATED)
-    withModifies(agent.command('merge <task-id>'), ['task', 'git', 'state'])
+    withModifies(agent.command('merge <task-id>'), ['task', 'git', 'db'])
         .description('[DEPRECATED] Merge agent worktree → use agent:reap instead')
         .option('--strategy <type>', 'Merge strategy: merge|squash|rebase (default from config)')
         .option('--no-cleanup', 'Keep worktree after merge')
         .option('--json', 'JSON output')
-        .action((taskId, options) => {
+        .action(async (taskId, options) => {
         console.error('⚠️  DEPRECATED: agent:merge is deprecated. Use agent:reap instead.');
         console.error('   agent:reap handles merge, cleanup, and status update.\n');
-        taskId = normalizeId(taskId);
-        const state = loadState();
-        const agentInfo = state.agents?.[taskId];
+        taskId = normalizeId(taskId, undefined, 'task');
+        const agentInfo = getAgentFromDb(taskId);
         const agentUtilsMerge = new AgentUtils(getAgentsDir());
         if (!agentInfo) {
             console.error(`No agent found for task: ${taskId}`);
@@ -300,8 +297,7 @@ export function registerHarvestCommands(agent) {
             if (!removeResult.success)
                 console.error(`Warning: Failed to remove worktree: ${removeResult.error}`);
         }
-        state.agents[taskId] = { ...agentInfo, status: 'merged', merge_strategy: strategy, merged_at: new Date().toISOString() };
-        saveState(state);
+        await saveAgentToDb(taskId, { ...agentInfo, status: 'merged', merge_strategy: strategy, merged_at: new Date().toISOString() });
         if (options.json) {
             jsonOut({ task_id: taskId, status: 'merged', strategy, branch, cleanup: options.cleanup !== false });
         }
@@ -311,15 +307,14 @@ export function registerHarvestCommands(agent) {
         }
     });
     // agent:reject
-    withModifies(agent.command('reject <task-id>'), ['task', 'git', 'state'])
+    withModifies(agent.command('reject <task-id>'), ['task', 'git', 'db'])
         .description('Reject agent work and cleanup worktree')
         .option('--reason <text>', 'Rejection reason (logged)')
         .option('--status <status>', 'New task status: blocked|not-started (default: blocked)', 'blocked')
         .option('--json', 'JSON output')
-        .action((taskId, options) => {
-        taskId = normalizeId(taskId);
-        const state = loadState();
-        const agentInfo = state.agents?.[taskId];
+        .action(async (taskId, options) => {
+        taskId = normalizeId(taskId, undefined, 'task');
+        const agentInfo = getAgentFromDb(taskId);
         if (!agentInfo) {
             console.error(`No agent found for task: ${taskId}`);
             process.exit(1);
@@ -331,8 +326,7 @@ export function registerHarvestCommands(agent) {
         }
         const statusMap = { 'blocked': 'Blocked', 'not-started': 'Not Started' };
         const taskStatus = statusMap[options.status] || 'Blocked';
-        state.agents[taskId] = { ...agentInfo, status: 'rejected', reject_reason: options.reason, rejected_at: new Date().toISOString() };
-        saveState(state);
+        await saveAgentToDb(taskId, { ...agentInfo, status: 'rejected', reject_reason: options.reason, rejected_at: new Date().toISOString() });
         if (options.json) {
             jsonOut({ task_id: taskId, status: 'rejected', task_status: taskStatus, reason: options.reason });
         }
@@ -346,15 +340,14 @@ export function registerHarvestCommands(agent) {
         }
     });
     // agent:collect (DEPRECATED)
-    withModifies(agent.command('collect <task-id>'), ['state'])
+    withModifies(agent.command('collect <task-id>'), ['db'])
         .description('[DEPRECATED] Collect agent result → use agent:reap instead')
         .option('--json', 'JSON output')
         .action(async (taskId, options) => {
         console.error('⚠️  DEPRECATED: agent:collect is deprecated. Use agent:reap instead.');
         console.error('   agent:reap collects, merges, cleans up, and updates status.\n');
-        taskId = normalizeId(taskId);
-        const state = loadState();
-        const agentInfo = state.agents?.[taskId];
+        taskId = normalizeId(taskId, undefined, 'task');
+        const agentInfo = getAgentFromDb(taskId);
         const agentUtilsCollect = new AgentUtils(getAgentsDir());
         if (!agentInfo) {
             console.error(`No agent found for task: ${taskId}`);
@@ -382,13 +375,12 @@ export function registerHarvestCommands(agent) {
         }
         const statusMap = { completed: 'Done', failed: 'Blocked', blocked: 'Blocked' };
         const taskStatus = statusMap[result.status] || 'Blocked';
-        state.agents[taskId] = {
+        await saveAgentToDb(taskId, {
             ...agentInfo,
             status: 'collected',
             result_status: result.status,
             completed_at: result.completed_at
-        };
-        saveState(state);
+        });
         if (options.json) {
             jsonOut({ task_id: taskId, result_status: result.status, task_status: taskStatus });
         }
@@ -399,12 +391,11 @@ export function registerHarvestCommands(agent) {
         }
     });
     // agent:reap-all
-    withModifies(agent.command('reap-all [task-ids...]'), ['task', 'git', 'state'])
+    withModifies(agent.command('reap-all [task-ids...]'), ['task', 'git', 'db'])
         .description('Reap all completed agents (all if no IDs specified)')
         .option('--json', 'JSON output')
         .action(async (taskIds, options) => {
-        const state = loadState();
-        const agents = state.agents || {};
+        const agents = getAllAgentsFromDb();
         const projectRoot = findProjectRoot();
         const agentUtilsReapAll = new AgentUtils(getAgentsDir());
         const toReap = taskIds.length > 0 ? taskIds.map(id => normalizeId(id)) : Object.keys(agents);

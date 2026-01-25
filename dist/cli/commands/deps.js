@@ -373,6 +373,19 @@ export function registerDepsCommands(program) {
                 });
             }
         }
+        // 8b. Tasks without epic parent
+        for (const [id, task] of tasks) {
+            if (prdFilter && !task.prd?.includes(prdFilter))
+                continue;
+            // Check if parent contains an epic (ENNN)
+            if (!task.epic && !task.parent?.match(/E\d+/i)) {
+                errors.push({
+                    type: 'missing_epic',
+                    task: id,
+                    message: `${id}: Task has no epic parent (parent: ${task.parent || 'none'})`
+                });
+            }
+        }
         // 9. ID mismatch
         for (const [id, task] of tasks) {
             if (prdFilter && !task.prd?.includes(prdFilter))
@@ -651,6 +664,7 @@ export function registerDepsCommands(program) {
         .option('--epic <id>', 'Filter by epic')
         .option('-t, --tag <tag>', 'Filter by tag (repeatable, AND logic)', (v, arr) => arr.concat(v), [])
         .option('-l, --limit <n>', 'Limit results', parseInt)
+        .option('--include-started', 'Include "In Progress" tasks (for resume)')
         .option('--json', 'JSON output')
         .action((options) => {
         // Role enforcement: agents don't query dependencies
@@ -696,7 +710,9 @@ export function registerDepsCommands(program) {
                     continue;
             }
             // Check both task blockers AND epic blockers
-            const taskReady = isStatusNotStarted(task.status) && blockersResolved(task, tasks);
+            const statusOk = isStatusNotStarted(task.status) ||
+                (options.includeStarted && isStatusInProgress(task.status));
+            const taskReady = statusOk && blockersResolved(task, tasks);
             const epicReady = epicBlockersResolved(task.epic);
             if (taskReady && epicReady) {
                 const totalUnblocked = countTotalUnblocked(id, tasks, blocks);
@@ -723,9 +739,13 @@ export function registerDepsCommands(program) {
                 console.log('No ready tasks.');
             }
             else {
-                console.log('Ready tasks (sorted by impact):\n');
+                const header = options.includeStarted
+                    ? 'Ready tasks + In Progress (sorted by impact):'
+                    : 'Ready tasks (sorted by impact):';
+                console.log(`${header}\n`);
                 limited.forEach((t, i) => {
-                    console.log(`${i + 1}. ${t.id}: ${t.title}`);
+                    const statusHint = isStatusInProgress(t.status) ? ' [In Progress]' : '';
+                    console.log(`${i + 1}. ${t.id}: ${t.title}${statusHint}`);
                     console.log(`   Impact: ${t.impact} tasks | Critical path: ${t.criticalPath}`);
                 });
             }
@@ -899,7 +919,7 @@ export function registerDepsCommands(program) {
         .description('Show dependencies (TNNN for task, ENNN for epic with blockers)')
         .option('--role <role>', 'Role context: agent blocked, skill/coordinator allowed')
         .option('--json', 'JSON output')
-        .action((id, options) => {
+        .action(async (id, options) => {
         // Role enforcement: agents don't query dependencies
         if (options.role === 'agent') {
             console.error('ERROR: deps:show cannot be called with --role agent');

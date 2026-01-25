@@ -11,17 +11,17 @@ import { parseUpdateOptions } from '../lib/update.js';
 import { addDynamicHelp, withModifies } from '../lib/help.js';
 import { formatId } from '../managers/core-manager.js';
 import { parseSearchReplace, editArtifact, parseMultiSectionContent, processMultiSectionOps } from '../lib/artifact.js';
-import { getEpic, getAllEpics, getTasksForEpic } from '../managers/artefacts-manager.js';
+import { getEpic, getAllEpics, getTasksForEpic, prdIdFromDir, matchesPrd } from '../managers/artefacts-manager.js';
 import { getEpicMemory } from '../managers/memory-manager.js';
 /**
  * Find an epic file by ID (format-agnostic via index library)
- * Returns { file, prdDir } for compatibility with existing code
+ * Returns { file, prdDir, prdId } for compatibility with existing code
  */
 function findEpicFile(epicId) {
     const epic = getEpic(epicId);
     if (!epic)
         return null;
-    return { file: epic.file, prdDir: epic.prdDir };
+    return { file: epic.file, prdDir: epic.prdDir, prdId: epic.prdId };
 }
 /**
  * Register epic commands
@@ -46,7 +46,7 @@ export function registerEpicCommands(program) {
         // Use artefacts.ts contract - single entry point
         for (const epicEntry of getAllEpics()) {
             // PRD filter
-            if (prd && !matchesPrdDir(epicEntry.prdDir, prd))
+            if (prd && !matchesPrd(epicEntry.prdId, prd))
                 continue;
             const data = epicEntry.data;
             if (!data)
@@ -67,13 +67,12 @@ export function registerEpicCommands(program) {
             }
             // Count tasks (artefacts.ts contract)
             const taskCount = getTasksForEpic(epicEntry.id).length;
-            const prdName = path.basename(epicEntry.prdDir);
             const epicResult = {
                 id: data.id,
                 title: data.title || '',
                 status: data.status || 'Unknown',
                 parent: data.parent || '',
-                prd: prdName,
+                prd: epicEntry.prdId,
                 tasks: taskCount
             };
             if (options.path)
@@ -127,7 +126,7 @@ export function registerEpicCommands(program) {
             console.error(`Epic not found: ${id}`);
             process.exit(1);
         }
-        const { file: epicFile, prdDir } = result;
+        const { file: epicFile, prdDir, prdId } = result;
         // Raw mode: dump file content
         if (options.raw) {
             if (options.path)
@@ -150,7 +149,7 @@ export function registerEpicCommands(program) {
         });
         const output = {
             ...file.data,
-            prd: path.basename(prdDir),
+            prd: prdId,
             taskCount: tasks.length,
             tasksByStatus
         };
@@ -162,7 +161,7 @@ export function registerEpicCommands(program) {
         else {
             console.log(`# ${file.data.id}: ${file.data.title}\n`);
             console.log(`Status: ${file.data.status}`);
-            console.log(`PRD: ${path.basename(prdDir)}`);
+            console.log(`PRD: ${prdId}`);
             console.log(`\nTasks: ${tasks.length}`);
             Object.entries(tasksByStatus).forEach(([status, count]) => {
                 console.log(`  ${statusSymbol(status)} ${status}: ${count}`);
@@ -197,7 +196,7 @@ export function registerEpicCommands(program) {
             id,
             title,
             status: 'Not Started',
-            parent: path.basename(prdDir).split('-').slice(0, 2).join('-'),
+            parent: prdIdFromDir(prdDir),
             blocked_by: [],
             stories: [],
             tags: [],
@@ -532,9 +531,34 @@ updated: '${new Date().toISOString()}'
         .option('-p, --prepend', 'Prepend to section instead of replace')
         .option('--json', 'JSON output')
         .addHelpText('after', `
-Multi-section format: use ## headers with optional [op]
-Operations: [replace], [append], [prepend], [delete], [sed], [check], [uncheck], [toggle], [patch]
-See: bin/rudder artifact edit --help for full documentation
+Usage Examples:
+
+  # Single section via --content
+  rudder epic:edit E001 -s "Description" -c "New description text"
+
+  # Single section via stdin (heredoc)
+  rudder epic:edit E001 -s "Deliverables" <<'EOF'
+  - [ ] Item 1
+  - [ ] Item 2
+  EOF
+
+  # Single section via pipe
+  echo "New content" | rudder epic:edit E001 -s "Notes"
+
+  # Multi-section edit (omit -s)
+  rudder epic:edit E001 <<'EOF'
+  ## Description
+  Full replacement...
+
+  ## Deliverables [append]
+  - [ ] New item
+
+  ## Tasks [check]
+  T001
+  EOF
+
+Operations: [replace] (default), [append], [prepend], [delete], [create], [sed], [check], [uncheck], [toggle], [patch]
+Note: Sections are auto-created if they don't exist (replace/append/prepend).
 `)
         .action(async (id, options) => {
         const result = findEpicFile(id);

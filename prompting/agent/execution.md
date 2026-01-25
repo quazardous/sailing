@@ -15,9 +15,10 @@ What counts as notable:
 - A pattern worth remembering
 - A dependency quirk or version issue
 
-```bash
-rudder task:log TNNN "Found that X requires Y because Z" --tip
-rudder task:log TNNN "Chose approach A over B: faster + simpler" --info
+```json
+// MCP: task_log
+{ "task_id": "TNNN", "message": "Found that X requires Y because Z", "level": "tip" }
+{ "task_id": "TNNN", "message": "Chose approach A over B: faster + simpler", "level": "info" }
 ```
 
 ❌ NOT notable: "completed task", "implemented feature", "done"
@@ -27,4 +28,4 @@ rudder task:log TNNN "Chose approach A over B: faster + simpler" --info
 
 Just exit normally when done. Auto-release happens on exit 0.
 
-**Rejection triggers**: incomplete deliverables, <2 logs, missing TIP, artifact edited with Edit tool (use rudder).
+**Rejection triggers**: incomplete deliverables, <2 logs, missing TIP, artifact edited with Edit tool (use MCP tools).

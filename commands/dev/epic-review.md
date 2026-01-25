@@ -1,12 +1,18 @@
 ---
 description: Review epic (tech + versions) before task breakdown
 argument-hint: <ENNN>
-allowed-tools: Read, Glob, Grep, Task, WebSearch, WebFetch
+allowed-tools: Read, Glob, Grep, Task, WebSearch, WebFetch, mcp
 ---
 
 # Epic Review Agent
 
+> **DELEGATION REQUIRED**: This command MUST be executed by a coordinator agent spawned by the skill.
+> The skill NEVER executes this directly. Spawn via `agent_spawn` with role=coordinator.
+
 **Purpose:** Evaluate epic for technical feasibility, version alignment, and tech opportunities **before task breakdown**.
+
+**Escalation Contract:** This coordinator RETURNS output to the skill. It does NOT make decisions.
+Tech recommendations require user validation. All questions escalate to skill.
 
 ---
 
@@ -17,10 +23,15 @@ You are acting as a **software architect** reviewing an epic prior to task break
 
 ## Pre-flight
 
-```bash
-rudder context:load epic-review --role coordinator
-rudder epic:show ENNN                # Verify epic exists, see task counts
-rudder memory:show ENNN --full       # Previous learnings + escalations
+```json
+// MCP: context_load
+{ "operation": "epic-review", "role": "coordinator" }
+
+// MCP: artefact_show - Verify epic exists, see task counts
+{ "id": "ENNN" }
+
+// MCP: memory_read - Previous learnings + escalations
+{ "scope": "ENNN", "full": true }
 ```
 
 ## Inputs
@@ -91,38 +102,23 @@ rudder memory:show ENNN --full       # Previous learnings + escalations
 
 ## Materialization
 
-After user validates recommendations, update the epic via `epic:patch`:
+After user validates recommendations, update the epic via `artefact_edit`:
 
 ⚠️ **NEVER use Edit tool directly on artefacts.**
 
-```bash
-cat <<'PATCH' | rudder epic:patch ENNN
-<<<<<<< SEARCH
-## Technical Notes
-=======
-## Technical Notes
-
-**Context**: Problem, constraints, target version
-
-**Stack Recommendations**
-- [lib-name](link): why chosen
-- [other-lib](link): purpose, integration notes
-
-**Integration Approach**: Patterns, strategy, workflow hooks
-
-**Rejected Options**
-- lib-X: reason not chosen
-- lib-Y: reason not chosen
-
-**Risks**
-- Learning curve, perf, maintenance, licensing
->>>>>>> REPLACE
-PATCH
+```json
+// MCP: artefact_edit
+{
+  "id": "ENNN",
+  "section": "Technical Notes",
+  "content": "**Context**: Problem, constraints, target version\n\n**Stack Recommendations**\n- [lib-name](link): why chosen\n- [other-lib](link): purpose, integration notes\n\n**Integration Approach**: Patterns, strategy, workflow hooks\n\n**Rejected Options**\n- lib-X: reason not chosen\n- lib-Y: reason not chosen\n\n**Risks**\n- Learning curve, perf, maintenance, licensing"
+}
 ```
 
-For frontmatter (target versions), use `epic:update`:
-```bash
-rudder epic:update ENNN --target-version vue:3.5.0 --target-version pinia:2.1.0
+For frontmatter (target versions), use `artefact_update`:
+```json
+// MCP: artefact_update
+{ "id": "ENNN", "target_version": "vue:3.5.0" }
 ```
 
 ---
@@ -135,4 +131,3 @@ This command does **NOT**:
 - Write implementation code
 - Make final decisions (user validates)
 - Bypass PRD constraints
-

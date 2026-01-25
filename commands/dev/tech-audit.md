@@ -1,7 +1,7 @@
 ---
 description: Audit tech opportunities in existing code (2 passes)
 argument-hint: <path/or/pattern> ["axis: perf|security|bundle|dx|maintenance"]
-allowed-tools: Read, Glob, Grep, Task, WebSearch, WebFetch
+allowed-tools: Read, Glob, Grep, Task, WebSearch, WebFetch, mcp
 ---
 
 # Tech Audit Agent
@@ -14,15 +14,16 @@ allowed-tools: Read, Glob, Grep, Task, WebSearch, WebFetch
 
 ## Pre-flight
 
-```bash
-rudder context:load tech-audit --role coordinator
+```json
+// MCP: context_load
+{ "operation": "tech-audit", "role": "coordinator" }
 ```
 
 ---
 
 ## Usage Examples
 
-```bash
+```
 /dev:tech-audit src/api/auth
 /dev:tech-audit src/workers "axis: perf"
 /dev:tech-audit "**/*.vue" "axis: dx"
@@ -107,4 +108,3 @@ This command does **NOT**:
 - Make final decisions (user validates)
 - Implement changes (separate task)
 - Skip user confirmation between passes
-

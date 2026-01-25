@@ -1,27 +1,25 @@
 ---
 description: Add task to epic (manual)
 argument-hint: <PRD-NNN/ENNN> <title>
-allowed-tools: Bash
+allowed-tools: mcp
 ---
 
-> 📖 CLI reference: `bin/rudder -h`
-
-```bash
-bin/rudder task:create <PRD-NNN/ENNN> <title> [--target-version=comp:ver]
+```json
+// MCP: artefact_create
+{ "type": "task", "parent": "E001", "title": "Task title" }
 ```
 
 ## After creation
 
 Add dependencies if needed:
-```bash
-# Task is blocked by other tasks
-rudder deps:add TNNN --blocked-by T001 T002
+```json
+// Task is blocked by other tasks
+// MCP: deps_add
+{ "task_id": "TNNN", "blocked_by": "T001" }
 
-# OR task blocks other tasks
-rudder deps:add TNNN --blocks T050 T051
-
-# Verify no cycles
-rudder deps:validate
+// Verify no cycles
+// MCP: workflow_validate
+{}
 ```
 
 Use only for adding tasks after initial breakdown.

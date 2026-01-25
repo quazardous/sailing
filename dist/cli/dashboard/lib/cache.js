@@ -1,9 +1,20 @@
-import { getPrdsDataImpl, getBlockersImpl, getPendingMemoryImpl } from './data.js';
 // Cache for expensive operations
 let _prdsDataCache = null;
 let _blockersCache = null;
 let _pendingMemoryCache = null;
 let _cacheTTL = 0;
+// Injected fetcher functions (set by initCache)
+let _prdsFetcher = null;
+let _blockersFetcher = null;
+let _pendingMemoryFetcher = null;
+/**
+ * Initialize cache with fetcher functions (called by API layer)
+ */
+export function initCache(fetchers) {
+    _prdsFetcher = fetchers.prds;
+    _blockersFetcher = fetchers.blockers;
+    _pendingMemoryFetcher = fetchers.pendingMemory;
+}
 /**
  * Set cache TTL in seconds (0 = disabled)
  */
@@ -33,19 +44,28 @@ function getCached(cache, setCache, getData) {
  * Get cached PRDs data
  */
 export function getCachedPrdsData() {
-    return getCached(_prdsDataCache, c => { _prdsDataCache = c; }, getPrdsDataImpl);
+    if (!_prdsFetcher) {
+        throw new Error('Cache not initialized. Call initCache() first.');
+    }
+    return getCached(_prdsDataCache, c => { _prdsDataCache = c; }, _prdsFetcher);
 }
 /**
  * Get cached blockers
  */
 export function getCachedBlockers() {
-    return getCached(_blockersCache, c => { _blockersCache = c; }, getBlockersImpl);
+    if (!_blockersFetcher) {
+        throw new Error('Cache not initialized. Call initCache() first.');
+    }
+    return getCached(_blockersCache, c => { _blockersCache = c; }, _blockersFetcher);
 }
 /**
  * Get cached pending memory
  */
 export function getCachedPendingMemory() {
-    return getCached(_pendingMemoryCache, c => { _pendingMemoryCache = c; }, getPendingMemoryImpl);
+    if (!_pendingMemoryFetcher) {
+        throw new Error('Cache not initialized. Call initCache() first.');
+    }
+    return getCached(_pendingMemoryCache, c => { _pendingMemoryCache = c; }, _pendingMemoryFetcher);
 }
 /**
  * Clear all caches

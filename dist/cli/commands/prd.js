@@ -3,7 +3,7 @@
  */
 import fs from 'fs';
 import path from 'path';
-import { findPrdDirs, loadFile, saveFile, toKebab, jsonOut, getPrdsDir, stripComments } from '../managers/core-manager.js';
+import { findPrdDirs, loadFile, saveFile, toKebab, jsonOut, getPrdsDir, stripComments, loadTemplate } from '../managers/core-manager.js';
 import { matchesPrdDir } from '../lib/normalize.js';
 import { STATUS, normalizeStatus, statusSymbol } from '../lib/lexicon.js';
 import { nextId } from '../managers/state-manager.js';
@@ -188,7 +188,15 @@ export function registerPrdCommands(program) {
         if (options.tag && options.tag.length > 0) {
             data.tags = options.tag.map((t) => toKebab(t));
         }
-        const body = `\n# ${id}: ${title}\n\n## Problem Statement\n\n[Describe the problem]\n\n## Goals\n\n- [Goal 1]\n\n## Non-Goals\n\n- [Non-goal 1]\n\n## Solution Overview\n\n[High-level approach]\n`;
+        // Load template or use minimal body
+        let body = loadTemplate('prd');
+        if (body) {
+            body = body.replace(/^---[\s\S]*?---\s*/, ''); // Remove template frontmatter
+            body = body.replace(/# PRD-00000: PRD Title/g, `# ${id}: ${title}`);
+        }
+        else {
+            body = `\n# ${id}: ${title}\n\n## Problem Statement\n\n[Describe the problem]\n\n## Goals\n\n- [Goal 1]\n\n## Non-Goals\n\n- [Non-goal 1]\n\n## Solution Overview\n\n[High-level approach]\n`;
+        }
         const prdFile = path.join(prdDir, 'prd.md');
         saveFile(prdFile, data, body);
         // Create PRD memory file
@@ -424,11 +432,37 @@ export function registerPrdCommands(program) {
         .option('-c, --content <text>', 'New content (or use stdin)')
         .option('-a, --append', 'Append to section instead of replace')
         .option('-p, --prepend', 'Prepend to section instead of replace')
+        .option('--merge-dedup-section', 'Merge duplicate sections (combine content)')
         .option('--json', 'JSON output')
         .addHelpText('after', `
-Multi-section format: use ## headers with optional [op]
-Operations: [replace], [append], [prepend], [delete], [sed], [check], [uncheck], [toggle], [patch]
-See: bin/rudder artifact edit --help for full documentation
+Usage Examples:
+
+  # Single section via --content
+  rudder prd:edit P001 -s "Description" -c "New description text"
+
+  # Single section via stdin (heredoc)
+  rudder prd:edit P001 -s "Deliverables" <<'EOF'
+  - [ ] Item 1
+  - [ ] Item 2
+  EOF
+
+  # Single section via pipe
+  echo "New content" | rudder prd:edit P001 -s "Notes"
+
+  # Multi-section edit (omit -s)
+  rudder prd:edit P001 <<'EOF'
+  ## Description
+  Full replacement...
+
+  ## Deliverables [append]
+  - [ ] New item
+
+  ## Notes [sed]
+  s/v1\\.0/v2.0/g
+  EOF
+
+Operations: [replace] (default), [append], [prepend], [delete], [create], [sed], [check], [uncheck], [toggle], [patch]
+Note: Sections are auto-created if they don't exist (replace/append/prepend).
 `)
         .action(async (id, options) => {
         const prdPath = getPrd(id)?.file;

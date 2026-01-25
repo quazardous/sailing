@@ -1,0 +1,341 @@
+# ═══════════════════════════════════════════════════════════════════════════════
+# GUARDS.YAML — Prompt-level guards with LiquidJS
+# ═══════════════════════════════════════════════════════════════════════════════
+#
+# IMPORTANT: This file is ONLY for prompt-related logic, NOT CLI validation.
+#
+# USE FOR:
+#   - Role enforcement ("agents cannot do X")
+#   - Pre-checks with recommendations ("STOP: did you think about...")
+#   - Post-prompts ("next you should do...")
+#   - State warnings ("you have pending work")
+#
+# DO NOT USE FOR:
+#   - CLI argument validation (--role required, missing args)
+#   - File not found errors
+#   - Basic input validation
+#
+# ═══════════════════════════════════════════════════════════════════════════════
+
+# ─────────────────────────────────────────────────────────────────────────────
+# assign:claim — Pre-checks before claiming a task
+# ─────────────────────────────────────────────────────────────────────────────
+assign:claim:
+  vars:
+    # The task ID being claimed (e.g., "T001")
+    taskId: { type: string, required: true }
+    # Whether there are unconsolidated memory logs pending
+    pendingMemory: { type: boolean, default: false }
+    # List of epic IDs that have unconsolidated logs
+    pendingEpics: { type: array, default: [] }
+
+  checks:
+    - id: pending_memory
+      when: "pendingMemory == true"
+      level: error
+      message: |
+        STOP: Pending memory consolidation required.
+        {% for epic in pendingEpics %}
+          {{ epic }} - has unconsolidated logs
+        {% endfor %}
+      hint: "Consolidate memory before starting new work."
+      actions:
+        - { cmd: "memory:sync", label: "Consolidate logs first" }
+      exit: 1
+
+# ─────────────────────────────────────────────────────────────────────────────
+# assign:release — Post-prompts after releasing a task
+# ─────────────────────────────────────────────────────────────────────────────
+assign:release:
+  vars:
+    # The task ID being released (e.g., "T001")
+    taskId: { type: string, required: true }
+    # Whether the agent left TIP (insights) logs for the next agent
+    hasTipLogs: { type: boolean }
+
+  posts:
+    - id: no_tip_logs
+      when: "hasTipLogs == false"
+      level: warn
+      message: |
+        ⚠ No TIP logs found for {{ taskId }}
+        Consider adding insights for the next agent.
+
+# ─────────────────────────────────────────────────────────────────────────────
+# deps:show — Informational posts about blocking status
+# ─────────────────────────────────────────────────────────────────────────────
+deps:show:
+  vars:
+    # The task ID to show dependencies for (e.g., "T001")
+    taskId: { type: string, required: true }
+    # List of epic IDs blocking this task's epic
+    epicBlockers: { type: array, default: [] }
+    # List of task IDs directly blocking this task
+    taskBlockers: { type: array, default: [] }
+
+  posts:
+    - id: epic_blocked
+      when: "epicBlockers.size > 0"
+      level: warn
+      message: |
+        ⚠ Epic is blocked - waiting for: {{ epicBlockers | join: ", " }}
+
+    - id: task_blocked
+      when: "taskBlockers.size > 0"
+      level: info
+      message: |
+        Task blocked by: {{ taskBlockers | join: ", " }}
+
+# ─────────────────────────────────────────────────────────────────────────────
+# memory:sync — Post-prompts about pending consolidation
+# ─────────────────────────────────────────────────────────────────────────────
+memory:sync:
+  vars:
+    # List of epic IDs that still have unconsolidated logs
+    pendingEpics: { type: array, default: [] }
+    # List of section names that were skipped (target not found in memory)
+    skippedSections: { type: array, default: [] }
+
+  posts:
+    - id: pending_logs
+      when: "pendingEpics.size > 0"
+      level: warn
+      message: |
+        ⚠ PENDING LOGS: {{ pendingEpics.size }} epic(s) still have unconsolidated logs.
+        {% for e in pendingEpics %}
+          {{ e }}
+        {% endfor %}
+
+    - id: skipped_sections
+      when: "skippedSections.size > 0"
+      level: warn
+      message: |
+        ⚠ {{ skippedSections.size }} section(s) skipped (target section not found in memory).
+
+# ─────────────────────────────────────────────────────────────────────────────
+# agent:spawn — Role enforcement and state warnings
+# ─────────────────────────────────────────────────────────────────────────────
+agent:spawn:
+  vars:
+    # The task ID to spawn an agent for (e.g., "T001")
+    taskId: { type: string, required: true }
+    # Status of existing agent for this task (if any): running, completed, failed, etc.
+    existingAgentStatus: { type: string }
+    # Whether the worktree has uncommitted changes
+    isDirty: { type: boolean }
+    # Number of commits ahead of the parent branch (unmerged work)
+    commitsAhead: { type: number, default: 0 }
+    # Whether the agent's work has already been merged
+    isMerged: { type: boolean }
+    # Whether we're resuming an existing agent (--resume flag)
+    resumeMode: { type: boolean, default: false }
+
+  checks:
+    # Role enforcement: agents cannot spawn other agents
+    - id: role_denied
+      when: "role == 'agent'"
+      level: error
+      message: |
+        ⚠ Agents cannot spawn other agents.
+        This action requires skill or coordinator role.
+      hint: "Escalate to coordinator if you need to spawn a sub-agent."
+      exit: 1
+
+    # State warning: unmerged work exists
+    - id: unmerged_work_dirty
+      when: "existingAgentStatus and isDirty and isMerged == false and resumeMode == false"
+      level: error
+      message: |
+        ⚠ Previous agent work exists with uncommitted changes.
+        You must handle existing work before spawning a new agent.
+      actions:
+        - { cmd: "agent:spawn {{ taskId }} --resume", label: "Continue existing work" }
+        - { cmd: "agent:reap {{ taskId }}", label: "Merge and cleanup first" }
+        - { cmd: "agent:reject {{ taskId }}", label: "Discard existing work" }
+      exit: 1
+
+    # State warning: commits not merged
+    - id: unmerged_work_commits
+      when: "existingAgentStatus and commitsAhead > 0 and isMerged == false and resumeMode == false"
+      level: error
+      message: |
+        ⚠ Previous agent has {{ commitsAhead }} commit(s) not merged.
+        You must handle existing work before spawning a new agent.
+      actions:
+        - { cmd: "agent:spawn {{ taskId }} --resume", label: "Continue existing work" }
+        - { cmd: "agent:reap {{ taskId }}", label: "Merge and cleanup first" }
+        - { cmd: "agent:reject {{ taskId }}", label: "Discard existing work" }
+      exit: 1
+
+  posts:
+    - id: spawn_failed
+      when: "exitCode != 0"
+      level: warn
+      message: |
+        Agent spawn failed. Check logs for details.
+      actions:
+        - { cmd: "agent:log {{ taskId }}", label: "View agent logs" }
+        - { cmd: "agent:reject {{ taskId }}", label: "Discard failed work" }
+
+# ─────────────────────────────────────────────────────────────────────────────
+# agent:reap — State warnings before harvesting
+# ─────────────────────────────────────────────────────────────────────────────
+agent:reap:
+  vars:
+    # The task ID whose agent to reap (e.g., "T001")
+    taskId: { type: string, required: true }
+    # Whether the agent process is still running
+    isRunning: { type: boolean }
+    # The agent's process ID (if running)
+    agentPid: { type: number }
+
+  checks:
+    # Warning: agent still running
+    - id: agent_still_running
+      when: "isRunning == true"
+      level: error
+      message: |
+        ⚠ Agent {{ taskId }} is still running (PID {{ agentPid }}).
+        Wait for completion or terminate before reaping.
+      actions:
+        - { cmd: "agent:wait {{ taskId }}", label: "Wait for completion" }
+        - { cmd: "agent:kill {{ taskId }}", label: "Force terminate" }
+      exit: 1
+
+# ─────────────────────────────────────────────────────────────────────────────
+# worktree:merge — Post-prompts for branching strategy
+# ─────────────────────────────────────────────────────────────────────────────
+worktree:merge:
+  vars:
+    # The task ID whose worktree to merge (e.g., "T001")
+    taskId: { type: string, required: true }
+    # The branching strategy: "flat", "epic", or "prd"
+    branching: { type: string }
+    # The epic ID for the task (used in merge hints)
+    epicId: { type: string }
+    # The PRD ID for the task (used in merge hints)
+    prdId: { type: string }
+    # Whether merge conflicts were detected
+    mergeConflict: { type: boolean, default: false }
+
+  posts:
+    - id: merge_success_epic
+      when: "branching == 'epic'"
+      level: info
+      message: |
+        Task merged. When epic is complete, merge epic/{{ epicId }} → prd/{{ prdId }}
+
+    - id: merge_success_prd
+      when: "branching == 'prd'"
+      level: info
+      message: |
+        Task merged. When PRD is complete, merge prd/{{ prdId }} → main
+
+    - id: merge_conflict
+      when: "mergeConflict == true"
+      level: warn
+      message: |
+        ⚠ Merge conflicts detected. Manual resolution required.
+      actions:
+        - { cmd: "/dev:merge {{ taskId }}", label: "Use merge skill to resolve" }
+
+# ─────────────────────────────────────────────────────────────────────────────
+# worktree:preflight — Warnings about repository state
+# ─────────────────────────────────────────────────────────────────────────────
+worktree:preflight:
+  vars:
+    # Number of commits main branch is behind origin
+    mainBehind: { type: number, default: 0 }
+    # Number of potential merge conflicts between running agents
+    conflictCount: { type: number, default: 0 }
+    # List of task IDs with pending merges
+    pendingMerges: { type: array, default: [] }
+
+  posts:
+    - id: behind_origin
+      when: "mainBehind > 0"
+      level: warn
+      message: |
+        ⚠ Main branch is {{ mainBehind }} commits behind origin.
+        Consider pulling before spawning agents.
+      actions:
+        - { cmd: "git pull", label: "Pull latest changes" }
+
+    - id: pending_merges
+      when: "pendingMerges.size > 0"
+      level: info
+      message: |
+        Pending merges: {{ pendingMerges | join: ", " }}
+
+    - id: potential_conflicts
+      when: "conflictCount > 0"
+      level: warn
+      message: |
+        ⚠ {{ conflictCount }} potential conflict(s) between running agents.
+
+# ─────────────────────────────────────────────────────────────────────────────
+# gc:cleanup — Warnings about unsafe deletions
+# ─────────────────────────────────────────────────────────────────────────────
+gc:cleanup:
+  vars:
+    # List of orphan directories that contain unmerged work (would lose data if deleted)
+    unsafeOrphans: { type: array, default: [] }
+
+  posts:
+    - id: unsafe_orphans
+      when: "unsafeOrphans.size > 0"
+      level: warn
+      message: |
+        ⚠ Unsafe orphans ({{ unsafeOrphans.size }}): would delete unmerged work.
+        {% for o in unsafeOrphans %}
+          {{ o }}
+        {% endfor %}
+      hint: "Use --force to delete anyway, or reap/reject first."
+
+# ─────────────────────────────────────────────────────────────────────────────
+# agent:monitor — Informational warnings about state
+# ─────────────────────────────────────────────────────────────────────────────
+agent:monitor:
+  vars:
+    # Agent directories on disk that are not tracked in the database
+    orphanAgentDirs: { type: array, default: [] }
+    # Worktree directories on disk that are not tracked in the database
+    orphanWorktreeDirs: { type: array, default: [] }
+    # Agents in database but with no corresponding directory on disk
+    ghostAgents: { type: array, default: [] }
+    # Terminal agents (completed/failed/rejected) that still have worktrees to clean up
+    terminalWithWorktree: { type: array, default: [] }
+
+  posts:
+    - id: orphan_agent_dirs
+      when: "orphanAgentDirs.size > 0"
+      level: warn
+      message: |
+        ⚠ Orphan agent dirs (not in db): {{ orphanAgentDirs | join: ", " }}
+      actions:
+        - { cmd: "agent:sync", label: "Recover orphans to db" }
+
+    - id: orphan_worktree_dirs
+      when: "orphanWorktreeDirs.size > 0"
+      level: warn
+      message: |
+        ⚠ Orphan worktree dirs (not in db): {{ orphanWorktreeDirs | join: ", " }}
+
+    - id: ghost_agents
+      when: "ghostAgents.size > 0"
+      level: warn
+      message: |
+        ⚠ Ghost agents (in db but no dir): {{ ghostAgents | join: ", " }}
+      actions:
+        - { cmd: "agent:clear", label: "Clear ghost entries" }
+
+    - id: terminal_with_worktree
+      when: "terminalWithWorktree.size > 0"
+      level: warn
+      message: |
+        ⚠ Terminal agents with worktree (should clean):
+        {% for a in terminalWithWorktree %}
+          {{ a }}
+        {% endfor %}
+      actions:
+        - { cmd: "gc:agents", label: "Clean up terminal agents" }

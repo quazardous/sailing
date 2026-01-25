@@ -8,7 +8,7 @@ import fs from 'fs';
 import path from 'path';
 import yaml from 'js-yaml';
 import { loadFile, saveFile, findProjectRoot, getAgentsDir } from './core-manager.js';
-import { loadState, saveState } from './state-manager.js';
+import { getAgentFromDb, saveAgentToDb, deleteAgentFromDb } from './db-manager.js';
 import { getGit } from '../lib/git.js';
 import { getAgentConfig } from './core-manager.js';
 import { removeWorktree } from './worktree-manager.js';
@@ -32,13 +32,9 @@ export class AgentLifecycleManager {
         this.agentUtils = new AgentUtils(getAgentsDir());
         this.projectRoot = findProjectRoot();
     }
-    /** Get fresh state (not cached - state can change) */
-    getState() {
-        return loadState();
-    }
-    /** Get fresh agent info */
+    /** Get fresh agent info from db */
     getAgentInfo() {
-        return this.getState().agents?.[this.taskId];
+        return getAgentFromDb(this.taskId);
     }
     /** Get agent directory */
     getAgentDir() {
@@ -184,8 +180,7 @@ export class AgentLifecycleManager {
      */
     async reap(options = {}) {
         const { wait = true, timeout = 300, cleanupWorktree = false } = options;
-        const state = this.getState();
-        const agentInfo = state.agents?.[this.taskId];
+        const agentInfo = this.getAgentInfo();
         const config = getAgentConfig();
         // Validation
         if (!agentInfo) {
@@ -352,15 +347,13 @@ export class AgentLifecycleManager {
                 saveFile(taskFile, data, file.body);
             }
         }
-        // Update agent state
-        const freshState = this.getState();
-        freshState.agents[this.taskId] = {
+        // Update agent state in db
+        await saveAgentToDb(this.taskId, {
             ...agentInfo,
             status: 'reaped',
             result_status: resultStatus,
             reaped_at: new Date().toISOString()
-        };
-        saveState(freshState);
+        });
         return {
             success: true,
             taskId: this.taskId,
@@ -372,8 +365,7 @@ export class AgentLifecycleManager {
     }
     /** Kill agent process */
     async kill() {
-        const state = this.getState();
-        const agentInfo = state.agents?.[this.taskId];
+        const agentInfo = this.getAgentInfo();
         if (!agentInfo) {
             return { success: false, taskId: this.taskId, error: `No agent found for task ${this.taskId}` };
         }
@@ -401,21 +393,18 @@ export class AgentLifecycleManager {
             }
             // ESRCH = process already gone, that's fine
         }
-        // Update state
-        const freshState = this.getState();
-        freshState.agents[this.taskId] = {
+        // Update state in db
+        await saveAgentToDb(this.taskId, {
             ...agentInfo,
+            pid: undefined, // Remove pid
             status: 'killed',
             killed_at: new Date().toISOString()
-        };
-        delete freshState.agents[this.taskId].pid;
-        saveState(freshState);
+        });
         return { success: true, taskId: this.taskId, pid };
     }
     /** Reject agent work and cleanup */
-    reject(reason) {
-        const state = this.getState();
-        const agentInfo = state.agents?.[this.taskId];
+    async reject(reason) {
+        const agentInfo = this.getAgentInfo();
         if (!agentInfo) {
             return { success: false, taskId: this.taskId };
         }
@@ -423,25 +412,22 @@ export class AgentLifecycleManager {
         if (agentInfo.worktree) {
             removeWorktree(this.taskId, { force: true });
         }
-        // Update state
-        const freshState = this.getState();
-        freshState.agents[this.taskId] = {
+        // Update state in db
+        await saveAgentToDb(this.taskId, {
             ...agentInfo,
             status: 'rejected',
             reject_reason: reason,
             rejected_at: new Date().toISOString()
-        };
-        saveState(freshState);
+        });
         return { success: true, taskId: this.taskId };
     }
-    /** Clear agent from state */
-    clear() {
-        const state = this.getState();
-        if (!state.agents?.[this.taskId]) {
+    /** Clear agent from db */
+    async clear() {
+        const agentInfo = this.getAgentInfo();
+        if (!agentInfo) {
             return false;
         }
-        delete state.agents[this.taskId];
-        saveState(state);
+        await deleteAgentFromDb(this.taskId);
         return true;
     }
 }

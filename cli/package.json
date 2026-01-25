@@ -1,6 +1,6 @@
 {
   "name": "@quazardous/rudder",
-  "version": "1.10.0",
+  "version": "1.16.0",
   "description": "Sailing CLI - PRD/Epic/Task management",
   "type": "module",
   "bin": {
@@ -12,6 +12,7 @@
     "execa": "^9.6.1",
     "gray-matter": "^4.0.3",
     "js-yaml": "^4.1.0",
+    "liquidjs": "^10.24.0",
     "marked": "^17.0.1",
     "simple-git": "^3.30.0"
   },
@@ -27,7 +28,7 @@
     "typescript": "^5.6.3"
   },
   "scripts": {
-    "build": "tsc -p ../tsconfig.json && cp -r dashboard/views ../dist/cli/dashboard/",
+    "build": "tsc -p ../tsconfig.json",
     "dev": "tsx --watch rudder.ts",
     "lint": "eslint \"./**/*.{ts,js}\""
   }

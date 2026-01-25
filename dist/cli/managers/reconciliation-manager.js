@@ -7,7 +7,9 @@
  */
 import { execSync } from 'child_process';
 import { findProjectRoot, getMainBranch } from './core-manager.js';
-import { loadState } from './state-manager.js';
+import { getAllAgentsFromDb } from './db-manager.js';
+import { getTask } from './artefacts-manager.js';
+import { extractPrdId, extractEpicId } from '../lib/normalize.js';
 import { getBranchName, getPrdBranchName, getEpicBranchName, branchExists, getBranchDivergence, syncBranch, listAgentWorktrees } from './worktree-manager.js';
 /**
  * Branch States
@@ -67,11 +69,10 @@ export function listSailingBranches() {
     }
 }
 /**
- * Get tracked branches from state.json
+ * Get tracked branches from db
  */
 export function getTrackedBranches() {
-    const state = loadState();
-    const agents = state.agents || {};
+    const agents = getAllAgentsFromDb();
     const tasks = [];
     const epics = new Set();
     const prds = new Set();
@@ -79,11 +80,15 @@ export function getTrackedBranches() {
         if (info.worktree) {
             tasks.push(getBranchName(taskId));
         }
-        if (info.epic_id) {
-            epics.add(getEpicBranchName(info.epic_id));
+        // Get epic_id and prd_id from task artefacts (not stored in agent record)
+        const taskInfo = getTask(taskId);
+        const epicId = taskInfo?.data?.parent ? extractEpicId(taskInfo.data.parent) : null;
+        const prdId = taskInfo?.data?.parent ? extractPrdId(taskInfo.data.parent) : null;
+        if (epicId) {
+            epics.add(getEpicBranchName(epicId));
         }
-        if (info.prd_id) {
-            prds.add(getPrdBranchName(info.prd_id));
+        if (prdId) {
+            prds.add(getPrdBranchName(prdId));
         }
     }
     return { tasks, epics: [...epics], prds: [...prds] };
@@ -170,8 +175,7 @@ export function diagnose(context = {}) {
  * Diagnose all active worktrees and their branches
  */
 export function diagnoseWorktrees() {
-    const state = loadState();
-    const agents = state.agents || {};
+    const agents = getAllAgentsFromDb();
     const mainBranch = getMainBranch();
     const worktrees = listAgentWorktrees();
     const diagnosis = {

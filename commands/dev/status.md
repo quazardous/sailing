@@ -1,25 +1,30 @@
 ---
 description: Project status overview
-allowed-tools: Bash
+allowed-tools: mcp
 ---
 
-> 📖 CLI reference: `bin/rudder -h`
-
-```bash
-bin/rudder status [--json]
+```json
+// MCP: system_status
+{}
 ```
 
 ## Additional views
 
-```bash
-# PRD/Task lists
-rudder prd:list [--tag <tag>] [--json]
-rudder task:list [--status <s>] [--tag <tag>] [--json]
-rudder tag:list                      # Show all tags with counts
+```json
+// PRD/Task lists
+// MCP: artefact_list
+{ "type": "prd" }
 
-# Dependency analysis
-rudder deps:critical [--limit 5]     # Critical paths + top blockers
-rudder deps:ready [--tag <tag>] [--limit 5]   # Ready tasks sorted by impact
-rudder deps:validate                 # Check for cycles/issues
-rudder deps:tree --depth 2 --ready   # Visual tree with ready markers
+// MCP: artefact_list
+{ "type": "task", "status": "In Progress" }
+
+// Dependency analysis
+// MCP: deps_critical - Critical paths + top blockers
+{ "limit": 5 }
+
+// MCP: workflow_ready - Ready tasks sorted by impact
+{ "limit": 5 }
+
+// MCP: workflow_validate - Check for cycles/issues
+{}
 ```

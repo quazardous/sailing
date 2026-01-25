@@ -1,15 +1,16 @@
 ---
 description: Audit test quality and structure (2 passes)
 argument-hint: [path/to/tests]
-allowed-tools: Read, Glob, Grep, Task
+allowed-tools: Read, Glob, Grep, Task, mcp
 ---
 
 **Audit test quality: cheater tests + structure compliance.**
 
 ## Pre-flight
 
-```bash
-rudder context:load test-audit --role coordinator
+```json
+// MCP: context_load
+{ "operation": "test-audit", "role": "coordinator" }
 ```
 
 ## Pass 1: Analysis (agent)

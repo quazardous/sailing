@@ -5,22 +5,21 @@ import fs from 'fs';
 import path from 'path';
 import { jsonOut, resolvePlaceholders, getAgentConfig } from '../../managers/core-manager.js';
 import { getGit } from '../../lib/git.js';
-import { loadState, saveState } from '../../managers/state-manager.js';
+import { getAllAgentsFromDb, getAgentFromDb, saveAgentToDb, deleteAgentFromDb } from '../../managers/db-manager.js';
 import { withModifies } from '../../lib/help.js';
 import { buildConflictMatrix, suggestMergeOrder } from '../../managers/conflict-manager.js';
 import { normalizeId } from '../../lib/normalize.js';
+import { gcAgentsAction } from '../gc.js';
 export function registerManageCommands(agent) {
     // agent:sync
-    withModifies(agent.command('sync'), ['state'])
-        .description('Sync state.json with actual worktrees/agents (recover from ghosts)')
+    withModifies(agent.command('sync'), ['db'])
+        .description('Sync db with actual worktrees/agents (recover from ghosts)')
         .action(async (options) => {
         const config = getAgentConfig();
         const havenPath = resolvePlaceholders('${haven}');
         const worktreesDir = path.join(havenPath, 'worktrees');
         const agentsDir = path.join(havenPath, 'agents');
-        const state = loadState();
-        if (!state.agents)
-            state.agents = {};
+        const agents = getAllAgentsFromDb();
         const changes = { added: [], updated: [], orphaned: [] };
         if (fs.existsSync(worktreesDir)) {
             const worktrees = fs.readdirSync(worktreesDir).filter(d => d.startsWith('T') && fs.statSync(path.join(worktreesDir, d)).isDirectory());
@@ -29,7 +28,7 @@ export function registerManageCommands(agent) {
                 const agentDir = path.join(agentsDir, taskId);
                 const missionFile = path.join(agentDir, 'mission.yaml');
                 const logFile = path.join(agentDir, 'run.log');
-                if (!state.agents[taskId]) {
+                if (!agents[taskId]) {
                     const entry = {
                         status: 'orphaned',
                         recovered_at: new Date().toISOString(),
@@ -59,12 +58,12 @@ export function registerManageCommands(agent) {
                         entry.uncommitted_files = syncAllFiles.length;
                     }
                     if (!options.dryRun) {
-                        state.agents[taskId] = entry;
+                        await saveAgentToDb(taskId, entry);
                     }
                     changes.added.push({ taskId, status: entry.status });
                 }
-                else if (state.agents[taskId].status === 'spawned') {
-                    const pid = state.agents[taskId].pid;
+                else if (agents[taskId].status === 'spawned') {
+                    const pid = agents[taskId].pid;
                     let isRunning = false;
                     if (pid) {
                         try {
@@ -75,23 +74,23 @@ export function registerManageCommands(agent) {
                     }
                     if (!isRunning) {
                         if (!options.dryRun) {
-                            state.agents[taskId].status = 'orphaned';
-                            state.agents[taskId].orphaned_at = new Date().toISOString();
-                            delete state.agents[taskId].pid;
+                            await saveAgentToDb(taskId, {
+                                ...agents[taskId],
+                                status: 'orphaned',
+                                orphaned_at: new Date().toISOString(),
+                                pid: undefined
+                            });
                         }
                         changes.updated.push({ taskId, from: 'spawned', to: 'orphaned' });
                     }
                 }
             }
         }
-        for (const taskId of Object.keys(state.agents)) {
+        for (const taskId of Object.keys(agents)) {
             const worktreePath = path.join(worktreesDir, taskId);
-            if (!fs.existsSync(worktreePath) && state.agents[taskId].worktree) {
-                changes.orphaned.push({ taskId, status: state.agents[taskId].status });
+            if (!fs.existsSync(worktreePath) && agents[taskId].worktree) {
+                changes.orphaned.push({ taskId, status: agents[taskId].status });
             }
-        }
-        if (!options.dryRun) {
-            saveState(state);
         }
         if (options.json) {
             jsonOut({ changes, dry_run: options.dryRun });
@@ -111,43 +110,43 @@ export function registerManageCommands(agent) {
                 changes.orphaned.forEach(c => console.log(`  ? ${c.taskId}: ${c.status}`));
             }
             if (changes.added.length === 0 && changes.updated.length === 0 && changes.orphaned.length === 0) {
-                console.log('State is in sync with reality');
+                console.log('DB is in sync with reality');
             }
         }
     });
     // agent:clear
-    withModifies(agent.command('clear [task-id]'), ['state'])
+    withModifies(agent.command('clear [task-id]'), ['db'])
         .description('Clear agent tracking (all or specific task)')
         .option('--force', 'Clear without confirmation')
-        .action((taskId, options) => {
-        const state = loadState();
-        if (!state.agents) {
+        .action(async (taskId, options) => {
+        const agents = getAllAgentsFromDb();
+        const agentCount = Object.keys(agents).length;
+        if (agentCount === 0) {
             console.log('No agents to clear');
             return;
         }
         if (taskId) {
-            taskId = normalizeId(taskId);
-            if (!state.agents[taskId]) {
+            taskId = normalizeId(taskId, undefined, 'task');
+            if (!agents[taskId]) {
                 console.error(`No agent found for task: ${taskId}`);
                 process.exit(1);
             }
-            delete state.agents[taskId];
-            saveState(state);
+            await deleteAgentFromDb(taskId);
             console.log(`Cleared agent: ${taskId}`);
         }
         else {
-            const count = Object.keys(state.agents).length;
-            state.agents = {};
-            saveState(state);
-            console.log(`Cleared ${count} agent(s)`);
+            // Clear all agents one by one
+            for (const id of Object.keys(agents)) {
+                await deleteAgentFromDb(id);
+            }
+            console.log(`Cleared ${agentCount} agent(s)`);
         }
     });
     // agent:kill
-    withModifies(agent.command('kill <task-id>'), ['state'])
-        .action((taskId, options) => {
-        taskId = normalizeId(taskId);
-        const state = loadState();
-        const agentInfo = state.agents?.[taskId];
+    withModifies(agent.command('kill <task-id>'), ['db'])
+        .action(async (taskId, options) => {
+        taskId = normalizeId(taskId, undefined, 'task');
+        const agentInfo = getAgentFromDb(taskId);
         if (!agentInfo) {
             console.error(`No agent found for task: ${taskId}`);
             process.exit(1);
@@ -180,13 +179,12 @@ export function registerManageCommands(agent) {
                 console.error(`Error killing process: ${e.message}`);
             }
         }
-        state.agents[taskId] = {
+        await saveAgentToDb(taskId, {
             ...agentInfo,
+            pid: undefined,
             status: 'killed',
             killed_at: new Date().toISOString()
-        };
-        delete state.agents[taskId].pid;
-        saveState(state);
+        });
         if (options.json) {
             jsonOut({
                 task_id: taskId,
@@ -255,79 +253,14 @@ export function registerManageCommands(agent) {
             order.forEach((id, i) => console.log(`  ${i + 1}. rudder agent:merge ${id}`));
         }
     });
-    // agent:gc
-    withModifies(agent.command('gc'), ['state'])
-        .description('Garbage collect old agents from state (reaped/completed > TTL)')
-        .option('--ttl <duration>', 'Max age for reaped agents (default: 24h)', '24h')
-        .option('--force', 'Skip confirmation')
+    // agent:gc - alias for gc:agents
+    agent.command('gc')
+        .description('Alias for gc:agents - Clean orphaned directories and stale db records')
+        .option('--no-dry-run', 'Actually delete orphaned directories and db records')
+        .option('--no-worktree', 'Skip worktree directory cleanup')
+        .option('--no-db', 'Skip stale db record cleanup')
+        .option('--days <n>', 'Age threshold for stale db records (default: 30)', parseInt)
+        .option('--unsafe', 'Delete even if task file exists (for terminal agents)')
         .option('--json', 'JSON output')
-        .action(async (options) => {
-        // Parse TTL
-        const ttlMatch = options.ttl.match(/^(\d+)(h|d)$/);
-        if (!ttlMatch) {
-            console.error(`Invalid TTL format: ${options.ttl}. Use format like "1h", "24h", "1d"`);
-            process.exit(1);
-        }
-        const ttlValue = parseInt(ttlMatch[1], 10);
-        const ttlUnit = ttlMatch[2];
-        const ttlMs = ttlUnit === 'h' ? ttlValue * 60 * 60 * 1000 : ttlValue * 24 * 60 * 60 * 1000;
-        const state = loadState();
-        const agents = state.agents || {};
-        const now = Date.now();
-        // Find agents to garbage collect
-        const finalStates = ['reaped', 'collected', 'rejected', 'killed', 'merged'];
-        const toGc = [];
-        for (const [taskId, agentInfo] of Object.entries(agents)) {
-            if (!finalStates.includes(agentInfo.status))
-                continue;
-            // Check age
-            const endedAt = agentInfo.reaped_at || agentInfo.completed_at || agentInfo.rejected_at || agentInfo.killed_at || agentInfo.merged_at;
-            if (!endedAt)
-                continue;
-            const age = now - new Date(endedAt).getTime();
-            if (age > ttlMs) {
-                toGc.push(taskId);
-            }
-        }
-        if (toGc.length === 0) {
-            if (options.json) {
-                jsonOut({ status: 'ok', removed: [] });
-            }
-            else {
-                console.log(`No agents older than ${options.ttl} to garbage collect`);
-            }
-            return;
-        }
-        if (!options.json) {
-            console.log(`Found ${toGc.length} agent(s) to garbage collect:`);
-            for (const taskId of toGc) {
-                const info = agents[taskId];
-                console.log(`  - ${taskId} (${info.status})`);
-            }
-        }
-        // Confirmation unless --force
-        if (!options.force && !options.json) {
-            const readline = await import('readline');
-            const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
-            const answer = await new Promise(resolve => {
-                rl.question('\nRemove these agents from state? [y/N] ', resolve);
-            });
-            rl.close();
-            if (answer.toLowerCase() !== 'y') {
-                console.log('Aborted');
-                return;
-            }
-        }
-        // Remove agents from state
-        for (const taskId of toGc) {
-            delete state.agents[taskId];
-        }
-        saveState(state);
-        if (options.json) {
-            jsonOut({ status: 'ok', removed: toGc });
-        }
-        else {
-            console.log(`\n✓ Removed ${toGc.length} agent(s) from state`);
-        }
-    });
+        .action(gcAgentsAction);
 }

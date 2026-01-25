@@ -1,18 +1,34 @@
+---
+description: Merge agent work into target branch
+argument-hint: <TNNN>
+allowed-tools: mcp, Bash
+---
+
 # Merge Agent
+
+> **DELEGATION REQUIRED**: This command MUST be executed by a coordinator agent spawned by the skill.
+> The skill NEVER executes merge operations directly. Spawn via `agent_spawn` with role=coordinator.
 
 **Purpose:** Merge agent work into the target branch, handling conflicts with full context.
 
-> 📖 CLI reference: `bin/rudder -h`
+**Escalation Contract:** This coordinator handles git merge and conflict resolution.
+- Simple merges: completed automatically
+- Conflicts: resolved with context, logged
+- Ambiguous conflicts: ESCALATE to skill (do not guess)
+- Architectural conflicts: ESCALATE to skill (require decision)
 
-**Authority:** This command is executed by main thread or authorized coordinator. It MUST NOT be invoked by agents.
+**Authority:** This command is executed by authorized coordinator. It MUST NOT be invoked by task agents.
 
 ---
 
 ## Pre-flight
 
-```bash
-rudder context:load merge --role coordinator
-rudder task:show TNNN
+```json
+// MCP: context_load
+{ "operation": "merge", "role": "coordinator" }
+
+// MCP: artefact_show
+{ "id": "TNNN" }
 ```
 
 Check the mode header at context start:
@@ -39,7 +55,7 @@ Default mode. Agent work is on feature branches or direct commits.
 
 ```bash
 # Check task status
-rudder task:show TNNN
+# MCP: artefact_show { "id": "TNNN" }
 
 # Find commits (convention: feat(TNNN): ...)
 git log --oneline --grep="TNNN" main
@@ -70,13 +86,16 @@ git cherry-pick <commit-sha>
 
 ```bash
 # If using worktree mode:
-rudder worktree cleanup TNNN --force
+# MCP: agent_cleanup { "task_id": "TNNN", "force": true }
 
 # If standard mode (no worktree):
 git branch -d task/TNNN
+```
 
-# Mark task done
-rudder task:update TNNN --status Done
+Mark task done:
+```json
+// MCP: artefact_update
+{ "id": "TNNN", "status": "Done" }
 ```
 
 ---
@@ -87,9 +106,12 @@ When worktrees are enabled, agents work in isolated git worktrees with dedicated
 
 ## Pre-flight (Worktree)
 
-```bash
-rudder worktree status --json                 # Current worktree state
-rudder worktree preflight --json              # Blockers, merge order
+```json
+// MCP: agent_status - Current worktree state
+{}
+
+// MCP: agent_preflight - Blockers, merge order
+{}
 ```
 
 ## 0. Handle Uncommitted Changes
@@ -104,8 +126,9 @@ git status --porcelain
 If there are uncommitted changes:
 
 1. **Get task title**:
-   ```bash
-   rudder task:show TNNN --json | jq -r '.title'
+   ```json
+   // MCP: artefact_show
+   { "id": "TNNN" }
    ```
 
 2. **Stage and commit with task title**:
@@ -117,8 +140,9 @@ If there are uncommitted changes:
    The `[auto]` flag indicates this was a fallback commit (agent forgot to commit).
 
 3. **Log the auto-commit**:
-   ```bash
-   rudder task:log TNNN "Agent forgot to commit - auto-committed with task title" --warn
+   ```json
+   // MCP: task_log
+   { "task_id": "TNNN", "message": "Agent forgot to commit - auto-committed with task title", "level": "warn" }
    ```
 
 4. **Warn the user**:
@@ -133,11 +157,15 @@ If there are uncommitted changes:
 
 ## 1. Assess Merge State
 
-```bash
-# Get task/PR info
-rudder task:show TNNN
-rudder worktree status --json
+```json
+// MCP: artefact_show - Get task/PR info
+{ "id": "TNNN" }
 
+// MCP: agent_status
+{}
+```
+
+```bash
 # Check for conflicts
 git fetch origin
 git merge-tree $(git merge-base main origin/agent/TNNN) main origin/agent/TNNN
@@ -154,9 +182,12 @@ git checkout main
 git pull origin main
 git merge origin/agent/TNNN --no-edit
 git push origin main
+```
 
-# Cleanup
-rudder worktree cleanup TNNN
+Cleanup:
+```json
+// MCP: agent_cleanup
+{ "task_id": "TNNN" }
 ```
 
 ## 3. If Conflicts → Resolve with Context
@@ -175,13 +206,15 @@ git merge task/T042 --no-commit
 
 ### Load Context for Resolution
 
+```json
+// MCP: memory_read - Get epic memory (patterns, decisions)
+{ "scope": "ENNN", "full": true }
+
+// MCP: artefact_show - Get task details (what was intended)
+{ "id": "TNNN" }
+```
+
 ```bash
-# Get epic memory (patterns, decisions)
-rudder memory:show ENNN --full
-
-# Get task details (what was intended)
-rudder task:show TNNN
-
 # Get modified files
 git diff main...task/TNNN --name-only
 ```
@@ -218,8 +251,12 @@ git diff main...task/TNNN --name-only
    ```bash
    # Merge branch (temporary)
    git branch -d merge/T042-to-E001
-   # Worktree + task branch (via rudder to update state)
-   rudder worktree cleanup TNNN --force
+   ```
+
+   ```json
+   // Worktree + task branch (via MCP to update state)
+   // MCP: agent_cleanup
+   { "task_id": "TNNN", "force": true }
    ```
 
 ### Branch Nomenclature
@@ -240,8 +277,8 @@ When resolving conflicts, the coordinator has access to:
 
 | Context | Source | Purpose |
 |---------|--------|---------|
-| Task description | `rudder task:show TNNN` | What was the agent trying to do |
-| Epic memory | `rudder memory:show ENNN --full` | Patterns, tips, prior decisions |
+| Task description | `artefact_show { "id": "TNNN" }` | What was the agent trying to do |
+| Epic memory | `memory_read { "scope": "ENNN", "full": true }` | Patterns, tips, prior decisions |
 | Main changes | `git log main --since="agent start"` | What changed on main |
 | Conflict details | `git diff --check` | Exact conflict locations |
 | DEV.md | Project root | Tech stack, conventions |
@@ -255,10 +292,13 @@ When merging multiple tasks:
 ```bash
 # Standard mode: merge by commit order
 git log --oneline --grep="T0" main | head -10
+```
 
-# Worktree mode: use preflight for order
-rudder worktree preflight --json
-# Returns: merge_order: [T042, T043, T044]
+```json
+// Worktree mode: use preflight for order
+// MCP: agent_preflight
+{}
+// Returns: merge_order: [T042, T043, T044]
 ```
 
 1. Merge in suggested order (minimizes conflicts)
@@ -284,10 +324,15 @@ rudder worktree preflight --json
 **At least one `--info` log is REQUIRED after successful merge.**
 **Conflict resolution MUST emit at least one `--tip` log.**
 
-```bash
-rudder task:log TNNN "Merged to main" --info
-rudder task:log TNNN "Resolved conflict in src/foo.js: combined both changes" --tip
-rudder task:log TNNN "Conflict resolution: kept agent's version (newer API)" --info
+```json
+// MCP: task_log
+{ "task_id": "TNNN", "message": "Merged to main", "level": "info" }
+
+// MCP: task_log
+{ "task_id": "TNNN", "message": "Resolved conflict in src/foo.js: combined both changes", "level": "tip" }
+
+// MCP: task_log
+{ "task_id": "TNNN", "message": "Conflict resolution: kept agent's version (newer API)", "level": "info" }
 ```
 
 ---

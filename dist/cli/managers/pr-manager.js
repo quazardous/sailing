@@ -9,6 +9,7 @@ import { execa, execaSync } from 'execa';
 import { findProjectRoot, getAgentConfig } from './core-manager.js';
 import { getGit } from '../lib/git.js';
 import { getBranchName } from './worktree-manager.js';
+import { getAgentFromDb } from './db-manager.js';
 // ============================================================================
 // Provider Detection
 // ============================================================================
@@ -172,11 +173,12 @@ export async function create(taskId, options = {}) {
     return createCore(taskId, { ...options, provider: provider || undefined });
 }
 // ============================================================================
-// State Helpers
+// DB Helpers
 // ============================================================================
 /**
- * Get PR URL for a task (from state)
+ * Get PR URL for a task (from db)
  */
-export function getUrlFromState(taskId, state) {
-    return state.agents?.[taskId]?.pr_url || null;
+export function getUrlFromDb(taskId) {
+    const agent = getAgentFromDb(taskId);
+    return agent?.pr_url || null;
 }

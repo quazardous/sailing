@@ -42,13 +42,11 @@ function buildEpicIndexForDuplicates() {
         const key = extractNumericKey(id);
         if (!key)
             continue;
-        const prdDirName = path.basename(epicEntry.prdDir);
-        const prdId = prdDirName.match(/^PRD-\d+/)?.[0] || prdDirName;
         const entry = {
             id,
             file: epicEntry.file,
             prdDir: epicEntry.prdDir,
-            prdId,
+            prdId: epicEntry.prdId,
             created: getCreationDate(epicEntry.file)
         };
         if (!index.has(key)) {
@@ -73,11 +71,6 @@ function buildTaskIndexForDuplicates() {
         const key = extractNumericKey(id);
         if (!key)
             continue;
-        // Extract prdDir from task file path
-        const tasksDir = path.dirname(taskEntry.file);
-        const prdDir = path.dirname(tasksDir);
-        const prdDirName = path.basename(prdDir);
-        const prdId = prdDirName.match(/^PRD-\d+/)?.[0] || prdDirName;
         // Extract epic from parent field
         const parent = (data.parent) || '';
         const epicMatch = parent.match(/E\d+/i);
@@ -85,8 +78,8 @@ function buildTaskIndexForDuplicates() {
         const entry = {
             id,
             file: taskEntry.file,
-            prdDir,
-            prdId,
+            prdDir: taskEntry.prdDir,
+            prdId: taskEntry.prdId,
             epicId,
             created: getCreationDate(taskEntry.file)
         };

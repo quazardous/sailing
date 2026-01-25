@@ -1,20 +1,19 @@
 ---
 description: Rewrite tasks after tech/orientation change
 argument-hint: <PRD-NNN> "<change description>"
-allowed-tools: Read, Edit, Glob, Grep, Task, Bash
+allowed-tools: Read, Edit, Glob, Grep, Task, mcp
 ---
 
 **Rewrites task descriptions after a tech change or orientation shift.**
-
-> 📖 CLI reference: `bin/rudder -h`
 
 ## Workflow
 
 1. **Understand the change**: User describes what changed (new lib, pattern shift, API change, etc.)
 
 2. **Identify affected tasks**:
-   ```bash
-   bin/rudder task:list --prd PRD-NNN --json
+   ```json
+   // MCP: artefact_list
+   { "type": "task", "scope": "PRD-NNN" }
    ```
    Analyze each task to find those impacted by the change.
 
@@ -52,14 +51,12 @@ Report: tasks rewritten, new tasks needed (if any), obsolete tasks (if any).
 
 ## After rewrite
 
-```bash
-# Validate dependencies still make sense
-rudder deps:validate
+```json
+// Validate dependencies still make sense
+// MCP: workflow_validate
+{}
 
-# Check if dependency order needs adjustment
-rudder deps:tree TNNN --ancestors  # for rewritten tasks
-
-# Update dependencies if needed
-rudder deps:add TNNN --blocked-by T001
-rudder task:update TNNN --remove-blocker T002
+// Update dependencies if needed
+// MCP: deps_add
+{ "task_id": "TNNN", "blocked_by": "T001" }
 ```

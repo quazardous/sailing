@@ -1,0 +1,48 @@
+#!/bin/bash
+# Rudder Control - Service manager (dist mode)
+# Auto-installed by install.sh
+#
+# Uses node with compiled .js files from .sailing/rudder.
+#
+# Usage:
+#   rdrctl start <service>    Start a service
+#   rdrctl stop <service>     Stop a service
+#   rdrctl status [service]   Show service status
+#   rdrctl list               List available services
+#
+# Services:
+#   agents      MCP server for sandbox agents
+#   conductor   MCP server for orchestrator
+#   dashboard   Web dashboard (HTTP + WebSocket)
+
+set -e
+
+PROJECT_ROOT="$(realpath "$(dirname "$0")/..")"
+
+# Check if running from within project
+CWD="$(realpath "$(pwd)")"
+if [[ "$CWD" != "$PROJECT_ROOT" && "$CWD" != "$PROJECT_ROOT/"* ]]; then
+  echo "Error: rdrctl must be run from within the project directory" >&2
+  echo "  Project: $PROJECT_ROOT" >&2
+  echo "  Current: $CWD" >&2
+  exit 1
+fi
+
+# Read source path (.sailing/rudder)
+SOURCE_FILE="$PROJECT_ROOT/.sailing/SAILING_SOURCE"
+if [ ! -f "$SOURCE_FILE" ]; then
+  echo "Error: $SOURCE_FILE not found" >&2
+  echo "Please run install.sh" >&2
+  exit 1
+fi
+SAILING_SOURCE="$(cat "$SOURCE_FILE" | tr -d '[:space:]')"
+
+# Resolve relative paths
+if [[ "$SAILING_SOURCE" != /* ]]; then
+  SAILING_SOURCE="$PROJECT_ROOT/$SAILING_SOURCE"
+fi
+
+export SAILING_PROJECT="$PROJECT_ROOT"
+
+# Dist mode: use node with compiled JS files
+exec node "$SAILING_SOURCE/rdrctl.js" "$@"

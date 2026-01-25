@@ -30,8 +30,8 @@ Cancelled → *            ← STOP
 |------------|----------|
 | → In Progress | All blockers Done |
 | → Done | Deliverables verified by skill |
-| → Blocked | Log with --error exists |
-| → Aborted | Log with --error + cannot proceed |
+| → Blocked | Log with error level exists |
+| → Aborted | Log with error level + cannot proceed |
 
 **Blocked** = waiting for external decision. **Aborted** = decision missing or task impossible.
 
@@ -46,9 +46,12 @@ Use Aborted when task **cannot be completed as specified**:
 
 **Aborted is not failure. It's correct behavior.**
 
-```bash
-rudder task:log TNNN "ABORT: <reason>" --error
-rudder task:update TNNN --status Aborted
+```json
+// MCP: task_log
+{ "task_id": "TNNN", "message": "ABORT: <reason>", "level": "error" }
+
+// MCP: artefact_update
+{ "id": "TNNN", "status": "Aborted" }
 ```
 
 Then STOP. Do not attempt workarounds.

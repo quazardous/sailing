@@ -1,20 +1,34 @@
 ---
 description: Decompose epic into task files
 argument-hint: <PRD-NNN/ENNN>
-allowed-tools: Read, Write, Edit, Task, Bash
+allowed-tools: Read, Write, Edit, Task, mcp
 ---
 
 # Epic Breakdown
+
+> **DELEGATION REQUIRED**: This command MUST be executed by a coordinator agent spawned by the skill.
+> The skill NEVER executes this directly. Spawn via `agent_spawn` with role=coordinator.
+
+**Escalation Contract:** This coordinator creates tasks and dependencies.
+All sizing questions, scope ambiguities, and dependency concerns escalate to skill.
+The skill receives a structured report and decides next action.
 
 Decompose epic into tasks. Coordination only, no implementation.
 
 ## Pre-flight
 
-```bash
-rudder context:load epic-breakdown --role coordinator
-rudder epic:show ENNN                 # Verify epic exists
-rudder memory:show ENNN --full        # Previous learnings + escalations
-rudder story:list PRD-NNN             # Check if stories exist
+```json
+// MCP: context_load
+{ "operation": "epic-breakdown", "role": "coordinator" }
+
+// MCP: artefact_show - Verify epic exists
+{ "id": "ENNN" }
+
+// MCP: memory_read - Previous learnings + escalations
+{ "scope": "ENNN", "full": true }
+
+// MCP: artefact_list - Check if stories exist
+{ "type": "story", "scope": "PRD-NNN" }
 ```
 
 If Technical Notes empty → escalate.
@@ -24,28 +38,35 @@ If Technical Notes empty → escalate.
 1. Read epic → extract Technical Notes, Acceptance Criteria
 2. Propose task structure (titles + 1-line descriptions)
 3. Present questions to main thread
-4. After approval: create tasks via rudder
+4. After approval: create tasks via MCP
 
 ### Create Tasks
 
-```bash
-rudder task:create PRD-NNN/ENNN "title"
+```json
+// MCP: artefact_create
+{ "type": "task", "parent": "ENNN", "title": "title" }
 ```
 
-Then fill content via `task:patch` (see Artefact Editing Rules).
+Then fill content via `artefact_edit` (see Artefact Editing Rules).
 
 ### Dependencies
 
-```bash
-rudder deps:add TNNN --blocked-by T001
-rudder deps:validate --fix
+```json
+// MCP: deps_add
+{ "task_id": "TNNN", "blocked_by": "T001" }
+
+// MCP: workflow_validate
+{}
 ```
 
 ### Story Linkage
 
-```bash
-rudder story:orphans PRD-NNN           # Check orphans
-rudder task:update TNNN --add-story S001  # Link if needed
+```json
+// MCP: story_orphans - Check orphans
+{ "scope": "PRD-NNN" }
+
+// MCP: artefact_update - Link if needed
+{ "id": "TNNN", "add_story": "S001" }
 ```
 
 ## Output
@@ -59,7 +80,17 @@ rudder task:update TNNN --add-story S001  # Link if needed
 
 - Tasks = WHAT/WHY, not HOW
 - No implementation code
-- Sizing: ~1-2 dev days per task, 5-10 tasks per epic
+
+### Sizing (AI-calibrated)
+
+| Effort | Description |
+|--------|-------------|
+| **1h** | Standard task (baseline) |
+| **2h** | Complex task |
+| **4h** | Large task (consider splitting) |
+| **8h+** | Must split |
+
+Target: **1-2h per task**, 5-10 tasks per epic. Set `effort` field in frontmatter.
 
 ## Non-Goals
 

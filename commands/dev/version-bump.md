@@ -1,12 +1,10 @@
 ---
 description: Bump version + update changelog
 argument-hint: "[component-key] [patch|minor|major] [\"changelog entry\"]"
-allowed-tools: Read, Edit, Bash, Grep
+allowed-tools: Read, Edit, Bash, Grep, mcp
 ---
 
 **Bump component version and maintain changelog.**
-
-> 📖 CLI reference: `bin/rudder -h`
 
 **Arguments:** $ARGUMENTS
 
@@ -14,9 +12,12 @@ allowed-tools: Read, Edit, Bash, Grep
 
 ## Pre-flight (MANDATORY)
 
-```bash
-rudder context:load version-bump --role skill
-rudder versions                      # List components and current versions
+```json
+// MCP: context_load
+{ "operation": "version-bump", "role": "skill" }
+
+// MCP: system_versions - List components and current versions
+{}
 ```
 
 ---
@@ -27,21 +28,21 @@ When arguments are incomplete, resolve interactively:
 
 | Missing | Resolution |
 |---------|------------|
-| **component** | If only one component exists → use it. Otherwise ask user to choose from `rudder versions` output |
+| **component** | If only one component exists → use it. Otherwise ask user to choose from `system_versions` output |
 | **bump type** | Ask user: patch (bug fix), minor (feature), or major (breaking)? |
 | **changelog** | Ask user what changed. Suggest based on recent git commits if available |
 
 ### Discovery Workflow
 
-```bash
-# 1. List available components
-rudder versions
+```json
+// 1. List available components
+// MCP: system_versions
+{}
+```
 
+```bash
 # 2. Check recent work (optional, for changelog suggestion)
 git log --oneline -10
-
-# 3. Check if tasks have target_versions for this component
-rudder task:targets <component>
 ```
 
 ## Components
@@ -55,7 +56,7 @@ Defined in `.sailing/components.yaml`.
 /dev:version-bump <component-key> patch "Add /users endpoint"
 ```
 
-Use `bin/rudder versions` to list available component keys from `.sailing/components.yaml`.
+Use `system_versions` to list available component keys from `.sailing/components.yaml`.
 
 ## Agent workflow
 
@@ -72,11 +73,6 @@ Use `bin/rudder versions` to list available component keys from `.sailing/compon
 6. **Report** old → new version
 
 ## Obsolescence detection
-
-```bash
-# Find tasks/epics targeting this component
-bin/rudder task:targets <component>
-```
 
 If target_versions references a version lower than current:
 - **Ask user**: Update the task's target_version, or proceed anyway?
@@ -96,14 +92,14 @@ If target_versions references a version lower than current:
 
 ### User says "bump version" (no details)
 
-1. Run `rudder versions` to list components
+1. Run `system_versions` to list components
 2. If single main component → propose it
 3. Ask bump type (patch/minor/major)
 4. Ask for changelog entry or suggest from recent commits
 
 ### User says "bump + changelog" after completing work
 
-1. Run `rudder versions` to identify main component
+1. Run `system_versions` to identify main component
 2. Run `git log --oneline -10` to see recent changes
 3. Propose: component, bump type, changelog summary
 4. Confirm with user before executing

@@ -28,13 +28,12 @@ export function registerEnsureCommand(program) {
             if (file) {
                 let needsFix = false;
                 const fm = file.data;
-                const prdDir = epicEntry.prdDir;
                 if (!fm.id) {
                     fm.id = epicEntry.id;
                     needsFix = true;
                 }
                 if (!fm.parent) {
-                    fm.parent = path.basename(prdDir).split('-').slice(0, 2).join('-');
+                    fm.parent = epicEntry.prdId;
                     needsFix = true;
                 }
                 if (needsFix) {
@@ -49,13 +48,12 @@ export function registerEnsureCommand(program) {
             if (file) {
                 let needsFix = false;
                 const fm = file.data;
-                const prdDir = path.dirname(path.dirname(taskEntry.file));
                 if (!fm.id) {
                     fm.id = taskEntry.id;
                     needsFix = true;
                 }
                 if (!fm.parent) {
-                    fm.parent = path.basename(prdDir).split('-').slice(0, 2).join('-');
+                    fm.parent = taskEntry.prdId;
                     needsFix = true;
                 }
                 if (needsFix) {

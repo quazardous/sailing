@@ -2,54 +2,17 @@
 
 ⚠️ **NEVER use Edit/Write tools directly on sailing artefacts.**
 
-## CLI Commands
+## MCP Tools
 
 | Entity | Frontmatter | Body Content |
 |--------|-------------|--------------|
-| PRD | `prd:update --status`, `--title` | `prd:patch` |
-| Epic | `epic:update --status`, `--add-story`, `--target-version` | `epic:patch` |
-| Task | `task:update --status`, `--add-blocker`, `--assignee` | `task:patch` |
-| Story | `story:update --type`, `--parent-story` | `story:patch` |
+| PRD | `artefact_update { "id": "PRD-NNN", "status": "..." }` | `artefact_edit { "id": "PRD-NNN", "section": "...", "content": "..." }` |
+| Epic | `artefact_update { "id": "ENNN", "status": "...", "add_story": "...", "target_version": "..." }` | `artefact_edit { "id": "ENNN", "section": "...", "content": "..." }` |
+| Task | `artefact_update { "id": "TNNN", "status": "...", "add_blocker": "...", "assignee": "..." }` | `artefact_edit { "id": "TNNN", "section": "...", "content": "..." }` |
+| Story | `artefact_update { "id": "SNNN", "type": "...", "parent_story": "..." }` | `artefact_edit { "id": "SNNN", "section": "...", "content": "..." }` |
 
-## Patch Syntax
-
-```bash
-cat <<'PATCH' | rudder <entity>:patch <ID>
-<<<<<<< SEARCH
-## Section Header
-=======
-## Section Header
-
-New content here.
->>>>>>> REPLACE
-PATCH
-```
-
-Multiple patches in one call:
-```bash
-cat <<'PATCH' | rudder epic:patch E001
-<<<<<<< SEARCH
-## Description
-=======
-## Description
-
-First section content.
->>>>>>> REPLACE
-
-<<<<<<< SEARCH
-## Acceptance Criteria
-=======
-## Acceptance Criteria
-
-- [ ] Criterion one
-- [ ] Criterion two
->>>>>>> REPLACE
-PATCH
-```
-
-## Why CLI?
+## Why MCP Tools?
 
 - File paths abstracted (not exposed)
-- Works via MCP tool
 - State tracking maintained
 - Proper error handling

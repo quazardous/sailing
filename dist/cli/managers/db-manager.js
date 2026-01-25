@@ -1,11 +1,16 @@
 /**
  * Database Manager
- * Provides config-aware factory for DbOps.
+ * Provides config-aware factory for DbOps and agent CRUD helpers.
  *
- * MANAGER: Creates configured lib instances.
+ * MANAGER: Creates configured lib instances, provides high-level agent operations.
+ * Commands and other managers should use these helpers instead of state.agents.
+ *
+ * Primary key: taskNum (number) - the numeric part of task ID (5 for T005)
+ * All public APIs accept both taskId (string) and taskNum (number) for convenience.
  */
 import { resolvePlaceholders, resolvePath } from './core-manager.js';
 import { DbOps } from '../lib/db.js';
+import { parseTaskNum, formatTaskId, getAgentDirPath, getMissionFilePath, getLogFilePath, getSrtConfigPath, getMcpConfigPath } from '../lib/agent-paths.js';
 // Re-export types and class for direct usage
 export { DbOps };
 // ============================================================================
@@ -21,7 +26,7 @@ function getDbDir() {
 }
 /**
  * Get configured DbOps instance (lazy-initialized)
- * Commands should use: getDbOps().someMethod()
+ * For direct db access. Prefer using the helper functions below.
  */
 export function getDbOps() {
     if (!_ops) {
@@ -34,4 +39,198 @@ export function getDbOps() {
  */
 export function resetDbOps() {
     _ops = null;
+}
+// ============================================================================
+// TaskNum Resolution
+// ============================================================================
+/**
+ * Resolve taskId (string) or taskNum (number) to taskNum
+ * @param taskIdOrNum - "T005" or 5
+ * @returns taskNum or null if invalid
+ */
+export function resolveTaskNum(taskIdOrNum) {
+    if (typeof taskIdOrNum === 'number')
+        return taskIdOrNum;
+    return parseTaskNum(taskIdOrNum);
+}
+/**
+ * Get configured digit count for task IDs
+ */
+function getTaskDigits() {
+    // Config has ids.task_digits, agent section doesn't have it
+    // Default to 3 digits
+    return 3;
+}
+/**
+ * Get haven directory path
+ */
+function getHaven() {
+    return resolvePlaceholders('${haven}');
+}
+// ============================================================================
+// Agent CRUD Helpers
+// ============================================================================
+/**
+ * Get agent by taskId or taskNum
+ * @returns AgentRecord or null if not found
+ */
+export function getAgentFromDb(taskIdOrNum) {
+    const taskNum = resolveTaskNum(taskIdOrNum);
+    if (taskNum === null)
+        return null;
+    const doc = getDbOps().getAgent(taskNum);
+    if (!doc)
+        return null;
+    // Convert db doc to AgentRecord (remove internal fields)
+    const { _id, _createdAt, _updatedAt, migratedAt, ...record } = doc;
+    return record;
+}
+/**
+ * Check if agent exists in db
+ */
+export function agentExistsInDb(taskIdOrNum) {
+    const taskNum = resolveTaskNum(taskIdOrNum);
+    if (taskNum === null)
+        return false;
+    return getDbOps().getAgent(taskNum) !== null;
+}
+/**
+ * Get all agents, optionally filtered by status
+ * @returns Record<taskId, AgentRecord> for compatibility (taskId string keys)
+ * Note: Skips records with invalid taskNum
+ */
+export function getAllAgentsFromDb(options = {}) {
+    const docs = getDbOps().getAllAgents(options);
+    const digits = getTaskDigits();
+    const result = {};
+    for (const doc of docs) {
+        const { _id, _createdAt, _updatedAt, migratedAt, ...record } = doc;
+        // Skip records with invalid taskNum
+        if (typeof record.taskNum !== 'number' || isNaN(record.taskNum))
+            continue;
+        const taskId = formatTaskId(record.taskNum, digits);
+        result[taskId] = record;
+    }
+    return result;
+}
+/**
+ * Get all agents as array (for iteration)
+ * Includes computed taskId for convenience
+ * Note: Skips records with invalid taskNum
+ */
+export function getAgentsArray(options = {}) {
+    const docs = getDbOps().getAllAgents(options);
+    const digits = getTaskDigits();
+    return docs
+        .filter(doc => typeof doc.taskNum === 'number' && !isNaN(doc.taskNum))
+        .map(doc => {
+        const { _id, _createdAt, _updatedAt, migratedAt, ...record } = doc;
+        return {
+            ...record,
+            taskId: formatTaskId(record.taskNum, digits)
+        };
+    });
+}
+/**
+ * Save/create agent (full replace)
+ */
+export async function saveAgentToDb(taskIdOrNum, data) {
+    const taskNum = resolveTaskNum(taskIdOrNum);
+    if (taskNum === null) {
+        throw new Error(`Invalid taskId: ${taskIdOrNum}`);
+    }
+    await getDbOps().upsertAgent(taskNum, data);
+}
+/**
+ * Update agent fields (partial update)
+ */
+export async function updateAgentInDb(taskIdOrNum, updates) {
+    const taskNum = resolveTaskNum(taskIdOrNum);
+    if (taskNum === null)
+        return;
+    const db = getDbOps().getAgentsDb();
+    await db.update({ taskNum }, { $set: updates });
+}
+/**
+ * Delete agent from db
+ */
+export async function deleteAgentFromDb(taskIdOrNum) {
+    const taskNum = resolveTaskNum(taskIdOrNum);
+    if (taskNum === null)
+        return;
+    await getDbOps().deleteAgent(taskNum);
+}
+/**
+ * Get agents by status (convenience)
+ */
+export function getAgentsByStatus(status) {
+    return getAgentsArray({ status });
+}
+/**
+ * Count agents by status
+ */
+export function countAgentsByStatus() {
+    const agents = getAgentsArray();
+    const counts = {};
+    for (const agent of agents) {
+        counts[agent.status] = (counts[agent.status] || 0) + 1;
+    }
+    return counts;
+}
+// ============================================================================
+// Path Derivation Helpers (config-aware)
+// ============================================================================
+/**
+ * Get agent directory path for a task
+ */
+export function getAgentDir(taskIdOrNum) {
+    const taskNum = resolveTaskNum(taskIdOrNum);
+    if (taskNum === null)
+        return null;
+    return getAgentDirPath(getHaven(), taskNum, getTaskDigits());
+}
+/**
+ * Get mission file path for a task
+ */
+export function getAgentMissionFile(taskIdOrNum) {
+    const agentDir = getAgentDir(taskIdOrNum);
+    if (!agentDir)
+        return null;
+    return getMissionFilePath(agentDir);
+}
+/**
+ * Get log file path for a task
+ */
+export function getAgentLogFile(taskIdOrNum) {
+    const agentDir = getAgentDir(taskIdOrNum);
+    if (!agentDir)
+        return null;
+    return getLogFilePath(agentDir);
+}
+/**
+ * Get SRT config file path for a task
+ */
+export function getAgentSrtConfig(taskIdOrNum) {
+    const agentDir = getAgentDir(taskIdOrNum);
+    if (!agentDir)
+        return null;
+    return getSrtConfigPath(agentDir);
+}
+/**
+ * Get MCP config file path for a task
+ */
+export function getAgentMcpConfig(taskIdOrNum) {
+    const agentDir = getAgentDir(taskIdOrNum);
+    if (!agentDir)
+        return null;
+    return getMcpConfigPath(agentDir);
+}
+// ============================================================================
+// Migration Helpers
+// ============================================================================
+/**
+ * Migrate existing agents.json from taskId to taskNum format
+ */
+export async function migrateAgentsToTaskNum() {
+    return getDbOps().convertExistingAgents();
 }

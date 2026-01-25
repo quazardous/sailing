@@ -8,17 +8,44 @@ import { findProjectRoot, loadPathsConfig, jsonOut } from '../managers/core-mana
 import { addDynamicHelp } from '../lib/help.js';
 // Base sailing permissions (path-independent)
 const BASE_PERMISSIONS = [
-    'Bash(bin/rudder:*)',
+    // Rudder CLI
+    'Bash(bin/rudder:*)', // bin/rudder <args>
+    'Bash(bin/rudder *:*)', // bin/rudder <subcommand> <args>
+    'Bash(./bin/rudder:*)', // ./bin/rudder <args>
+    'Bash(./bin/rudder *:*)', // ./bin/rudder <subcommand> <args>
+    // Git
+    'Bash(git:*)',
+    'Bash(git *:*)',
+    // Build tools
     'Bash(npm install:*)',
     'Bash(npm test:*)',
     'Bash(npm run:*)',
     'Bash(make:*)',
+    // File operations
     'Bash(chmod:*)',
     'Bash(mkdir:*)',
-    'Bash(git status:*)',
-    'Bash(git diff:*)',
-    'Bash(git log:*)',
-    'Bash(git branch:*)',
+    'Bash(ls:*)',
+    'Bash(tee:*)',
+    // Data processing
+    'Bash(jq:*)',
+    'Bash(yq:*)',
+    'Bash(curl:*)',
+    // Process management
+    'Bash(ps:*)',
+    'Bash(pgrep:*)',
+    'Bash(pkill:*)',
+    'Bash(lsof:*)',
+    // Network
+    'Bash(netstat:*)',
+    'Bash(ss:*)',
+    // Python
+    'Bash(python:*)',
+    'Bash(python3:*)',
+    'Bash(pip install:*)',
+    'Bash(pip3 install:*)',
+    // Web
+    'WebSearch',
+    // Read permissions
     'Read(.claude/**)'
 ];
 /**
@@ -120,7 +147,7 @@ export function registerPermissionsCommands(program) {
     });
     // permissions:fix
     perms.command('fix')
-        .description('Add missing sailing permissions to settings')
+        .description('Add missing sailing permissions and clean up redundant ones')
         .option('--dry-run', 'Show what would be done')
         .option('--json', 'JSON output')
         .action((options) => {
@@ -131,6 +158,7 @@ export function registerPermissionsCommands(program) {
             settings.permissions.allow = [];
         const existing = settings.permissions.allow;
         const added = [];
+        const removed = [];
         const requiredPerms = getSailingPermissions();
         // Ensure includeCoAuthoredBy is set to false
         let coAuthorFixed = false;
@@ -140,6 +168,7 @@ export function registerPermissionsCommands(program) {
             }
             coAuthorFixed = true;
         }
+        // Add missing required permissions
         for (const perm of requiredPerms) {
             if (!existing.includes(perm)) {
                 added.push(perm);
@@ -148,13 +177,48 @@ export function registerPermissionsCommands(program) {
                 }
             }
         }
-        if (!options.dryRun && (added.length > 0 || coAuthorFixed)) {
+        // Remove redundant permissions (specific ones that are covered by broad patterns)
+        // Keep only broad patterns like: bin/rudder:*, bin/rudder *:*, git:*, git *:*
+        const broadPatterns = [
+            'Bash(bin/rudder:*)',
+            'Bash(bin/rudder *:*)',
+            'Bash(./bin/rudder:*)',
+            'Bash(./bin/rudder *:*)',
+            'Bash(git:*)',
+            'Bash(git *:*)'
+        ];
+        const toRemove = [];
+        for (let i = 0; i < existing.length; i++) {
+            const perm = existing[i];
+            // Check if it's a bin/rudder permission but not a broad pattern
+            if (perm.startsWith('Bash(bin/rudder') || perm.startsWith('Bash(./bin/rudder')) {
+                if (!broadPatterns.includes(perm)) {
+                    toRemove.push(i);
+                    removed.push(perm);
+                }
+            }
+            // Check if it's a git permission but not a broad pattern
+            if (perm.startsWith('Bash(git') && !broadPatterns.includes(perm)) {
+                toRemove.push(i);
+                removed.push(perm);
+            }
+        }
+        // Remove from end to start to preserve indices
+        if (!options.dryRun) {
+            for (let i = toRemove.length - 1; i >= 0; i--) {
+                existing.splice(toRemove[i], 1);
+            }
+        }
+        const hasChanges = added.length > 0 || removed.length > 0 || coAuthorFixed;
+        if (!options.dryRun && hasChanges) {
             saveSettings(settings);
         }
         const result = {
             settingsPath: getSettingsPath(),
             added: added.length,
             addedList: added,
+            removed: removed.length,
+            removedList: removed,
             coAuthorFixed,
             dryRun: options.dryRun || false
         };
@@ -162,7 +226,7 @@ export function registerPermissionsCommands(program) {
             jsonOut(result);
         }
         else {
-            if (added.length === 0 && !coAuthorFixed) {
+            if (!hasChanges) {
                 console.log('All sailing settings already configured.');
             }
             else {
@@ -182,6 +246,14 @@ export function registerPermissionsCommands(program) {
                         console.log(`Added ${added.length} permissions:`);
                     }
                     added.forEach(p => console.log(`  + ${p}`));
+                }
+                if (removed.length > 0) {
+                    if (options.dryRun) {
+                        console.log(`\nWould remove ${removed.length} redundant bin/rudder permissions`);
+                    }
+                    else {
+                        console.log(`\nRemoved ${removed.length} redundant bin/rudder permissions`);
+                    }
                 }
                 if (!options.dryRun) {
                     console.log(`\nUpdated: ${result.settingsPath}`);

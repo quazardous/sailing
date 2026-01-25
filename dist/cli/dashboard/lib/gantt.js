@@ -1,17 +1,13 @@
 /**
- * Dashboard Gantt chart generation
+ * Dashboard Gantt chart generation (PURE - no manager imports)
+ *
+ * All config values are injected via parameters by the routes layer.
  */
-import { getConfigValue } from '../../managers/core-manager.js';
 import { calculateGanttMetrics, getTaskSchedules, calculateTheoreticalSchedule, calculateRealSchedule, getScheduleEnvelope } from '../../lib/scheduling.js';
-import { getCachedPrdsData } from './cache.js';
 /**
  * Generate custom Gantt data for a PRD (hour-based with real scheduling)
  */
-export function generatePrdGantt(prd) {
-    const effortConfig = {
-        default_duration: getConfigValue('task.default_duration') || '1h',
-        effort_map: getConfigValue('task.effort_map') || 'S=0.5h,M=1h,L=2h,XL=4h'
-    };
+export function generatePrdGantt(prd, effortConfig) {
     const taskData = new Map();
     let earliestDate = null;
     for (const epic of prd.epics) {
@@ -164,11 +160,7 @@ export function generatePrdGantt(prd) {
 /**
  * Generate custom Gantt data for an Epic
  */
-export function generateEpicGantt(epic) {
-    const effortConfig = {
-        default_duration: getConfigValue('task.default_duration') || '1h',
-        effort_map: getConfigValue('task.effort_map') || 'S=0.5h,M=1h,L=2h,XL=4h'
-    };
+export function generateEpicGantt(epic, effortConfig) {
     const taskData = new Map();
     let earliestDate = null;
     for (const task of epic.tasks) {
@@ -245,12 +237,7 @@ export function generateEpicGantt(epic) {
 /**
  * Generate PRD overview Gantt
  */
-export function generatePrdOverviewGantt() {
-    const prds = getCachedPrdsData();
-    const effortConfig = {
-        default_duration: getConfigValue('task.default_duration') || '1h',
-        effort_map: getConfigValue('task.effort_map') || 'S=0.5h,M=1h,L=2h,XL=4h'
-    };
+export function generatePrdOverviewGantt(prds, effortConfig) {
     const tasks = [];
     let maxEndHour = 0;
     let globalEarliestDate = null;

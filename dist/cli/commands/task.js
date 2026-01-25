@@ -3,10 +3,10 @@
  */
 import fs from 'fs';
 import path from 'path';
-import { findPrdDirs, loadFile, saveFile, toKebab, loadTemplate, jsonOut, getMemoryDir, stripComments } from '../managers/core-manager.js';
+import { findPrdDirs, loadFile, saveFile, toKebab, loadTemplate, jsonOut, stripComments } from '../managers/core-manager.js';
 import { normalizeId, matchesPrdDir, parentContainsEpic } from '../lib/normalize.js';
 import { getTask, getEpic, getEpicPrd, getAllTasks, getAllEpics } from '../managers/artefacts-manager.js';
-import { getHierarchicalMemory, ensureMemoryDir, hasPendingMemoryLogs } from '../managers/memory-manager.js';
+import { getHierarchicalMemory, ensureMemoryDir, hasPendingMemoryLogs, appendTaskLog } from '../managers/memory-manager.js';
 import { STATUS, normalizeStatus, isStatusDone, isStatusNotStarted, isStatusCancelled, statusSymbol } from '../lib/lexicon.js';
 import { buildDependencyGraph, blockersResolved } from '../managers/graph-manager.js';
 import { nextId } from '../managers/state-manager.js';
@@ -15,6 +15,7 @@ import { addDynamicHelp, withModifies } from '../lib/help.js';
 import { formatId } from '../managers/core-manager.js';
 import { escalateOnTaskStart, cascadeTaskCompletion } from '../managers/status-manager.js';
 import { parseSearchReplace, editArtifact, parseMultiSectionContent, processMultiSectionOps } from '../lib/artifact.js';
+import { readStdin } from '../lib/stdin.js';
 // ============================================================================
 // Helper Functions
 // ============================================================================
@@ -273,6 +274,11 @@ export function registerTaskCommands(program) {
             const parentParts = parent.split('/');
             const prdPart = parentParts[0];
             epicPart = parentParts[1] ? normalizeId(parentParts[1]) : null;
+            // Tasks MUST belong to an epic
+            if (!epicPart) {
+                console.error(`Tasks must belong to an epic. Use: task:create PRD-XXX/EXXX "title" or task:create EXXX "title"`);
+                process.exit(1);
+            }
             // Find PRD directory
             prdDir = findPrdDirs().find(d => matchesPrdDir(d, prdPart));
             if (!prdDir) {
@@ -603,7 +609,7 @@ export function registerTaskCommands(program) {
             process.exit(1);
         }
         // Determine level from options
-        let level = 'INFO'; // default
+        let level = 'INFO';
         if (options.tip)
             level = 'TIP';
         else if (options.warn)
@@ -612,17 +618,7 @@ export function registerTaskCommands(program) {
             level = 'ERROR';
         else if (options.critical)
             level = 'CRITICAL';
-        // Ensure memory directory exists
-        const memDir = getMemoryDir();
-        if (!fs.existsSync(memDir)) {
-            fs.mkdirSync(memDir, { recursive: true });
-        }
-        // Build entry with optional metadata
-        const taskId = normalizeId(id);
-        const logFile = path.join(memDir, `${taskId}.log`);
-        const timestamp = new Date().toISOString();
-        let entry = `${timestamp} [${level}] ${message}`;
-        // Add metadata on same line as JSON suffix if present
+        // Build metadata
         const meta = {};
         if (options.file?.length)
             meta.files = options.file;
@@ -630,11 +626,9 @@ export function registerTaskCommands(program) {
             meta.snippet = options.snippet;
         if (options.cmd)
             meta.cmd = options.cmd;
-        if (Object.keys(meta).length > 0) {
-            entry += ` {{${JSON.stringify(meta)}}}`;
-        }
-        entry += '\n';
-        fs.appendFileSync(logFile, entry);
+        // Delegate to manager
+        const taskId = normalizeId(id);
+        appendTaskLog(taskId, level, message, meta);
         // Output
         let output = `[${level}] ${taskId}: ${message}`;
         if (options.file?.length)
@@ -853,20 +847,7 @@ export function registerTaskCommands(program) {
         }
         else {
             // Read from stdin
-            patchContent = await new Promise((resolve) => {
-                let data = '';
-                if (process.stdin.isTTY) {
-                    resolve('');
-                    return;
-                }
-                process.stdin.setEncoding('utf8');
-                process.stdin.on('readable', () => {
-                    let chunk;
-                    while ((chunk = process.stdin.read()) !== null)
-                        data += chunk;
-                });
-                process.stdin.on('end', () => resolve(data));
-            });
+            patchContent = await readStdin();
         }
         if (!patchContent.trim()) {
             console.error('No patch content provided');
@@ -908,9 +889,34 @@ export function registerTaskCommands(program) {
         .option('-p, --prepend', 'Prepend to section instead of replace')
         .option('--json', 'JSON output')
         .addHelpText('after', `
-Multi-section format: use ## headers with optional [op]
-Operations: [replace], [append], [prepend], [delete], [sed], [check], [uncheck], [toggle], [patch]
-See: bin/rudder artifact edit --help for full documentation
+Usage Examples:
+
+  # Single section via --content
+  rudder task:edit T001 -s "Description" -c "New description text"
+
+  # Single section via stdin (heredoc)
+  rudder task:edit T001 -s "Deliverables" <<'EOF'
+  - [ ] Item 1
+  - [ ] Item 2
+  EOF
+
+  # Single section via pipe
+  echo "New content" | rudder task:edit T001 -s "Notes"
+
+  # Multi-section edit (omit -s)
+  rudder task:edit T001 <<'EOF'
+  ## Description
+  Full replacement...
+
+  ## Deliverables [append]
+  - [ ] New item
+
+  ## Deliverables [check]
+  First item
+  EOF
+
+Operations: [replace] (default), [append], [prepend], [delete], [create], [sed], [check], [uncheck], [toggle], [patch]
+Note: Sections are auto-created if they don't exist (replace/append/prepend).
 `)
         .action(async (id, options) => {
         const normalizedId = normalizeId(id);
@@ -921,21 +927,7 @@ See: bin/rudder artifact edit --help for full documentation
         }
         let content = options.content;
         if (!content) {
-            const stdinContent = await new Promise((resolve) => {
-                let data = '';
-                if (process.stdin.isTTY) {
-                    resolve('');
-                    return;
-                }
-                process.stdin.setEncoding('utf8');
-                process.stdin.on('readable', () => {
-                    let chunk;
-                    while ((chunk = process.stdin.read()) !== null)
-                        data += chunk;
-                });
-                process.stdin.on('end', () => resolve(data));
-            });
-            content = stdinContent.trim();
+            content = (await readStdin()).trim();
         }
         if (!content) {
             console.error('Content required via --content or stdin');

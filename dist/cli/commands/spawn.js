@@ -5,7 +5,7 @@
 import fs from 'fs';
 import { execSync } from 'child_process';
 import { findProjectRoot, loadFile, jsonOut } from '../managers/core-manager.js';
-import { loadState } from '../managers/state-manager.js';
+import { getAgentFromDb } from '../managers/db-manager.js';
 import { getAgentConfig } from '../managers/core-manager.js';
 import { addDynamicHelp } from '../lib/help.js';
 import { getBranchName, getParentBranch, getBranchHierarchy, getMainBranch } from '../managers/worktree-manager.js';
@@ -318,8 +318,7 @@ export function registerSpawnCommands(program) {
         if (!taskId.startsWith('T'))
             taskId = 'T' + taskId;
         const projectRoot = findProjectRoot();
-        const state = loadState();
-        const agentInfo = state.agents?.[taskId];
+        const agentInfo = getAgentFromDb(taskId);
         if (!agentInfo) {
             if (options.json) {
                 jsonOut({ error: `No agent found for task: ${taskId}` });

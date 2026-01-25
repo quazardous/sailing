@@ -13,7 +13,7 @@
 import fs from 'fs';
 import path from 'path';
 import { getMemoryDir, resolvePlaceholders, resolvePath, getRepoRoot } from './core-manager.js';
-import { getTaskEpic as artefactsGetTaskEpic, getEpicPrd as artefactsGetEpicPrd, getTasksForEpic as artefactsGetTasksForEpic, getMemoryFile } from './artefacts-manager.js';
+import { getTaskEpic as artefactsGetTaskEpic, getEpicPrd as artefactsGetEpicPrd, getTasksForEpic as artefactsGetTasksForEpic, getMemoryFile, getLogFile, invalidateLogIndex } from './artefacts-manager.js';
 import { normalizeId } from '../lib/normalize.js';
 import { extractAllSections, findSection, editSection, parseMultiSectionInput, parseLogLevels, AGENT_RELEVANT_SECTIONS } from '../lib/memory-section.js';
 // Re-export section functions
@@ -47,11 +47,53 @@ export function ensureMemoryDir() {
         fs.mkdirSync(memDir, { recursive: true });
     }
 }
+/**
+ * Construct expected log file path (for writing new logs)
+ */
 export function logFilePath(id) {
     return path.join(getMemoryDirPath(), `${normalizeId(id)}.log`);
 }
+/**
+ * Find actual log file by normalized ID (uses index)
+ */
+function findLogFileByIndex(id) {
+    const entry = getLogFile(id);
+    if (entry) {
+        return { path: entry.file, exists: true };
+    }
+    return { path: logFilePath(id), exists: false };
+}
+/**
+ * Construct expected PRD memory file path (for creating new files)
+ */
 export function prdMemoryFilePath(prdId) {
     return path.join(getMemoryDirPath(), `${normalizeId(prdId)}.md`);
+}
+/**
+ * Find actual PRD memory file by normalized ID (uses index)
+ */
+export function findPrdMemoryFile(prdId) {
+    const entry = getMemoryFile(prdId);
+    if (entry && entry.type === 'prd') {
+        return { path: entry.file, exists: true };
+    }
+    return { path: prdMemoryFilePath(prdId), exists: false };
+}
+/**
+ * Construct expected epic memory file path (for creating new files)
+ */
+export function epicMemoryFilePath(epicId) {
+    return path.join(getMemoryDirPath(), `${normalizeId(epicId)}.md`);
+}
+/**
+ * Find actual epic memory file by normalized ID (uses index)
+ */
+export function findEpicMemoryFile(epicId) {
+    const entry = getMemoryFile(epicId);
+    if (entry && entry.type === 'epic') {
+        return { path: entry.file, exists: true };
+    }
+    return { path: epicMemoryFilePath(epicId), exists: false };
 }
 export function projectMemoryFilePath() {
     const artefactsPath = resolvePath('artefacts') || resolvePlaceholders('${haven}/artefacts');
@@ -245,10 +287,10 @@ function findTasksForEpic(epicId) {
 // Existence Checks
 // ============================================================================
 export function logFileExists(id) {
-    return fs.existsSync(logFilePath(id));
+    return findLogFileByIndex(id).exists;
 }
 export function prdMemoryExists(prdId) {
-    return fs.existsSync(prdMemoryFilePath(prdId));
+    return findPrdMemoryFile(prdId).exists;
 }
 export function projectMemoryExists() {
     return fs.existsSync(projectMemoryFilePath());
@@ -257,8 +299,8 @@ export function projectMemoryExists() {
 // Log File Operations
 // ============================================================================
 export function readLogFile(id) {
-    const filePath = logFilePath(id);
-    if (!fs.existsSync(filePath))
+    const { path: filePath, exists } = findLogFileByIndex(id);
+    if (!exists)
         return null;
     return fs.readFileSync(filePath, 'utf8').trim();
 }
@@ -267,9 +309,10 @@ export function appendLogFile(id, content) {
     fs.appendFileSync(logFilePath(id), content);
 }
 export function deleteLogFile(id) {
-    const filePath = logFilePath(id);
-    if (fs.existsSync(filePath)) {
+    const { path: filePath, exists } = findLogFileByIndex(id);
+    if (exists) {
         fs.unlinkSync(filePath);
+        invalidateLogIndex();
         return true;
     }
     return false;
@@ -343,6 +386,43 @@ updated: '${now}'
 ## Decisions
 
 ## Escalation
+`;
+    }
+    fs.writeFileSync(mdPath, content);
+    return mdPath;
+}
+export function createEpicMemoryFile(epicId) {
+    ensureMemoryDir();
+    const normalized = normalizeId(epicId);
+    const mdPath = epicMemoryFilePath(normalized);
+    // Don't overwrite existing memory file
+    if (fs.existsSync(mdPath)) {
+        return mdPath;
+    }
+    const now = new Date().toISOString();
+    let content = loadTemplate('memory-epic.md');
+    if (content) {
+        content = content
+            .replace(/E000/g, normalized)
+            .replace(/created: ''/g, `created: '${now}'`)
+            .replace(/updated: ''/g, `updated: '${now}'`);
+    }
+    else {
+        content = `---
+epic: ${normalized}
+created: '${now}'
+updated: '${now}'
+---
+
+# Memory: ${normalized}
+
+## Tips
+
+## Commands
+
+## Issues
+
+## Solutions
 `;
     }
     fs.writeFileSync(mdPath, content);
@@ -498,5 +578,123 @@ export function getLogStats(id) {
         exists: true,
         lines: content.split('\n').filter(l => l.trim()).length,
         levels: parseLogLevels(content)
+    };
+}
+/**
+ * Append a log entry for a task.
+ * Creates memory directory if needed.
+ *
+ * @param taskId - Task ID (e.g., T042)
+ * @param level - Log level
+ * @param message - Log message
+ * @param meta - Optional metadata (files, snippet, cmd)
+ * @returns The formatted entry that was written
+ */
+export function appendTaskLog(taskId, level, message, meta) {
+    ensureMemoryDir();
+    const normalizedId = normalizeId(taskId);
+    const timestamp = new Date().toISOString();
+    let entry = `${timestamp} [${level}] ${message}`;
+    // Add metadata as JSON suffix if present
+    if (meta && Object.keys(meta).length > 0) {
+        const cleanMeta = {};
+        if (meta.files?.length)
+            cleanMeta.files = meta.files;
+        if (meta.snippet)
+            cleanMeta.snippet = meta.snippet;
+        if (meta.cmd)
+            cleanMeta.cmd = meta.cmd;
+        if (Object.keys(cleanMeta).length > 0) {
+            entry += ` {{${JSON.stringify(cleanMeta)}}}`;
+        }
+    }
+    entry += '\n';
+    appendLogFile(normalizedId, entry);
+    return entry;
+}
+/**
+ * Edit a section in a memory file (epic, PRD, or project level)
+ * Creates the memory file if it doesn't exist.
+ */
+export function editMemorySection(level, targetId, section, content, operation = 'append') {
+    const normalized = normalizeId(targetId);
+    let memoryPath;
+    // Get or create memory file (using find functions to handle ID format mismatches)
+    try {
+        if (level === 'epic') {
+            const found = findEpicMemoryFile(normalized);
+            if (!found.exists) {
+                createEpicMemoryFile(normalized);
+                memoryPath = epicMemoryFilePath(normalized);
+            }
+            else {
+                memoryPath = found.path;
+            }
+        }
+        else if (level === 'prd') {
+            const found = findPrdMemoryFile(normalized);
+            if (!found.exists) {
+                createPrdMemoryFile(normalized);
+                memoryPath = prdMemoryFilePath(normalized);
+            }
+            else {
+                memoryPath = found.path;
+            }
+        }
+        else {
+            memoryPath = projectMemoryFilePath();
+            if (!fs.existsSync(memoryPath)) {
+                createProjectMemoryFile();
+            }
+        }
+    }
+    catch (err) {
+        return {
+            success: false,
+            message: `Failed to access memory file: ${err}`
+        };
+    }
+    // Read current content
+    const memoryContent = fs.readFileSync(memoryPath, 'utf8');
+    // Edit the section
+    const editResult = editSection(memoryContent, section, content, operation);
+    if ('warning' in editResult) {
+        return {
+            success: false,
+            message: editResult.warning,
+            path: memoryPath
+        };
+    }
+    if ('error' in editResult) {
+        return {
+            success: false,
+            message: editResult.error,
+            path: memoryPath
+        };
+    }
+    // Write back
+    fs.writeFileSync(memoryPath, editResult.content);
+    const actionVerb = operation === 'append' ? 'Appended to' : operation === 'prepend' ? 'Prepended to' : 'Replaced';
+    return {
+        success: true,
+        message: `${actionVerb} ${section} in ${level} ${normalized}`,
+        path: memoryPath
+    };
+}
+/**
+ * Flush/clear epic logs after consolidation into memory
+ */
+export function flushEpicLogs(epicId) {
+    const normalized = normalizeId(epicId);
+    const content = readLogFile(normalized);
+    if (!content) {
+        return { epicId: normalized, flushed: false, entriesCleared: 0 };
+    }
+    const entriesCount = content.split('\n').filter(l => l.trim()).length;
+    const deleted = deleteLogFile(normalized);
+    return {
+        epicId: normalized,
+        flushed: deleted,
+        entriesCleared: deleted ? entriesCount : 0
     };
 }
