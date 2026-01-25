@@ -1,5 +1,6 @@
 import { ref, computed } from 'vue';
 import { defineStore } from 'pinia';
+import { pushUrl, type ActivityType } from '../router';
 
 export interface Activity {
   id: string;
@@ -68,7 +69,12 @@ export const useActivitiesStore = defineStore('activities', () => {
     activities.find(a => a.id === currentActivityId.value) || activities[0]
   );
 
-  function setActivity(activityId: string) {
+  interface SetActivityOptions {
+    /** Skip pushing URL to history (used when navigating from URL) */
+    skipPush?: boolean;
+  }
+
+  function setActivity(activityId: string, options: SetActivityOptions = {}) {
     const activity = activities.find(a => a.id === activityId);
     if (activity) {
       // Save current layout before switching
@@ -76,6 +82,11 @@ export const useActivitiesStore = defineStore('activities', () => {
 
       currentActivityId.value = activityId;
       localStorage.setItem('currentActivity', activityId);
+
+      // Push URL unless explicitly skipped (e.g., from popstate or initial load)
+      if (!options.skipPush) {
+        pushUrl({ activity: activityId as ActivityType });
+      }
     }
   }
 

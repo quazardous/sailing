@@ -9,6 +9,12 @@ import { ref, computed } from 'vue';
 import { api } from '../api';
 import type { PrdData, EpicData, TaskData, ArtefactResponse, ArtefactType } from '../api';
 import { useNotificationsStore } from './notifications';
+import { pushUrl } from '../router';
+
+interface SelectOptions {
+  /** Skip pushing URL to history (used when navigating from URL) */
+  skipPush?: boolean;
+}
 
 export const useArtefactsStore = defineStore('artefacts', () => {
   // State
@@ -126,17 +132,26 @@ export const useArtefactsStore = defineStore('artefacts', () => {
     notificationsStore.updateNewArtefacts(artefacts);
   }
 
-  async function selectArtefact(id: string): Promise<void> {
+  async function selectArtefact(id: string, options: SelectOptions = {}): Promise<void> {
     // Mark as viewed (clear "new" flag)
     useNotificationsStore().markViewed(id);
 
     if (selectedId.value === id && selectedArtefact.value) {
-      return; // Already selected
+      // Already selected, but still push URL if needed
+      if (!options.skipPush) {
+        pushUrl({ activity: 'artefacts', selectedId: id });
+      }
+      return;
     }
 
     selectedId.value = id;
     loading.value = true;
     error.value = null;
+
+    // Push URL unless explicitly skipped (e.g., from popstate or initial load)
+    if (!options.skipPush) {
+      pushUrl({ activity: 'artefacts', selectedId: id });
+    }
 
     try {
       selectedArtefact.value = await api.getArtefact(id);

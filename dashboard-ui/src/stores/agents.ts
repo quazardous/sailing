@@ -8,6 +8,12 @@ import { defineStore } from 'pinia';
 import { ref, computed } from 'vue';
 import { api } from '../api';
 import type { AgentInfo, AgentStatus } from '../api';
+import { pushUrl } from '../router';
+
+interface SelectOptions {
+  /** Skip pushing URL to history (used when navigating from URL) */
+  skipPush?: boolean;
+}
 
 interface LogEntry {
   taskId: string;
@@ -102,8 +108,17 @@ export const useAgentsStore = defineStore('agents', () => {
     }
   }
 
-  function selectAgent(taskId: string | null): void {
+  function selectAgent(taskId: string | null, options: SelectOptions = {}): void {
     selectedTaskId.value = taskId;
+
+    // Push URL unless explicitly skipped (e.g., from popstate or initial load)
+    if (!options.skipPush) {
+      if (taskId) {
+        pushUrl({ activity: 'agents', selectedId: taskId });
+      } else {
+        pushUrl({ activity: 'agents' });
+      }
+    }
   }
 
   function clearLogs(): void {

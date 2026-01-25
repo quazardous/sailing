@@ -12,6 +12,7 @@ import { useProjectStore } from './stores/project';
 import { useEventBus } from './stores/eventBus';
 import { useNotificationsStore } from './stores/notifications';
 import { useTreeStateStore } from './stores/treeState';
+import { parseUrl, replaceUrl, type RouteState } from './router';
 
 import ActivityBar from './components/ActivityBar.vue';
 import StatusBar from './components/StatusBar.vue';
@@ -208,7 +209,43 @@ function stopResize() {
 onUnmounted(() => {
   document.removeEventListener('mousemove', handleResize);
   document.removeEventListener('mouseup', stopResize);
+  window.removeEventListener('popstate', handlePopState);
 });
+
+/**
+ * Apply route state to stores (used for initial load and popstate)
+ */
+function applyRouteState(route: RouteState) {
+  const artefactsStore = useArtefactsStore();
+  const agentsStore = useAgentsStore();
+
+  // Set activity (skip URL push since we're restoring from URL)
+  activitiesStore.setActivity(route.activity, { skipPush: true });
+
+  // Restore selection based on activity type
+  if (route.selectedId) {
+    if (route.activity === 'artefacts') {
+      artefactsStore.selectArtefact(route.selectedId, { skipPush: true });
+    } else if (route.activity === 'agents') {
+      agentsStore.selectAgent(route.selectedId, { skipPush: true });
+    }
+  } else {
+    // Clear selections when no ID in URL
+    if (route.activity === 'artefacts') {
+      artefactsStore.clearSelection();
+    } else if (route.activity === 'agents') {
+      agentsStore.selectAgent(null, { skipPush: true });
+    }
+  }
+}
+
+/**
+ * Handle browser back/forward navigation
+ */
+function handlePopState() {
+  const route = parseUrl();
+  applyRouteState(route);
+}
 
 onMounted(async () => {
   // Initialize stores
@@ -229,6 +266,17 @@ onMounted(async () => {
   // Load initial data
   await artefactsStore.fetchTree();
   await agentsStore.fetchAgents();
+
+  // Initialize state from URL (deep linking support)
+  const initialRoute = parseUrl();
+  if (initialRoute.activity !== 'welcome' || initialRoute.selectedId) {
+    applyRouteState(initialRoute);
+    // Replace URL state to ensure history.state is set
+    replaceUrl(initialRoute);
+  }
+
+  // Listen for back/forward navigation
+  window.addEventListener('popstate', handlePopState);
 
   // Initialize event bus (WebSocket + event handlers)
   eventBus.init();
