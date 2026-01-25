@@ -1,0 +1,103 @@
+// ==============================================
+// Component-Specific Styles (shared components)
+// ==============================================
+
+// Tree view (legacy - now mostly in TreeNode.vue scoped styles)
+.tree-node {
+  padding: var(--spacing-xs) var(--spacing-sm);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  border-radius: var(--radius-sm);
+  transition: background 0.15s;
+
+  &:hover {
+    background: var(--bg-tertiary);
+  }
+
+  &.selected {
+    background: var(--accent);
+    color: var(--bg);
+  }
+}
+
+.tree-node-icon {
+  width: 16px;
+  text-align: center;
+  flex-shrink: 0;
+}
+
+.tree-node-label {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tree-node-badge {
+  font-size: var(--font-size-sm);
+  padding: 2px 6px;
+  border-radius: var(--radius-sm);
+  background: var(--bg-tertiary);
+}
+
+.tree-children {
+  padding-left: var(--spacing-lg);
+}
+
+// Agent list
+.agent-item {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  padding: var(--spacing-sm);
+  border-bottom: 1px solid var(--border);
+
+  &:last-child {
+    border-bottom: none;
+  }
+}
+
+.agent-status {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+
+  &.running {
+    background: var(--ok);
+    animation: pulse 2s infinite;
+  }
+
+  &.completed {
+    background: var(--text-muted);
+  }
+
+  &.failed {
+    background: var(--blocked);
+  }
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
+// Terminal
+.terminal-container {
+  height: 100%;
+  background: #000;
+  padding: var(--spacing-xs);
+}
+
+// Mermaid diagram
+.mermaid-container {
+  background: var(--bg);
+  padding: var(--spacing-md);
+  border-radius: var(--radius-md);
+  overflow: auto;
+
+  svg {
+    max-width: 100%;
+  }
+}

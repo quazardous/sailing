@@ -8,6 +8,8 @@ import { nextId } from '../state-manager.js';
 import { createPrdMemoryFile } from '../memory-manager.js';
 import { extractEpicId } from '../../lib/normalize.js';
 import { _prdIndex, setPrdIndex, clearCache } from './common.js';
+import { buildEpicIndex } from './epic.js';
+import { buildTaskIndex } from './task.js';
 import type {
   Prd,
   PrdIndexEntry,
@@ -127,10 +129,6 @@ export function getPrdBranching(prdId: string | number): string {
  * Get a fully populated PRD with all its epics and tasks
  */
 export function getFullPrd(prdId: string | number): FullPrd | null {
-  // Lazy imports to avoid circular dependencies
-  const { buildEpicIndex } = require('./epic.js');
-  const { buildTaskIndex } = require('./task.js');
-
   const prdEntry = getPrd(prdId);
   if (!prdEntry) return null;
 

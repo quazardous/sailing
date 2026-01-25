@@ -1,7 +1,8 @@
 /**
- * Dashboard Gantt chart generation
+ * Dashboard Gantt chart generation (PURE - no manager imports)
+ *
+ * All config values are injected via parameters by the routes layer.
  */
-import { getConfigValue } from '../../managers/core-manager.js';
 import {
   calculateGanttMetrics,
   getTaskSchedules,
@@ -10,18 +11,12 @@ import {
   getScheduleEnvelope,
   RealSchedulableTask
 } from '../../lib/scheduling.js';
-import type { PrdData, EpicData, SailingGanttTask, SimpleGanttTask, GanttResult, SimpleGanttResult } from './types.js';
-import { getCachedPrdsData } from './cache.js';
+import type { PrdData, EpicData, SailingGanttTask, SimpleGanttTask, GanttResult, SimpleGanttResult, EffortConfig } from './types.js';
 
 /**
  * Generate custom Gantt data for a PRD (hour-based with real scheduling)
  */
-export function generatePrdGantt(prd: PrdData): GanttResult {
-  const effortConfig = {
-    default_duration: getConfigValue<string>('task.default_duration') || '1h',
-    effort_map: getConfigValue<string>('task.effort_map') || 'S=0.5h,M=1h,L=2h,XL=4h'
-  };
-
+export function generatePrdGantt(prd: PrdData, effortConfig: EffortConfig): GanttResult {
   const taskData: Map<string, RealSchedulableTask & { title: string; epicId: string; epicTitle: string }> = new Map();
   let earliestDate: Date | null = null;
 
@@ -192,12 +187,7 @@ export function generatePrdGantt(prd: PrdData): GanttResult {
 /**
  * Generate custom Gantt data for an Epic
  */
-export function generateEpicGantt(epic: EpicData): GanttResult {
-  const effortConfig = {
-    default_duration: getConfigValue<string>('task.default_duration') || '1h',
-    effort_map: getConfigValue<string>('task.effort_map') || 'S=0.5h,M=1h,L=2h,XL=4h'
-  };
-
+export function generateEpicGantt(epic: EpicData, effortConfig: EffortConfig): GanttResult {
   const taskData: Map<string, RealSchedulableTask & { title: string }> = new Map();
   let earliestDate: Date | null = null;
 
@@ -286,13 +276,7 @@ export function generateEpicGantt(epic: EpicData): GanttResult {
 /**
  * Generate PRD overview Gantt
  */
-export function generatePrdOverviewGantt(): SimpleGanttResult {
-  const prds = getCachedPrdsData();
-  const effortConfig = {
-    default_duration: getConfigValue<string>('task.default_duration') || '1h',
-    effort_map: getConfigValue<string>('task.effort_map') || 'S=0.5h,M=1h,L=2h,XL=4h'
-  };
-
+export function generatePrdOverviewGantt(prds: PrdData[], effortConfig: EffortConfig): SimpleGanttResult {
   const tasks: SimpleGanttTask[] = [];
   let maxEndHour = 0;
   let globalEarliestDate: Date | null = null;

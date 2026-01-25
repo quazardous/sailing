@@ -1,0 +1,62 @@
+// ==============================================
+// Panel Base Styles (shared across all panels)
+// ==============================================
+
+.panel-container {
+  height: 100%;
+  overflow: auto;
+  background: var(--bg-secondary);
+  color: var(--text);
+}
+
+.panel-header {
+  padding: var(--spacing-md);
+  border-bottom: 1px solid var(--border);
+  font-weight: 600;
+  font-size: var(--font-size-lg);
+  background: var(--bg);
+  position: sticky;
+  top: 0;
+  z-index: 10;
+}
+
+.panel-content {
+  padding: var(--spacing-md);
+}
+
+// Tabs inside panels
+.tabs {
+  display: flex;
+  gap: var(--spacing-xs);
+  border-bottom: 1px solid var(--border);
+  padding: 0 var(--spacing-md);
+  background: transparent;
+
+  button {
+    background: none;
+    border: none;
+    font-family: inherit;
+    font-size: inherit;
+  }
+}
+
+.tab {
+  padding: var(--spacing-sm) var(--spacing-md);
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+  transition: all 0.15s;
+  color: var(--text-dim);
+
+  &:hover {
+    color: var(--text);
+  }
+
+  &.active {
+    color: var(--accent);
+    border-bottom-color: var(--accent);
+  }
+}
+
+.tab-content {
+  padding: var(--spacing-md);
+}

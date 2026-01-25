@@ -92,3 +92,11 @@ export interface DagResult {
   code: string;
   tooltips: Record<string, string>;
 }
+
+/**
+ * Effort configuration (for Gantt scheduling)
+ */
+export interface EffortConfig {
+  default_duration: string;
+  effort_map: string;
+}

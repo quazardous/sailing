@@ -1,0 +1,28 @@
+{
+  "name": "@quazardous/rudder-dashboard",
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vue-tsc --noEmit && vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "dockview-core": "^4.3.1",
+    "dockview-vue": "^4.3.1",
+    "marked": "^17.0.1",
+    "mermaid": "^11.4.1",
+    "pinia": "^2.3.0",
+    "vue": "^3.5.13",
+    "xterm": "^5.3.0",
+    "xterm-addon-fit": "^0.8.0"
+  },
+  "devDependencies": {
+    "@types/marked": "^5.0.2",
+    "@vitejs/plugin-vue": "^5.2.1",
+    "sass": "^1.97.3",
+    "typescript": "^5.6.3",
+    "vite": "^6.0.5",
+    "vue-tsc": "^2.2.0"
+  }
+}

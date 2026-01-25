@@ -1,11 +1,17 @@
 /**
  * Sailing Dashboard - Lightweight HTTP server
  * No dependencies, pure Node.js
+ *
+ * Supports:
+ * - HTTP routes (legacy HTMX + API v2 JSON)
+ * - WebSocket for real-time updates
+ * - Static file serving (legacy views + Vue app)
  */
 import http from 'http';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { handleWebSocketUpgrade, closeAll as closeWsConnections } from './websocket.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -14,6 +20,8 @@ type RouteHandler = (req: http.IncomingMessage, res: http.ServerResponse) => voi
 export interface DashboardServerOptions {
   /** Idle timeout in seconds. -1 = infinite, 0 = use default (300s) */
   timeout?: number;
+  /** Enable Vue dashboard (serves from dashboard-ui/dist) */
+  enableVue?: boolean;
 }
 
 export interface DashboardServer {
@@ -33,6 +41,7 @@ export function createServer(
   const timeoutSeconds = options.timeout === undefined || options.timeout === 0
     ? DEFAULT_TIMEOUT
     : options.timeout;
+  const enableVue = options.enableVue ?? true;
 
   let timeoutTimer: NodeJS.Timeout | null = null;
   let onTimeout: (() => void) | null = null;
@@ -60,13 +69,32 @@ export function createServer(
       // CORS for local dev
       res.setHeader('Access-Control-Allow-Origin', '*');
 
-      // Static files
+      // Vue app: serve index.html for root if Vue is enabled and built
+      if (enableVue && pathname === '/' && vueDistExists()) {
+        return serveVueIndex(res);
+      }
+
+      // Vue app assets (if enabled and built)
+      if (enableVue && pathname.startsWith('/assets/')) {
+        return serveVueAsset(pathname, res);
+      }
+
+      // Legacy static files (htmx dashboard)
       if (pathname.startsWith('/static/')) {
         return serveStatic(pathname.replace('/static/', ''), res);
       }
 
+      // Legacy dashboard redirect: /legacy/ serves old HTMX dashboard
+      if (pathname === '/legacy' || pathname === '/legacy/') {
+        const handler = routes['/'];
+        if (handler) {
+          return handler(req, res);
+        }
+      }
+
       // Route matching (exact match first, then pattern match)
-      let handler = routes[pathname];
+      // Skip "/" route if Vue is enabled (handled above)
+      let handler = (enableVue && vueDistExists() && pathname === '/') ? undefined : routes[pathname];
 
       // Try pattern matching for dynamic routes like /api/prd/:id
       if (!handler) {
@@ -89,6 +117,9 @@ export function createServer(
           res.writeHead(500, { 'Content-Type': 'text/plain' });
           res.end('Internal Server Error');
         }
+      } else if (enableVue && vueDistExists() && !pathname.startsWith('/api/')) {
+        // Serve Vue app index.html for SPA routes
+        return serveVueIndex(res);
       } else {
         res.writeHead(404, { 'Content-Type': 'text/plain' });
         res.end('Not Found');
@@ -96,11 +127,23 @@ export function createServer(
     })();
   });
 
+  // Handle WebSocket upgrade
+  server.on('upgrade', (req, socket, _head) => {
+    const url = new URL(req.url || '/', `http://localhost:${port}`);
+    if (url.pathname === '/ws') {
+      // Cast Duplex to Socket - it's a Socket in the upgrade event
+      handleWebSocketUpgrade(req, socket as import('net').Socket);
+    } else {
+      socket.destroy();
+    }
+  });
+
   let actualPort = port;
 
   return {
     start: (callback?: (port: number) => void, onShutdown?: () => void) => {
       onTimeout = () => {
+        closeWsConnections();
         server.close();
         if (onShutdown) onShutdown();
       };
@@ -117,6 +160,10 @@ export function createServer(
         server.listen(p, '127.0.0.1', () => {
           actualPort = p;
           console.log(`Dashboard: http://127.0.0.1:${actualPort}`);
+          if (enableVue && vueDistExists()) {
+            console.log(`  Vue app: enabled`);
+          }
+          console.log(`  WebSocket: ws://127.0.0.1:${actualPort}/ws`);
           // Start initial timeout
           resetTimeout();
           if (callback) callback(actualPort);
@@ -129,6 +176,7 @@ export function createServer(
         clearTimeout(timeoutTimer);
         timeoutTimer = null;
       }
+      closeWsConnections();
       server.close();
     },
     resetTimeout,
@@ -187,4 +235,82 @@ export function html(res: http.ServerResponse, content: string, status = 200) {
 export function json(res: http.ServerResponse, data: unknown, status = 200) {
   res.writeHead(status, { 'Content-Type': 'application/json' });
   res.end(JSON.stringify(data));
+}
+
+// Vue app directory (built assets)
+function getVueDistDir(): string {
+  // Check multiple locations
+  const locations = [
+    path.resolve(__dirname, '../../dashboard-ui/dist'),  // From dist/cli/dashboard
+    path.resolve(__dirname, '../../../dashboard-ui/dist'),  // Alternative
+  ];
+  for (const loc of locations) {
+    if (fs.existsSync(loc)) return loc;
+  }
+  return locations[0];  // Default to first location
+}
+
+function vueDistExists(): boolean {
+  const distDir = getVueDistDir();
+  return fs.existsSync(path.join(distDir, 'index.html'));
+}
+
+function serveVueIndex(res: http.ServerResponse): void {
+  const distDir = getVueDistDir();
+  const indexPath = path.join(distDir, 'index.html');
+
+  if (!fs.existsSync(indexPath)) {
+    // Vue app not built - redirect to legacy
+    res.writeHead(302, { 'Location': '/legacy/' });
+    res.end();
+    return;
+  }
+
+  try {
+    const content = fs.readFileSync(indexPath, 'utf8');
+    res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+    res.end(content);
+  } catch {
+    res.writeHead(500);
+    res.end('Error loading Vue app');
+  }
+}
+
+function serveVueAsset(pathname: string, res: http.ServerResponse): void {
+  const distDir = getVueDistDir();
+  const assetPath = path.join(distDir, pathname);
+
+  // Security: prevent directory traversal
+  if (!assetPath.startsWith(distDir)) {
+    res.writeHead(403);
+    res.end('Forbidden');
+    return;
+  }
+
+  const ext = path.extname(pathname);
+  const contentTypes: Record<string, string> = {
+    '.html': 'text/html',
+    '.css': 'text/css',
+    '.js': 'application/javascript',
+    '.mjs': 'application/javascript',
+    '.json': 'application/json',
+    '.svg': 'image/svg+xml',
+    '.png': 'image/png',
+    '.jpg': 'image/jpeg',
+    '.woff': 'font/woff',
+    '.woff2': 'font/woff2',
+    '.ttf': 'font/ttf',
+  };
+
+  try {
+    const content = fs.readFileSync(assetPath);
+    res.writeHead(200, {
+      'Content-Type': contentTypes[ext] || 'application/octet-stream',
+      'Cache-Control': 'public, max-age=31536000',  // 1 year for hashed assets
+    });
+    res.end(content);
+  } catch {
+    res.writeHead(404);
+    res.end('Asset Not Found');
+  }
 }

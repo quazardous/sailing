@@ -1,0 +1,46 @@
+// ==============================================
+// Dockview Layout Customizations
+// ==============================================
+
+.dv-dockview {
+  --dv-background-color: var(--bg-secondary);
+  --dv-pane-background-color: var(--bg-secondary);
+  --dv-tabs-background-color: var(--bg-secondary);
+  --dv-tabs-container-background-color: var(--bg-secondary);
+  --dv-activegroup-visiblepanel-tab-background-color: var(--bg-secondary);
+  --dv-activegroup-hiddenpanel-tab-background-color: var(--bg-tertiary);
+  --dv-inactivegroup-visiblepanel-tab-background-color: var(--bg-tertiary);
+  --dv-inactivegroup-hiddenpanel-tab-background-color: var(--bg-tertiary);
+  --dv-tab-divider-color: var(--border);
+  --dv-activegroup-visiblepanel-tab-color: var(--text);
+  --dv-activegroup-hiddenpanel-tab-color: var(--text-dim);
+  --dv-inactivegroup-visiblepanel-tab-color: var(--text-dim);
+  --dv-inactivegroup-hiddenpanel-tab-color: var(--text-muted);
+  --dv-separator-border: var(--border);
+  --dv-drag-over-background-color: var(--accent);
+  --dv-drag-over-border-color: var(--accent);
+  --dv-group-view-background-color: var(--bg-secondary);
+}
+
+// Fix tabs container and related elements
+.dv-tabs-container,
+.dv-tabs-and-actions-container {
+  background: var(--bg-secondary) !important;
+}
+
+// Ensure the entire header area is properly colored
+.dv-groupview {
+  > .dv-tabs-and-actions-container {
+    background: var(--bg-secondary) !important;
+  }
+}
+
+// Fix void/empty space in tabs area
+.dv-void-container {
+  background: var(--bg-secondary) !important;
+}
+
+// Ensure right side actions area matches
+.dv-right-actions-container {
+  background: var(--bg-secondary) !important;
+}

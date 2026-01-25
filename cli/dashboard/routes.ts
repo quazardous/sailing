@@ -1,5 +1,9 @@
 /**
  * Dashboard routes - API endpoints
+ *
+ * Provides:
+ * - Legacy HTMX routes (/api/*, /legacy/*)
+ * - New JSON API v2 routes (/api/v2/*)
  */
 import path from 'path';
 import http from 'http';
@@ -8,6 +12,19 @@ import { findProjectRoot } from '../managers/core-manager.js';
 import { getConfigDisplay } from '../managers/core-manager.js';
 import { getConfigInfo } from '../managers/core-manager.js';
 import { getAllVersions, getMainVersion, getMainComponentName } from '../managers/version-manager.js';
+import { findPrdMemoryFile, findEpicMemoryFile } from '../managers/memory-manager.js';
+import { getConfigValue } from '../managers/core-manager.js';
+import type { EffortConfig } from './lib/types.js';
+
+// Build effort config from managers (called once per request where needed)
+function getEffortConfig(): EffortConfig {
+  return {
+    default_duration: getConfigValue<string>('task.default_duration') || '1h',
+    effort_map: getConfigValue<string>('task.effort_map') || 'S=0.5h,M=1h,L=2h,XL=4h'
+  };
+}
+import { createApiV2Routes } from './api.js';
+import fs from 'fs';
 
 // Import from lib modules
 import {
@@ -16,7 +33,6 @@ import {
   getCachedPrdsData,
   getCachedBlockers,
   getCachedPendingMemory,
-  getMemoryContent,
   loadView,
   render,
   getStatusBadge,
@@ -56,6 +72,27 @@ import {
   emptyTemplate
 } from './lib/index.js';
 
+/**
+ * Get memory content for an entity (routes layer helper)
+ */
+function getMemoryContent(entityId: string, type: 'prd' | 'epic'): string {
+  try {
+    const found = type === 'prd'
+      ? findPrdMemoryFile(entityId)
+      : findEpicMemoryFile(entityId);
+
+    if (found.exists && fs.existsSync(found.path)) {
+      const content = fs.readFileSync(found.path, 'utf8');
+      // Extract body (after frontmatter)
+      const bodyMatch = content.match(/^---[\s\S]*?---\s*([\s\S]*)$/);
+      return bodyMatch ? bodyMatch[1].trim() : content;
+    }
+  } catch {
+    // Memory might not exist
+  }
+  return '';
+}
+
 // Routes configuration options
 export interface RoutesOptions {
   cacheTTL?: number;
@@ -67,6 +104,10 @@ export function createRoutes(options: RoutesOptions = {}) {
   clearCache();
 
   const routes: Record<string, (req: http.IncomingMessage, res: http.ServerResponse) => void> = {};
+
+  // Add API v2 routes (JSON for Vue dashboard)
+  const apiV2Routes = createApiV2Routes();
+  Object.assign(routes, apiV2Routes);
 
   // Main page
   routes['/'] = (_req, res) => {
@@ -98,7 +139,7 @@ export function createRoutes(options: RoutesOptions = {}) {
     const blockers = getCachedBlockers();
     const pending = getCachedPendingMemory();
 
-    const prdGantt = generatePrdOverviewGantt();
+    const prdGantt = generatePrdOverviewGantt(prds, getEffortConfig());
     const prdGanttHtml = prdGantt.tasks.length > 0
       ? renderSimpleGantt(prdGantt.tasks, prdGantt.totalHours, 'PRD Timeline', prdGantt.t0)
       : '';
@@ -257,7 +298,7 @@ export function createRoutes(options: RoutesOptions = {}) {
     const dagWithoutTasks = generatePrdDag(prd, false);
     const schemaContent = renderPrdDag(dagWithTasks, dagWithoutTasks);
 
-    const ganttData = generatePrdGantt(prd);
+    const ganttData = generatePrdGantt(prd, getEffortConfig());
     const ganttContent = renderGantt(
       ganttData.tasks,
       ganttData.criticalPath,
@@ -336,7 +377,7 @@ export function createRoutes(options: RoutesOptions = {}) {
     const dagResult = generateEpicDag(foundEpic, parentPrd);
     const schemaContent = renderDag(dagResult.code, dagResult.tooltips);
 
-    const ganttData = generateEpicGantt(foundEpic);
+    const ganttData = generateEpicGantt(foundEpic, getEffortConfig());
     const ganttContent = renderGantt(
       ganttData.tasks,
       ganttData.criticalPath,
