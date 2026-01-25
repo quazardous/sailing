@@ -29,6 +29,7 @@ export interface ParsedMarkdown {
 /**
  * Parse markdown content into frontmatter and sections
  * Auto-merges duplicate sections by combining their content.
+ * IMPORTANT: Ignores ## headers inside HTML comments to prevent corruption.
  * @param {string} content - Raw markdown content
  * @returns {{ frontmatter: string, sections: Map<string, string>, order: string[] }}
  */
@@ -49,14 +50,48 @@ export function parseMarkdownSections(content: string): ParsedMarkdown {
   }
 
   // Parse sections (## headings) - auto-merge duplicates
+  // IMPORTANT: Track HTML comment state to ignore headers inside comments
   const sections: Map<string, string> = new Map();
   const order: string[] = [];
   let currentSection: string | null = null;
   let currentContent: string[] = [];
   let preamble: string[] = []; // Content before first section
+  let inComment = false; // Track if we're inside an HTML comment
 
   for (let i = frontmatterEnd; i < lines.length; i++) {
     const line: string = lines[i];
+
+    // Track HTML comment state (handles single-line and multi-line comments)
+    // Check for comment open/close on this line
+    const hasOpen = line.includes('<!--');
+    const hasClose = line.includes('-->');
+
+    if (hasOpen && hasClose) {
+      // Single-line comment like <!-- comment --> - state doesn't change
+      // But we need to handle <!-- ... --> ## Header case (rare but possible)
+      const openIdx = line.indexOf('<!--');
+      const closeIdx = line.indexOf('-->');
+      if (openIdx < closeIdx) {
+        // Normal single-line comment, no state change needed
+      } else {
+        // Weird case: --> before <!-- (closing previous, opening new)
+        inComment = true;
+      }
+    } else if (hasOpen) {
+      inComment = true;
+    } else if (hasClose) {
+      inComment = false;
+      // Continue to next line, don't process this line as a heading
+      currentContent.push(line);
+      continue;
+    }
+
+    // Skip heading detection if inside a comment
+    if (inComment) {
+      currentContent.push(line);
+      continue;
+    }
+
     const headingMatch: RegExpMatchArray | null = line.match(/^## (.+)$/);
 
     if (headingMatch) {
@@ -141,6 +176,7 @@ export function serializeSections(parsed: ParsedMarkdown): string {
 
 /**
  * Parse markdown preserving duplicate sections (for dedup detection)
+ * IMPORTANT: Ignores ## headers inside HTML comments to prevent corruption.
  */
 export function parseMarkdownSectionsRaw(content: string): {
   frontmatter: string;
@@ -163,13 +199,39 @@ export function parseMarkdownSectionsRaw(content: string): {
   }
 
   // Parse sections preserving duplicates
+  // IMPORTANT: Track HTML comment state to ignore headers inside comments
   const sections: Array<{ name: string; content: string }> = [];
   let currentSection: string | null = null;
   let currentContent: string[] = [];
   let preamble: string[] = [];
+  let inComment = false;
 
   for (let i = frontmatterEnd; i < lines.length; i++) {
     const line = lines[i];
+
+    // Track HTML comment state
+    const hasOpen = line.includes('<!--');
+    const hasClose = line.includes('-->');
+
+    if (hasOpen && hasClose) {
+      const openIdx = line.indexOf('<!--');
+      const closeIdx = line.indexOf('-->');
+      if (openIdx > closeIdx) {
+        inComment = true;
+      }
+    } else if (hasOpen) {
+      inComment = true;
+    } else if (hasClose) {
+      inComment = false;
+      currentContent.push(line);
+      continue;
+    }
+
+    if (inComment) {
+      currentContent.push(line);
+      continue;
+    }
+
     const headingMatch = line.match(/^## (.+)$/);
 
     if (headingMatch) {

@@ -149,6 +149,90 @@ Content
 });
 
 // =============================================================================
+// parseMarkdownSections ignores headers inside comments
+// =============================================================================
+
+test('parseMarkdownSections ignores ## headers inside HTML comments', () => {
+  const content = `---
+id: E003
+---
+
+<!--
+Example: artefact_edit { "content": "## Technical Notes
+Example content inside comment
+## Description
+More example" }
+-->
+
+## Description
+
+Real description content.
+
+## Technical Notes
+
+Real technical notes.
+`;
+  const parsed = parseMarkdownSections(content);
+
+  // Should only find 2 sections (Description and Technical Notes), not 4
+  assertEqual(parsed.order.length, 2, `Expected 2 sections, got ${parsed.order.length}: ${parsed.order.join(', ')}`);
+  assert(parsed.order.includes('Description'), 'Should have Description section');
+  assert(parsed.order.includes('Technical Notes'), 'Should have Technical Notes section');
+
+  // Content should be the real content, not the example in comment
+  const description = parsed.sections.get('Description');
+  assert(description?.includes('Real description'), `Description should contain real content, got: ${description}`);
+  assert(!description?.includes('Example content'), 'Description should NOT contain example from comment');
+
+  const techNotes = parsed.sections.get('Technical Notes');
+  assert(techNotes?.includes('Real technical'), `Technical Notes should contain real content, got: ${techNotes}`);
+});
+
+test('editArtifact edits real section not section in comment', () => {
+  // Create temp file with ## Section in comment AND in body
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'sailing-test-'));
+  const tmpFile = path.join(tmpDir, 'test.md');
+
+  fs.writeFileSync(tmpFile, `---
+id: T001
+---
+
+<!--
+Example: "## Notes
+Example notes"
+-->
+
+## Description
+
+Original description.
+
+## Notes
+
+Original notes.
+`);
+
+  // Edit the Notes section
+  const result = editArtifact(tmpFile, [{
+    op: 'replace',
+    section: 'Notes',
+    content: 'Updated notes content.'
+  }]);
+
+  assert(result.success === true, `Edit should succeed: ${result.errors.join(', ')}`);
+
+  // Verify the real section was edited, not the one in comment
+  const fileContent = fs.readFileSync(tmpFile, 'utf8');
+  assert(fileContent.includes('Updated notes content'), 'Should have updated content');
+  assert(fileContent.includes('Example notes'), 'Comment should be preserved');
+  assert(fileContent.includes('Original description'), 'Description should be unchanged');
+  assert(!fileContent.includes('Original notes'), 'Original notes should be replaced');
+
+  // Cleanup
+  fs.unlinkSync(tmpFile);
+  fs.rmdirSync(tmpDir);
+});
+
+// =============================================================================
 // editArtifact refuses to write unclosed comments
 // =============================================================================
 
