@@ -49,6 +49,7 @@ const treeNodes = computed<TreeNodeData[]>(() => {
     icon: getIcon('prd', prd.status),
     iconColor: getIconColor(prd.status),
     status: getStatusVariant(prd.status),
+    statusText: prd.status,
     badge: `${prd.progress}%`,
     badgeVariant: getBadgeVariant(prd.progress),
     data: { type: 'prd' },
@@ -59,6 +60,7 @@ const treeNodes = computed<TreeNodeData[]>(() => {
       icon: getIcon('epic', epic.status),
       iconColor: getIconColor(epic.status),
       status: getStatusVariant(epic.status),
+      statusText: epic.status,
       data: { type: 'epic' },
       children: (epic.tasks || []).map(task => ({
         id: task.id,
@@ -67,33 +69,56 @@ const treeNodes = computed<TreeNodeData[]>(() => {
         icon: getIcon('task', task.status),
         iconColor: getIconColor(task.status),
         status: getStatusVariant(task.status),
+        statusText: task.status,
         data: { type: 'task' },
       })),
     })),
   }));
 });
 
-function getIcon(type: 'prd' | 'epic' | 'task', status: string): string {
-  if (status === 'Done') return '✓';
-  if (status === 'Blocked') return '⊘';
-  if (status === 'In Progress' || status === 'WIP') return '◐';
-  if (type === 'prd') return '◎';
-  if (type === 'epic') return '◉';
-  return '○';
+function getIcon(_type: 'prd' | 'epic' | 'task', status: string): string {
+  switch (status) {
+    case 'Done': return '✓';
+    case 'Blocked': return '⊘';
+    case 'In Progress':
+    case 'WIP': return '⏱';
+    case 'Cancelled': return '⊗';
+    case 'Draft': return '◌';
+    case 'In Review': return '◈';
+    case 'Approved': return '●';
+    case 'Auto-Done': return '◉';
+    default: return '⏸'; // Not Started
+  }
 }
 
 function getIconColor(status: string): string {
-  if (status === 'Done') return 'green';
-  if (status === 'Blocked') return 'red';
-  if (status === 'In Progress' || status === 'WIP') return 'yellow';
-  return 'gray';
+  switch (status) {
+    case 'Done': return 'green';
+    case 'Blocked': return 'red';
+    case 'In Progress':
+    case 'WIP': return 'yellow';
+    case 'Cancelled': return 'gray';
+    case 'Draft': return 'purple';
+    case 'In Review': return 'blue';
+    case 'Approved': return 'cyan';
+    case 'Auto-Done': return 'lime';
+    default: return 'gray'; // Not Started
+  }
 }
 
 function getStatusVariant(status: string): TreeNodeData['status'] {
-  if (status === 'Done') return 'success';
-  if (status === 'Blocked') return 'error';
-  if (status === 'In Progress' || status === 'WIP') return 'active';
-  return 'default';
+  switch (status) {
+    case 'Done': return 'success';
+    case 'Blocked': return 'error';
+    case 'In Progress':
+    case 'WIP': return 'active';
+    case 'Draft': return 'draft';
+    case 'In Review': return 'review';
+    case 'Approved': return 'approved';
+    case 'Cancelled': return 'cancelled';
+    case 'Auto-Done': return 'auto-done';
+    default: return 'default';
+  }
 }
 
 function getBadgeVariant(progress: number): TreeNodeData['badgeVariant'] {

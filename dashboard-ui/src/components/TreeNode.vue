@@ -130,11 +130,12 @@ function getChildExpanded(childId: string): boolean {
         </span>
       </div>
 
-      <!-- Icon -->
+      <!-- Icon with status tooltip -->
       <span
         v-if="node.icon"
         class="tree-icon"
         :class="node.iconColor ? 'icon-' + node.iconColor : ''"
+        :title="node.statusText"
       >
         {{ node.icon }}
       </span>
@@ -144,13 +145,6 @@ function getChildExpanded(childId: string): boolean {
         <span class="tree-label-primary">{{ node.label }}</span>
         <span v-if="node.secondaryLabel" class="tree-label-secondary">{{ node.secondaryLabel }}</span>
       </span>
-
-      <!-- Status dot -->
-      <span
-        v-if="node.status && node.status !== 'default'"
-        class="tree-status"
-        :class="'status-' + node.status"
-      ></span>
 
       <!-- Badge -->
       <span
@@ -297,6 +291,8 @@ function getChildExpanded(childId: string): boolean {
 .tree-icon.icon-purple { color: #a78bfa; }
 .tree-icon.icon-orange { color: #fb923c; }
 .tree-icon.icon-gray { color: #9ca3af; }
+.tree-icon.icon-cyan { color: #22d3d8; }
+.tree-icon.icon-lime { color: #a3e635; }
 
 .tree-label {
   flex: 1;
@@ -330,16 +326,50 @@ function getChildExpanded(childId: string): boolean {
   height: 8px;
   border-radius: 50%;
   flex-shrink: 0;
+  cursor: help;
 }
 
+/* Done - Green */
 .tree-status.status-success { background: #34d399; }
+
+/* Warning (generic) - Amber */
 .tree-status.status-warning { background: #fbbf24; }
+
+/* Blocked - Red */
 .tree-status.status-error { background: #f87171; }
+
+/* Info (generic) - Blue */
 .tree-status.status-info { background: #60a5fa; }
+
+/* In Progress - Amber with pulse */
 .tree-status.status-active {
-  background: #34d399;
+  background: #fbbf24;
   animation: pulse 2s ease-in-out infinite;
 }
+
+/* Draft - Purple */
+.tree-status.status-draft { background: #a78bfa; }
+
+/* In Review - Blue */
+.tree-status.status-review { background: #60a5fa; }
+
+/* Approved - Cyan */
+.tree-status.status-approved { background: #22d3d8; }
+
+/* Cancelled - Gray dimmed */
+.tree-status.status-cancelled {
+  background: #6b7280;
+  opacity: 0.6;
+}
+
+/* Auto-Done - Lime with pulse (awaiting validation) */
+.tree-status.status-auto-done {
+  background: #a3e635;
+  animation: pulse 2s ease-in-out infinite;
+}
+
+/* Not Started (default) - Gray */
+.tree-status.status-default { background: #9ca3af; }
 
 @keyframes pulse {
   0%, 100% { opacity: 1; }

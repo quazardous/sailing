@@ -9,7 +9,11 @@ export interface TreeNodeData {
   secondaryLabel?: string;
   icon?: string;
   iconColor?: string;
-  status?: 'default' | 'success' | 'warning' | 'error' | 'info' | 'active';
+  // Status variants: maps to visual style
+  // not-started (gray), in-progress (yellow pulse), blocked (red), done (green),
+  // cancelled (gray dim), draft (purple), in-review (blue), approved (cyan), auto-done (lime pulse)
+  status?: 'default' | 'success' | 'warning' | 'error' | 'info' | 'active' | 'approved' | 'draft' | 'review' | 'cancelled' | 'auto-done';
+  statusText?: string;  // Human-readable status for tooltip
   badge?: string | number;
   badgeVariant?: 'default' | 'success' | 'warning' | 'error' | 'info';
   children?: TreeNodeData[];
