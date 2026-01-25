@@ -4,6 +4,18 @@ All notable changes to the Sailing Framework will be documented in this file.
 
 <!-- NOTE: This is a USER changelog, not a commit log. Focus on user-visible features and benefits, not implementation details. -->
 
+## [1.16.0] - 2026-01-25
+
+### Added
+- Dashboard: Welcome sidebar with getting started guide and recent activity log
+- Dashboard: Dependency graph panel with ELK.js layout (cleaner orthogonal routing)
+- Dashboard: Critical path highlighting in dependency graph (red halo on nodes and edges)
+- Dashboard: Tree explorer with VS Code-style vertical guide lines
+
+### Changed
+- Dashboard: Removed Mermaid dependency for DAG rendering (lighter bundle, better control)
+- Dashboard: Unified connector styles in dependency graph (same arrow size for all edge types)
+
 ## [1.15.0] - 2026-01-24
 
 ### Added
