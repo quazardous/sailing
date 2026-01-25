@@ -4,8 +4,11 @@ import { useAgentsStore } from '../stores/agents';
 
 const agentsStore = useAgentsStore();
 
+const allAgents = computed(() => agentsStore.agents);
 const runningAgents = computed(() => agentsStore.runningAgents);
-const completedAgents = computed(() => agentsStore.completedAgents);
+const finishedAgents = computed(() =>
+  allAgents.value.filter(a => ['completed', 'reaped', 'failed', 'killed'].includes(a.status))
+);
 const loading = computed(() => agentsStore.loading);
 
 function handleRefresh() {
@@ -18,16 +21,21 @@ function selectAgent(taskId: string) {
 
 function getStatusIcon(status: string): string {
   if (status === 'running') return '▶';
-  if (status === 'completed') return '✓';
-  if (status === 'failed') return '✗';
+  if (status === 'completed' || status === 'reaped') return '✓';
+  if (status === 'failed' || status === 'killed') return '✗';
+  if (status === 'orphaned') return '?';
   return '○';
 }
 
 function getStatusColor(status: string): string {
   if (status === 'running') return 'var(--color-warning, #fbbf24)';
-  if (status === 'completed') return 'var(--color-success, #34d399)';
-  if (status === 'failed') return 'var(--color-error, #f87171)';
+  if (status === 'completed' || status === 'reaped') return 'var(--color-success, #34d399)';
+  if (status === 'failed' || status === 'killed') return 'var(--color-error, #f87171)';
   return 'var(--text-dim, #888)';
+}
+
+function formatStatus(status: string): string {
+  return status.charAt(0).toUpperCase() + status.slice(1);
 }
 </script>
 
@@ -76,15 +84,15 @@ function getStatusColor(status: string): string {
         </div>
       </div>
 
-      <!-- Completed agents -->
-      <div v-if="completedAgents.length > 0" class="section">
+      <!-- Finished agents (completed, reaped, failed) -->
+      <div v-if="finishedAgents.length > 0" class="section">
         <div class="section-header">
-          <span class="section-title">Completed</span>
-          <span class="section-count">{{ completedAgents.length }}</span>
+          <span class="section-title">Finished</span>
+          <span class="section-count">{{ finishedAgents.length }}</span>
         </div>
         <div class="agent-list">
           <div
-            v-for="agent in completedAgents"
+            v-for="agent in finishedAgents"
             :key="agent.taskId"
             class="agent-item"
             @click="selectAgent(agent.taskId)"
@@ -93,12 +101,13 @@ function getStatusColor(status: string): string {
               {{ getStatusIcon(agent.status) }}
             </span>
             <span class="agent-id">{{ agent.taskId }}</span>
+            <span class="agent-status-label">{{ formatStatus(agent.status) }}</span>
           </div>
         </div>
       </div>
 
       <!-- Empty state -->
-      <div v-if="runningAgents.length === 0 && completedAgents.length === 0" class="empty-state">
+      <div v-if="allAgents.length === 0" class="empty-state">
         <div class="empty-state-icon">🤖</div>
         <div>No agents</div>
       </div>
@@ -222,6 +231,12 @@ function getStatusColor(status: string): string {
 .agent-id {
   font-size: 13px;
   color: var(--text, #fff);
+}
+
+.agent-status-label {
+  font-size: 10px;
+  color: var(--text-dim, #888);
+  margin-left: auto;
 }
 
 .empty-state {

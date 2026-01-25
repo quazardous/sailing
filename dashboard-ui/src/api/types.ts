@@ -49,11 +49,31 @@ export interface TreeResponse {
   prds: PrdData[];
 }
 
+// DAG data for dependency graph
+export interface DagNode {
+  id: string;
+  type: 'prd' | 'epic' | 'task';
+  title: string;
+  status: string;
+  level: number;
+}
+
+export interface DagEdge {
+  from: string;
+  to: string;
+  type: 'hierarchy' | 'dependency';
+}
+
+export interface DagData {
+  nodes: DagNode[];
+  edges: DagEdge[];
+}
+
 // Artefact detail response
 export interface ArtefactResponse {
   type: ArtefactType;
   data: PrdData | EpicData | TaskData;
-  dag?: string;
+  dag?: DagData;
   gantt?: GanttData;
   parent?: {
     id: string;
@@ -84,13 +104,14 @@ export interface GanttData {
 }
 
 // Agent types
-export type AgentStatus = 'running' | 'completed' | 'failed' | 'pending';
+export type AgentStatus = 'running' | 'completed' | 'failed' | 'pending' | 'reaped' | 'killed' | 'orphaned' | string;
 
 export interface AgentInfo {
   taskId: string;
   status: AgentStatus;
   startedAt?: string;
   completedAt?: string;
+  reapedAt?: string;
   pid?: number;
   worktree?: string;
   exitCode?: number;

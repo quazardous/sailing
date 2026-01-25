@@ -1,12 +1,17 @@
 <script setup lang="ts">
 import { computed } from 'vue';
 import { useArtefactsStore } from '../stores/artefacts';
-import MermaidDiagram from '../components/MermaidDiagram.vue';
+import DependencyGraph from '../components/DependencyGraph.vue';
+import type { DagData } from '../api/types';
 
 const artefactsStore = useArtefactsStore();
 
 const selectedArtefact = computed(() => artefactsStore.selectedArtefact);
-const dagCode = computed(() => selectedArtefact.value?.dag || null);
+const dagData = computed<DagData | null>(() => selectedArtefact.value?.dag || null);
+
+function handleNodeClick(id: string) {
+  artefactsStore.selectArtefact(id);
+}
 </script>
 
 <template>
@@ -14,14 +19,14 @@ const dagCode = computed(() => selectedArtefact.value?.dag || null);
     <div class="panel-content">
       <div v-if="!selectedArtefact" class="empty-state">
         <div class="empty-state-icon">🔗</div>
-        <div>Select an artefact to view dependencies</div>
+        <div>Select an artefact to view the graph</div>
       </div>
-      <div v-else-if="!dagCode" class="empty-state">
+      <div v-else-if="!dagData || !dagData.nodes?.length" class="empty-state">
         <div class="empty-state-icon">🔗</div>
-        <div>No dependency graph for this artefact</div>
+        <div>No graph for this artefact</div>
       </div>
-      <div v-else class="diagram-wrapper">
-        <MermaidDiagram :code="dagCode" />
+      <div v-else class="graph-wrapper">
+        <DependencyGraph :data="dagData" @node-click="handleNodeClick" />
       </div>
     </div>
   </div>
@@ -37,14 +42,17 @@ const dagCode = computed(() => selectedArtefact.value?.dag || null);
 
 .panel-content {
   flex: 1;
-  overflow: auto;
+  overflow: hidden;
   padding: var(--spacing-md, 12px);
+  display: flex;
+  flex-direction: column;
 }
 
-.diagram-wrapper {
+.graph-wrapper {
+  flex: 1;
+  min-height: 0;
   display: flex;
-  justify-content: center;
-  padding: var(--spacing-md, 12px);
+  flex-direction: column;
 }
 
 .empty-state {

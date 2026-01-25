@@ -69,6 +69,7 @@ export interface SimpleGanttTask {
   status: string;
   progress?: number;
   startedAt?: string;
+  doneAt?: string;
   criticalTimespanHours?: number;
 }
 
@@ -91,6 +92,26 @@ export interface SimpleGanttResult {
 export interface DagResult {
   code: string;
   tooltips: Record<string, string>;
+}
+
+// Structured DAG types (for Vue dashboard)
+export interface DagNode {
+  id: string;
+  type: 'prd' | 'epic' | 'task';
+  title: string;
+  status: string;
+  level: number;
+}
+
+export interface DagEdge {
+  from: string;
+  to: string;
+  type: 'hierarchy' | 'dependency';
+}
+
+export interface StructuredDagResult {
+  nodes: DagNode[];
+  edges: DagEdge[];
 }
 
 /**

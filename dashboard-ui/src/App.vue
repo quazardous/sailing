@@ -87,7 +87,7 @@ function getDefaultLayout(activityId: string): void {
     api.addPanel({
       id: 'dag',
       component: 'dag',
-      title: 'Dependencies',
+      title: 'Graph',
       position: { referencePanel: 'detail', direction: 'within' },
     });
   } else if (activityId === 'agents') {

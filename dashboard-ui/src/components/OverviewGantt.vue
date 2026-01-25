@@ -25,7 +25,7 @@ const props = defineProps<{
 const startDate = computed(() => new Date(props.data?.t0 || new Date().toISOString()));
 
 const rowHeight = 32;
-const labelWidth = 180;
+const labelWidth = 280;
 const headerHeight = 24;
 const paddingRight = 20;
 
@@ -116,7 +116,7 @@ function formatProgress(progress: number): string {
             class="task-label"
           >
             <tspan class="task-id">{{ task.id }}</tspan>
-            <tspan dx="6">{{ task.name.substring(0, 20) }}</tspan>
+            <tspan dx="6">{{ task.name }}</tspan>
           </text>
 
           <!-- Task bar background -->

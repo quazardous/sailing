@@ -21,15 +21,15 @@ import {
   getCachedPrdsData,
   getCachedBlockers,
   getCachedPendingMemory,
-  generatePrdDag,
-  generateEpicDag,
-  generateTaskDag,
+  generateStructuredPrdDag,
+  generateStructuredEpicDag,
+  generateStructuredTaskDag,
   generatePrdGantt,
   generateEpicGantt,
   generatePrdOverviewGantt,
 } from './lib/index.js';
 
-import type { GanttResult, SimpleGanttResult, PrdData, EpicData, TaskData, BlockerData, EffortConfig } from './lib/types.js';
+import type { GanttResult, SimpleGanttResult, PrdData, EpicData, TaskData, BlockerData, EffortConfig, StructuredDagResult } from './lib/types.js';
 
 // Build effort config from managers (called once, reused)
 function getEffortConfig(): EffortConfig {
@@ -152,7 +152,7 @@ interface TreeResponse {
 interface ArtefactResponse {
   type: 'prd' | 'epic' | 'task';
   data: PrdData | EpicData | TaskData;
-  dag?: string;
+  dag?: StructuredDagResult;
   gantt?: ApiGanttData;
   parent?: {
     id: string;
@@ -184,9 +184,10 @@ interface ApiGanttTask {
 
 interface AgentInfo {
   taskId: string;
-  status: 'running' | 'completed' | 'failed' | 'pending';
+  status: string;
   startedAt?: string;
   completedAt?: string;
+  reapedAt?: string;
   pid?: number;
   worktree?: string;
   exitCode?: number;
@@ -294,13 +295,13 @@ export function createApiV2Routes(): Record<string, (req: http.IncomingMessage, 
           return;
         }
 
-        const dagWithTasks = generatePrdDag(prd, true);
+        const dagData = generateStructuredPrdDag(prd, true);
         const ganttData = generatePrdGantt(prd, getEffortConfig());
 
         const response: ArtefactResponse = {
           type: 'prd',
           data: prd,
-          dag: dagWithTasks.code,
+          dag: dagData,
           gantt: toApiGantt(ganttData),
         };
         json(res, response);
@@ -312,13 +313,13 @@ export function createApiV2Routes(): Record<string, (req: http.IncomingMessage, 
         for (const prd of prds) {
           const epic = prd.epics.find(e => e.id === id);
           if (epic) {
-            const dagResult = generateEpicDag(epic, prd);
+            const dagData = generateStructuredEpicDag(epic, { id: prd.id, title: prd.title, status: prd.status });
             const ganttData = generateEpicGantt(epic, getEffortConfig());
 
             const response: ArtefactResponse = {
               type: 'epic',
               data: epic,
-              dag: dagResult.code,
+              dag: dagData,
               gantt: toApiGantt(ganttData),
               parent: {
                 id: prd.id,
@@ -340,12 +341,16 @@ export function createApiV2Routes(): Record<string, (req: http.IncomingMessage, 
           for (const epic of prd.epics) {
             const task = epic.tasks.find(t => t.id === id);
             if (task) {
-              const dagResult = generateTaskDag(task, epic, prd);
+              const dagData = generateStructuredTaskDag(
+                task,
+                { id: epic.id, title: epic.title, status: epic.status },
+                { id: prd.id, title: prd.title, status: prd.status }
+              );
 
               const response: ArtefactResponse = {
                 type: 'task',
                 data: task,
-                dag: dagResult.code,
+                dag: dagData,
                 parent: {
                   id: epic.id,
                   title: epic.title,
@@ -375,11 +380,10 @@ export function createApiV2Routes(): Record<string, (req: http.IncomingMessage, 
 
       const agentInfos: AgentInfo[] = Object.entries(agentsDb).map(([taskId, agent]) => ({
         taskId,
-        status: (agent.status === 'running' ? 'running' :
-                 agent.status === 'completed' ? 'completed' :
-                 agent.status === 'failed' ? 'failed' : 'pending') as AgentInfo['status'],
+        status: agent.status || 'unknown',
         startedAt: agent.started_at,
         completedAt: agent.completed_at,
+        reapedAt: agent.reaped_at,
         pid: agent.pid,
         worktree: agent.worktree?.path,
         exitCode: agent.exit_code,

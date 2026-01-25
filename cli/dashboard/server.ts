@@ -79,19 +79,6 @@ export function createServer(
         return serveVueAsset(pathname, res);
       }
 
-      // Legacy static files (htmx dashboard)
-      if (pathname.startsWith('/static/')) {
-        return serveStatic(pathname.replace('/static/', ''), res);
-      }
-
-      // Legacy dashboard redirect: /legacy/ serves old HTMX dashboard
-      if (pathname === '/legacy' || pathname === '/legacy/') {
-        const handler = routes['/'];
-        if (handler) {
-          return handler(req, res);
-        }
-      }
-
       // Route matching (exact match first, then pattern match)
       // Skip "/" route if Vue is enabled (handled above)
       let handler = (enableVue && vueDistExists() && pathname === '/') ? undefined : routes[pathname];
@@ -186,45 +173,6 @@ export function createServer(
   };
 }
 
-// Find views directory (works in both dev and dist)
-function getViewsDir(): string {
-  const distViews = path.join(__dirname, 'views');
-  if (fs.existsSync(distViews)) return distViews;
-  const srcViews = path.resolve(__dirname, '../../cli/dashboard/views');
-  if (fs.existsSync(srcViews)) return srcViews;
-  return distViews;
-}
-
-function serveStatic(filename: string, res: http.ServerResponse) {
-  const viewsDir = getViewsDir();
-  const filePath = path.join(viewsDir, filename);
-
-  // Security: prevent directory traversal
-  if (!filePath.startsWith(viewsDir)) {
-    res.writeHead(403);
-    res.end('Forbidden');
-    return;
-  }
-
-  const ext = path.extname(filename);
-  const contentTypes: Record<string, string> = {
-    '.html': 'text/html',
-    '.css': 'text/css',
-    '.js': 'application/javascript',
-    '.json': 'application/json',
-    '.svg': 'image/svg+xml'
-  };
-
-  try {
-    const content = fs.readFileSync(filePath, 'utf8');
-    res.writeHead(200, { 'Content-Type': contentTypes[ext] || 'text/plain' });
-    res.end(content);
-  } catch {
-    res.writeHead(404);
-    res.end('Not Found');
-  }
-}
-
 // Helper to send HTML response
 export function html(res: http.ServerResponse, content: string, status = 200) {
   res.writeHead(status, { 'Content-Type': 'text/html; charset=utf-8' });
@@ -260,9 +208,9 @@ function serveVueIndex(res: http.ServerResponse): void {
   const indexPath = path.join(distDir, 'index.html');
 
   if (!fs.existsSync(indexPath)) {
-    // Vue app not built - redirect to legacy
-    res.writeHead(302, { 'Location': '/legacy/' });
-    res.end();
+    // Vue app not built - show message
+    res.writeHead(503, { 'Content-Type': 'text/html; charset=utf-8' });
+    res.end('<html><body><h1>Vue Dashboard Not Built</h1><p>Run <code>cd dashboard-ui && npm run build</code> to build the Vue dashboard.</p></body></html>');
     return;
   }
 
