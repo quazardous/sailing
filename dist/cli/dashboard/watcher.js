@@ -7,7 +7,7 @@
 import fs from 'fs';
 import path from 'path';
 import { getPath } from '../managers/core-manager.js';
-import { broadcast } from './websocket.js';
+import { broadcast, getConnectionCount } from './websocket.js';
 import { clearCache } from './lib/cache.js';
 // =============================================================================
 // Watch Configs from "managers"
@@ -82,13 +82,14 @@ function handleChange(config, eventType, filename) {
             config.onClear();
         }
         // Broadcast to WebSocket clients
+        const connCount = getConnectionCount();
         broadcast({
             type: config.event,
             id: filename || '*',
             message: `File ${eventType}: ${filename || 'unknown'}`,
             timestamp: new Date().toISOString()
         });
-        console.log(`[watcher] ${config.event}: ${filename || 'change detected'}`);
+        console.log(`[watcher] ${config.event}: ${filename || 'change detected'} (${connCount} clients)`);
     }, delay));
 }
 /**
