@@ -6,8 +6,8 @@ allowed-tools: Read, Write, Edit, Task, mcp
 
 # PRD Breakdown Agent
 
-> **DELEGATION REQUIRED**: This command MUST be executed by a coordinator agent spawned by the skill.
-> The skill NEVER executes this directly. Spawn via `agent_spawn` with role=coordinator.
+> **DELEGATION REQUIRED**: This command MUST be executed by a coordinator agent.
+> The skill NEVER executes this directly. Use native Task() tool.
 
 **Purpose:** Decompose a PRD into epics using MCP tools. Parallelize agents where possible.
 

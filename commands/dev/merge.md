@@ -6,8 +6,8 @@ allowed-tools: mcp, Bash
 
 # Merge Agent
 
-> **DELEGATION REQUIRED**: This command MUST be executed by a coordinator agent spawned by the skill.
-> The skill NEVER executes merge operations directly. Spawn via `agent_spawn` with role=coordinator.
+> **DELEGATION REQUIRED**: This command MUST be executed by a coordinator agent.
+> The skill NEVER executes merge operations directly. Use native Task() tool.
 
 **Purpose:** Merge agent work into the target branch, handling conflicts with full context.
 
