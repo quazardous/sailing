@@ -4,6 +4,15 @@ All notable changes to the Sailing Framework will be documented in this file.
 
 <!-- NOTE: This is a USER changelog, not a commit log. Focus on user-visible features and benefits, not implementation details. -->
 
+## [1.18.1] - 2026-01-26
+
+### Added
+- ADR `introduced_in` field to track component/version when decision was introduced (e.g., `core/1.18.0`)
+
+### Fixed
+- Restored distribution templates (ROADMAP, POSTIT, MEMORY) to `disttpl/` folder
+- Fixed `publish-dist.sh` to copy templates from `disttpl/` instead of `dist/`
+
 ## [1.18.0] - 2026-01-26
 
 ### Added
