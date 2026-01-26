@@ -17,6 +17,7 @@ export interface Adr {
   domain?: string;      // For filtering in prompts (e.g., 'core', 'api', 'frontend')
   supersedes?: string;  // ADR-XXX if this replaces an older ADR
   superseded_by?: string; // ADR-XXX if this was replaced
+  introduced_in?: string; // component/version when decision was introduced (e.g., 'core/1.18.0')
 }
 
 /**

@@ -59,7 +59,7 @@ if [ -d "dashboard-ui/dist" ]; then
 fi
 
 # Distribution templates
-cp dist/*.yaml-dist dist/*.md-dist "$WORK_DIR/dist/" 2>/dev/null || true
+cp disttpl/*.yaml-dist disttpl/*.md-dist "$WORK_DIR/dist/" 2>/dev/null || true
 
 # CLI wrappers (from scripts/*.dist)
 mkdir -p "$WORK_DIR/scripts"

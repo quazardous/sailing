@@ -25,7 +25,7 @@ export function registerInitCommand(program) {
       const projectRoot = findProjectRoot();
       const sailingDir = getSailingDir();
       const artefactsDir = getArtefactsDir();
-      const distDir = path.join(path.dirname(path.dirname(import.meta.dirname)), 'dist');
+      const distDir = path.join(path.dirname(path.dirname(import.meta.dirname)), 'disttpl');
 
       let created = 0;
       let skipped = 0;

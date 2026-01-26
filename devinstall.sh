@@ -404,10 +404,10 @@ else
   fi
 fi
 
-do_cp "$SCRIPT_DIR/dist/components.yaml-dist" "$COMPONENTS_FILE" true
-do_cp "$SCRIPT_DIR/dist/ROADMAP.md-dist" "$ARTEFACTS/ROADMAP.md" true
-do_cp "$SCRIPT_DIR/dist/POSTIT.md-dist" "$ARTEFACTS/POSTIT.md" true
-do_cp "$SCRIPT_DIR/dist/MEMORY.md-dist" "$ARTEFACTS/MEMORY.md" true
+do_cp "$SCRIPT_DIR/disttpl/components.yaml-dist" "$COMPONENTS_FILE" true
+do_cp "$SCRIPT_DIR/disttpl/ROADMAP.md-dist" "$ARTEFACTS/ROADMAP.md" true
+do_cp "$SCRIPT_DIR/disttpl/POSTIT.md-dist" "$ARTEFACTS/POSTIT.md" true
+do_cp "$SCRIPT_DIR/disttpl/MEMORY.md-dist" "$ARTEFACTS/MEMORY.md" true
 
 # Legacy cleanup
 if [ -d "$DEFAULT_SAILING_DIR/core" ]; then

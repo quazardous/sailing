@@ -256,7 +256,8 @@ export const AGENT_TOOLS: ToolDefinition[] = [
           title: e.data.title,
           status: e.data.status,
           domain: e.data.domain,
-          tags: e.data.tags
+          tags: e.data.tags,
+          introduced_in: e.data.introduced_in
         }));
 
         return ok({
@@ -303,6 +304,7 @@ export const AGENT_TOOLS: ToolDefinition[] = [
             title: adr.title,
             status: adr.status,
             domain: adr.domain,
+            introduced_in: adr.introduced_in,
             context: adr.context,
             decision: adr.decision,
             body: adr.body

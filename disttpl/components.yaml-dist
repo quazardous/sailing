@@ -1,0 +1,18 @@
+# Component version tracking
+#
+# Each component defines how to extract its version.
+# The 'main' component is used for the project version in the dashboard.
+#
+# Extractors:
+#   json  - Extract from JSON file (default), path is JSON path (e.g., "version")
+#   text  - Read entire file as version
+#   regex - Extract with regex pattern
+#   git   - Extract from git tags (path is tag pattern, e.g., "v*")
+#
+components:
+  - key: project
+    name: Project
+    file: package.json
+    path: version
+    extractor: json
+    main: true

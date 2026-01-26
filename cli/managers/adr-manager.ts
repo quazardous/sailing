@@ -164,6 +164,7 @@ export function getFullAdr(id: string): FullAdr | null {
     author: data.author,
     tags: data.tags,
     domain: data.domain,
+    introduced_in: data.introduced_in,
     supersedes: data.supersedes,
     superseded_by: data.superseded_by,
     filePath: entry.file,
@@ -213,6 +214,7 @@ export function createAdr(title: string, options: {
   author?: string;
   tags?: string[];
   domain?: string;
+  introduced_in?: string;  // component/version (e.g., 'core/1.18.0')
 } = {}): { id: string; file: string } {
   const adrDir = ensureAdrDir();
   const num = getNextAdrNumber();
@@ -234,6 +236,7 @@ export function createAdr(title: string, options: {
     author: options.author || (templateData.author as string) || '',
     tags: options.tags || [],
     domain: options.domain || '',
+    introduced_in: options.introduced_in || '',
     supersedes: '',
     superseded_by: ''
   };
