@@ -4,6 +4,20 @@ All notable changes to the Sailing Framework will be documented in this file.
 
 <!-- NOTE: This is a USER changelog, not a commit log. Focus on user-visible features and benefits, not implementation details. -->
 
+## [1.18.0] - 2026-01-26
+
+### Added
+- **ADR (Architecture Decision Records)**: New artifact type for documenting architectural decisions
+  - CLI commands: `rudder adr:create`, `adr:list`, `adr:show`, `adr:accept`, `adr:deprecate`, `adr:wizard`
+  - MCP conductor tools: `adr_list`, `adr_show`, `adr_create`, `adr_accept`, `adr_deprecate`, `adr_context`
+  - MCP agent tools (read-only): `adr_list`, `adr_show`, `adr_context`
+  - `/dev:adr-scan` command for scanning codebase and proposing ADRs
+- ADR integration in workflow: PRD review, epic review, and breakdown commands now check ADR compliance
+- Agent prompts now include `adr_context` tool for accessing architectural decisions
+
+### Changed
+- MCP agent README updated with current tool documentation
+
 ## [1.17.1] - 2026-01-25
 
 ### Changed
