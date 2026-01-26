@@ -58,6 +58,7 @@ export const ADR_TOOLS = [
                     status: e.data.status,
                     domain: e.data.domain,
                     tags: e.data.tags,
+                    introduced_in: e.data.introduced_in,
                     created: e.data.created
                 }));
                 if (items.length === 0) {
@@ -129,6 +130,7 @@ export const ADR_TOOLS = [
                         author: adr.author,
                         domain: adr.domain,
                         tags: adr.tags,
+                        introduced_in: adr.introduced_in,
                         supersedes: adr.supersedes,
                         superseded_by: adr.superseded_by,
                         context: adr.context,
@@ -158,19 +160,21 @@ export const ADR_TOOLS = [
                         type: 'array',
                         items: { type: 'string' },
                         description: 'Tags for categorization'
-                    }
+                    },
+                    introduced_in: { type: 'string', description: 'Component/version when introduced (e.g., "core/1.18.0")' }
                 },
                 required: ['title']
             }
         },
         handler: (args) => {
-            const { title, author, domain, tags } = args;
+            const { title, author, domain, tags, introduced_in } = args;
             const nextActions = [];
             try {
                 const result = createAdr(title, {
                     author,
                     domain,
-                    tags
+                    tags,
+                    introduced_in
                 });
                 // Suggest editing the new ADR
                 nextActions.push({

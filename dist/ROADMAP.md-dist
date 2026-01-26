@@ -1,0 +1,112 @@
+# Project Name - Roadmap
+
+## Writing Guidelines
+
+> **ROADMAP = Vision & Direction, not Implementation**
+
+| Belongs Here | Move to PRD |
+|--------------|-------------|
+| Vision & why it matters | API endpoints, schemas |
+| High-level architecture | File structures, code paths |
+| Phases with **outcomes** | Implementation steps |
+| Target capabilities | Protocol details |
+| Success criteria | Database models |
+
+**Format**: Use **Now / Next / Later** horizons. Focus on *what we achieve*, not *how we build it*.
+
+---
+
+## Documentation
+
+| File | Purpose |
+|------|---------|
+| **ROADMAP.md** | Vision, phases, outcomes |
+| **POSTIT.md** | Quick ideas triage |
+
+---
+
+## Vision
+
+**One paragraph describing what you're building and why.**
+
+### Why?
+
+- **Reason 1**: Explanation
+- **Reason 2**: Explanation
+- **Reason 3**: Explanation
+
+---
+
+## Architecture
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                         YOUR SYSTEM                              │
+│  ┌──────────┐  ┌──────────┐  ┌──────────┐  ┌──────────────────┐ │
+│  │ Component│  │ Component│  │ Component│  │ Component        │ │
+│  │ A        │  │ B        │  │ C        │  │ D                │ │
+│  └──────────┘  └──────────┘  └──────────┘  └──────────────────┘ │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+### Tech Stack
+
+| Layer | Choice |
+|-------|--------|
+| API | ... |
+| Database | ... |
+| Frontend | ... |
+
+---
+
+## Phases
+
+### NOW: Phase Name
+
+**Outcome**: What is achieved when this phase is complete.
+
+- Capability 1
+- Capability 2
+- Capability 3
+
+**PRD**: PRD-001
+
+---
+
+### NEXT: Phase Name
+
+**Outcome**: What is achieved when this phase is complete.
+
+- Capability 1
+- Capability 2
+
+**PRD**: PRD-002
+
+---
+
+### LATER: Phase Name
+
+**Outcome**: What is achieved when this phase is complete.
+
+- Capability 1
+- Capability 2
+
+**PRD**: Future
+
+---
+
+## Milestones
+
+| Phase | Outcome | PRD | Status |
+|-------|---------|-----|--------|
+| Phase 1 | Description | PRD-001 | Planned |
+| Phase 2 | Description | PRD-002 | Future |
+
+---
+
+## Backlog
+
+> Ideas not yet planned. Promote to PRD when ready.
+
+- **Idea 1**: Description
+- **Idea 2**: Description

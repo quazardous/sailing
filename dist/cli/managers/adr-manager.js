@@ -142,6 +142,7 @@ export function getFullAdr(id) {
         author: data.author,
         tags: data.tags,
         domain: data.domain,
+        introduced_in: data.introduced_in,
         supersedes: data.supersedes,
         superseded_by: data.superseded_by,
         filePath: entry.file,
@@ -201,6 +202,7 @@ export function createAdr(title, options = {}) {
         author: options.author || templateData.author || '',
         tags: options.tags || [],
         domain: options.domain || '',
+        introduced_in: options.introduced_in || '',
         supersedes: '',
         superseded_by: ''
     };
