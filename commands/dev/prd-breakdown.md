@@ -6,8 +6,8 @@ allowed-tools: Read, Write, Edit, Task, mcp
 
 # PRD Breakdown Agent
 
-> **DELEGATION REQUIRED**: This command MUST be executed by a coordinator agent spawned by the skill.
-> The skill NEVER executes this directly. Spawn via `agent_spawn` with role=coordinator.
+> **DELEGATION REQUIRED**: This command MUST be executed by a coordinator agent.
+> The skill NEVER executes this directly. Use native Task() tool.
 
 **Purpose:** Decompose a PRD into epics using MCP tools. Parallelize agents where possible.
 
@@ -27,6 +27,9 @@ This command creates **epics only**. Use `/dev:epic-breakdown` to create tasks a
 
 // MCP: artefact_show - Verify PRD exists and see current epics
 { "id": "PRD-NNN" }
+
+// MCP: adr_context - Get accepted ADRs for context
+{}
 ```
 
 ---
@@ -53,6 +56,7 @@ When spawning an agent for epic creation, ensure the prompt contains:
 | 7 | **Scope guidance**: Explicit in/out-of-scope | If boundaries are ambiguous |
 | 8 | **Epic dependencies**: Which epics block others | If complex dependency graph |
 | 9 | **Tag propagation**: PRD tags to inherit | If PRD has tags |
+| 10 | **ADR context**: Relevant architectural decisions to respect | If ADRs exist for domain |
 
 ---
 

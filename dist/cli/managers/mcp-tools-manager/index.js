@@ -9,6 +9,7 @@ import { AGENT_CONDUCTOR_TOOLS } from './conductor/agent.js';
 import { MEMORY_TOOLS } from './conductor/memory.js';
 import { DEPS_TOOLS } from './conductor/deps.js';
 import { STORY_TOOLS } from './conductor/story.js';
+import { ADR_TOOLS } from './conductor/adr.js';
 import { SYSTEM_TOOLS, setConductorToolsRef } from './conductor/system.js';
 import { err } from './types.js';
 // Re-export AGENT_TOOLS
@@ -21,6 +22,7 @@ export const CONDUCTOR_TOOLS = [
     ...MEMORY_TOOLS,
     ...DEPS_TOOLS,
     ...STORY_TOOLS,
+    ...ADR_TOOLS,
     ...SYSTEM_TOOLS
 ];
 // Set reference for system_help tool

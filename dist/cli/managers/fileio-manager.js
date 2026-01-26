@@ -7,6 +7,23 @@ import fs from 'fs';
 import yaml from 'js-yaml';
 import { parseMarkdown, stringifyMarkdown } from '../lib/markdown.js';
 import { getTemplates, getComponentsFile } from './core-manager.js';
+import { validateHtmlComments } from '../lib/strings.js';
+/**
+ * Get file timestamps (created and modified dates)
+ */
+export function getFileTimestamps(filepath) {
+    try {
+        const stats = fs.statSync(filepath);
+        return {
+            createdAt: stats.birthtime.toISOString(),
+            modifiedAt: stats.mtime.toISOString()
+        };
+    }
+    catch {
+        const now = new Date().toISOString();
+        return { createdAt: now, modifiedAt: now };
+    }
+}
 /**
  * Load a markdown file with frontmatter
  */
@@ -19,9 +36,19 @@ export function loadFile(filepath) {
 }
 /**
  * Save a markdown file with frontmatter
+ * Validates HTML comments are properly closed before writing
  */
 export function saveFile(filepath, data, body) {
     const content = stringifyMarkdown(data, body);
+    // Validate HTML comments before writing
+    const validation = validateHtmlComments(content);
+    if (!validation.valid) {
+        const positions = validation.unclosedAt.map(pos => {
+            const lineNum = content.slice(0, pos).split('\n').length;
+            return `line ${lineNum}`;
+        }).join(', ');
+        throw new Error(`Unclosed HTML comment at ${positions}. Add closing --> tag.`);
+    }
     fs.writeFileSync(filepath, content);
 }
 /**

@@ -3,7 +3,7 @@
  */
 import fs from 'fs';
 import path from 'path';
-import { findPrdDirs, loadFile, saveFile, getPrdsDir, toKebab, loadTemplate, formatId } from '../core-manager.js';
+import { findPrdDirs, loadFile, saveFile, getPrdsDir, toKebab, loadTemplate, formatId, getFileTimestamps } from '../core-manager.js';
 import { nextId } from '../state-manager.js';
 import { extractIdKey } from '../../lib/artefacts.js';
 import { normalizeId } from '../../lib/normalize.js';
@@ -36,13 +36,16 @@ export function buildStoryIndex() {
             if (index.has(key)) {
                 duplicates.push({ key, existing: index.get(key).file, new: filePath });
             }
+            const timestamps = getFileTimestamps(filePath);
             index.set(key, {
                 key,
                 id,
                 file: filePath,
                 prdId: prdIdFromDir(prdDir),
                 prdDir,
-                data: loaded?.data || {}
+                data: loaded?.data || {},
+                createdAt: timestamps.createdAt,
+                modifiedAt: timestamps.modifiedAt
             });
         }
     }

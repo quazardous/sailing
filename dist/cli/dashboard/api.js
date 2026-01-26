@@ -5,7 +5,8 @@ import { getAllVersions, getMainVersion } from '../managers/version-manager.js';
 import { getAllAgentsFromDb } from '../managers/db-manager.js';
 import { getAllFullPrds, buildTaskIndex, buildEpicIndex } from '../managers/artefacts/index.js';
 import { checkPendingMemory, findPrdMemoryFile, findEpicMemoryFile } from '../managers/memory-manager.js';
-import { getConfigValue } from '../managers/core-manager.js';
+import { getConfigValue, findProjectRoot } from '../managers/core-manager.js';
+import os from 'os';
 // Import from dashboard lib (PURE utilities)
 import { initCache, getCachedPrdsData, getCachedBlockers, getCachedPendingMemory, generateStructuredPrdDag, generateStructuredEpicDag, generateStructuredTaskDag, generatePrdGantt, generateEpicGantt, generatePrdOverviewGantt, } from './lib/index.js';
 // Build effort config from managers (called once, reused)
@@ -41,11 +42,17 @@ function fetchPrdsData() {
                 status: task.status,
                 description: task.description,
                 meta: task.meta,
+                createdAt: task.createdAt,
+                modifiedAt: task.modifiedAt,
             })),
+            createdAt: epic.createdAt,
+            modifiedAt: epic.modifiedAt,
         })),
         totalTasks: prd.totalTasks,
         doneTasks: prd.doneTasks,
         progress: prd.progress,
+        createdAt: prd.createdAt,
+        modifiedAt: prd.modifiedAt,
     }));
 }
 /**
@@ -316,6 +323,25 @@ export function createApiV2Routes() {
         catch (error) {
             console.error('API error:', error);
             json(res, { error: 'Failed to generate overview gantt' }, 500);
+        }
+    };
+    // GET /api/v2/project - Project info
+    routes['/api/v2/project'] = (_req, res) => {
+        try {
+            const projectRoot = findProjectRoot();
+            const homeDir = os.homedir();
+            // Get path relative to home
+            const relativePath = projectRoot.startsWith(homeDir)
+                ? '~' + projectRoot.slice(homeDir.length)
+                : projectRoot;
+            json(res, {
+                path: projectRoot,
+                relativePath,
+                name: projectRoot.split('/').pop() || 'Project',
+            });
+        }
+        catch (error) {
+            json(res, { error: 'Failed to get project info' }, 500);
         }
     };
     // GET /api/v2/memory/:type/:id - Get memory content

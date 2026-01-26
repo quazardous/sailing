@@ -53,6 +53,7 @@ const DEFAULT_PATHS = {
     archive: { path: '.sailing/archive', type: 'dir' },
     templates: { path: '.sailing/templates', type: 'dir' },
     prompting: { path: '.sailing/prompting', type: 'dir' },
+    adr: { path: 'docs/ADR', type: 'dir' },
     state: { path: '.sailing/state.json', type: 'file' },
     config: { path: '.sailing/config.yaml', type: 'file' },
     components: { path: '.sailing/components.yaml', type: 'file' },
@@ -544,7 +545,7 @@ export { getPathsInfo, getConfigInfo, getDevInfo } from './info-manager.js';
 // ============================================================================
 // FILE I/O (re-exported from fileio-manager.ts)
 // ============================================================================
-export { loadFile, saveFile, loadTemplate, loadComponents, saveComponents } from './fileio-manager.js';
+export { loadFile, saveFile, loadTemplate, loadComponents, saveComponents, getFileTimestamps } from './fileio-manager.js';
 // ============================================================================
 // CONFIGURATION (re-exported from config-manager.ts)
 // ============================================================================

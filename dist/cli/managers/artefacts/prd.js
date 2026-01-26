@@ -3,7 +3,7 @@
  */
 import fs from 'fs';
 import path from 'path';
-import { findPrdDirs, loadFile, saveFile, getPrdsDir, toKebab, loadTemplate, formatId } from '../core-manager.js';
+import { findPrdDirs, loadFile, saveFile, getPrdsDir, toKebab, loadTemplate, formatId, getFileTimestamps } from '../core-manager.js';
 import { nextId } from '../state-manager.js';
 import { createPrdMemoryFile } from '../memory-manager.js';
 import { extractEpicId } from '../../lib/normalize.js';
@@ -34,12 +34,15 @@ export function buildPrdIndex() {
         if (index.has(num)) {
             duplicates.push({ num, existing: index.get(num).dir, new: prdDir });
         }
+        const timestamps = fs.existsSync(prdFile) ? getFileTimestamps(prdFile) : { createdAt: new Date().toISOString(), modifiedAt: new Date().toISOString() };
         index.set(num, {
             num,
             id,
             dir: prdDir,
             file: prdFile,
-            data: loaded?.data || {}
+            data: loaded?.data || {},
+            createdAt: timestamps.createdAt,
+            modifiedAt: timestamps.modifiedAt
         });
     }
     if (duplicates.length > 0) {
@@ -134,7 +137,9 @@ export function getFullPrd(prdId) {
                     title: task.data?.title || 'Untitled',
                     status: task.data?.status || 'Draft',
                     description: taskLoaded?.body || '',
-                    meta: task.data || {}
+                    meta: task.data || {},
+                    createdAt: task.createdAt,
+                    modifiedAt: task.modifiedAt
                 });
                 totalTasks++;
                 if (task.data?.status === 'Done')
@@ -149,7 +154,9 @@ export function getFullPrd(prdId) {
             status: epic.data?.status || 'Draft',
             description: epicLoaded?.body || '',
             meta: epic.data || {},
-            tasks
+            tasks,
+            createdAt: epic.createdAt,
+            modifiedAt: epic.modifiedAt
         });
     }
     epics.sort((a, b) => a.id.localeCompare(b.id));
@@ -162,7 +169,9 @@ export function getFullPrd(prdId) {
         epics,
         totalTasks,
         doneTasks,
-        progress: totalTasks > 0 ? Math.round((doneTasks / totalTasks) * 100) : 0
+        progress: totalTasks > 0 ? Math.round((doneTasks / totalTasks) * 100) : 0,
+        createdAt: prdEntry.createdAt,
+        modifiedAt: prdEntry.modifiedAt
     };
 }
 /**

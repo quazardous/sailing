@@ -2,7 +2,7 @@
 /**
  * Rudder MCP Server CLI Entry Point
  *
- * Wrapper around mcp/rudder-server.js with project detection.
+ * Wrapper around mcp/agent-server.js with project detection.
  * Uses the same project detection logic as rudder CLI.
  *
  * Usage:
@@ -336,11 +336,11 @@ async function handleStart() {
     }
     finalArgs.push(...passArgs);
     // Find MCP server
-    const mcpServerPath = path.resolve(__dirname, '../mcp/rudder-server.js');
+    const mcpServerPath = path.resolve(__dirname, '../mcp/agent-server.js');
     const logFile = path.join(havenPath, 'mcp.log');
     if (foreground) {
         // Foreground mode
-        console.log(`Starting MCP server...`);
+        console.log(`Starting agent MCP server...`);
         console.log(`  Mode: ${usePortMode ? 'port' : 'socket'}`);
         if (!usePortMode)
             console.log(`  Socket: ${defaultSocket}`);

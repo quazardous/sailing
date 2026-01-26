@@ -286,6 +286,14 @@ export function generatePrdOverviewGantt(prds, effortConfig) {
         const theoreticalSchedule = calculateTheoreticalSchedule(taskData, effortConfig);
         const theoreticalEnvelope = getScheduleEnvelope(theoreticalSchedule);
         const criticalTimespanHours = theoreticalEnvelope.weightedHours;
+        // Calculate done effort (sum of durations for Done tasks)
+        let doneEffortHours = 0;
+        for (const [taskId, taskSchedule] of schedule.entries()) {
+            const taskInfo = taskData.get(taskId);
+            if (taskInfo && taskInfo.status === 'Done') {
+                doneEffortHours += taskSchedule.durationHours;
+            }
+        }
         let status = 'Draft';
         if (prd.doneTasks === prd.totalTasks && prd.totalTasks > 0) {
             status = 'Done';
@@ -293,7 +301,8 @@ export function generatePrdOverviewGantt(prds, effortConfig) {
         else if (prd.doneTasks > 0) {
             status = 'In Progress';
         }
-        const progress = prd.totalTasks > 0 ? Math.round((prd.doneTasks / prd.totalTasks) * 100) : 0;
+        // Progress based on effort (doneEffortHours / totalEffortHours)
+        const progress = envelope.totalHours > 0 ? Math.round((doneEffortHours / envelope.totalHours) * 100) : 0;
         tasks.push({
             id: prd.id,
             name: `${prd.id} ${prd.title}`,
@@ -303,7 +312,8 @@ export function generatePrdOverviewGantt(prds, effortConfig) {
             status,
             progress,
             startedAt: earliestStartedAt,
-            criticalTimespanHours
+            criticalTimespanHours,
+            doneEffortHours
         });
         if (envelope.latestEnd > maxEndHour)
             maxEndHour = envelope.latestEnd;

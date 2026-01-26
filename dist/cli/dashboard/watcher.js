@@ -8,7 +8,10 @@ import fs from 'fs';
 import path from 'path';
 import { getPath } from '../managers/core-manager.js';
 import { broadcast, getConnectionCount } from './websocket.js';
-import { clearCache } from './lib/cache.js';
+import { clearCache as clearDashboardCache } from './lib/cache.js';
+import { clearCache as clearArtefactsCache } from '../managers/artefacts/common.js';
+import { normalizeId } from '../lib/normalize.js';
+import { prdIdFromDir } from '../managers/artefacts/prd.js';
 // =============================================================================
 // Watch Configs from "managers"
 // =============================================================================
@@ -21,7 +24,10 @@ function getArtefactsWatchConfig() {
         patterns: ['*.md'],
         event: 'artefact:updated',
         debounce: 200,
-        onClear: () => clearCache()
+        onClear: () => {
+            clearArtefactsCache(); // Clear managers cache (task/epic/prd indices)
+            clearDashboardCache(); // Clear dashboard lib cache
+        }
     };
 }
 // Future: add more watch configs here
@@ -40,6 +46,43 @@ export function getAllWatchConfigs() {
 // =============================================================================
 const activeWatchers = [];
 const debounceTimers = new Map();
+/**
+ * Extract artefact ID and type from file path using existing managers
+ * Examples:
+ *   prds/PRD-001-xxx/prd.md → { id: 'PRD-001', type: 'prd' }
+ *   prds/PRD-001-xxx/epics/E001-xxx.md → { id: 'E001', type: 'epic' }
+ *   prds/PRD-001-xxx/tasks/T001-xxx.md → { id: 'T001', type: 'task' }
+ */
+function extractArtefactInfo(filepath) {
+    if (!filepath)
+        return null;
+    const filename = path.basename(filepath);
+    // Task: tasks/T001-xxx.md
+    if (filepath.includes('/tasks/') || filepath.includes('\\tasks\\')) {
+        const match = filename.match(/^(T\d+[a-z]?)/i);
+        if (match) {
+            const id = normalizeId(match[1]);
+            return id ? { id, type: 'task' } : null;
+        }
+    }
+    // Epic: epics/E001-xxx.md
+    if (filepath.includes('/epics/') || filepath.includes('\\epics\\')) {
+        const match = filename.match(/^(E\d+[a-z]?)/i);
+        if (match) {
+            const id = normalizeId(match[1]);
+            return id ? { id, type: 'epic' } : null;
+        }
+    }
+    // PRD: prds/PRD-001-xxx/prd.md (filename is prd.md, need parent dir)
+    if (filename === 'prd.md') {
+        const parentDir = path.dirname(filepath);
+        const id = prdIdFromDir(parentDir);
+        if (id && id.match(/^PRD-\d+$/i)) {
+            return { id, type: 'prd' };
+        }
+    }
+    return null;
+}
 /**
  * Check if filename matches any pattern
  */
@@ -81,15 +124,18 @@ function handleChange(config, eventType, filename) {
         if (config.onClear) {
             config.onClear();
         }
-        // Broadcast to WebSocket clients
+        // Extract artefact info using managers
+        const artefactInfo = filename ? extractArtefactInfo(filename) : null;
+        // Broadcast to WebSocket clients with clean ID and type
         const connCount = getConnectionCount();
         broadcast({
             type: config.event,
-            id: filename || '*',
-            message: `File ${eventType}: ${filename || 'unknown'}`,
+            id: artefactInfo?.id || '*',
+            artefactType: artefactInfo?.type,
+            message: `File ${eventType}: ${artefactInfo?.id || filename || 'unknown'}`,
             timestamp: new Date().toISOString()
         });
-        console.log(`[watcher] ${config.event}: ${filename || 'change detected'} (${connCount} clients)`);
+        console.log(`[watcher] ${config.event}: ${artefactInfo?.id || filename || 'change detected'} (${artefactInfo?.type || 'unknown'}) (${connCount} clients)`);
     }, delay));
 }
 /**

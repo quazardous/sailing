@@ -147,7 +147,77 @@ export function getArtefactBody(id) {
     return file?.body || null;
 }
 /**
+ * Find section header position, ignoring headers inside HTML comments
+ * Returns the index of the ## header in the original body, or -1 if not found
+ */
+function findSectionPosition(body, sectionName) {
+    const lines = body.split('\n');
+    let inComment = false;
+    let position = 0;
+    const escapedSection = sectionName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const headerRegex = new RegExp(`^## ${escapedSection}\\s*$`, 'i');
+    for (let i = 0; i < lines.length; i++) {
+        const line = lines[i];
+        // Track HTML comment state
+        const hasOpen = line.includes('<!--');
+        const hasClose = line.includes('-->');
+        if (hasOpen && hasClose) {
+            const openIdx = line.indexOf('<!--');
+            const closeIdx = line.indexOf('-->');
+            if (openIdx > closeIdx) {
+                inComment = true;
+            }
+        }
+        else if (hasOpen) {
+            inComment = true;
+        }
+        else if (hasClose) {
+            inComment = false;
+            position += line.length + 1;
+            continue;
+        }
+        // Skip if inside comment
+        if (!inComment && headerRegex.test(line)) {
+            // Found the section header outside of comments
+            // Now find where this section ends (next ## or end of file)
+            let endPosition = body.length;
+            let searchPos = position + line.length + 1;
+            // Look for next section header (not in comment)
+            let searchInComment = false;
+            for (let j = i + 1; j < lines.length; j++) {
+                const searchLine = lines[j];
+                const searchHasOpen = searchLine.includes('<!--');
+                const searchHasClose = searchLine.includes('-->');
+                if (searchHasOpen && searchHasClose) {
+                    const openIdx = searchLine.indexOf('<!--');
+                    const closeIdx = searchLine.indexOf('-->');
+                    if (openIdx > closeIdx) {
+                        searchInComment = true;
+                    }
+                }
+                else if (searchHasOpen) {
+                    searchInComment = true;
+                }
+                else if (searchHasClose) {
+                    searchInComment = false;
+                    searchPos += searchLine.length + 1;
+                    continue;
+                }
+                if (!searchInComment && /^## /.test(searchLine)) {
+                    endPosition = searchPos;
+                    break;
+                }
+                searchPos += searchLine.length + 1;
+            }
+            return { start: position, end: endPosition };
+        }
+        position += line.length + 1;
+    }
+    return null;
+}
+/**
  * Edit a section in artefact body
+ * IMPORTANT: Ignores ## headers inside HTML comments to prevent corruption.
  */
 export function editArtefactSection(id, section, content, options = {}) {
     if (!_getTask || !_getEpic || !_getPrd || !_getStory) {
@@ -185,10 +255,15 @@ export function editArtefactSection(id, section, content, options = {}) {
     const mode = options.mode || 'replace';
     let body = file.body;
     const sectionHeader = `## ${section}`;
-    const sectionRegex = new RegExp(`(## ${section.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})([\\s\\S]*?)(?=\\n## |$)`, 'i');
-    const match = body.match(sectionRegex);
-    if (match) {
-        const existingContent = match[2];
+    // Find section position, ignoring headers in HTML comments
+    const sectionPos = findSectionPosition(body, section);
+    if (sectionPos) {
+        const beforeSection = body.slice(0, sectionPos.start);
+        const afterSection = body.slice(sectionPos.end);
+        const existingSection = body.slice(sectionPos.start, sectionPos.end);
+        // Extract existing content (everything after the header line)
+        const headerEndIdx = existingSection.indexOf('\n');
+        const existingContent = headerEndIdx >= 0 ? existingSection.slice(headerEndIdx) : '';
         let newSectionContent;
         if (mode === 'append') {
             newSectionContent = existingContent.trimEnd() + '\n\n' + content;
@@ -199,9 +274,10 @@ export function editArtefactSection(id, section, content, options = {}) {
         else {
             newSectionContent = '\n\n' + content + '\n';
         }
-        body = body.replace(sectionRegex, `${sectionHeader}${newSectionContent}`);
+        body = beforeSection + sectionHeader + newSectionContent + afterSection;
     }
     else {
+        // Section not found, append at end
         body = body.trimEnd() + `\n\n${sectionHeader}\n\n${content}\n`;
     }
     saveFile(filePath, file.data, body);

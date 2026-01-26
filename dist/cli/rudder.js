@@ -149,6 +149,7 @@ import { registerAuditCommands } from './commands/audit.js';
 import { registerInstallCommands } from './commands/install.js';
 import { registerMcpConductorCommands } from './commands/mcp-conductor.js';
 import { registerMcpAgentCommands } from './commands/mcp-agent.js';
+import { registerAdrCommands } from './commands/adr.js';
 // Dashboard and conductor moved to rdrctl
 // Expand colon syntax: task:list → task list (first arg only, if it looks like group:command)
 let commandExpanded = false;
@@ -207,6 +208,7 @@ registerAuditCommands(program);
 registerInstallCommands(program);
 registerMcpConductorCommands(program);
 registerMcpAgentCommands(program);
+registerAdrCommands(program);
 // Dashboard and conductor now in rdrctl
 registerUtilCommands(program);
 registerPermissionsCommands(program);

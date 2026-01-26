@@ -6,8 +6,8 @@ allowed-tools: Read, Edit, Glob, Grep, Task, mcp
 
 # PRD Review Agent
 
-> **DELEGATION REQUIRED**: This command MUST be executed by a coordinator agent spawned by the skill.
-> The skill NEVER executes this directly. Spawn via `agent_spawn` with role=coordinator.
+> **DELEGATION REQUIRED**: This command MUST be executed by a coordinator agent.
+> The skill NEVER executes this directly. Use native Task() tool.
 
 **Purpose:** Ensure PRD is complete, consistent, and aligned. Validate milestones and versions.
 
@@ -86,7 +86,32 @@ Example:
 - Check version target alignment
 - Flag mismatches between PRD scope and ROADMAP vision
 
-### 7. Branching Strategy (MANDATORY)
+### 7. ADR (Architecture Decision Records) Check
+
+```json
+// MCP: adr_list - Get existing ADRs
+{ "status": "Accepted" }
+```
+
+**Verify existing ADRs:**
+- Does the PRD respect accepted architectural decisions?
+- List relevant ADRs by domain/tags
+- Flag any conflicts between PRD approach and existing ADRs
+
+**Identify new ADRs needed:**
+- Does the PRD introduce significant architectural decisions?
+- New framework/library choices?
+- New patterns or conventions?
+- Breaking changes to existing architecture?
+
+If new ADRs are needed, propose them:
+```
+📝 Suggested ADR: "Use WebSocket for real-time updates"
+Context: PRD mentions real-time updates requirement
+Proposed decision: Use native WebSocket (not Socket.io)
+```
+
+### 8. Branching Strategy (MANDATORY)
 
 Evaluate and recommend `branching` level for git workflow:
 
@@ -117,7 +142,7 @@ Evaluate and recommend `branching` level for git workflow:
 - Large team with parallel epic work
 - Need sub-feature review gates
 
-### 8. Stories Assessment
+### 9. Stories Assessment
 
 Evaluate if user stories are needed for this PRD.
 
@@ -156,6 +181,11 @@ Evaluate if user stories are needed for this PRD.
 ### ROADMAP Alignment
 - Features implemented: [list]
 - Version match: ✅ / ⚠️
+
+### ADR Assessment
+- Relevant existing ADRs: [list with IDs]
+- Conflicts with ADRs: ✅ None / ⚠️ [list conflicts]
+- New ADRs proposed: [list titles + brief context]
 
 ### Branching Recommendation
 - Recommended: `flat` | `prd` | `epic`

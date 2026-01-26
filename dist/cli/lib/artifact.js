@@ -5,9 +5,11 @@
  * Supports CLI commands and Aider-style SEARCH/REPLACE blocks for agents.
  */
 import fs from 'fs';
+import { validateHtmlComments } from './strings.js';
 /**
  * Parse markdown content into frontmatter and sections
  * Auto-merges duplicate sections by combining their content.
+ * IMPORTANT: Ignores ## headers inside HTML comments to prevent corruption.
  * @param {string} content - Raw markdown content
  * @returns {{ frontmatter: string, sections: Map<string, string>, order: string[] }}
  */
@@ -26,13 +28,46 @@ export function parseMarkdownSections(content) {
         }
     }
     // Parse sections (## headings) - auto-merge duplicates
+    // IMPORTANT: Track HTML comment state to ignore headers inside comments
     const sections = new Map();
     const order = [];
     let currentSection = null;
     let currentContent = [];
     let preamble = []; // Content before first section
+    let inComment = false; // Track if we're inside an HTML comment
     for (let i = frontmatterEnd; i < lines.length; i++) {
         const line = lines[i];
+        // Track HTML comment state (handles single-line and multi-line comments)
+        // Check for comment open/close on this line
+        const hasOpen = line.includes('<!--');
+        const hasClose = line.includes('-->');
+        if (hasOpen && hasClose) {
+            // Single-line comment like <!-- comment --> - state doesn't change
+            // But we need to handle <!-- ... --> ## Header case (rare but possible)
+            const openIdx = line.indexOf('<!--');
+            const closeIdx = line.indexOf('-->');
+            if (openIdx < closeIdx) {
+                // Normal single-line comment, no state change needed
+            }
+            else {
+                // Weird case: --> before <!-- (closing previous, opening new)
+                inComment = true;
+            }
+        }
+        else if (hasOpen) {
+            inComment = true;
+        }
+        else if (hasClose) {
+            inComment = false;
+            // Continue to next line, don't process this line as a heading
+            currentContent.push(line);
+            continue;
+        }
+        // Skip heading detection if inside a comment
+        if (inComment) {
+            currentContent.push(line);
+            continue;
+        }
         const headingMatch = line.match(/^## (.+)$/);
         if (headingMatch) {
             // Save previous section
@@ -111,6 +146,7 @@ export function serializeSections(parsed) {
 }
 /**
  * Parse markdown preserving duplicate sections (for dedup detection)
+ * IMPORTANT: Ignores ## headers inside HTML comments to prevent corruption.
  */
 export function parseMarkdownSectionsRaw(content) {
     const lines = content.split('\n');
@@ -127,12 +163,36 @@ export function parseMarkdownSectionsRaw(content) {
         }
     }
     // Parse sections preserving duplicates
+    // IMPORTANT: Track HTML comment state to ignore headers inside comments
     const sections = [];
     let currentSection = null;
     let currentContent = [];
     let preamble = [];
+    let inComment = false;
     for (let i = frontmatterEnd; i < lines.length; i++) {
         const line = lines[i];
+        // Track HTML comment state
+        const hasOpen = line.includes('<!--');
+        const hasClose = line.includes('-->');
+        if (hasOpen && hasClose) {
+            const openIdx = line.indexOf('<!--');
+            const closeIdx = line.indexOf('-->');
+            if (openIdx > closeIdx) {
+                inComment = true;
+            }
+        }
+        else if (hasOpen) {
+            inComment = true;
+        }
+        else if (hasClose) {
+            inComment = false;
+            currentContent.push(line);
+            continue;
+        }
+        if (inComment) {
+            currentContent.push(line);
+            continue;
+        }
         const headingMatch = line.match(/^## (.+)$/);
         if (headingMatch) {
             // Save previous section
@@ -464,6 +524,21 @@ export function editArtifact(filePath, ops) {
         if (result.applied > 0) {
             content = serializeSections(parsed);
         }
+    }
+    // Validate HTML comments before writing
+    const commentValidation = validateHtmlComments(content);
+    if (!commentValidation.valid) {
+        const positions = commentValidation.unclosedAt.map(pos => {
+            const lineNum = content.slice(0, pos).split('\n').length;
+            return `line ${lineNum}`;
+        }).join(', ');
+        errors.push(`Unclosed HTML comment detected at ${positions}. Add closing --> tag.`);
+        console.error(`[artifact] Unclosed HTML comment at ${positions} - operation cancelled`);
+        return {
+            success: false,
+            applied: 0,
+            errors
+        };
     }
     // Write back if any ops applied
     if (applied > 0) {

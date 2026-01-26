@@ -3,7 +3,7 @@
  */
 import fs from 'fs';
 import path from 'path';
-import { findPrdDirs, loadFile, saveFile, toKebab, loadTemplate, formatId } from '../core-manager.js';
+import { findPrdDirs, loadFile, saveFile, toKebab, loadTemplate, formatId, getFileTimestamps } from '../core-manager.js';
 import { nextId } from '../state-manager.js';
 import { extractIdKey } from '../../lib/artefacts.js';
 import { normalizeId, extractEpicId } from '../../lib/normalize.js';
@@ -42,6 +42,7 @@ export function buildTaskIndex() {
                     duplicates.push({ key, existing: existingEntry.file, new: filePath });
                 }
             }
+            const timestamps = getFileTimestamps(filePath);
             index.set(key, {
                 key,
                 id,
@@ -49,7 +50,9 @@ export function buildTaskIndex() {
                 prdId: prdIdFromDir(prdDir),
                 epicId: extractEpicId(loaded?.data?.parent),
                 prdDir,
-                data: loaded?.data || {}
+                data: loaded?.data || {},
+                createdAt: timestamps.createdAt,
+                modifiedAt: timestamps.modifiedAt
             });
         }
     }
