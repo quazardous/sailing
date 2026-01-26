@@ -40,7 +40,7 @@ assign_release T001
 
 | Mode | Command | Use Case |
 |------|---------|----------|
-| Stdio | `node mcp/rudder-server.js` | Direct Claude usage |
+| Stdio | `node mcp/agent-server.js` | Direct Claude usage |
 | Unix Socket | `--socket /path/mcp.sock` | Sandboxed agents (preferred) |
 | TCP | `--port 9999` | Fallback |
 

@@ -94,3 +94,14 @@ Claim/release lifecycle:
 | TOOLSET.md path | If project has custom build/test commands |
 | TESTING.md path | If task involves writing tests |
 | API.md path | If task involves API changes |
+| ADR context | If accepted ADRs exist relevant to task domain |
+
+### ADR Integration
+
+If ADRs exist, agent receives them via `context_load`:
+```json
+// MCP: adr_context - Included automatically if ADRs exist
+{ "domain": "<task-domain>" }
+```
+
+Agent must respect architectural decisions documented in ADRs.

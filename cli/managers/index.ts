@@ -103,3 +103,21 @@ export {
   EpicMemoryManager
 } from './memory-manager.js';
 export type { PendingMemoryResult, MergeLogsResult } from './memory-manager.js';
+
+// ADR (Architecture Decision Records)
+export {
+  getAdrDir,
+  getAllAdrs,
+  getAdr,
+  getFullAdr,
+  createAdr,
+  updateAdrStatus,
+  getAdrsByStatus,
+  getAdrsByDomain,
+  getAdrsByTags,
+  getAcceptedAdrs,
+  getRelevantAdrs,
+  normalizeAdrId,
+  formatAdrLine,
+  formatAdrsForPrompt
+} from './adr-manager.js';

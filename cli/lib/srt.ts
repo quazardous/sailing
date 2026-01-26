@@ -106,19 +106,19 @@ export function processStreamJsonLine(line: string): string | null {
  */
 export function findMcpServerPath(projectRoot: string): string {
   // Priority 1: Project's own sailing installation
-  const projectMcp = path.join(projectRoot, 'mcp', 'rudder-server.js');
+  const projectMcp = path.join(projectRoot, 'mcp', 'agent-server.js');
   if (fs.existsSync(projectMcp)) {
     return projectMcp;
   }
 
   // Priority 2: Project's node_modules sailing
-  const nodeModulesMcp = path.join(projectRoot, 'node_modules', '@quazardous', 'sailing', 'mcp', 'rudder-server.js');
+  const nodeModulesMcp = path.join(projectRoot, 'node_modules', '@quazardous', 'sailing', 'mcp', 'agent-server.js');
   if (fs.existsSync(nodeModulesMcp)) {
     return nodeModulesMcp;
   }
 
   // Priority 3: Current sailing installation (fallback)
-  return path.resolve(__dirname, '../../mcp/rudder-server.js');
+  return path.resolve(__dirname, '../../mcp/agent-server.js');
 }
 
 /**

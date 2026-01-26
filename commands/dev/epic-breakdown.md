@@ -29,6 +29,9 @@ Decompose epic into tasks. Coordination only, no implementation.
 
 // MCP: artefact_list - Check if stories exist
 { "type": "story", "scope": "PRD-NNN" }
+
+// MCP: adr_context - Get relevant ADRs for task context
+{}
 ```
 
 If Technical Notes empty → escalate.
@@ -80,6 +83,7 @@ Then fill content via `artefact_edit` (see Artefact Editing Rules).
 
 - Tasks = WHAT/WHY, not HOW
 - No implementation code
+- Respect accepted ADRs (include relevant ADR IDs in task context if applicable)
 
 ### Sizing (AI-calibrated)
 

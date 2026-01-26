@@ -1,18 +1,44 @@
-# Rudder MCP Server
+# Rudder MCP Agent Server
 
-MCP server that exposes rudder CLI commands as tools for sandboxed agents.
+MCP server that exposes rudder tools for sandboxed agents.
+
+## Architecture
+
+```
+rdrctl start
+    ↓
+cli/mcp-server.ts (daemon manager)
+    ↓
+spawns: mcp/agent-server.js
+    ↓
+imports: dist/cli/mcp-agent.js
+    ↓
+uses: cli/managers/mcp-tools-manager/agent-tools.ts
+```
 
 ## Usage
+
+### Via rdrctl (recommended)
+
+```bash
+rdrctl start          # Start daemon
+rdrctl start -f       # Start foreground
+rdrctl status         # Check status
+rdrctl stop           # Stop server
+rdrctl restart        # Restart
+rdrctl log            # Tail logs
+```
 
 ### Direct launch
 
 ```bash
-node mcp/rudder-server.js [--task-id TNNN] [--project-root /path]
+node mcp/agent-server.js [--socket /path] [--port 9100] [--project-root /path]
 ```
 
 Options:
-- `--task-id`: Restrict operations to a specific task (for agent isolation)
-- `--project-root`: Path to sailing project (defaults to parent of mcp/)
+- `--socket`: Unix socket path (default: .sailing/haven/mcp.sock)
+- `--port`: TCP port (alternative to socket)
+- `--project-root`: Path to sailing project
 
 ### Claude MCP Configuration
 
@@ -23,25 +49,8 @@ Add to your Claude settings (`.claude/settings.json` or global):
   "mcpServers": {
     "rudder": {
       "command": "node",
-      "args": ["/path/to/sailing/mcp/rudder-server.js"],
+      "args": ["/path/to/sailing/mcp/agent-server.js"],
       "env": {}
-    }
-  }
-}
-```
-
-For agent-specific (task-restricted):
-
-```json
-{
-  "mcpServers": {
-    "rudder": {
-      "command": "node",
-      "args": [
-        "/path/to/sailing/mcp/rudder-server.js",
-        "--task-id", "T042",
-        "--project-root", "/path/to/project"
-      ]
     }
   }
 }
@@ -49,23 +58,105 @@ For agent-specific (task-restricted):
 
 ## Available Tools
 
-| Tool | Description | Agent Restricted |
-|------|-------------|------------------|
-| `task_log` | Log message for a task (info, tip, warn, error, critical) | Yes |
-| `task_show` | Show task details (metadata, description, deliverables) | Yes |
-| `task_show_memory` | Show task memory/context (tips from previous epic work) | Yes |
-| `assign_claim` | Claim task assignment (returns full context for execution) | Yes |
-| `assign_release` | Release task assignment when work is complete | Yes |
-| `deps_show` | Show task dependencies (blockers and blocked-by) | Yes |
-| `task_targets` | Show target versions for task completion | Yes |
-| `context_load` | Load context for an operation (agent bootstrap) | No |
-| `versions` | Show component versions | No |
-| `status` | Show project status overview (PRDs, epics, tasks) | No |
+| Tool | Description |
+|------|-------------|
+| `task_log` | Log message for a task (info, tip, warn, error, critical) |
+| `artefact_show` | Get artefact details (task, epic, prd, story) |
+| `deps_show` | Show dependencies for task or epic |
+| `context_load` | Load execution context for operation |
+| `memory_read` | Read memory hierarchy (project → PRD → epic) |
+| `system_status` | Get project status overview |
+| `adr_list` | List Architecture Decision Records (with domain/tag filtering) |
+| `adr_show` | Get ADR details (read-only) |
+| `adr_context` | Get accepted ADRs formatted for implementation context |
 
-**Agent Restricted**: When `--task-id` is set, only allows operations on that specific task.
+## Tool Details
+
+### task_log
+Log message for task execution.
+
+```json
+{
+  "task_id": "T001",
+  "message": "Starting implementation",
+  "level": "info",
+  "file": "src/feature.ts",
+  "command": "npm test"
+}
+```
+
+Levels: `info`, `tip`, `warn`, `error`, `critical`
+
+### artefact_show
+Get artefact details.
+
+```json
+{
+  "id": "T001",
+  "raw": true
+}
+```
+
+### deps_show
+Get dependencies for task or epic.
+
+```json
+{
+  "id": "T001"
+}
+```
+
+### context_load
+Load execution context for operation.
+
+```json
+{
+  "operation": "T001",
+  "role": "agent"
+}
+```
+
+### memory_read
+Read memory hierarchy.
+
+```json
+{
+  "scope": "E001",
+  "full": false
+}
+```
+
+### adr_list
+List ADRs with optional filtering. Returns `available_domains` and `available_tags` for discovery.
+
+```json
+{
+  "status": "Accepted",
+  "domain": "core",
+  "tags": ["architecture"]
+}
+```
+
+### adr_show
+Get full ADR details.
+
+```json
+{
+  "id": "ADR-001"
+}
+```
+
+### adr_context
+Get accepted ADRs formatted for implementation. Supports `task_id` for future domain/tag inference.
+
+```json
+{
+  "task_id": "T001",
+  "domain": "core",
+  "tags": ["architecture"]
+}
+```
 
 ## Security
 
-When `--task-id` is set, the server restricts all task-specific operations to that task only. This prevents agents from accessing or modifying other tasks.
-
-The server runs outside the sandbox and has full filesystem access to execute rudder commands.
+The agent server provides read-only access to ADRs and limited write access for task logging. Full ADR management (create, accept, deprecate) is only available through the conductor MCP server.

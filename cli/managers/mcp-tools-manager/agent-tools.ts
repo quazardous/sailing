@@ -4,6 +4,13 @@
 import { getConductorManager } from '../conductor-manager.js';
 import { getAllPrds, getAllTasks } from '../artefacts-manager.js';
 import {
+  getAllAdrs,
+  getFullAdr,
+  getRelevantAdrs,
+  normalizeAdrId,
+  getAdrDir
+} from '../adr-manager.js';
+import {
   logTask,
   showArtefact,
   showDeps,
@@ -192,6 +199,174 @@ export const AGENT_TOOLS: ToolDefinition[] = [
           }
         }
       });
+    }
+  },
+  // ADR Tools (read-only for agents)
+  {
+    tool: {
+      name: 'adr_list',
+      description: 'List Architecture Decision Records (read-only). Returns available_domains and available_tags for filtering.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          status: {
+            type: 'string',
+            enum: ['Proposed', 'Accepted', 'Deprecated', 'Superseded'],
+            description: 'Filter by status'
+          },
+          domain: { type: 'string', description: 'Filter by domain (e.g., core, api, frontend)' },
+          tags: {
+            type: 'array',
+            items: { type: 'string' },
+            description: 'Filter by tags (returns ADRs matching any tag)'
+          }
+        }
+      }
+    },
+    handler: (args) => {
+      try {
+        const allEntries = getAllAdrs();
+
+        // Collect available domains and tags from all ADRs
+        const domainsSet = new Set<string>();
+        const tagsSet = new Set<string>();
+        for (const e of allEntries) {
+          if (e.data.domain) domainsSet.add(e.data.domain);
+          for (const t of (e.data.tags || [])) tagsSet.add(t);
+        }
+
+        let entries = allEntries;
+
+        if (args.status) {
+          entries = entries.filter(e => e.data.status === args.status);
+        }
+        if (args.domain) {
+          entries = entries.filter(e => e.data.domain === args.domain);
+        }
+        if (args.tags && (args.tags as string[]).length > 0) {
+          const filterTags = args.tags as string[];
+          entries = entries.filter(e => {
+            const adrTags = e.data.tags || [];
+            return filterTags.some(t => adrTags.includes(t));
+          });
+        }
+
+        const items = entries.map(e => ({
+          id: e.id,
+          title: e.data.title,
+          status: e.data.status,
+          domain: e.data.domain,
+          tags: e.data.tags
+        }));
+
+        return ok({
+          success: true,
+          data: {
+            items,
+            count: items.length,
+            available_domains: [...domainsSet].sort(),
+            available_tags: [...tagsSet].sort(),
+            adr_dir: getAdrDir()
+          }
+        });
+      } catch (error: any) {
+        return err(error.message);
+      }
+    }
+  },
+  {
+    tool: {
+      name: 'adr_show',
+      description: 'Get ADR details (read-only)',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          id: { type: 'string', description: 'ADR ID (e.g., ADR-001, 1)' }
+        },
+        required: ['id']
+      }
+    },
+    handler: (args) => {
+      const id = normalizeAdrId(args.id as string);
+
+      try {
+        const adr = getFullAdr(id);
+
+        if (!adr) {
+          return err(`ADR not found: ${id}`);
+        }
+
+        return ok({
+          success: true,
+          data: {
+            id: adr.id,
+            title: adr.title,
+            status: adr.status,
+            domain: adr.domain,
+            context: adr.context,
+            decision: adr.decision,
+            body: adr.body
+          }
+        });
+      } catch (error: any) {
+        return err(error.message);
+      }
+    }
+  },
+  {
+    tool: {
+      name: 'adr_context',
+      description: 'Get accepted ADRs formatted for implementation context',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          task_id: { type: 'string', description: 'Task ID to infer domain/tags (optional, for future use)' },
+          domain: { type: 'string', description: 'Filter by domain' },
+          tags: {
+            type: 'array',
+            items: { type: 'string' },
+            description: 'Filter by tags (returns ADRs matching any tag)'
+          }
+        }
+      }
+    },
+    handler: (args) => {
+      // TODO: Use task_id to infer domain/tags from task metadata
+      const _taskId = args.task_id as string | undefined;
+
+      try {
+        const adrs = getRelevantAdrs({
+          domain: args.domain as string | undefined,
+          tags: args.tags as string[] | undefined
+        });
+
+        if (adrs.length === 0) {
+          return ok({
+            success: true,
+            data: { count: 0, context: '', message: 'No accepted ADRs found' }
+          });
+        }
+
+        const lines: string[] = [];
+        for (const adr of adrs) {
+          lines.push(`### ${adr.id}: ${adr.title}`);
+          if (adr.decision) {
+            lines.push(`**Decision**: ${adr.decision.split('\n\n')[0]}`);
+          }
+          lines.push('');
+        }
+
+        return ok({
+          success: true,
+          data: {
+            count: adrs.length,
+            adrs: adrs.map(a => ({ id: a.id, title: a.title, domain: a.domain })),
+            context: lines.join('\n')
+          }
+        });
+      } catch (error: any) {
+        return err(error.message);
+      }
     }
   }
 ];
