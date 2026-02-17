@@ -1,0 +1,31 @@
+#!/bin/bash
+# Rudder MCP - Stdio conductor for Claude Code (dist mode)
+# Auto-installed by install.sh
+#
+# Runs mcp-conductor.js in stdio mode (no --socket/--port).
+# Claude Code launches this on demand — no daemon required.
+#
+# Uses node with compiled .js files from .sailing/rudder.
+
+set -e
+
+PROJECT_ROOT="$(realpath "$(dirname "$0")/..")"
+
+# Read source path (.sailing/rudder)
+SOURCE_FILE="$PROJECT_ROOT/.sailing/SAILING_SOURCE"
+if [ ! -f "$SOURCE_FILE" ]; then
+  echo "Error: $SOURCE_FILE not found" >&2
+  echo "Please run install.sh" >&2
+  exit 1
+fi
+SAILING_SOURCE="$(cat "$SOURCE_FILE" | tr -d '[:space:]')"
+
+# Resolve relative paths
+if [[ "$SAILING_SOURCE" != /* ]]; then
+  SAILING_SOURCE="$PROJECT_ROOT/$SAILING_SOURCE"
+fi
+
+export SAILING_PROJECT="$PROJECT_ROOT"
+
+# Dist mode: use node with compiled JS files
+exec node "$SAILING_SOURCE/conductor/mcp-conductor.js" --project-root "$PROJECT_ROOT" "$@"

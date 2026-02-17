@@ -377,6 +377,7 @@ fi
 if [ "$DRY_RUN" = true ]; then
   echo "  Would copy: bin/rudder (from rudder.dist)"
   echo "  Would copy: bin/rdrctl (from rdrctl.dist)"
+  echo "  Would copy: bin/rdrmcp (from rdrmcp.dist)"
   echo "  Would write: .sailing/SAILING_SOURCE"
 else
   # Copy dist wrapper scripts
@@ -387,6 +388,10 @@ else
   copy_file "$SRC/scripts/rdrctl.dist" "bin/rdrctl" false
   chmod +x "bin/rdrctl"
   echo -e "  ${GREEN}Installed: bin/rdrctl (dist mode)${NC}"
+
+  copy_file "$SRC/scripts/rdrmcp.dist" "bin/rdrmcp" false
+  chmod +x "bin/rdrmcp"
+  echo -e "  ${GREEN}Installed: bin/rdrmcp (dist mode)${NC}"
 
   # Create config file for wrappers (relative path to installed dist)
   echo ".sailing/rudder" > "$DEFAULT_SAILING_DIR/SAILING_SOURCE"
@@ -720,6 +725,7 @@ SAILING_IGNORES=(
   ".sailing/db/"
   "bin/rudder"
   "bin/rdrctl"
+  "bin/rdrmcp"
   ".claude/skills/sailing/"
   ".claude/commands/dev/"
 )
@@ -744,9 +750,11 @@ echo
 # =============================================================================
 echo -e "${GREEN}Installation complete!${NC}"
 echo
-echo "MANDATORY -> Rudder mcp (artefacts manipulation):"
-echo "  bin/rdrctl start"
-echo
+if [ "$USE_WORKTREE" = true ]; then
+  echo "MANDATORY -> Start the MCP conductor before using Claude:"
+  echo "  bin/rdrctl start"
+  echo
+fi
 echo "Rudder cli (direct control):"
 echo "  bin/rudder --help"
 echo

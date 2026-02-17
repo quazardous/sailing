@@ -11,6 +11,7 @@ import fs from 'fs';
 import path from 'path';
 import { Command } from 'commander';
 import { findProjectRoot, jsonOut, getPath } from '../managers/core-manager.js';
+import { getAgentConfig } from '../managers/config-manager.js';
 import { addDynamicHelp } from '../lib/help.js';
 
 // =============================================================================
@@ -59,28 +60,47 @@ function saveMcpConfig(config: McpConfig): void {
 }
 
 /**
- * Get default rudder MCP server configuration
- * Uses socat to connect to the conductor socket (must be started separately)
+ * Check if worktree mode is enabled (use_worktrees in config.yaml)
+ * When false (default), inline/stdio mode is used — no daemon needed.
  */
-function getDefaultRudderMcp(): McpServer {
-  const havenPath = getPath('haven');
-  const socketPath = path.join(havenPath, 'mcp-conductor.sock');
-  return {
-    command: 'socat',
-    args: ['-', `UNIX-CONNECT:${socketPath}`]
-  };
+function isWorktreeMode(): boolean {
+  try {
+    const agentConfig = getAgentConfig();
+    return agentConfig.use_worktrees === true;
+  } catch {
+    return false;
+  }
 }
 
 /**
- * Check if rudder MCP config is using the correct socat+socket format
+ * Get default rudder MCP server configuration
+ * - Worktree mode: socat bridge to conductor socket (daemon required)
+ * - Inline mode: direct stdio via bin/rdrmcp (no daemon)
+ */
+function getDefaultRudderMcp(): McpServer {
+  if (isWorktreeMode()) {
+    const havenPath = getPath('haven');
+    const socketPath = path.join(havenPath, 'mcp-conductor.sock');
+    return {
+      command: 'socat',
+      args: ['-', `UNIX-CONNECT:${socketPath}`]
+    };
+  }
+  return { command: 'bin/rdrmcp', args: [] };
+}
+
+/**
+ * Check if rudder MCP config matches the current mode
  */
 function isRudderMcpValid(server: McpServer): boolean {
-  // Valid config uses socat to connect to conductor socket
-  return server.command === 'socat' &&
-    Array.isArray(server.args) &&
-    server.args.length === 2 &&
-    server.args[0] === '-' &&
-    server.args[1].startsWith('UNIX-CONNECT:');
+  if (isWorktreeMode()) {
+    return server.command === 'socat' &&
+      Array.isArray(server.args) &&
+      server.args.length === 2 &&
+      server.args[0] === '-' &&
+      server.args[1].startsWith('UNIX-CONNECT:');
+  }
+  return server.command === 'bin/rdrmcp';
 }
 
 /**
@@ -133,7 +153,9 @@ function fixMcp(options: { dryRun?: boolean; force?: boolean }): {
       saveMcpConfig(config);
     }
     updated = true;
-    reason = 'outdated format (now uses socat + socket)';
+    reason = isWorktreeMode()
+      ? 'outdated format (now uses socat + socket)'
+      : 'mode changed to inline (stdio)';
   } else if (options.force) {
     // Force update even if valid
     if (!options.dryRun) {
@@ -206,11 +228,12 @@ async function doInstall(options: { dryRun?: boolean; force?: boolean; json?: bo
     console.log('Installation\n');
 
     // MCP
+    const modeLabel = isWorktreeMode() ? 'socat + socket' : 'stdio';
     if (mcpResult.added) {
       if (options.dryRun) {
-        console.log('MCP: Would add rudder conductor MCP (socat + socket)');
+        console.log(`MCP: Would add rudder conductor MCP (${modeLabel})`);
       } else {
-        console.log('MCP: Added rudder conductor MCP (socat + socket)');
+        console.log(`MCP: Added rudder conductor MCP (${modeLabel})`);
       }
     } else if (mcpResult.updated) {
       const reasonSuffix = mcpResult.reason ? ` - ${mcpResult.reason}` : '';
@@ -236,8 +259,10 @@ async function doInstall(options: { dryRun?: boolean; force?: boolean; json?: bo
 
     if (!options.dryRun) {
       console.log('\nDone!');
-      console.log('\nReminder: Start the MCP conductor before using Claude:');
-      console.log('  bin/rdrctl start');
+      if (isWorktreeMode()) {
+        console.log('\nReminder: Start the MCP conductor before using Claude:');
+        console.log('  bin/rdrctl start');
+      }
     }
   }
 }
@@ -326,21 +351,27 @@ export function registerInstallCommands(program: Command) {
         jsonOut(result);
       } else {
         const reasonSuffix = result.reason ? ` (${result.reason})` : '';
+        const worktree = isWorktreeMode();
+        const modeLabel = worktree ? 'socat + socket' : 'stdio';
         if (result.added) {
           if (options.dryRun) {
-            console.log('Would add rudder MCP to .mcp.json (socat + socket)');
+            console.log(`Would add rudder MCP to .mcp.json (${modeLabel})`);
           } else {
-            console.log('Added rudder MCP to .mcp.json (socat + socket)');
-            console.log('\nReminder: Start the MCP conductor before using Claude:');
-            console.log('  bin/rdrctl start');
+            console.log(`Added rudder MCP to .mcp.json (${modeLabel})`);
+            if (worktree) {
+              console.log('\nReminder: Start the MCP conductor before using Claude:');
+              console.log('  bin/rdrctl start');
+            }
           }
         } else if (result.updated) {
           if (options.dryRun) {
             console.log(`Would update rudder MCP in .mcp.json${reasonSuffix}`);
           } else {
             console.log(`Updated rudder MCP in .mcp.json${reasonSuffix}`);
-            console.log('\nReminder: Start the MCP conductor before using Claude:');
-            console.log('  bin/rdrctl start');
+            if (worktree) {
+              console.log('\nReminder: Start the MCP conductor before using Claude:');
+              console.log('  bin/rdrctl start');
+            }
           }
         } else {
           console.log('Rudder MCP already configured and valid');

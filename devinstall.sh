@@ -318,6 +318,7 @@ echo -e "${BLUE}Creating bin wrappers...${NC}"
 if [ "$DRY_RUN" = true ]; then
   echo "  Would copy: bin/rudder (from rudder.dev)"
   echo "  Would copy: bin/rdrctl (from rdrctl.dev)"
+  echo "  Would copy: bin/rdrmcp (from rdrmcp.dev)"
   echo "  Would write: .sailing/SAILING_SOURCE"
   echo "  Would write: SAILING_DIST"
 else
@@ -329,6 +330,10 @@ else
   cp "$SCRIPT_DIR/scripts/rdrctl.dev" bin/rdrctl
   chmod +x bin/rdrctl
   echo -e "  ${GREEN}Created: bin/rdrctl${NC}"
+
+  cp "$SCRIPT_DIR/scripts/rdrmcp.dev" bin/rdrmcp
+  chmod +x bin/rdrmcp
+  echo -e "  ${GREEN}Created: bin/rdrmcp${NC}"
 
   # Create config file for wrappers (path to sailing repo)
   echo "$SCRIPT_DIR" > "$DEFAULT_SAILING_DIR/SAILING_SOURCE"

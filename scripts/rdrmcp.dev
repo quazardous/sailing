@@ -1,0 +1,40 @@
+#!/bin/bash
+# Rudder MCP - Stdio conductor for Claude Code (dev mode)
+# Auto-installed by devinstall.sh
+#
+# Runs mcp-conductor.ts in stdio mode (no --socket/--port).
+# Claude Code launches this on demand — no daemon required.
+#
+# Mode (determined by SAILING_DIST file at project root):
+#   - "dev": uses npx tsx with source .ts files (live changes)
+#   - otherwise: uses node with compiled dist/cli/*.js files
+
+set -e
+
+PROJECT_ROOT="$(realpath "$(dirname "$0")/..")"
+
+# Read source path (sailing repo location)
+SOURCE_FILE="$PROJECT_ROOT/.sailing/SAILING_SOURCE"
+if [ ! -f "$SOURCE_FILE" ]; then
+  echo "Error: $SOURCE_FILE not found" >&2
+  echo "Please run devinstall.sh" >&2
+  exit 1
+fi
+SAILING_SOURCE="$(cat "$SOURCE_FILE" | tr -d '[:space:]')"
+
+# Resolve relative paths
+if [[ "$SAILING_SOURCE" != /* ]]; then
+  SAILING_SOURCE="$PROJECT_ROOT/$SAILING_SOURCE"
+fi
+
+export SAILING_PROJECT="$PROJECT_ROOT"
+
+# Check SAILING_DIST to determine mode
+DIST_FILE="$PROJECT_ROOT/SAILING_DIST"
+if [ -f "$DIST_FILE" ] && [ "$(cat "$DIST_FILE" | tr -d '[:space:]')" = "dev" ]; then
+  # Dev mode: use tsx with source .ts files
+  exec npx tsx "$SAILING_SOURCE/cli/conductor/mcp-conductor.ts" --project-root "$PROJECT_ROOT" "$@"
+else
+  # Dist mode: use node with compiled .js files
+  exec node "$SAILING_SOURCE/dist/cli/conductor/mcp-conductor.js" --project-root "$PROJECT_ROOT" "$@"
+fi
