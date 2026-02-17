@@ -18,13 +18,6 @@ milestones:
 # MCP: artefact_update { "id": "<id>", "status": "...", "set": {...} }
 ---
 
-<!--
-MCP multi-section edit (preferred):
-artefact_edit { "id": "<id>", "content": "## Summary\nYour summary...\n\n## Goals\n- [ ] Goal 1\n- [ ] Goal 2\n\n## Technical Approach\nHigh-level approach..." }
-
-With mode: artefact_edit { "id": "<id>", "content": "## Open Questions [append]\n- [ ] New question", "mode": "append" }
--->
-
 ## Summary
 
 One paragraph describing the feature/capability being built.
