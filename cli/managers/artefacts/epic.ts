@@ -168,6 +168,7 @@ export function countEpics(options: EpicQueryOptions = {}): number {
 
 export interface CreateEpicOptions {
   tags?: string[];
+  created_at?: string;
 }
 
 export interface CreateEpicResult {
@@ -196,7 +197,7 @@ export function createEpic(prdId: string, title: string, options: CreateEpicOpti
   const filename = `${id}-${toKebab(title)}.md`;
   const epicPath = path.join(epicsDir, filename);
 
-  const now = new Date().toISOString();
+  const now = options.created_at || new Date().toISOString();
   const data: Epic = {
     id,
     title,

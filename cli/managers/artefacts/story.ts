@@ -165,6 +165,7 @@ export function findStoryFile(storyId: string): string | null {
 export interface CreateStoryOptions {
   type?: 'user' | 'technical' | 'api';
   tags?: string[];
+  created_at?: string;
 }
 
 export interface CreateStoryResult {
@@ -193,7 +194,7 @@ export function createStory(prdId: string, title: string, options: CreateStoryOp
   const filename = `${id}-${toKebab(title)}.md`;
   const storyPath = path.join(storiesDir, filename);
 
-  const now = new Date().toISOString();
+  const now = options.created_at || new Date().toISOString();
   const data: Story = {
     id,
     title,

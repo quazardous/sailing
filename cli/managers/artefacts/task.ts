@@ -184,6 +184,7 @@ export interface CreateTaskOptions {
   stories?: string[];
   tags?: string[];
   targetVersions?: Record<string, string>;
+  created_at?: string;
 }
 
 export interface CreateTaskResult {
@@ -217,7 +218,7 @@ export function createTask(epicId: string, title: string, options: CreateTaskOpt
   const filename = `${id}-${toKebab(title)}.md`;
   const taskPath = path.join(tasksDir, filename);
 
-  const now = new Date().toISOString();
+  const now = options.created_at || new Date().toISOString();
   const data: Task = {
     id,
     title,

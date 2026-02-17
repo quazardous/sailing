@@ -212,13 +212,14 @@ export const ARTEFACT_TOOLS: ToolDefinition[] = [
           type: { type: 'string', enum: ['task', 'epic', 'prd', 'story'], description: 'Artefact type' },
           parent: { type: 'string', description: 'Parent ID (E001 for task, PRD-001 for epic/story)' },
           title: { type: 'string', description: 'Title' },
-          tags: { type: 'array', items: { type: 'string' }, description: 'Tags to add' }
+          tags: { type: 'array', items: { type: 'string' }, description: 'Tags to add' },
+          created_at: { type: 'string', description: 'ISO date for creation timestamp (default: now)' }
         },
         required: ['type', 'title']
       }
     },
     handler: (args) => {
-      const { type, parent, title, tags } = args;
+      const { type, parent, title, tags, created_at } = args;
       const nextActions: NextAction[] = [];
 
       // Validate parent requirement
@@ -235,13 +236,13 @@ export const ARTEFACT_TOOLS: ToolDefinition[] = [
         let result: { id: string; title: string; parent?: string; file?: string; dir?: string };
 
         if (type === 'task') {
-          result = createTask(parent, title, { tags });
+          result = createTask(parent, title, { tags, created_at });
         } else if (type === 'epic') {
-          result = createEpic(parent, title, { tags });
+          result = createEpic(parent, title, { tags, created_at });
         } else if (type === 'prd') {
-          result = createPrd(title, { tags });
+          result = createPrd(title, { tags, created_at });
         } else if (type === 'story') {
-          result = createStory(parent, title, { tags });
+          result = createStory(parent, title, { tags, created_at });
         } else {
           return err(`Unknown artefact type: ${type}`);
         }

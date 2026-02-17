@@ -228,6 +228,7 @@ export function getAllFullPrds(): FullPrd[] {
 
 export interface CreatePrdOptions {
   tags?: string[];
+  created_at?: string;
 }
 
 export interface CreatePrdResult {
@@ -255,7 +256,7 @@ export function createPrd(title: string, options: CreatePrdOptions = {}): Create
   fs.mkdirSync(path.join(prdDir, 'epics'));
   fs.mkdirSync(path.join(prdDir, 'tasks'));
 
-  const now = new Date().toISOString();
+  const now = options.created_at || new Date().toISOString();
   const data: Prd = {
     id,
     title,
