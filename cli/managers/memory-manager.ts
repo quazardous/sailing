@@ -15,6 +15,7 @@ import path from 'path';
 import { getMemoryDir, resolvePlaceholders, resolvePath, getRepoRoot } from './core-manager.js';
 import { getTaskEpic as artefactsGetTaskEpic, getEpicPrd as artefactsGetEpicPrd, getTasksForEpic as artefactsGetTasksForEpic, getMemoryFile, getLogFile, invalidateLogIndex } from './artefacts-manager.js';
 import { normalizeId } from '../lib/normalize.js';
+import { getDigitConfig } from './config-manager.js';
 import { LogFileEntry, MemoryEntry } from '../lib/types/memory.js';
 import {
   extractAllSections,
@@ -73,7 +74,7 @@ export function ensureMemoryDir(): void {
  * Construct expected log file path (for writing new logs)
  */
 export function logFilePath(id: string): string {
-  return path.join(getMemoryDirPath(), `${normalizeId(id)}.log`);
+  return path.join(getMemoryDirPath(), `${normalizeId(id, getDigitConfig())}.log`);
 }
 
 /**
@@ -91,7 +92,7 @@ function findLogFileByIndex(id: string): { path: string; exists: boolean } {
  * Construct expected PRD memory file path (for creating new files)
  */
 export function prdMemoryFilePath(prdId: string): string {
-  return path.join(getMemoryDirPath(), `${normalizeId(prdId)}.md`);
+  return path.join(getMemoryDirPath(), `${normalizeId(prdId, getDigitConfig())}.md`);
 }
 
 /**
@@ -109,7 +110,7 @@ export function findPrdMemoryFile(prdId: string): { path: string; exists: boolea
  * Construct expected epic memory file path (for creating new files)
  */
 export function epicMemoryFilePath(epicId: string): string {
-  return path.join(getMemoryDirPath(), `${normalizeId(epicId)}.md`);
+  return path.join(getMemoryDirPath(), `${normalizeId(epicId, getDigitConfig())}.md`);
 }
 
 /**
@@ -469,7 +470,7 @@ updated: '${now}'
 
 export function createEpicMemoryFile(epicId: string): string {
   ensureMemoryDir();
-  const normalized = normalizeId(epicId);
+  const normalized = normalizeId(epicId, getDigitConfig());
   const mdPath = epicMemoryFilePath(normalized);
 
   // Don't overwrite existing memory file
