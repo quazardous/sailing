@@ -1,6 +1,7 @@
 /**
  * Common artefact utilities - cache and shared operations
  */
+import fs from 'fs';
 import { loadFile, saveFile } from '../core-manager.js';
 import { normalizeId } from '../../lib/normalize.js';
 import { parseMultiSectionContent, editArtifact, applySearchReplace, parseMarkdownSections, serializeSections } from '../../lib/artifact.js';
@@ -40,6 +41,24 @@ export function setPrdIndex(index: Map<number, PrdIndexEntry>) { _prdIndex = ind
 export function setStoryIndex(index: Map<string, StoryIndexEntry>) { _storyIndex = index; }
 export function setMemoryIndex(index: Map<string, { key: string; type: 'epic' | 'prd'; file: string }>) { _memoryIndex = index; }
 export function setLogIndex(index: Map<string, { key: string; type: 'epic' | 'task'; file: string }>) { _logIndex = index; }
+
+// ============================================================================
+// TIMESTAMP HELPERS
+// ============================================================================
+
+/**
+ * Stamp updated_at on data, backfill created_at from file mtime if missing.
+ */
+function stampDates(data: Record<string, unknown>, filePath: string): void {
+  if (!data.created_at) {
+    try {
+      data.created_at = fs.statSync(filePath).mtime.toISOString();
+    } catch {
+      data.created_at = new Date().toISOString();
+    }
+  }
+  data.updated_at = new Date().toISOString();
+}
 
 // ============================================================================
 // UPDATE FUNCTIONS (shared across types)
@@ -143,7 +162,7 @@ export function updateArtefact(id: string, options: UpdateArtefactOptions): Upda
   }
 
   if (updated) {
-    data.updated_at = new Date().toISOString();
+    stampDates(data, entry.file);
     saveFile(entry.file, data, file.body);
     clearCache();
   }
@@ -341,7 +360,8 @@ export function editArtefactSection(id: string, section: string, content: string
     body = body.trimEnd() + `\n\n${sectionHeader}\n\n${content}\n`;
   }
 
-  const data = { ...file.data, updated_at: new Date().toISOString() };
+  const data = { ...file.data };
+  stampDates(data, filePath);
   saveFile(filePath, data, body);
   clearCache();
 
@@ -395,11 +415,12 @@ export function editArtefactMultiSection(id: string, content: string, defaultOp:
     throw new Error(result.errors?.join(', ') || 'Edit failed');
   }
 
-  // editArtifact writes directly — reload to stamp updated_at
+  // editArtifact writes directly — reload to stamp dates
   if (result.applied > 0) {
     const file = loadFile(filePath);
     if (file) {
-      const data = { ...file.data, updated_at: new Date().toISOString() };
+      const data = { ...file.data };
+      stampDates(data, filePath);
       saveFile(filePath, data, file.body);
     }
   }
@@ -518,7 +539,8 @@ export function patchArtefact(
     }
   }
 
-  const data = { ...file.data, updated_at: new Date().toISOString() };
+  const data = { ...file.data };
+  stampDates(data, filePath);
   saveFile(filePath, data, body);
   clearCache();
 
