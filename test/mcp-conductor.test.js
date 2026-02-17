@@ -149,7 +149,7 @@ describe('MCP Conductor - Artefact Tools', () => {
 
       // Verify directory name (kebab-case, accents stripped)
       const dirName = path.basename(path.dirname(parsed.data.file));
-      assert.ok(dirName.includes('cave-vin'), 'Directory should be kebab-case');
+      assert.ok(dirName.includes('cave-a-vin'), 'Directory should be kebab-case');
     });
 
     it('should create PRD with special characters in title', async () => {
@@ -295,23 +295,197 @@ describe('MCP Conductor - Artefact Tools', () => {
   });
 
   // --------------------------------------------------------------------------
+  // artefact_edit - patch mode tests
+  // --------------------------------------------------------------------------
+
+  describe('artefact_edit - patch mode', () => {
+    let patchPrdId;
+    let patchPrdFile;
+
+    before(async () => {
+      // Create a PRD with known content for patch tests
+      const createTool = getTool('artefact_create');
+      const createResult = await createTool.handler({
+        type: 'prd',
+        title: 'Patch Mode Test PRD'
+      });
+      const created = parseResult(createResult);
+      patchPrdId = created.data.id;
+      patchPrdFile = created.data.file;
+
+      // Add sections with known content
+      const editTool = getTool('artefact_edit');
+      await editTool.handler({
+        id: patchPrdId,
+        content: '## Summary\n\nThis is the original summary text.\n\n## Open Questions\n\n- [ ] Question obsolète\n- [ ] Another question\n- Item alpha beta gamma'
+      });
+      clearCache();
+    });
+
+    it('should patch a word in a section (old_string/new_string + section)', async () => {
+      const editTool = getTool('artefact_edit');
+      const result = await editTool.handler({
+        id: patchPrdId,
+        old_string: 'original summary',
+        new_string: 'updated summary',
+        section: 'Summary'
+      });
+
+      const parsed = parseResult(result);
+      assert.strictEqual(parsed.success, true);
+
+      const content = fs.readFileSync(patchPrdFile, 'utf8');
+      assert.ok(content.includes('updated summary text'), 'Should have patched the word');
+      assert.ok(!content.includes('original summary'), 'Should no longer contain old text');
+    });
+
+    it('should patch without section (search in full body)', async () => {
+      const editTool = getTool('artefact_edit');
+      const result = await editTool.handler({
+        id: patchPrdId,
+        old_string: 'Another question',
+        new_string: 'A different question'
+      });
+
+      const parsed = parseResult(result);
+      assert.strictEqual(parsed.success, true);
+
+      const content = fs.readFileSync(patchPrdFile, 'utf8');
+      assert.ok(content.includes('A different question'), 'Should have patched in full body');
+      assert.ok(!content.includes('Another question'), 'Should no longer contain old text');
+    });
+
+    it('should error when old_string not found', async () => {
+      const editTool = getTool('artefact_edit');
+      const result = await editTool.handler({
+        id: patchPrdId,
+        old_string: 'text that does not exist anywhere',
+        new_string: 'replacement'
+      });
+
+      const parsed = parseResult(result);
+      assert.strictEqual(parsed.success, false);
+      assert.ok(parsed.error.includes('not found'), 'Should report not found error');
+    });
+
+    it('should error when old_string === new_string', async () => {
+      const editTool = getTool('artefact_edit');
+      const result = await editTool.handler({
+        id: patchPrdId,
+        old_string: 'same text',
+        new_string: 'same text'
+      });
+
+      const parsed = parseResult(result);
+      assert.strictEqual(parsed.success, false);
+      assert.ok(parsed.error.includes('identical'), 'Should report identical strings error');
+    });
+
+    it('should patch with multiline old_string/new_string', async () => {
+      const editTool = getTool('artefact_edit');
+      const result = await editTool.handler({
+        id: patchPrdId,
+        old_string: '- [ ] Question obsolète',
+        new_string: '- [x] Question résolue',
+        section: 'Open Questions'
+      });
+
+      const parsed = parseResult(result);
+      assert.strictEqual(parsed.success, true);
+
+      const content = fs.readFileSync(patchPrdFile, 'utf8');
+      assert.ok(content.includes('- [x] Question résolue'), 'Should have patched checkbox');
+      assert.ok(!content.includes('Question obsolète'), 'Should no longer contain old checkbox');
+    });
+
+    it('should patch using regexp mode', async () => {
+      const editTool = getTool('artefact_edit');
+      const result = await editTool.handler({
+        id: patchPrdId,
+        old_string: 'alpha \\w+ gamma',
+        new_string: 'alpha delta gamma',
+        regexp: true
+      });
+
+      const parsed = parseResult(result);
+      assert.strictEqual(parsed.success, true);
+
+      const content = fs.readFileSync(patchPrdFile, 'utf8');
+      assert.ok(content.includes('alpha delta gamma'), 'Should have applied regex patch');
+    });
+
+    it('should error when regexp pattern not found', async () => {
+      const editTool = getTool('artefact_edit');
+      const result = await editTool.handler({
+        id: patchPrdId,
+        old_string: 'zzz\\d{5}zzz',
+        new_string: 'replacement',
+        regexp: true,
+        section: 'Summary'
+      });
+
+      const parsed = parseResult(result);
+      assert.strictEqual(parsed.success, false);
+      assert.ok(parsed.error.includes('not found'), 'Should report not found for regexp');
+    });
+
+    it('should return context lines around the patch', async () => {
+      const editTool = getTool('artefact_edit');
+      const result = await editTool.handler({
+        id: patchPrdId,
+        old_string: 'updated summary',
+        new_string: 'refined summary'
+      });
+
+      const parsed = parseResult(result);
+      assert.strictEqual(parsed.success, true);
+      assert.ok(parsed.data.context, 'Should include context');
+      assert.ok(parsed.data.context.includes('refined summary'), 'Context should contain the new text');
+    });
+
+    it('should error when content is missing and not in patch mode', async () => {
+      const editTool = getTool('artefact_edit');
+      const result = await editTool.handler({
+        id: patchPrdId
+        // no content, no old_string/new_string
+      });
+
+      const parsed = parseResult(result);
+      assert.strictEqual(parsed.success, false);
+      assert.ok(parsed.error.includes('content'), 'Should require content or patch params');
+    });
+  });
+
+  // --------------------------------------------------------------------------
   // artefact_show tests
   // --------------------------------------------------------------------------
 
   describe('artefact_show', () => {
-    it('should show PRD details', async () => {
-      // Create a PRD first
+    let showPrdId;
+
+    before(async () => {
+      // Create a PRD with sections for show tests
       const createTool = getTool('artefact_create');
       const createResult = await createTool.handler({
         type: 'prd',
         title: 'Show Test PRD'
       });
       const created = parseResult(createResult);
+      showPrdId = created.data.id;
 
-      // Show it
+      // Add known sections
+      const editTool = getTool('artefact_edit');
+      await editTool.handler({
+        id: showPrdId,
+        content: '## Summary\n\nShort summary here.\n\n## Open Questions\n\n- Question A\n- Question B'
+      });
+      clearCache();
+    });
+
+    it('should show PRD details with raw body', async () => {
       const showTool = getTool('artefact_show');
       const showResult = await showTool.handler({
-        id: created.data.id,
+        id: showPrdId,
         raw: true
       });
 
@@ -319,6 +493,32 @@ describe('MCP Conductor - Artefact Tools', () => {
       assert.strictEqual(shown.success, true);
       assert.strictEqual(shown.data.title, 'Show Test PRD');
       assert.ok(shown.data.body, 'Should include body when raw=true');
+    });
+
+    it('should return only requested section', async () => {
+      const showTool = getTool('artefact_show');
+      const showResult = await showTool.handler({
+        id: showPrdId,
+        section: 'Open Questions'
+      });
+
+      const shown = parseResult(showResult);
+      assert.strictEqual(shown.success, true);
+      assert.strictEqual(shown.data.section, 'Open Questions');
+      assert.ok(shown.data.body.includes('Question A'), 'Should contain section content');
+      assert.ok(!shown.data.body.includes('Short summary'), 'Should NOT contain other sections');
+    });
+
+    it('should error when section not found in show', async () => {
+      const showTool = getTool('artefact_show');
+      const showResult = await showTool.handler({
+        id: showPrdId,
+        section: 'Nonexistent Section'
+      });
+
+      const shown = parseResult(showResult);
+      assert.strictEqual(shown.success, false);
+      assert.ok(shown.error.includes('not found'), 'Should report section not found');
     });
   });
 });

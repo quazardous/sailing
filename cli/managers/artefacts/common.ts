@@ -3,7 +3,7 @@
  */
 import { loadFile, saveFile } from '../core-manager.js';
 import { normalizeId } from '../../lib/normalize.js';
-import { parseMultiSectionContent, editArtifact } from '../../lib/artifact.js';
+import { parseMultiSectionContent, editArtifact, applySearchReplace, parseMarkdownSections, serializeSections } from '../../lib/artifact.js';
 import type {
   TaskIndexEntry,
   EpicIndexEntry,
@@ -400,6 +400,129 @@ export function editArtefactMultiSection(id: string, content: string, defaultOp:
     sections: ops.map(op => op.section),
     updated: true
   };
+}
+
+// ============================================================================
+// PATCH FUNCTION (old_string → new_string)
+// ============================================================================
+
+export interface PatchArtefactResult {
+  id: string;
+  section?: string;
+  updated: boolean;
+  context?: string;
+}
+
+/**
+ * Patch artefact body using old_string → new_string replacement.
+ * If section is provided, scopes the search to that section only.
+ * If regexp is true, old_string is treated as a regex pattern.
+ */
+export function patchArtefact(
+  id: string,
+  oldString: string,
+  newString: string,
+  options: { section?: string; regexp?: boolean } = {}
+): PatchArtefactResult {
+  if (!_getTask || !_getEpic || !_getPrd || !_getStory) {
+    throw new Error('Getters not initialized. Call setGetters first.');
+  }
+
+  if (oldString === newString) {
+    throw new Error('old_string and new_string are identical — nothing to change');
+  }
+
+  const normalized = normalizeId(id);
+  let filePath: string | null = null;
+
+  if (normalized.startsWith('T')) {
+    const task = _getTask(normalized);
+    if (task) filePath = task.file;
+  } else if (normalized.startsWith('E')) {
+    const epic = _getEpic(normalized);
+    if (epic) filePath = epic.file;
+  } else if (normalized.startsWith('PRD-')) {
+    const prd = _getPrd(normalized);
+    if (prd) filePath = prd.file;
+  } else if (normalized.startsWith('S')) {
+    const story = _getStory(normalized);
+    if (story) filePath = story.file;
+  }
+
+  if (!filePath) {
+    throw new Error(`Artefact not found: ${id}`);
+  }
+
+  const file = loadFile(filePath);
+  if (!file) {
+    throw new Error(`Could not load file: ${filePath}`);
+  }
+
+  let body = file.body;
+
+  if (options.section) {
+    // Scope to a specific section
+    const parsed = parseMarkdownSections(`---\n---\n${body}`);
+    const sectionContent = parsed.sections.get(options.section);
+
+    if (sectionContent === undefined) {
+      throw new Error(`Section not found: ${options.section}`);
+    }
+
+    let newContent: string;
+    if (options.regexp) {
+      const regex = new RegExp(oldString, 'g');
+      if (!regex.test(sectionContent)) {
+        throw new Error(`old_string pattern not found in section "${options.section}"`);
+      }
+      newContent = sectionContent.replace(new RegExp(oldString, 'g'), newString);
+    } else {
+      const result = applySearchReplace(sectionContent, oldString, newString);
+      if (!result.success) {
+        throw new Error(`old_string not found in section "${options.section}"`);
+      }
+      newContent = result.content!;
+    }
+
+    parsed.sections.set(options.section, newContent);
+    // Serialize back — strip the dummy frontmatter we added
+    const serialized = serializeSections(parsed);
+    // Remove the "---\n---\n" prefix
+    const fmEnd = serialized.indexOf('---', 3);
+    body = serialized.slice(fmEnd + 4); // skip "---\n"
+  } else {
+    // Full body patch
+    if (options.regexp) {
+      const regex = new RegExp(oldString, 'g');
+      if (!regex.test(body)) {
+        throw new Error('old_string pattern not found in artefact body');
+      }
+      body = body.replace(new RegExp(oldString, 'g'), newString);
+    } else {
+      const result = applySearchReplace(body, oldString, newString);
+      if (!result.success) {
+        throw new Error('old_string not found in artefact body');
+      }
+      body = result.content!;
+    }
+  }
+
+  saveFile(filePath, file.data, body);
+  clearCache();
+
+  // Extract context lines around the replacement
+  const contextLines = 2;
+  const bodyLines = body.split('\n');
+  const newStringFirstLine = newString.split('\n')[0];
+  const matchIdx = bodyLines.findIndex(l => l.includes(newStringFirstLine));
+  let context: string | undefined;
+  if (matchIdx >= 0) {
+    const start = Math.max(0, matchIdx - contextLines);
+    const end = Math.min(bodyLines.length, matchIdx + newString.split('\n').length + contextLines);
+    context = bodyLines.slice(start, end).join('\n');
+  }
+
+  return { id: normalized, section: options.section, updated: true, context };
 }
 
 // ============================================================================
