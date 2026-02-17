@@ -63,7 +63,7 @@ cp disttpl/*.yaml-dist disttpl/*.md-dist "$WORK_DIR/dist/" 2>/dev/null || true
 
 # CLI wrappers (from scripts/*.dist)
 mkdir -p "$WORK_DIR/scripts"
-cp scripts/rudder.dist scripts/rdrctl.dist "$WORK_DIR/scripts/"
+cp scripts/rudder.dist scripts/rdrctl.dist scripts/rdrmcp.dist "$WORK_DIR/scripts/"
 
 # Prompting fragments
 cp -r prompting "$WORK_DIR/"
