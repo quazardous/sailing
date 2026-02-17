@@ -4,6 +4,8 @@ title: Title
 status: Draft
 # branching: flat | prd | epic (only if agent.use_worktrees, set by prd-review)
 tags: []
+created_at: ''
+updated_at: ''
 milestones:
   - id: M1
     name: MVP functional

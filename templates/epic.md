@@ -8,6 +8,8 @@ blocked_by: []
 stories: []
 tags: []
 target_versions: {}
+created_at: ''
+updated_at: ''
 # MCP: artefact_update { "id": "<id>", "status": "...", "set": {...} }
 ---
 

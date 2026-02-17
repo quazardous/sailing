@@ -196,12 +196,15 @@ export function createEpic(prdId: string, title: string, options: CreateEpicOpti
   const filename = `${id}-${toKebab(title)}.md`;
   const epicPath = path.join(epicsDir, filename);
 
+  const now = new Date().toISOString();
   const data: Epic = {
     id,
     title,
     status: 'Draft',
     parent: prd.id,
-    tags: options.tags?.map(t => toKebab(t)) || []
+    tags: options.tags?.map(t => toKebab(t)) || [],
+    created_at: now,
+    updated_at: now
   };
 
   let body = loadTemplate('epic');

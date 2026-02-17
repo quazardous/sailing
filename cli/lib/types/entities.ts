@@ -8,6 +8,8 @@ export interface BaseEntity {
   status: string;
   parent: string;
   tags?: string[];
+  created_at?: string;  // ISO date string, set at creation
+  updated_at?: string;  // ISO date string, auto-updated on save
 }
 
 export interface Task extends BaseEntity {

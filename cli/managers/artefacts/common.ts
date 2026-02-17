@@ -143,6 +143,7 @@ export function updateArtefact(id: string, options: UpdateArtefactOptions): Upda
   }
 
   if (updated) {
+    data.updated_at = new Date().toISOString();
     saveFile(entry.file, data, file.body);
     clearCache();
   }
@@ -340,7 +341,8 @@ export function editArtefactSection(id: string, section: string, content: string
     body = body.trimEnd() + `\n\n${sectionHeader}\n\n${content}\n`;
   }
 
-  saveFile(filePath, file.data, body);
+  const data = { ...file.data, updated_at: new Date().toISOString() };
+  saveFile(filePath, data, body);
   clearCache();
 
   return { id: normalized, section, updated: true };
@@ -391,6 +393,15 @@ export function editArtefactMultiSection(id: string, content: string, defaultOp:
 
   if (!result.success) {
     throw new Error(result.errors?.join(', ') || 'Edit failed');
+  }
+
+  // editArtifact writes directly — reload to stamp updated_at
+  if (result.applied > 0) {
+    const file = loadFile(filePath);
+    if (file) {
+      const data = { ...file.data, updated_at: new Date().toISOString() };
+      saveFile(filePath, data, file.body);
+    }
   }
 
   clearCache();
@@ -507,7 +518,8 @@ export function patchArtefact(
     }
   }
 
-  saveFile(filePath, file.data, body);
+  const data = { ...file.data, updated_at: new Date().toISOString() };
+  saveFile(filePath, data, body);
   clearCache();
 
   // Extract context lines around the replacement

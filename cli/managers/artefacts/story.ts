@@ -193,13 +193,16 @@ export function createStory(prdId: string, title: string, options: CreateStoryOp
   const filename = `${id}-${toKebab(title)}.md`;
   const storyPath = path.join(storiesDir, filename);
 
+  const now = new Date().toISOString();
   const data: Story = {
     id,
     title,
     status: 'Draft',
     parent: prd.id,
     type: options.type || 'user',
-    tags: options.tags?.map(t => toKebab(t)) || []
+    tags: options.tags?.map(t => toKebab(t)) || [],
+    created_at: now,
+    updated_at: now
   };
 
   let body = loadTemplate('story');

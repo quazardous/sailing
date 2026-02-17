@@ -255,12 +255,15 @@ export function createPrd(title: string, options: CreatePrdOptions = {}): Create
   fs.mkdirSync(path.join(prdDir, 'epics'));
   fs.mkdirSync(path.join(prdDir, 'tasks'));
 
+  const now = new Date().toISOString();
   const data: Prd = {
     id,
     title,
     status: 'Draft',
     parent: '',
-    tags: options.tags?.map(t => toKebab(t)) || []
+    tags: options.tags?.map(t => toKebab(t)) || [],
+    created_at: now,
+    updated_at: now
   };
 
   let body = loadTemplate('prd');

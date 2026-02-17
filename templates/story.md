@@ -4,6 +4,8 @@ title: Story Title
 parent: PRD-NNN
 parent_story: null
 type: user
+created_at: ''
+updated_at: ''
 # MCP: artefact_update { "id": "<id>", "status": "...", "set": {...} }
 ---
 

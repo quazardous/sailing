@@ -217,6 +217,7 @@ export function createTask(epicId: string, title: string, options: CreateTaskOpt
   const filename = `${id}-${toKebab(title)}.md`;
   const taskPath = path.join(tasksDir, filename);
 
+  const now = new Date().toISOString();
   const data: Task = {
     id,
     title,
@@ -228,7 +229,9 @@ export function createTask(epicId: string, title: string, options: CreateTaskOpt
     tags: options.tags?.map(t => toKebab(t)) || [],
     effort: '1h',
     priority: 'normal',
-    target_versions: options.targetVersions || {}
+    target_versions: options.targetVersions || {},
+    created_at: now,
+    updated_at: now
   };
 
   let body = loadTemplate('task');
