@@ -6,229 +6,10 @@
  *   rudder archive PRD-001 --force  # Archive even if not done
  *   rudder archive PRD-001 --dry-run # Show what would be archived
  */
-import fs from 'fs';
 import path from 'path';
-import { getArchiveDir, getMemoryDir, loadFile, saveFile, findProjectRoot } from '../managers/core-manager.js';
-import { getPrd, buildPrdIndex, clearCache } from '../managers/artefacts-manager.js';
-import { findEpicPrd, findTaskEpic } from '../managers/memory-manager.js';
-import { normalizeId } from '../lib/normalize.js';
-import { getGit } from '../lib/git.js';
+import { archivePrd, getDonePrds, isPrdDone, getPrdStatus } from '../managers/archive-manager.js';
+import { getPrd } from '../managers/artefacts-manager.js';
 import { withModifies } from '../lib/help.js';
-/**
- * Move file/directory using git mv if in git repo, otherwise fs.rename
- */
-async function moveFile(src, dest) {
-    const cwd = findProjectRoot();
-    const git = getGit(cwd);
-    const isRepo = await git.checkIsRepo();
-    if (isRepo) {
-        try {
-            await git.mv(src, dest);
-            return 'git';
-        }
-        catch {
-            // Fallback to fs if git mv fails
-            const destDir = path.dirname(dest);
-            if (!fs.existsSync(destDir)) {
-                fs.mkdirSync(destDir, { recursive: true });
-            }
-            fs.renameSync(src, dest);
-            return 'fs';
-        }
-    }
-    else {
-        // Ensure parent directory exists
-        const destDir = path.dirname(dest);
-        if (!fs.existsSync(destDir)) {
-            fs.mkdirSync(destDir, { recursive: true });
-        }
-        fs.renameSync(src, dest);
-        return 'fs';
-    }
-}
-/**
- * Check if PRD has status "Done"
- */
-function isPrdDone(prdDir) {
-    const prdFile = path.join(prdDir, 'prd.md');
-    if (!fs.existsSync(prdFile))
-        return false;
-    const loaded = loadFile(prdFile);
-    return loaded?.data?.status === 'Done';
-}
-/**
- * Get PRD status for error message
- */
-function getPrdStatus(prdDir) {
-    const prdFile = path.join(prdDir, 'prd.md');
-    if (!fs.existsSync(prdFile))
-        return 'unknown';
-    const loaded = loadFile(prdFile);
-    return loaded?.data?.status || 'unknown';
-}
-/**
- * Get all memory files associated with a PRD using reverse indexing
- * Scans memory dir and uses findEpicPrd/findTaskEpic to determine ownership
- * Returns array of {id, type, file} for PRD, epic, and task memory files (.md and .log)
- */
-function getPrdMemoryFiles(targetPrdId) {
-    const memoryFiles = [];
-    const memDir = getMemoryDir();
-    if (!fs.existsSync(memDir))
-        return memoryFiles;
-    // Normalize target PRD ID for comparison
-    const normalizedPrdId = normalizeId(targetPrdId);
-    // Scan all files in memory directory
-    const allFiles = fs.readdirSync(memDir);
-    for (const file of allFiles) {
-        const filePath = path.join(memDir, file);
-        const ext = path.extname(file);
-        // Only process .md and .log files
-        if (ext !== '.md' && ext !== '.log')
-            continue;
-        const baseName = path.basename(file, ext);
-        // PRD memory files (PRD-001.md, PRD-001.log)
-        if (baseName.match(/^PRD-?\d+$/i)) {
-            const prdId = normalizeId(baseName);
-            if (prdId === normalizedPrdId) {
-                memoryFiles.push({ id: prdId, type: 'prd', file: filePath });
-            }
-            continue;
-        }
-        // Epic memory files (E001.md, E001.log)
-        if (baseName.match(/^E\d+[a-z]?$/i)) {
-            const epicId = normalizeId(baseName);
-            const epicPrd = findEpicPrd(epicId);
-            if (epicPrd && normalizeId(epicPrd) === normalizedPrdId) {
-                memoryFiles.push({ id: epicId, type: 'epic', file: filePath });
-            }
-            continue;
-        }
-        // Task log files (T001.log)
-        if (baseName.match(/^T\d+[a-z]?$/i) && ext === '.log') {
-            const taskId = normalizeId(baseName);
-            const taskInfo = findTaskEpic(taskId);
-            if (taskInfo) {
-                const epicPrd = findEpicPrd(taskInfo.epicId);
-                if (epicPrd && normalizeId(epicPrd) === normalizedPrdId) {
-                    memoryFiles.push({ id: taskId, type: 'task', file: filePath });
-                }
-            }
-            continue;
-        }
-    }
-    return memoryFiles;
-}
-/**
- * Add archived_at to PRD frontmatter
- */
-function addArchivedAt(prdFile) {
-    const loaded = loadFile(prdFile);
-    if (!loaded)
-        return false;
-    loaded.data.archived_at = new Date().toISOString();
-    saveFile(prdFile, loaded.data, loaded.body || '');
-    return true;
-}
-/**
- * Archive a PRD
- */
-async function archivePrd(prdId, options = {}) {
-    const { force = false, dryRun = false } = options;
-    // Find PRD
-    const prd = getPrd(prdId);
-    if (!prd) {
-        console.error(`✗ PRD not found: ${prdId}`);
-        process.exit(1);
-    }
-    const prdDirName = path.basename(prd.dir);
-    const prdFile = path.join(prd.dir, 'prd.md');
-    // Check if done (skip check for dry-run - always show preview)
-    const isDone = isPrdDone(prd.dir);
-    if (!dryRun && !force && !isDone) {
-        const status = getPrdStatus(prd.dir);
-        console.error(`✗ PRD ${prd.id} is not done (status: ${status})`);
-        process.exit(1);
-    }
-    // Get memory files (must be done BEFORE moving PRD folder - uses index for reverse lookup)
-    const memoryFiles = getPrdMemoryFiles(prd.id);
-    // Prepare archive paths
-    const archiveDir = getArchiveDir();
-    const archivePrdsDir = path.join(archiveDir, 'prds');
-    const archiveMemoryDir = path.join(archiveDir, 'memory', prdDirName);
-    const archivePrdDest = path.join(archivePrdsDir, prdDirName);
-    // Show what will be done
-    console.log(dryRun ? '=== Dry Run ===' : `=== Archiving ${prd.id} ===`);
-    console.log();
-    console.log(`PRD folder:`);
-    console.log(`  ${prd.dir}`);
-    console.log(`  → ${archivePrdDest}`);
-    console.log();
-    if (memoryFiles.length > 0) {
-        console.log(`Memory files (${memoryFiles.length}):`);
-        for (const m of memoryFiles) {
-            const destFile = path.join(archiveMemoryDir, path.basename(m.file));
-            console.log(`  ${m.id}: ${path.basename(m.file)}`);
-            console.log(`    → ${destFile}`);
-        }
-        console.log();
-    }
-    else {
-        console.log(`Memory files: none`);
-        console.log();
-    }
-    if (dryRun) {
-        if (!isDone) {
-            const status = getPrdStatus(prd.dir);
-            console.log(`⚠ PRD is not done (status: ${status})`);
-            console.log();
-        }
-        console.log(`(dry-run mode, no changes made)`);
-        return;
-    }
-    // Create archive directories
-    if (!fs.existsSync(archivePrdsDir)) {
-        fs.mkdirSync(archivePrdsDir, { recursive: true });
-    }
-    // Check if destination already exists
-    if (fs.existsSync(archivePrdDest)) {
-        console.error(`✗ Archive destination already exists: ${archivePrdDest}`);
-        process.exit(1);
-    }
-    // Add archived_at to prd.md
-    if (fs.existsSync(prdFile)) {
-        addArchivedAt(prdFile);
-        console.log(`✓ Added archived_at to prd.md`);
-    }
-    // Move memory files first
-    if (memoryFiles.length > 0) {
-        for (const m of memoryFiles) {
-            const destFile = path.join(archiveMemoryDir, path.basename(m.file));
-            const method = await moveFile(m.file, destFile);
-            console.log(`✓ Moved ${m.id} memory${method === 'git' ? ' (git)' : ''}`);
-        }
-    }
-    // Move PRD folder
-    const method = await moveFile(prd.dir, archivePrdDest);
-    console.log(`✓ Moved PRD folder${method === 'git' ? ' (git)' : ''}`);
-    // Clear index cache
-    clearCache();
-    console.log();
-    console.log(`✓ ${prd.id} archived successfully`);
-}
-/**
- * Get all PRDs with status Done
- */
-function getDonePrds() {
-    const prdIndex = buildPrdIndex();
-    const donePrds = [];
-    for (const [, prd] of prdIndex) {
-        if (prd.data?.status === 'Done') {
-            donePrds.push(prd);
-        }
-    }
-    return donePrds;
-}
 /**
  * List PRDs that are Done (ready to archive)
  */
@@ -247,6 +28,42 @@ function listDonePrds() {
     console.log('Use: rudder archive <prd-id> [--dry-run]');
 }
 /**
+ * Archive a PRD (CLI wrapper with console output)
+ */
+async function archivePrdCli(prdId, options) {
+    const { force = false, dryRun = false } = options;
+    if (dryRun) {
+        // Show detailed dry-run preview
+        const prd = getPrd(prdId);
+        if (!prd) {
+            console.error(`\u2717 PRD not found: ${prdId}`);
+            process.exit(1);
+        }
+        const isDone = isPrdDone(prd.dir);
+        console.log('=== Dry Run ===');
+        console.log();
+        console.log(`PRD folder:`);
+        console.log(`  ${prd.dir}`);
+        console.log();
+        if (!isDone) {
+            const status = getPrdStatus(prd.dir);
+            console.log(`\u26A0 PRD is not done (status: ${status})`);
+            console.log();
+        }
+        console.log(`(dry-run mode, no changes made)`);
+        return;
+    }
+    const result = await archivePrd(prdId, { force, dryRun: false });
+    if (!result.success) {
+        console.error(`\u2717 ${result.error}`);
+        process.exit(1);
+    }
+    console.log(`\u2713 ${result.prdId} archived successfully`);
+    if (result.movedFiles && result.movedFiles.length > 0) {
+        console.log(`  Moved ${result.movedFiles.length} items`);
+    }
+}
+/**
  * Archive all Done PRDs
  */
 async function archiveAllDone(dryRun = false) {
@@ -258,7 +75,7 @@ async function archiveAllDone(dryRun = false) {
     console.log(`${dryRun ? '=== Dry Run ===' : '=== Archiving all Done PRDs ==='}\n`);
     for (const prd of donePrds) {
         console.log(`--- ${prd.id} ---`);
-        await archivePrd(prd.id, { force: false, dryRun });
+        await archivePrdCli(prd.id, { force: false, dryRun });
         console.log();
     }
 }
@@ -276,7 +93,7 @@ export function registerArchiveCommands(program) {
         .action(async (prdId, options) => {
         if (options.all) {
             if (options.force) {
-                console.error('✗ --all and --force are incompatible');
+                console.error('\u2717 --all and --force are incompatible');
                 process.exit(1);
             }
             await archiveAllDone(options.dryRun || false);
@@ -286,7 +103,7 @@ export function registerArchiveCommands(program) {
             listDonePrds();
             return;
         }
-        await archivePrd(prdId, {
+        await archivePrdCli(prdId, {
             force: options.force || false,
             dryRun: options.dryRun || false
         });

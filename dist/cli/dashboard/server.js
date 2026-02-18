@@ -14,6 +14,24 @@ import { fileURLToPath } from 'url';
 import { handleWebSocketUpgrade, closeAll as closeWsConnections } from './websocket.js';
 import { startWatchers, stopWatchers } from './watcher.js';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
+/**
+ * Parse JSON body from a POST request
+ */
+export async function parseBody(req) {
+    return new Promise((resolve, reject) => {
+        const chunks = [];
+        req.on('data', (chunk) => chunks.push(chunk));
+        req.on('end', () => {
+            try {
+                resolve(JSON.parse(Buffer.concat(chunks).toString()));
+            }
+            catch {
+                resolve(null);
+            }
+        });
+        req.on('error', reject);
+    });
+}
 const DEFAULT_TIMEOUT = 300; // 5 minutes
 export function createServer(port, routes, options = {}) {
     const timeoutSeconds = options.timeout === undefined || options.timeout === 0
@@ -43,6 +61,14 @@ export function createServer(port, routes, options = {}) {
             const pathname = url.pathname;
             // CORS for local dev
             res.setHeader('Access-Control-Allow-Origin', '*');
+            res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+            res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+            // Handle CORS preflight
+            if (req.method === 'OPTIONS') {
+                res.writeHead(204);
+                res.end();
+                return;
+            }
             // Vue app: serve index.html for root if Vue is enabled and built
             if (enableVue && pathname === '/' && vueDistExists()) {
                 return serveVueIndex(res);
@@ -52,17 +78,36 @@ export function createServer(port, routes, options = {}) {
                 return serveVueAsset(pathname, res);
             }
             // Route matching (exact match first, then pattern match)
+            // Routes can be plain pathnames (match any method) or "METHOD pathname" (match specific method)
+            const method = req.method || 'GET';
+            function matchRoute(routeKey) {
+                // Check if route has a method prefix (e.g. "POST /api/v2/archive/:id")
+                const spaceIdx = routeKey.indexOf(' ');
+                if (spaceIdx > 0 && routeKey.substring(0, spaceIdx).match(/^[A-Z]+$/)) {
+                    const routeMethod = routeKey.substring(0, spaceIdx);
+                    const routePath = routeKey.substring(spaceIdx + 1);
+                    if (routeMethod !== method)
+                        return false;
+                    if (routePath.includes(':')) {
+                        const regex = new RegExp('^' + routePath.replace(/:(\w+)/g, '([^/]+)') + '$');
+                        return regex.test(pathname);
+                    }
+                    return routePath === pathname;
+                }
+                // No method prefix - match any method
+                if (routeKey.includes(':')) {
+                    const regex = new RegExp('^' + routeKey.replace(/:(\w+)/g, '([^/]+)') + '$');
+                    return regex.test(pathname);
+                }
+                return routeKey === pathname;
+            }
             // Skip "/" route if Vue is enabled (handled above)
-            let handler = (enableVue && vueDistExists() && pathname === '/') ? undefined : routes[pathname];
-            // Try pattern matching for dynamic routes like /api/prd/:id
-            if (!handler) {
-                for (const [pattern, h] of Object.entries(routes)) {
-                    if (pattern.includes(':')) {
-                        const regex = new RegExp('^' + pattern.replace(/:(\w+)/g, '([^/]+)') + '$');
-                        if (regex.test(pathname)) {
-                            handler = h;
-                            break;
-                        }
+            let handler;
+            if (!(enableVue && vueDistExists() && pathname === '/')) {
+                for (const [routeKey, h] of Object.entries(routes)) {
+                    if (matchRoute(routeKey)) {
+                        handler = h;
+                        break;
                     }
                 }
             }

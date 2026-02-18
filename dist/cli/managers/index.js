@@ -34,5 +34,7 @@ export { getAgentConfig, getGitConfig, getMainBranch, getIdsConfig, getConfigVal
 export { escalateOnTaskStart, cascadeTaskCompletion, escalateEpicToInProgress, escalatePrdToInProgress, checkAndUpdateEpicAutoDone, checkAndUpdatePrdAutoDone } from './status-manager.js';
 // Memory and log operations
 export { checkPendingMemory, countTaskTips, getLogStats, getEpicMemory, EpicMemoryManager } from './memory-manager.js';
+// Archive operations
+export { archivePrd, getDonePrds, isPrdDone, getPrdStatus } from './archive-manager.js';
 // ADR (Architecture Decision Records)
 export { getAdrDir, getAllAdrs, getAdr, getFullAdr, createAdr, updateAdrStatus, getAdrsByStatus, getAdrsByDomain, getAdrsByTags, getAcceptedAdrs, getRelevantAdrs, normalizeAdrId, formatAdrLine, formatAdrsForPrompt } from './adr-manager.js';
