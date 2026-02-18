@@ -177,6 +177,32 @@ export function validateVariables(templateName, variables) {
     };
 }
 /**
+ * Render an arbitrary .njk file (not limited to prompting/templates/).
+ * Creates an isolated Nunjucks env rooted at the template's parent dir (for {% include %}).
+ */
+export function renderFile(absolutePath, variables) {
+    if (!fs.existsSync(absolutePath)) {
+        return null;
+    }
+    try {
+        const dir = path.dirname(absolutePath);
+        const filename = path.basename(absolutePath);
+        // Isolated env rooted at template's directory (for relative includes)
+        const fileEnv = nunjucks.configure(dir, {
+            autoescape: false,
+            trimBlocks: true,
+            lstripBlocks: true
+        });
+        const rendered = fileEnv.render(filename, variables);
+        // Strip header comment from output (same as renderTemplate)
+        return rendered.replace(/^\{#[\s\S]*?#\}\s*\n?/, '').trim();
+    }
+    catch (error) {
+        console.error(`Template render error (${absolutePath}):`, error.message);
+        return null;
+    }
+}
+/**
  * Clear template cache (for hot reload during dev)
  */
 export function clearTemplateCache() {

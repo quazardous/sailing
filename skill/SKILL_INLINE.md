@@ -3,7 +3,7 @@ name: sailing
 description: Project governance via PRD → Epic → Task workflow.
 allowed-tools: Read, Write, Edit, Glob, Grep, Task, mcp
 ---
-<!-- DO NOT EDIT DIRECTLY - see BUILD_SKILL.md -->
+<!-- DO NOT EDIT DIRECTLY - generated from SKILL.md.njk -->
 
 # Sailing
 

@@ -3,6 +3,7 @@ description: Start all ready tasks in parallel (project)
 argument-hint: "[PRD-NNN] [--limit N]"
 allowed-tools: Read, Edit, Glob, Task, mcp
 ---
+<!-- DO NOT EDIT DIRECTLY - generated from tasks-batch.md.njk -->
 
 # Batch Start Ready Tasks
 
@@ -32,14 +33,7 @@ The batch runner prepares and launches work, then steps aside.
 ```
 
 This tells you:
-- **Execution mode**: subprocess vs inline
-- **Worktree isolation**: enabled/disabled
-- How to spawn agents (agent_spawn vs Task tool)
-
-**⚠️ NO AUTO-FALLBACK**: If worktree mode is enabled but fails (no git, no commits, spawn error):
-- DO NOT switch to inline mode on your own
-- STOP and report the error to user
-- Constitutional rule: "When in doubt: stop, log, escalate — never guess."
+- Your configuration and project context
 
 ---
 
@@ -109,21 +103,7 @@ This tells you:
    - User decides whether to reset them
    - This command is NOT idempotent — re-running may spawn duplicate work
 
-   **Mode: subprocess** (`use_subprocess: true`):
-   ```json
-   // MCP: agent_spawn
-   { "task_id": "T101" }
-   // Repeat for each task
-   ```
-
-   Each spawn:
-   - Streams agent output to console
-   - Shows heartbeat every 30s
-   - Auto-reaps on completion (merge + cleanup + status update)
-
-   If worktree isolation is enabled, each agent gets its own git worktree.
-
-   **Mode: inline** (`use_subprocess: false`):
+   **Spawn inline agents**:
    * Spawn agents in a **single message** using multiple `Task` tools
    * Each agent runs `context_load` to get its full context
 
@@ -136,19 +116,6 @@ This tells you:
 
 7. **Results**
 
-   **Mode: subprocess**:
-
-   Results are handled automatically by spawn:
-   - Agent output streamed to console
-   - Heartbeat shows progress every 30s
-   - On completion: auto-merge, cleanup, status update
-
-   **If reap fails (conflicts, errors):**
-   - Command outputs next steps
-   - Follow the guidance or escalate to user
-   - Example: `/dev:merge T042` for conflict resolution
-
-   **Mode: inline**:
    * Wait for Task tool agents to complete
    * Summarize outcomes (Done / Blocked)
    * Report newly unblocked tasks if relevant
@@ -217,6 +184,7 @@ Implement the deliverables. No scope expansion.
 ## 3. Complete
 
 Exit normally. The skill will call `assign_release { "task_id": "{TNNN}" }` after you return.
+```
 
 ---
 

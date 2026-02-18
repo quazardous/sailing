@@ -3,6 +3,7 @@ description: Merge agent work into target branch
 argument-hint: <TNNN>
 allowed-tools: mcp, Bash
 ---
+<!-- DO NOT EDIT DIRECTLY - generated from merge.md.njk -->
 
 # Merge Agent
 
@@ -31,10 +32,6 @@ allowed-tools: mcp, Bash
 { "id": "TNNN" }
 ```
 
-Check the mode header at context start:
-- `worktrees: disabled` → use **Standard Workflow**
-- `worktrees: enabled` → use **Worktree Workflow**
-
 ---
 
 ## Arguments
@@ -42,67 +39,14 @@ Check the mode header at context start:
 ```bash
 /dev:merge T042           # Merge specific task
 /dev:merge --all          # Merge all ready tasks (in order)
-/dev:merge --pr 123       # Merge by PR number (worktree mode)
-```
-
----
-
-# Standard Workflow (No Worktrees)
-
-Default mode. Agent work is on feature branches or direct commits.
-
-## 1. Locate Changes
-
-```bash
-# Check task status
-# MCP: artefact_show { "id": "TNNN" }
-
-# Find commits (convention: feat(TNNN): ...)
-git log --oneline --grep="TNNN" main
-git log --oneline --author="agent" --since="1 day ago"
-```
-
-## 2. Review Changes
-
-```bash
-# See what changed
-git diff main...HEAD --stat
-git log main..HEAD --oneline
-```
-
-## 3. Merge
-
-```bash
-# Simple fast-forward if possible
-git checkout main
-git pull origin main
-git merge --ff-only feature/TNNN 2>/dev/null || git merge feature/TNNN --no-edit
-
-# Or cherry-pick specific commits
-git cherry-pick <commit-sha>
-```
-
-## 4. Cleanup
-
-```bash
-# If using worktree mode:
-# MCP: agent_cleanup { "task_id": "TNNN", "force": true }
-
-# If standard mode (no worktree):
-git branch -d task/TNNN
-```
-
-Mark task done:
-```json
-// MCP: artefact_update
-{ "id": "TNNN", "status": "Done" }
+/dev:merge --pr 123       # Merge by PR number
 ```
 
 ---
 
 # Worktree Workflow
 
-When worktrees are enabled, agents work in isolated git worktrees with dedicated branches.
+Agents work in isolated git worktrees with dedicated branches.
 
 ## Pre-flight (Worktree)
 
@@ -289,13 +233,8 @@ When resolving conflicts, the coordinator has access to:
 
 When merging multiple tasks:
 
-```bash
-# Standard mode: merge by commit order
-git log --oneline --grep="T0" main | head -10
-```
-
 ```json
-// Worktree mode: use preflight for order
+// Use preflight for merge order
 // MCP: agent_preflight
 {}
 // Returns: merge_order: [T042, T043, T044]
