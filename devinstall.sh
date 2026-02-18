@@ -651,6 +651,40 @@ else
 fi
 echo
 
+# Update .gitignore (installed files should not be committed)
+echo -e "${BLUE}Updating .gitignore...${NC}"
+
+GITIGNORE=".gitignore"
+[ ! -f "$GITIGNORE" ] && touch "$GITIGNORE"
+
+SAILING_IGNORES=(
+  "# Sailing framework (installed, not project-specific)"
+  ".sailing/rudder/"
+  ".sailing/templates/"
+  ".sailing/prompting/"
+  ".sailing/db/"
+  "bin/rudder"
+  "bin/rdrctl"
+  "bin/rdrmcp"
+  ".claude/skills/sailing/"
+  ".claude/commands/dev/"
+)
+
+ADDED=0
+for entry in "${SAILING_IGNORES[@]}"; do
+  if ! grep -qxF "$entry" "$GITIGNORE" 2>/dev/null; then
+    echo "$entry" >> "$GITIGNORE"
+    ADDED=$((ADDED + 1))
+  fi
+done
+
+if [ $ADDED -gt 0 ]; then
+  echo -e "  ${GREEN}Added $ADDED entries to .gitignore${NC}"
+else
+  echo "  Already configured"
+fi
+echo
+
 # Done
 echo -e "${GREEN}Dev install complete!${NC}"
 echo
