@@ -10,7 +10,7 @@
 #
 # Options:
 #   --global              Install rudder CLI globally via npm
-#   --force               Force overwrite protected files
+#   --reset               Reset all files including protected config
 #   --dry-run             Show what would be done without doing it
 #   --use-worktree        Enable worktree mode (subprocess, isolation)
 #   --folders-profile=X   Use folder profile: project (default), haven, sibling
@@ -42,7 +42,7 @@ DEFAULT_COMMANDS=".claude/commands/dev"
 
 # Parse arguments
 GLOBAL=false
-FORCE=false
+RESET=false
 FIX=false
 DRY_RUN=false
 USE_WORKTREE=false
@@ -54,8 +54,8 @@ while [[ $# -gt 0 ]]; do
       GLOBAL=true
       shift
       ;;
-    --force)
-      FORCE=true
+    --reset)
+      RESET=true
       shift
       ;;
     --fix)
@@ -313,7 +313,7 @@ echo
 # =============================================================================
 echo -e "${BLUE}Installing files...${NC}"
 
-# Protected files (never overwritten unless --force)
+# Protected files (never overwritten unless --reset)
 PROTECTED_FILES=(
   "$DEFAULT_SAILING_DIR/state.json"
   "$DEFAULT_SAILING_DIR/components.yaml"
@@ -332,7 +332,7 @@ copy_file() {
   fi
 
   if [ -f "$dest" ]; then
-    if [ "$protected" = "true" ] && [ "$FORCE" != "true" ]; then
+    if [ "$protected" = "true" ] && [ "$RESET" != "true" ]; then
       echo -e "  ${YELLOW}Preserved: $dest${NC}"
       return
     fi
@@ -558,7 +558,7 @@ if [ -n "$FOLDERS_PROFILE" ]; then
   }
 
   # Check if paths.yaml already exists
-  if [ -f "$PATHS_FILE" ] && [ "$FORCE" != "true" ]; then
+  if [ -f "$PATHS_FILE" ] && [ "$RESET" != "true" ]; then
     # Migrate old %placeholder% to ${placeholder} syntax
     if grep -q '%haven%\|%sibling%\|%project_hash%' "$PATHS_FILE" 2>/dev/null; then
       if [ "$FIX" = true ]; then
@@ -580,7 +580,7 @@ if [ -n "$FOLDERS_PROFILE" ]; then
       check_haven_path "state" "state.json"
       # components.yaml always stays in .sailing/ (default)
     else
-      echo -e "${YELLOW}paths.yaml already exists, skipping (use --force to overwrite or --fix to update)${NC}"
+      echo -e "${YELLOW}paths.yaml already exists, skipping (use --reset to overwrite or --fix to update)${NC}"
     fi
   else
     if [ "$DRY_RUN" = true ]; then

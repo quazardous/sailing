@@ -20,7 +20,7 @@ YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 NC='\033[0m'
 
-FORCE=false
+RESET=false
 FIX=false
 DRY_RUN=false
 USE_WORKTREE=false
@@ -42,7 +42,7 @@ do_mkdir() {
   fi
 }
 
-# Dry-run aware copy (protected = skip if exists unless --force)
+# Dry-run aware copy (protected = skip if exists unless --reset)
 do_cp() {
   local src="$1"
   local dest="$2"
@@ -52,7 +52,7 @@ do_cp() {
     return
   fi
 
-  if [ -f "$dest" ] && [ "$protected" = true ] && [ "$FORCE" != true ]; then
+  if [ -f "$dest" ] && [ "$protected" = true ] && [ "$RESET" != true ]; then
     echo -e "  ${YELLOW}Preserved: $dest${NC}"
     return
   fi
@@ -71,7 +71,7 @@ do_ln() {
   local link="$2"
 
   if [ -L "$link" ] || [ -e "$link" ]; then
-    if [ "$FORCE" = true ]; then
+    if [ "$RESET" = true ]; then
       if [ "$DRY_RUN" = true ]; then
         echo "  Would replace: $link → $target"
       else
@@ -98,7 +98,7 @@ do_write() {
   local content="$2"
   local protected="${3:-false}"
 
-  if [ -f "$dest" ] && [ "$protected" = true ] && [ "$FORCE" != true ]; then
+  if [ -f "$dest" ] && [ "$protected" = true ] && [ "$RESET" != true ]; then
     echo -e "  ${YELLOW}Preserved: $dest${NC}"
     return
   fi
@@ -127,7 +127,7 @@ while [[ $# -gt 0 ]]; do
       echo "For standalone installation, use install.sh instead."
       echo
       echo "Options:"
-      echo "  --force              Force overwrite existing files"
+      echo "  --reset              Reset all files including protected config"
       echo "  --fix                Auto-fix configuration issues"
       echo "  --dry-run            Show what would be done without doing it"
       echo "  --self               Install within the sailing repo itself (for development)"
@@ -138,13 +138,13 @@ while [[ $# -gt 0 ]]; do
       echo "Examples:"
       echo "  cd /path/to/my-project"
       echo "  /path/to/sailing/devinstall.sh"
-      echo "  /path/to/sailing/devinstall.sh --force"
+      echo "  /path/to/sailing/devinstall.sh --reset"
       echo "  /path/to/sailing/devinstall.sh --dry-run"
       echo
       exit 0
       ;;
-    --force)
-      FORCE=true
+    --reset)
+      RESET=true
       shift
       ;;
     --fix)
@@ -410,14 +410,14 @@ for f in "$SCRIPT_DIR/commands/dev"/*.md; do
 done
 echo
 
-# 9. Copy protected files if they don't exist (or --force)
+# 9. Copy protected files if they don't exist (or --reset)
 echo -e "${BLUE}Checking protected files...${NC}"
 
 do_mkdir "$(dirname "$COMPONENTS_FILE")"
 
 # Generate paths.yaml from schema if it doesn't exist
 PATHS_FILE="$DEFAULT_SAILING_DIR/paths.yaml"
-if [ ! -f "$PATHS_FILE" ] || [ "$FORCE" = true ]; then
+if [ ! -f "$PATHS_FILE" ] || [ "$RESET" = true ]; then
   # Determine profile based on --use-worktree
   PATHS_PROFILE="${FOLDERS_PROFILE:-}"
   if [ "$DRY_RUN" = true ]; then
