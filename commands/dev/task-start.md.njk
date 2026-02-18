@@ -1,8 +1,13 @@
+{#
+variables:
+  mode: inline|worktree  # Execution mode
+#}
 ---
 description: Start task (autonomous mode)
 argument-hint: <TNNN>
 allowed-tools: Read, Edit, Glob, Task, mcp
 ---
+<!-- DO NOT EDIT DIRECTLY - generated from task-start.md.njk -->
 
 ## Pre-flight (MANDATORY)
 
@@ -12,7 +17,7 @@ allowed-tools: Read, Edit, Glob, Task, mcp
 ```
 
 The output includes a **Workflow: task-start** section with steps filtered for your execution mode:
-- **inline**: Steps include `assign:claim --role agent` (for Task tool agent)
+{% if mode == 'worktree' %}
 - **subprocess**: Steps include `agent:spawn` (for subprocess execution)
 
 Follow the workflow steps exactly as shown. No conditionals to interpret — just execute the steps.
@@ -23,8 +28,12 @@ If **Worktree Isolation** section appears, agent runs in isolated git branch.
 - DO NOT switch to inline mode silently
 - STOP and report the error to user
 - Constitutional rule: "When in doubt: stop, log, escalate — never guess."
+{% else %}
+- **inline**: Steps include `assign:claim --role agent` (for Task tool agent)
 
-## Agent Prompt Template (Inline Mode)
+Follow the workflow steps exactly as shown. No conditionals to interpret — just execute the steps.
+
+## Agent Prompt Template
 
 For inline agents spawned via Task tool:
 
@@ -63,18 +72,25 @@ Implement the deliverables. No scope expansion.
 3. Return control without attempting partial fixes
 
 **You MUST NOT commit, push, or modify git state.**
+```
+{% endif %}
 
-## Modes
+## Lifecycle
 
+{% if mode == 'worktree' %}
 | Mode | Workflow |
 |------|----------|
-| **Inline** (non-subprocess) | Skill spawns Task tool → agent calls `context_load` → skill calls `assign_release` |
-| **Subprocess** (default) | `agent_spawn` pre-claims → launches Claude → agent calls `context_load` → auto-release on exit 0 |
+| **Subprocess** | `agent_spawn` pre-claims → launches Claude → agent calls `context_load` → auto-release on exit 0 |
 | **Worktree** (subprocess+isolation) | Same as subprocess but agent runs in isolated git branch |
 
-Claim/release lifecycle:
-- **Inline**: Agent calls `context_load`, skill calls `assign_release` after agent returns
-- **Subprocess**: Spawn pre-claims, auto-release on exit code 0
+- Spawn pre-claims, auto-release on exit code 0
+{% else %}
+| Mode | Workflow |
+|------|----------|
+| **Inline** | Skill spawns Task tool → agent calls `context_load` → skill calls `assign_release` |
+
+- Agent calls `context_load`, skill calls `assign_release` after agent returns
+{% endif %}
 
 ## Role Mapping (optional refinement)
 
