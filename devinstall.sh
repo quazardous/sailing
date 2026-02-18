@@ -345,12 +345,20 @@ else
 fi
 echo
 
-# 7. Create symlinks & build skill
+# 7. Build CLI (if needed) & build skill
 echo -e "${BLUE}Building skill files...${NC}"
 if [ "$DRY_RUN" = true ]; then
   echo "  Would build skill files"
 else
-  (cd "$SCRIPT_DIR/skill" && ./build.sh) || {
+  # build.sh requires compiled CLI — ensure it exists
+  if [ ! -f "$SCRIPT_DIR/dist/cli/rudder.js" ]; then
+    echo "  Compiling CLI (first time)..."
+    (cd "$SCRIPT_DIR" && npm run build --silent 2>/dev/null) || {
+      echo -e "${RED}Failed to compile CLI (required for skill build)${NC}"
+      exit 1
+    }
+  fi
+  "$SCRIPT_DIR/skill/build.sh" || {
     echo -e "${RED}Failed to build skill files${NC}"
     exit 1
   }
@@ -367,8 +375,38 @@ if [ -L "$SKILL" ]; then
 fi
 do_mkdir "$SKILL"
 
-echo -e "${BLUE}Creating symlinks...${NC}"
-do_ln "$SCRIPT_DIR/commands/dev" "$COMMANDS"
+echo -e "${BLUE}Installing commands (mode-aware)...${NC}"
+# Remove old directory symlink (legacy devinstall)
+if [ -L "$COMMANDS" ]; then
+  if [ "$DRY_RUN" = true ]; then
+    echo "  Would remove legacy symlink: $COMMANDS"
+  else
+    rm "$COMMANDS"
+    echo -e "  ${YELLOW}Removed legacy dir symlink: $COMMANDS${NC}"
+  fi
+fi
+do_mkdir "$COMMANDS"
+# Symlink individual command files with variant selection
+for f in "$SCRIPT_DIR/commands/dev"/*.md; do
+  [ -f "$f" ] || continue
+  fname=$(basename "$f")
+  case "$fname" in
+    *.base.md) continue ;;
+    *.inline.md)
+      [ "$USE_WORKTREE" = true ] && continue
+      dest_name="${fname%.inline.md}.md"
+      do_ln "$f" "$COMMANDS/$dest_name"
+      ;;
+    *.worktree.md)
+      [ "$USE_WORKTREE" != true ] && continue
+      dest_name="${fname%.worktree.md}.md"
+      do_ln "$f" "$COMMANDS/$dest_name"
+      ;;
+    *)
+      do_ln "$f" "$COMMANDS/$fname"
+      ;;
+  esac
+done
 echo
 
 # 9. Copy protected files if they don't exist (or --force)

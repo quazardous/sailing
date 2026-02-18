@@ -22,10 +22,14 @@ Thumbs.db
 SAILING_DIST
 tmp/
 
-# Generated skill files (from skill/build.sh)
+# Generated skill files (from .njk templates via build.sh)
 skill/SKILL_INLINE.md
 skill/SKILL_WORKTREE.md
 skill/SKILL.md
+
+# Generated command variants (from .njk templates via build.sh)
+commands/dev/*.inline.md
+commands/dev/*.worktree.md
 
 # Built files (live on dist branch)
 dist/

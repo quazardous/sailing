@@ -71,13 +71,19 @@ cp -r prompting "$WORK_DIR/"
 # Templates
 cp -r templates "$WORK_DIR/" 2>/dev/null || true
 
-# Skill
+# Skill (only generated .md files, no build.sh or .njk sources)
 mkdir -p "$WORK_DIR/skill"
-cp skill/build.sh "$WORK_DIR/skill/"
 cp skill/*.md "$WORK_DIR/skill/" 2>/dev/null || true
 
-# Commands
-cp -r commands "$WORK_DIR/" 2>/dev/null || true
+# Commands (exclude .base.md and .njk templates — only ship generated variants)
+mkdir -p "$WORK_DIR/commands/dev"
+for f in commands/dev/*.md; do
+  [ -f "$f" ] || continue
+  case "$(basename "$f")" in
+    *.base.md) continue ;;
+    *) cp "$f" "$WORK_DIR/$f" ;;
+  esac
+done
 
 # Package files
 mkdir -p "$WORK_DIR/cli"

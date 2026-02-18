@@ -1,8 +1,13 @@
+{#
+variables:
+  mode: inline|worktree  # Execution mode
+#}
 ---
 description: Start all ready tasks in parallel (project)
 argument-hint: "[PRD-NNN] [--limit N]"
 allowed-tools: Read, Edit, Glob, Task, mcp
 ---
+<!-- DO NOT EDIT DIRECTLY - generated from tasks-batch.md.njk -->
 
 # Batch Start Ready Tasks
 
@@ -32,6 +37,7 @@ The batch runner prepares and launches work, then steps aside.
 ```
 
 This tells you:
+{% if mode == 'worktree' %}
 - **Execution mode**: subprocess vs inline
 - **Worktree isolation**: enabled/disabled
 - How to spawn agents (agent_spawn vs Task tool)
@@ -40,6 +46,9 @@ This tells you:
 - DO NOT switch to inline mode on your own
 - STOP and report the error to user
 - Constitutional rule: "When in doubt: stop, log, escalate — never guess."
+{% else %}
+- Your configuration and project context
+{% endif %}
 
 ---
 
@@ -109,6 +118,7 @@ This tells you:
    - User decides whether to reset them
    - This command is NOT idempotent — re-running may spawn duplicate work
 
+{% if mode == 'worktree' %}
    **Mode: subprocess** (`use_subprocess: true`):
    ```json
    // MCP: agent_spawn
@@ -121,9 +131,9 @@ This tells you:
    - Shows heartbeat every 30s
    - Auto-reaps on completion (merge + cleanup + status update)
 
-   If worktree isolation is enabled, each agent gets its own git worktree.
-
-   **Mode: inline** (`use_subprocess: false`):
+   Each agent runs in its own isolated git worktree.
+{% else %}
+   **Spawn inline agents**:
    * Spawn agents in a **single message** using multiple `Task` tools
    * Each agent runs `context_load` to get its full context
 
@@ -133,9 +143,11 @@ This tells you:
    ├─ Task(T103) ─┤
    └─ Task(T104) ─┘
    ```
+{% endif %}
 
 7. **Results**
 
+{% if mode == 'worktree' %}
    **Mode: subprocess**:
 
    Results are handled automatically by spawn:
@@ -147,11 +159,11 @@ This tells you:
    - Command outputs next steps
    - Follow the guidance or escalate to user
    - Example: `/dev:merge T042` for conflict resolution
-
-   **Mode: inline**:
+{% else %}
    * Wait for Task tool agents to complete
    * Summarize outcomes (Done / Blocked)
    * Report newly unblocked tasks if relevant
+{% endif %}
 
 8. **Memory Sync AFTER batch (MANDATORY)**
 
@@ -177,6 +189,7 @@ The orchestrator observes and reports — it does not correct or override.
 
 ---
 
+{% if mode == 'inline' %}
 ## Agent Brief — Inline Mode
 
 For inline agents (Task tool), the prompt is minimal. The agent gets its context via `context_load`:
@@ -217,9 +230,11 @@ Implement the deliverables. No scope expansion.
 ## 3. Complete
 
 Exit normally. The skill will call `assign_release { "task_id": "{TNNN}" }` after you return.
+```
 
 ---
 
+{% endif %}
 ## Non-Goals (Explicit)
 
 This command does **NOT**:

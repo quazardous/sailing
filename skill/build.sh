@@ -1,39 +1,48 @@
 #!/bin/bash
 #
-# Build SKILL_INLINE.md and SKILL_WORKTREE.md from templates
+# Build SKILL_INLINE.md, SKILL_WORKTREE.md, and command variants from Nunjucks templates
 #
 # Usage: ./skill/build.sh
+#
+# Requires: npm run build (compiled rudder CLI)
+# See BUILD_SKILL.md for details.
 #
 
 set -e
 
 SCRIPT_DIR="$(dirname "$(realpath "$0")")"
-cd "$SCRIPT_DIR"
+REPO_ROOT="$(dirname "$SCRIPT_DIR")"
+RUDDER="node $REPO_ROOT/dist/cli/rudder.js"
+CMD_DIR="$REPO_ROOT/commands/dev"
 
 # Colors
 GREEN='\033[0;32m'
 NC='\033[0m'
 
-# Warning comment (inserted after frontmatter)
-WARNING="<!-- DO NOT EDIT DIRECTLY - see BUILD_SKILL.md -->"
-
-# SKILL_INLINE.md = base with warning after frontmatter
-{
-  head -5 SKILL.base.md          # frontmatter (lines 1-5: --- to ---)
-  echo "$WARNING"
-  tail -n +6 SKILL.base.md       # rest of file (line 6+)
-} > SKILL_INLINE.md
+# Skills
+$RUDDER template:render "$SCRIPT_DIR/SKILL.md.njk" --var mode=inline -o "$SCRIPT_DIR/SKILL_INLINE.md"
 echo -e "${GREEN}Generated: SKILL_INLINE.md${NC}"
 
-# SKILL_WORKTREE.md = base with warning + modified title + block inserted
-{
-  head -5 SKILL.base.md          # frontmatter
-  echo "$WARNING"
-  echo ""
-  sed -n '7p' SKILL.base.md | sed 's/^# Sailing$/# Sailing (Worktree Mode)/'
-  cat SKILL_WORKTREE.block.md
-  tail -n +8 SKILL.base.md
-} > SKILL_WORKTREE.md
+$RUDDER template:render "$SCRIPT_DIR/SKILL.md.njk" --var mode=worktree -o "$SCRIPT_DIR/SKILL_WORKTREE.md"
 echo -e "${GREEN}Generated: SKILL_WORKTREE.md${NC}"
+
+# Command variants from .njk templates
+FOUND_VARIANTS=false
+
+for njk in "$CMD_DIR"/*.md.njk; do
+  [ -f "$njk" ] || continue
+  FOUND_VARIANTS=true
+  name=$(basename "$njk" .md.njk)
+
+  $RUDDER template:render "$njk" --var mode=inline -o "$CMD_DIR/${name}.inline.md"
+  echo -e "${GREEN}Generated: commands/dev/${name}.inline.md${NC}"
+
+  $RUDDER template:render "$njk" --var mode=worktree -o "$CMD_DIR/${name}.worktree.md"
+  echo -e "${GREEN}Generated: commands/dev/${name}.worktree.md${NC}"
+done
+
+if [ "$FOUND_VARIANTS" = false ]; then
+  echo "No command .njk templates found, skipping variant generation."
+fi
 
 echo "Done."

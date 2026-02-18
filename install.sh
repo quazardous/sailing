@@ -411,20 +411,38 @@ for subdir in agent skill shared; do
   fi
 done
 
-# Skill (generate then copy - SKILL.md created based on mode in section 11)
-echo "Building skill files..."
-(cd "$SRC/skill" && ./build.sh) || {
-  echo -e "${RED}Failed to build skill files${NC}"
-  exit 1
-}
+# Skill (pre-generated in dist — SKILL.md created based on mode in section 11)
 echo "Installing skill..."
 copy_file "$SRC/skill/SKILL_INLINE.md" "$SKILL/SKILL_INLINE.md" false
 copy_file "$SRC/skill/SKILL_WORKTREE.md" "$SKILL/SKILL_WORKTREE.md" false
 copy_file "$SRC/skill/CHEATSHEET.md" "$SKILL/CHEATSHEET.md" false
 
-# Commands (always updated)
+# Commands (always updated, mode-aware variants)
 echo "Installing commands..."
-copy_dir "$SRC/commands/dev" "$COMMANDS"
+for f in "$SRC/commands/dev"/*.md; do
+  [ -f "$f" ] || continue
+  fname=$(basename "$f")
+  # Skip base templates and non-selected variants
+  case "$fname" in
+    *.base.md) continue ;;
+    *.inline.md)
+      [ "$USE_WORKTREE" = true ] && continue
+      # Install as base name (tasks-batch.inline.md → tasks-batch.md)
+      dest_name="${fname%.inline.md}.md"
+      copy_file "$f" "$COMMANDS/$dest_name" false
+      ;;
+    *.worktree.md)
+      [ "$USE_WORKTREE" != true ] && continue
+      # Install as base name (tasks-batch.worktree.md → tasks-batch.md)
+      dest_name="${fname%.worktree.md}.md"
+      copy_file "$f" "$COMMANDS/$dest_name" false
+      ;;
+    *)
+      # Non-variant commands: copy as-is
+      copy_file "$f" "$COMMANDS/$fname" false
+      ;;
+  esac
+done
 
 # Dist files (only if target doesn't exist)
 echo "Installing dist files..."
