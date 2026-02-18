@@ -65,30 +65,16 @@ do_cp() {
   fi
 }
 
-# Dry-run aware symlink
+# Dry-run aware symlink (always updates)
 do_ln() {
   local target="$1"
   local link="$2"
 
-  if [ -L "$link" ] || [ -e "$link" ]; then
-    if [ "$RESET" = true ]; then
-      if [ "$DRY_RUN" = true ]; then
-        echo "  Would replace: $link → $target"
-      else
-        rm -rf "$link"
-        ln -s "$target" "$link"
-        echo -e "  ${GREEN}Replaced: $link → $target${NC}"
-      fi
-    else
-      echo -e "  ${YELLOW}Exists: $link${NC}"
-    fi
+  if [ "$DRY_RUN" = true ]; then
+    echo "  Would link: $link → $target"
   else
-    if [ "$DRY_RUN" = true ]; then
-      echo "  Would link: $link → $target"
-    else
-      ln -s "$target" "$link"
-      echo -e "  ${GREEN}Linked: $link → $target${NC}"
-    fi
+    ln -sfn "$target" "$link"
+    echo -e "  ${GREEN}Linked: $link → $target${NC}"
   fi
 }
 
