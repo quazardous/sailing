@@ -101,6 +101,15 @@ export function getAllEpics(options = {}) {
         const statuses = Array.isArray(options.status) ? options.status : [options.status];
         epics = epics.filter(e => statuses.includes(e.data?.status));
     }
+    if (options.milestone) {
+        epics = epics.filter(e => e.data?.milestone === options.milestone);
+    }
+    if (options.tags && options.tags.length > 0) {
+        epics = epics.filter(e => {
+            const epicTags = e.data?.tags || [];
+            return options.tags.some(t => epicTags.includes(t));
+        });
+    }
     return epics;
 }
 /**
@@ -149,12 +158,15 @@ export function createEpic(prdId, title, options = {}) {
     const id = formatId('E', num);
     const filename = `${id}-${toKebab(title)}.md`;
     const epicPath = path.join(epicsDir, filename);
+    const now = options.created_at || new Date().toISOString();
     const data = {
         id,
         title,
         status: 'Draft',
         parent: prd.id,
-        tags: options.tags?.map(t => toKebab(t)) || []
+        tags: options.tags?.map(t => toKebab(t)) || [],
+        created_at: now,
+        updated_at: now
     };
     let body = loadTemplate('epic');
     if (body) {

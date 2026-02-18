@@ -203,12 +203,15 @@ export function createPrd(title, options = {}) {
     fs.mkdirSync(prdDir);
     fs.mkdirSync(path.join(prdDir, 'epics'));
     fs.mkdirSync(path.join(prdDir, 'tasks'));
+    const now = options.created_at || new Date().toISOString();
     const data = {
         id,
         title,
         status: 'Draft',
         parent: '',
-        tags: options.tags?.map(t => toKebab(t)) || []
+        tags: options.tags?.map(t => toKebab(t)) || [],
+        created_at: now,
+        updated_at: now
     };
     let body = loadTemplate('prd');
     if (body) {

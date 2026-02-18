@@ -6,6 +6,7 @@ import { getFullPrd, getEpic, getTask } from '../managers/artefacts-manager.js';
 import { loadFile } from '../managers/core-manager.js';
 import { getConfigValue } from '../managers/core-manager.js';
 import { calculateGanttMetrics, getTaskSchedules } from '../lib/scheduling.js';
+import { buildIdResolver } from '../lib/normalize.js';
 import { getSystemLocale } from '../lib/format.js';
 /**
  * Register debug commands
@@ -251,11 +252,21 @@ function getEffortConfig() {
     };
 }
 function buildTaskDataFromPrd(prd) {
+    // Collect all task IDs for resolver
+    const allIds = [];
+    for (const epic of prd.epics) {
+        for (const task of epic.tasks)
+            allIds.push(task.id);
+    }
+    const resolve = buildIdResolver(allIds);
     const taskData = new Map();
     for (const epic of prd.epics) {
         for (const task of epic.tasks) {
             const blockedBy = task.meta?.blocked_by;
-            const blockers = blockedBy ? (Array.isArray(blockedBy) ? blockedBy : [blockedBy]) : [];
+            const raw = blockedBy ? (Array.isArray(blockedBy) ? blockedBy : [blockedBy]) : [];
+            const blockers = raw
+                .filter((b) => typeof b === 'string')
+                .map(b => resolve(b) ?? b);
             taskData.set(task.id, {
                 id: task.id,
                 status: task.status,

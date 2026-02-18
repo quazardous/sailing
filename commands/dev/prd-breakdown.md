@@ -168,6 +168,18 @@ Main thread merges all escalations, presents to user, distributes answers.
 
 ---
 
+## After Completion — Next Steps
+
+Once epics are created, suggest **in this order**:
+
+1. `/dev:epic-review` on key epics (recommended before task breakdown)
+2. `/dev:epic-breakdown` on each epic (creates tasks)
+
+**Do NOT suggest** `/dev:prd-review` — it happens BEFORE breakdown, not after.
+**Do NOT suggest** starting tasks — tasks don't exist yet (need epic-breakdown first).
+
+---
+
 ## Non-Goals
 
 This command does **NOT**:

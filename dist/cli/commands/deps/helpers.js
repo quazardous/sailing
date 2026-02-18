@@ -3,7 +3,7 @@
  *
  * Shared types and utility functions for deps subcommands.
  */
-import { normalizeId } from '../../lib/normalize.js';
+import { buildIdResolver } from '../../lib/normalize.js';
 import { getAllEpics } from '../../managers/artefacts-manager.js';
 // ============================================================================
 // Helper Functions
@@ -18,13 +18,18 @@ export function isEpicId(id) {
  * Build epic dependency map
  */
 export function buildEpicDependencyMap() {
+    const allEntries = getAllEpics();
+    // Use entry IDs (from filenames) as canonical, resolve blockers against them
+    const resolve = buildIdResolver(allEntries.map(e => e.id));
     const epics = new Map();
-    for (const epicEntry of getAllEpics()) {
+    for (const epicEntry of allEntries) {
         const data = epicEntry.data;
         if (!data?.id)
             continue;
-        const id = normalizeId(data.id);
-        const blockedBy = (data.blocked_by || []).map(b => normalizeId(b));
+        const id = epicEntry.id; // canonical ID from filename
+        const blockedBy = (data.blocked_by || [])
+            .map(b => resolve(String(b)))
+            .filter((b) => b !== null);
         epics.set(id, {
             id,
             file: epicEntry.file,

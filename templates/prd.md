@@ -4,6 +4,8 @@ title: Title
 status: Draft
 # branching: flat | prd | epic (only if agent.use_worktrees, set by prd-review)
 tags: []
+created_at: ''
+updated_at: ''
 milestones:
   - id: M1
     name: MVP functional
@@ -17,13 +19,6 @@ milestones:
     status: pending
 # MCP: artefact_update { "id": "<id>", "status": "...", "set": {...} }
 ---
-
-<!--
-MCP multi-section edit (preferred):
-artefact_edit { "id": "<id>", "content": "## Summary\nYour summary...\n\n## Goals\n- [ ] Goal 1\n- [ ] Goal 2\n\n## Technical Approach\nHigh-level approach..." }
-
-With mode: artefact_edit { "id": "<id>", "content": "## Open Questions [append]\n- [ ] New question", "mode": "append" }
--->
 
 ## Summary
 

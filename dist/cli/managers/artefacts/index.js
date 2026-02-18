@@ -5,7 +5,7 @@
  * Commands should import from here, NOT from individual modules.
  */
 // Common operations
-export { clearCache, updateArtefact, getArtefactBody, editArtefactSection, editArtefactMultiSection, addArtefactDependency, setGetters } from './common.js';
+export { clearCache, updateArtefact, touchArtefact, getArtefactBody, editArtefactSection, editArtefactMultiSection, patchArtefact, addArtefactDependency, setGetters } from './common.js';
 // Task operations
 export { buildTaskIndex, getTask, getAllTasks, getTasksForEpic, getTaskEpic, countTasks, createTask, addTaskDependency } from './task.js';
 // Epic operations

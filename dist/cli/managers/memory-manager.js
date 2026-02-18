@@ -15,6 +15,7 @@ import path from 'path';
 import { getMemoryDir, resolvePlaceholders, resolvePath, getRepoRoot } from './core-manager.js';
 import { getTaskEpic as artefactsGetTaskEpic, getEpicPrd as artefactsGetEpicPrd, getTasksForEpic as artefactsGetTasksForEpic, getMemoryFile, getLogFile, invalidateLogIndex } from './artefacts-manager.js';
 import { normalizeId } from '../lib/normalize.js';
+import { getDigitConfig } from './config-manager.js';
 import { extractAllSections, findSection, editSection, parseMultiSectionInput, parseLogLevels, AGENT_RELEVANT_SECTIONS } from '../lib/memory-section.js';
 // Re-export section functions
 export { extractAllSections, findSection, editSection, parseMultiSectionInput, parseLogLevels, AGENT_RELEVANT_SECTIONS };
@@ -51,7 +52,7 @@ export function ensureMemoryDir() {
  * Construct expected log file path (for writing new logs)
  */
 export function logFilePath(id) {
-    return path.join(getMemoryDirPath(), `${normalizeId(id)}.log`);
+    return path.join(getMemoryDirPath(), `${normalizeId(id, getDigitConfig())}.log`);
 }
 /**
  * Find actual log file by normalized ID (uses index)
@@ -67,7 +68,7 @@ function findLogFileByIndex(id) {
  * Construct expected PRD memory file path (for creating new files)
  */
 export function prdMemoryFilePath(prdId) {
-    return path.join(getMemoryDirPath(), `${normalizeId(prdId)}.md`);
+    return path.join(getMemoryDirPath(), `${normalizeId(prdId, getDigitConfig())}.md`);
 }
 /**
  * Find actual PRD memory file by normalized ID (uses index)
@@ -83,7 +84,7 @@ export function findPrdMemoryFile(prdId) {
  * Construct expected epic memory file path (for creating new files)
  */
 export function epicMemoryFilePath(epicId) {
-    return path.join(getMemoryDirPath(), `${normalizeId(epicId)}.md`);
+    return path.join(getMemoryDirPath(), `${normalizeId(epicId, getDigitConfig())}.md`);
 }
 /**
  * Find actual epic memory file by normalized ID (uses index)
@@ -393,7 +394,7 @@ updated: '${now}'
 }
 export function createEpicMemoryFile(epicId) {
     ensureMemoryDir();
-    const normalized = normalizeId(epicId);
+    const normalized = normalizeId(epicId, getDigitConfig());
     const mdPath = epicMemoryFilePath(normalized);
     // Don't overwrite existing memory file
     if (fs.existsSync(mdPath)) {

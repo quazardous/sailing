@@ -147,13 +147,16 @@ export function createStory(prdId, title, options = {}) {
     const id = formatId('S', num);
     const filename = `${id}-${toKebab(title)}.md`;
     const storyPath = path.join(storiesDir, filename);
+    const now = options.created_at || new Date().toISOString();
     const data = {
         id,
         title,
         status: 'Draft',
         parent: prd.id,
         type: options.type || 'user',
-        tags: options.tags?.map(t => toKebab(t)) || []
+        tags: options.tags?.map(t => toKebab(t)) || [],
+        created_at: now,
+        updated_at: now
     };
     let body = loadTemplate('story');
     if (body) {

@@ -4,13 +4,10 @@ title: Story Title
 parent: PRD-NNN
 parent_story: null
 type: user
+created_at: ''
+updated_at: ''
 # MCP: artefact_update { "id": "<id>", "status": "...", "set": {...} }
 ---
-
-<!--
-MCP multi-section edit (preferred):
-artefact_edit { "id": "<id>", "content": "## Story\n**As** user **I want** feature **So that** benefit\n\n## Acceptance Criteria\n- [ ] Given X, when Y, then Z" }
--->
 
 ## Story
 

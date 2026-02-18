@@ -2,7 +2,7 @@
  * Deps modification commands (add, show)
  */
 import { loadFile, saveFile, jsonOut } from '../../managers/core-manager.js';
-import { normalizeId } from '../../lib/normalize.js';
+import { buildIdResolver } from '../../lib/normalize.js';
 import { matchesEpic } from '../../managers/artefacts-manager.js';
 import { isStatusDone, statusSymbol } from '../../lib/lexicon.js';
 import { buildDependencyGraph, blockersResolved } from '../../managers/graph-manager.js';
@@ -18,26 +18,27 @@ export function registerModifyCommands(deps) {
         .option('--blocks <ids...>', 'This entity blocks these entities')
         .option('--blocked-by <ids...>', 'This entity is blocked by these entities')
         .action((entityId, options) => {
-        const id = normalizeId(entityId);
-        const isEpic = isEpicId(id);
+        const isEpic = isEpicId(entityId);
         if (isEpic) {
             const epics = buildEpicDependencyMap();
-            if (!epics.has(id)) {
-                console.error(`Epic not found: ${id}`);
+            const resolveEpic = buildIdResolver(epics.keys());
+            const id = resolveEpic(entityId);
+            if (!id) {
+                console.error(`Epic not found: ${entityId}`);
                 process.exit(1);
             }
             if (options.blocks) {
                 for (const targetId of options.blocks) {
-                    const tid = normalizeId(targetId);
-                    if (!isEpicId(tid)) {
-                        console.error(`Epic can only block epics, not tasks: ${tid}`);
+                    if (!isEpicId(targetId)) {
+                        console.error(`Epic can only block epics, not tasks: ${targetId}`);
+                        continue;
+                    }
+                    const tid = resolveEpic(targetId);
+                    if (!tid) {
+                        console.error(`Epic not found: ${targetId}`);
                         continue;
                     }
                     const target = epics.get(tid);
-                    if (!target) {
-                        console.error(`Epic not found: ${tid}`);
-                        continue;
-                    }
                     const file = loadFile(target.file);
                     if (!file)
                         continue;
@@ -52,21 +53,19 @@ export function registerModifyCommands(deps) {
             }
             if (options.blockedBy) {
                 const epic = epics.get(id);
-                if (!epic)
-                    return;
                 const file = loadFile(epic.file);
                 if (!file)
                     return;
                 if (!Array.isArray(file.data.blocked_by))
                     file.data.blocked_by = [];
                 for (const blockerId of options.blockedBy) {
-                    const bid = normalizeId(blockerId);
-                    if (!isEpicId(bid)) {
-                        console.error(`Epic can only be blocked by epics, not tasks: ${bid}`);
+                    if (!isEpicId(blockerId)) {
+                        console.error(`Epic can only be blocked by epics, not tasks: ${blockerId}`);
                         continue;
                     }
-                    if (!epics.has(bid)) {
-                        console.error(`Epic not found: ${bid}`);
+                    const bid = resolveEpic(blockerId);
+                    if (!bid) {
+                        console.error(`Epic not found: ${blockerId}`);
                         continue;
                     }
                     if (!file.data.blocked_by.includes(bid)) {
@@ -79,25 +78,25 @@ export function registerModifyCommands(deps) {
         }
         else {
             const { tasks } = buildDependencyGraph();
-            if (!tasks.has(id)) {
-                console.error(`Task not found: ${id}`);
+            const resolveTask = buildIdResolver(tasks.keys());
+            const id = resolveTask(entityId);
+            if (!id) {
+                console.error(`Task not found: ${entityId}`);
                 process.exit(1);
             }
             const task = tasks.get(id);
-            if (!task)
-                return;
             if (options.blocks) {
                 for (const targetId of options.blocks) {
-                    const tid = normalizeId(targetId);
-                    if (isEpicId(tid)) {
-                        console.error(`Task can only block tasks, not epics: ${tid}`);
+                    if (isEpicId(targetId)) {
+                        console.error(`Task can only block tasks, not epics: ${targetId}`);
+                        continue;
+                    }
+                    const tid = resolveTask(targetId);
+                    if (!tid) {
+                        console.error(`Task not found: ${targetId}`);
                         continue;
                     }
                     const target = tasks.get(tid);
-                    if (!target) {
-                        console.error(`Task not found: ${tid}`);
-                        continue;
-                    }
                     const file = loadFile(target.file);
                     if (!file)
                         continue;
@@ -117,13 +116,13 @@ export function registerModifyCommands(deps) {
                 if (!Array.isArray(file.data.blocked_by))
                     file.data.blocked_by = [];
                 for (const blockerId of options.blockedBy) {
-                    const bid = normalizeId(blockerId);
-                    if (isEpicId(bid)) {
-                        console.error(`Task can only be blocked by tasks, not epics: ${bid}`);
+                    if (isEpicId(blockerId)) {
+                        console.error(`Task can only be blocked by tasks, not epics: ${blockerId}`);
                         continue;
                     }
-                    if (!tasks.has(bid)) {
-                        console.error(`Task not found: ${bid}`);
+                    const bid = resolveTask(blockerId);
+                    if (!bid) {
+                        console.error(`Task not found: ${blockerId}`);
                         continue;
                     }
                     if (!file.data.blocked_by.includes(bid)) {
@@ -149,10 +148,11 @@ export function registerModifyCommands(deps) {
         }
         const { tasks, blocks } = buildDependencyGraph();
         const epics = buildEpicDependencyMap();
-        const normalizedId = normalizeId(id);
+        const resolveTask = buildIdResolver(tasks.keys());
+        const resolveEpic = buildIdResolver(epics.keys());
         // Epic mode
-        if (normalizedId.startsWith('E')) {
-            const epicId = normalizedId;
+        if (isEpicId(id)) {
+            const epicId = resolveEpic(id) ?? id;
             const epic = epics.get(epicId);
             if (!epic) {
                 console.error(`Epic not found: ${epicId}`);
@@ -225,9 +225,10 @@ export function registerModifyCommands(deps) {
             return;
         }
         // Single task mode
+        const normalizedId = resolveTask(id) ?? id;
         const task = tasks.get(normalizedId);
         if (!task) {
-            console.error(`Task not found: ${normalizedId}`);
+            console.error(`Task not found: ${id}`);
             process.exit(1);
         }
         console.log(`${normalizedId}: ${task.title}\n`);

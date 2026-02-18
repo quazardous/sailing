@@ -3,7 +3,7 @@
  */
 import { buildDependencyGraph, blockersResolved, longestPath, countTotalUnblocked, detectCycles } from '../managers/graph-manager.js';
 import { addTaskDependency } from '../managers/artefacts-manager.js';
-import { normalizeId } from '../lib/normalize.js';
+import { normalizeId, buildIdResolver } from '../lib/normalize.js';
 import { isStatusNotStarted, isStatusInProgress, isStatusCancelled, normalizeStatus, STATUS } from '../lib/lexicon.js';
 /**
  * Get ready tasks sorted by impact (best to work on first)
@@ -64,8 +64,9 @@ export function addDependency(taskId, blockedBy) {
  * Show dependencies for a task
  */
 export function showDeps(taskId) {
-    const id = normalizeId(taskId);
     const { tasks, blocks } = buildDependencyGraph();
+    const resolve = buildIdResolver(tasks.keys());
+    const id = resolve(taskId) ?? normalizeId(taskId);
     const task = tasks.get(id);
     if (!task) {
         return null;

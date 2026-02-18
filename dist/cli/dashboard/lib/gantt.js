@@ -4,16 +4,33 @@
  * All config values are injected via parameters by the routes layer.
  */
 import { calculateGanttMetrics, getTaskSchedules, calculateTheoreticalSchedule, calculateRealSchedule, getScheduleEnvelope } from '../../lib/scheduling.js';
+import { buildIdResolver } from '../../lib/normalize.js';
+/** Collect all task IDs from a PRD's epics */
+function collectTaskIds(epics) {
+    const ids = [];
+    for (const epic of epics) {
+        for (const task of epic.tasks)
+            ids.push(task.id);
+    }
+    return ids;
+}
+/** Extract and resolve blocked_by from task meta against known IDs */
+function resolveBlockers(meta, resolve) {
+    const blockedBy = meta?.blocked_by;
+    const raw = blockedBy ? (Array.isArray(blockedBy) ? blockedBy : [blockedBy]) : [];
+    return raw
+        .filter((b) => typeof b === 'string')
+        .map(b => resolve(b) ?? b);
+}
 /**
  * Generate custom Gantt data for a PRD (hour-based with real scheduling)
  */
 export function generatePrdGantt(prd, effortConfig) {
     const taskData = new Map();
     let earliestDate = null;
+    const resolve = buildIdResolver(collectTaskIds(prd.epics));
     for (const epic of prd.epics) {
         for (const task of epic.tasks) {
-            const blockedBy = task.meta?.blocked_by;
-            const blockers = blockedBy ? (Array.isArray(blockedBy) ? blockedBy : [blockedBy]) : [];
             const effort = task.meta?.effort;
             const startedAt = task.meta?.started_at;
             const doneAt = task.meta?.done_at;
@@ -28,7 +45,7 @@ export function generatePrdGantt(prd, effortConfig) {
                 title: task.title,
                 status: task.status,
                 effort: effort || null,
-                blockedBy: blockers.filter((b) => typeof b === 'string'),
+                blockedBy: resolveBlockers(task.meta, resolve),
                 startedAt,
                 doneAt,
                 epicId: epic.id,
@@ -53,13 +70,10 @@ export function generatePrdGantt(prd, effortConfig) {
     }
     for (const epic of prd.epics) {
         for (const task of epic.tasks) {
-            const blockers = task.meta?.blocked_by;
-            if (!blockers)
+            const data = taskData.get(task.id);
+            if (!data)
                 continue;
-            const blockerList = Array.isArray(blockers) ? blockers : [blockers];
-            for (const blockerId of blockerList) {
-                if (typeof blockerId !== 'string')
-                    continue;
+            for (const blockerId of data.blockedBy) {
                 const blockerEpicId = taskToEpic.get(blockerId);
                 if (blockerEpicId && blockerEpicId !== epic.id) {
                     epicBlockedBy.get(epic.id)?.add(blockerEpicId);
@@ -163,9 +177,8 @@ export function generatePrdGantt(prd, effortConfig) {
 export function generateEpicGantt(epic, effortConfig) {
     const taskData = new Map();
     let earliestDate = null;
+    const resolve = buildIdResolver(epic.tasks.map(t => t.id));
     for (const task of epic.tasks) {
-        const blockedBy = task.meta?.blocked_by;
-        const blockers = blockedBy ? (Array.isArray(blockedBy) ? blockedBy : [blockedBy]) : [];
         const effort = task.meta?.effort;
         const startedAt = task.meta?.started_at;
         const doneAt = task.meta?.done_at;
@@ -180,7 +193,7 @@ export function generateEpicGantt(epic, effortConfig) {
             title: task.title,
             status: task.status,
             effort: effort || null,
-            blockedBy: blockers.filter((b) => typeof b === 'string'),
+            blockedBy: resolveBlockers(task.meta, resolve),
             startedAt,
             doneAt
         });
@@ -259,10 +272,9 @@ export function generatePrdOverviewGantt(prds, effortConfig) {
     for (const prd of prds) {
         const taskData = new Map();
         let earliestStartedAt;
+        const resolve = buildIdResolver(collectTaskIds(prd.epics));
         for (const epic of prd.epics) {
             for (const task of epic.tasks) {
-                const blockedBy = task.meta?.blocked_by;
-                const blockers = blockedBy ? (Array.isArray(blockedBy) ? blockedBy : [blockedBy]) : [];
                 const effort = task.meta?.effort;
                 const startedAt = task.meta?.started_at;
                 const doneAt = task.meta?.done_at;
@@ -272,7 +284,7 @@ export function generatePrdOverviewGantt(prds, effortConfig) {
                 taskData.set(task.id, {
                     id: task.id,
                     effort: effort || null,
-                    blockedBy: blockers.filter((b) => typeof b === 'string'),
+                    blockedBy: resolveBlockers(task.meta, resolve),
                     status: task.status,
                     startedAt,
                     doneAt

@@ -114,6 +114,12 @@ export function getAllTasks(options = {}) {
         const statuses = Array.isArray(options.status) ? options.status : [options.status];
         tasks = tasks.filter(t => statuses.includes(t.data?.status));
     }
+    if (options.tags && options.tags.length > 0) {
+        tasks = tasks.filter(t => {
+            const taskTags = t.data?.tags || [];
+            return options.tags.some(tag => taskTags.includes(tag));
+        });
+    }
     return tasks;
 }
 /**
@@ -166,6 +172,7 @@ export function createTask(epicId, title, options = {}) {
     const id = formatId('T', num);
     const filename = `${id}-${toKebab(title)}.md`;
     const taskPath = path.join(tasksDir, filename);
+    const now = options.created_at || new Date().toISOString();
     const data = {
         id,
         title,
@@ -177,7 +184,9 @@ export function createTask(epicId, title, options = {}) {
         tags: options.tags?.map(t => toKebab(t)) || [],
         effort: '1h',
         priority: 'normal',
-        target_versions: options.targetVersions || {}
+        target_versions: options.targetVersions || {},
+        created_at: now,
+        updated_at: now
     };
     let body = loadTemplate('task');
     if (body) {
@@ -194,28 +203,26 @@ export function createTask(epicId, title, options = {}) {
  * Add a dependency between tasks
  */
 export function addTaskDependency(taskId, blockedBy) {
-    const id = normalizeId(taskId);
-    const blockerId = normalizeId(blockedBy);
-    const task = getTask(id);
+    const task = getTask(taskId);
     if (!task) {
-        return { taskId: id, blockedBy: blockerId, added: false, message: `Task not found: ${id}` };
+        return { taskId: normalizeId(taskId) ?? taskId, blockedBy: normalizeId(blockedBy) ?? blockedBy, added: false, message: `Task not found: ${taskId}` };
     }
-    const blocker = getTask(blockerId);
+    const blocker = getTask(blockedBy);
     if (!blocker) {
-        return { taskId: id, blockedBy: blockerId, added: false, message: `Blocker task not found: ${blockerId}` };
+        return { taskId: task.id, blockedBy: normalizeId(blockedBy) ?? blockedBy, added: false, message: `Blocker task not found: ${blockedBy}` };
     }
     const file = loadFile(task.file);
     if (!file) {
-        return { taskId: id, blockedBy: blockerId, added: false, message: `Could not load task file` };
+        return { taskId: task.id, blockedBy: blocker.id, added: false, message: `Could not load task file` };
     }
     if (!Array.isArray(file.data.blocked_by)) {
         file.data.blocked_by = [];
     }
-    if (file.data.blocked_by.includes(blockerId)) {
-        return { taskId: id, blockedBy: blockerId, added: false, message: `Dependency already exists` };
+    if (file.data.blocked_by.includes(blocker.id)) {
+        return { taskId: task.id, blockedBy: blocker.id, added: false, message: `Dependency already exists` };
     }
-    file.data.blocked_by.push(blockerId);
+    file.data.blocked_by.push(blocker.id);
     saveFile(task.file, file.data, file.body);
     clearCache();
-    return { taskId: id, blockedBy: blockerId, added: true, message: `Added: ${id} blocked by ${blockerId}` };
+    return { taskId: task.id, blockedBy: blocker.id, added: true, message: `Added: ${task.id} blocked by ${blocker.id}` };
 }

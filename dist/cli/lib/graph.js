@@ -6,8 +6,7 @@
  * All data must be passed as parameters.
  */
 import path from 'path';
-import { extractTaskId } from './normalize.js';
-import { extractEpicId } from './normalize.js';
+import { extractEpicId, buildIdResolver } from './normalize.js';
 import { isStatusDone, isStatusCancelled } from './lexicon.js';
 /**
  * Build complete dependency graph from task entries
@@ -17,6 +16,8 @@ import { isStatusDone, isStatusCancelled } from './lexicon.js';
 export function buildDependencyGraph(taskEntries) {
     const tasks = new Map(); // id -> { id, title, status, assignee, blockedBy: [], file, prd, parent }
     const blocks = new Map(); // id -> [ids that this task blocks]
+    // Resolve any blocked_by ID format to the canonical entry ID
+    const resolveId = buildIdResolver(taskEntries.map(e => e.id));
     for (const taskEntry of taskEntries) {
         const id = taskEntry.id;
         const data = taskEntry.data;
@@ -25,7 +26,7 @@ export function buildDependencyGraph(taskEntries) {
         const prdDir = path.dirname(tasksDir);
         const prdName = path.basename(prdDir);
         const blockedByRaw = data?.blocked_by || [];
-        const blockedBy = blockedByRaw.map(b => extractTaskId(b)).filter((b) => Boolean(b));
+        const blockedBy = blockedByRaw.map(b => resolveId(String(b))).filter((b) => b !== null);
         tasks.set(id, {
             id,
             title: data?.title || '',

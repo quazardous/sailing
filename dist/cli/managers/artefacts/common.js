@@ -1,9 +1,10 @@
 /**
  * Common artefact utilities - cache and shared operations
  */
+import fs from 'fs';
 import { loadFile, saveFile } from '../core-manager.js';
 import { normalizeId } from '../../lib/normalize.js';
-import { parseMultiSectionContent, editArtifact } from '../../lib/artifact.js';
+import { parseMultiSectionContent, editArtifact, applySearchReplace, parseMarkdownSections, serializeSections } from '../../lib/artifact.js';
 // ============================================================================
 // CACHE
 // ============================================================================
@@ -30,6 +31,23 @@ export function setPrdIndex(index) { _prdIndex = index; }
 export function setStoryIndex(index) { _storyIndex = index; }
 export function setMemoryIndex(index) { _memoryIndex = index; }
 export function setLogIndex(index) { _logIndex = index; }
+// ============================================================================
+// TIMESTAMP HELPERS
+// ============================================================================
+/**
+ * Stamp updated_at on data, backfill created_at from file mtime if missing.
+ */
+function stampDates(data, filePath) {
+    if (!data.created_at) {
+        try {
+            data.created_at = fs.statSync(filePath).mtime.toISOString();
+        }
+        catch {
+            data.created_at = new Date().toISOString();
+        }
+    }
+    data.updated_at = new Date().toISOString();
+}
 // Lazy imports to avoid circular dependencies
 let _getTask = null;
 let _getEpic = null;
@@ -41,41 +59,57 @@ export function setGetters(getTask, getEpic, getPrd, getStory) {
     _getPrd = getPrd;
     _getStory = getStory;
 }
-/**
- * Update artefact frontmatter
- */
-export function updateArtefact(id, options) {
+function resolveArtefact(id, mode) {
     if (!_getTask || !_getEpic || !_getPrd || !_getStory) {
         throw new Error('Getters not initialized. Call setGetters first.');
     }
     const normalized = normalizeId(id);
     let entry = null;
+    let type;
     if (normalized.startsWith('T')) {
-        const task = _getTask(normalized);
-        if (task)
-            entry = { file: task.file, data: task.data || {} };
+        type = 'task';
+        const t = _getTask(normalized);
+        if (t)
+            entry = { id: t.id, file: t.file };
     }
     else if (normalized.startsWith('E')) {
-        const epic = _getEpic(normalized);
-        if (epic)
-            entry = { file: epic.file, data: epic.data || {} };
+        type = 'epic';
+        const e = _getEpic(normalized);
+        if (e)
+            entry = { id: e.id, file: e.file };
     }
     else if (normalized.startsWith('PRD-')) {
-        const prd = _getPrd(normalized);
-        if (prd)
-            entry = { file: prd.file, data: prd.data || {} };
+        type = 'prd';
+        const p = _getPrd(normalized);
+        if (p)
+            entry = { id: p.id, file: p.file };
     }
     else if (normalized.startsWith('S')) {
-        const story = _getStory(normalized);
-        if (story)
-            entry = { file: story.file, data: story.data || {} };
+        type = 'story';
+        const s = _getStory(normalized);
+        if (s)
+            entry = { id: s.id, file: s.file };
+    }
+    else {
+        if (mode === 'required')
+            throw new Error(`Artefact not found: ${id}`);
+        return null;
     }
     if (!entry) {
-        throw new Error(`Artefact not found: ${id}`);
+        if (mode === 'required')
+            throw new Error(`Artefact not found: ${id}`);
+        return null;
     }
-    const file = loadFile(entry.file);
+    return { id: entry.id, file: entry.file, type };
+}
+/**
+ * Update artefact frontmatter
+ */
+export function updateArtefact(id, options) {
+    const resolved = resolveArtefact(id, 'required');
+    const file = loadFile(resolved.file);
     if (!file) {
-        throw new Error(`Could not load file: ${entry.file}`);
+        throw new Error(`Could not load file: ${resolved.file}`);
     }
     const data = { ...file.data };
     let updated = false;
@@ -99,6 +133,10 @@ export function updateArtefact(id, options) {
         data.priority = options.priority;
         updated = true;
     }
+    if (options.milestone !== undefined) {
+        data.milestone = options.milestone;
+        updated = true;
+    }
     if (options.set) {
         for (const [k, v] of Object.entries(options.set)) {
             data[k] = v;
@@ -106,44 +144,40 @@ export function updateArtefact(id, options) {
         }
     }
     if (updated) {
-        saveFile(entry.file, data, file.body);
+        stampDates(data, resolved.file);
+        saveFile(resolved.file, data, file.body);
         clearCache();
     }
-    return { id: normalized, updated, data };
+    return { id: resolved.id, updated, data };
+}
+/**
+ * Touch artefact - stamp updated_at (and backfill created_at) without modifying body
+ */
+export function touchArtefact(id) {
+    const resolved = resolveArtefact(id, 'required');
+    const file = loadFile(resolved.file);
+    if (!file) {
+        throw new Error(`Could not load file: ${resolved.file}`);
+    }
+    const data = { ...file.data };
+    stampDates(data, resolved.file);
+    saveFile(resolved.file, data, file.body);
+    clearCache();
+    return {
+        id: resolved.id,
+        file: resolved.file,
+        updated_at: data.updated_at,
+        created_at: data.created_at
+    };
 }
 /**
  * Get artefact body (markdown content without frontmatter)
  */
 export function getArtefactBody(id) {
-    if (!_getTask || !_getEpic || !_getPrd || !_getStory) {
-        throw new Error('Getters not initialized. Call setGetters first.');
-    }
-    const normalized = normalizeId(id);
-    let filePath = null;
-    if (normalized.startsWith('T')) {
-        const task = _getTask(normalized);
-        if (task)
-            filePath = task.file;
-    }
-    else if (normalized.startsWith('E')) {
-        const epic = _getEpic(normalized);
-        if (epic)
-            filePath = epic.file;
-    }
-    else if (normalized.startsWith('PRD-')) {
-        const prd = _getPrd(normalized);
-        if (prd)
-            filePath = prd.file;
-    }
-    else if (normalized.startsWith('S')) {
-        const story = _getStory(normalized);
-        if (story)
-            filePath = story.file;
-    }
-    if (!filePath) {
+    const resolved = resolveArtefact(id);
+    if (!resolved)
         return null;
-    }
-    const file = loadFile(filePath);
+    const file = loadFile(resolved.file);
     return file?.body || null;
 }
 /**
@@ -220,37 +254,10 @@ function findSectionPosition(body, sectionName) {
  * IMPORTANT: Ignores ## headers inside HTML comments to prevent corruption.
  */
 export function editArtefactSection(id, section, content, options = {}) {
-    if (!_getTask || !_getEpic || !_getPrd || !_getStory) {
-        throw new Error('Getters not initialized. Call setGetters first.');
-    }
-    const normalized = normalizeId(id);
-    let filePath = null;
-    if (normalized.startsWith('T')) {
-        const task = _getTask(normalized);
-        if (task)
-            filePath = task.file;
-    }
-    else if (normalized.startsWith('E')) {
-        const epic = _getEpic(normalized);
-        if (epic)
-            filePath = epic.file;
-    }
-    else if (normalized.startsWith('PRD-')) {
-        const prd = _getPrd(normalized);
-        if (prd)
-            filePath = prd.file;
-    }
-    else if (normalized.startsWith('S')) {
-        const story = _getStory(normalized);
-        if (story)
-            filePath = story.file;
-    }
-    if (!filePath) {
-        throw new Error(`Artefact not found: ${id}`);
-    }
-    const file = loadFile(filePath);
+    const resolved = resolveArtefact(id, 'required');
+    const file = loadFile(resolved.file);
     if (!file) {
-        throw new Error(`Could not load file: ${filePath}`);
+        throw new Error(`Could not load file: ${resolved.file}`);
     }
     const mode = options.mode || 'replace';
     let body = file.body;
@@ -280,126 +287,170 @@ export function editArtefactSection(id, section, content, options = {}) {
         // Section not found, append at end
         body = body.trimEnd() + `\n\n${sectionHeader}\n\n${content}\n`;
     }
-    saveFile(filePath, file.data, body);
+    const data = { ...file.data };
+    stampDates(data, resolved.file);
+    saveFile(resolved.file, data, body);
     clearCache();
-    return { id: normalized, section, updated: true };
+    return { id: resolved.id, section, updated: true };
 }
 /**
  * Edit multiple sections in artefact body using ## header format
  */
 export function editArtefactMultiSection(id, content, defaultOp = 'replace') {
-    if (!_getTask || !_getEpic || !_getPrd || !_getStory) {
-        throw new Error('Getters not initialized. Call setGetters first.');
-    }
-    const normalized = normalizeId(id);
-    let filePath = null;
-    if (normalized.startsWith('T')) {
-        const task = _getTask(normalized);
-        if (task)
-            filePath = task.file;
-    }
-    else if (normalized.startsWith('E')) {
-        const epic = _getEpic(normalized);
-        if (epic)
-            filePath = epic.file;
-    }
-    else if (normalized.startsWith('PRD-')) {
-        const prd = _getPrd(normalized);
-        if (prd)
-            filePath = prd.file;
-    }
-    else if (normalized.startsWith('S')) {
-        const story = _getStory(normalized);
-        if (story)
-            filePath = story.file;
-    }
-    if (!filePath) {
-        throw new Error(`Artefact not found: ${id}`);
-    }
+    const resolved = resolveArtefact(id, 'required');
     const ops = parseMultiSectionContent(content, defaultOp);
     if (ops.length === 0) {
         throw new Error('No sections found in content. Use ## Section format.');
     }
-    const result = editArtifact(filePath, ops);
+    const result = editArtifact(resolved.file, ops);
     if (!result.success) {
         throw new Error(result.errors?.join(', ') || 'Edit failed');
     }
+    // editArtifact writes directly — reload to stamp dates
+    if (result.applied > 0) {
+        const file = loadFile(resolved.file);
+        if (file) {
+            const data = { ...file.data };
+            stampDates(data, resolved.file);
+            saveFile(resolved.file, data, file.body);
+        }
+    }
     clearCache();
+    // Reload file to measure line counts per edited section
+    const editedNames = new Set(ops.map(op => op.section));
+    const reloaded = loadFile(resolved.file);
+    const sections = [];
+    if (reloaded?.body) {
+        for (const name of editedNames) {
+            const pos = findSectionPosition(reloaded.body, name);
+            if (pos) {
+                const sectionText = reloaded.body.slice(pos.start, pos.end);
+                sections.push({ name, lines: sectionText.split('\n').length });
+            }
+            else {
+                sections.push({ name, lines: 0 });
+            }
+        }
+    }
+    else {
+        for (const name of editedNames) {
+            sections.push({ name, lines: 0 });
+        }
+    }
     return {
-        id: normalized,
-        sections: ops.map(op => op.section),
+        id: resolved.id,
+        sections,
         updated: true
     };
+}
+/**
+ * Patch artefact body using old_string → new_string replacement.
+ * If section is provided, scopes the search to that section only.
+ * If regexp is true, old_string is treated as a regex pattern.
+ */
+export function patchArtefact(id, oldString, newString, options = {}) {
+    if (oldString === newString) {
+        throw new Error('old_string and new_string are identical — nothing to change');
+    }
+    const resolved = resolveArtefact(id, 'required');
+    const file = loadFile(resolved.file);
+    if (!file) {
+        throw new Error(`Could not load file: ${resolved.file}`);
+    }
+    let body = file.body;
+    if (options.section) {
+        // Scope to a specific section
+        const parsed = parseMarkdownSections(`---\n---\n${body}`);
+        const sectionContent = parsed.sections.get(options.section);
+        if (sectionContent === undefined) {
+            throw new Error(`Section not found: ${options.section}`);
+        }
+        let newContent;
+        if (options.regexp) {
+            const regex = new RegExp(oldString, 'g');
+            if (!regex.test(sectionContent)) {
+                throw new Error(`old_string pattern not found in section "${options.section}"`);
+            }
+            newContent = sectionContent.replace(new RegExp(oldString, 'g'), newString);
+        }
+        else {
+            const result = applySearchReplace(sectionContent, oldString, newString);
+            if (!result.success) {
+                throw new Error(`old_string not found in section "${options.section}"`);
+            }
+            newContent = result.content;
+        }
+        parsed.sections.set(options.section, newContent);
+        // Serialize back — strip the dummy frontmatter we added
+        const serialized = serializeSections(parsed);
+        // Remove the "---\n---\n" prefix
+        const fmEnd = serialized.indexOf('---', 3);
+        body = serialized.slice(fmEnd + 4); // skip "---\n"
+    }
+    else {
+        // Full body patch
+        if (options.regexp) {
+            const regex = new RegExp(oldString, 'g');
+            if (!regex.test(body)) {
+                throw new Error('old_string pattern not found in artefact body');
+            }
+            body = body.replace(new RegExp(oldString, 'g'), newString);
+        }
+        else {
+            const result = applySearchReplace(body, oldString, newString);
+            if (!result.success) {
+                throw new Error('old_string not found in artefact body');
+            }
+            body = result.content;
+        }
+    }
+    const data = { ...file.data };
+    stampDates(data, resolved.file);
+    saveFile(resolved.file, data, body);
+    clearCache();
+    // Extract context lines around the replacement
+    const contextLines = 2;
+    const bodyLines = body.split('\n');
+    const newStringFirstLine = newString.split('\n')[0];
+    const matchIdx = bodyLines.findIndex(l => l.includes(newStringFirstLine));
+    let context;
+    if (matchIdx >= 0) {
+        const start = Math.max(0, matchIdx - contextLines);
+        const end = Math.min(bodyLines.length, matchIdx + newString.split('\n').length + contextLines);
+        context = bodyLines.slice(start, end).join('\n');
+    }
+    return { id: resolved.id, section: options.section, updated: true, context };
 }
 /**
  * Add a dependency between artefacts (Tasks or Epics)
  * Updates the blocked_by field in the artefact's frontmatter
  */
 export function addArtefactDependency(id, blockedBy) {
-    if (!_getTask || !_getEpic || !_getPrd || !_getStory) {
-        throw new Error('Getters not initialized. Call setGetters first.');
-    }
-    const normalizedId = normalizeId(id);
-    const normalizedBlocker = normalizeId(blockedBy);
-    // Determine type and get file path
-    let filePath = null;
-    let blockerFilePath = null;
-    let idType = null;
-    let blockerType = null;
-    // Get source artefact
-    if (normalizedId.startsWith('T')) {
-        const task = _getTask(normalizedId);
-        if (task) {
-            filePath = task.file;
-            idType = 'task';
-        }
-    }
-    else if (normalizedId.startsWith('E')) {
-        const epic = _getEpic(normalizedId);
-        if (epic) {
-            filePath = epic.file;
-            idType = 'epic';
-        }
-    }
-    // Get blocker artefact
-    if (normalizedBlocker.startsWith('T')) {
-        const task = _getTask(normalizedBlocker);
-        if (task) {
-            blockerFilePath = task.file;
-            blockerType = 'task';
-        }
-    }
-    else if (normalizedBlocker.startsWith('E')) {
-        const epic = _getEpic(normalizedBlocker);
-        if (epic) {
-            blockerFilePath = epic.file;
-            blockerType = 'epic';
-        }
-    }
-    // Validate source
-    if (!filePath || !idType) {
+    // Dependencies only supported for tasks and epics
+    const source = resolveArtefact(id);
+    const blocker = resolveArtefact(blockedBy);
+    if (!source || (source.type !== 'task' && source.type !== 'epic')) {
         return {
-            id: normalizedId,
-            blockedBy: normalizedBlocker,
+            id: normalizeId(id),
+            blockedBy: normalizeId(blockedBy),
             added: false,
-            message: `Artefact not found: ${normalizedId}. Only Tasks (T001) and Epics (E001) can have dependencies.`
+            message: `Artefact not found: ${id}. Only Tasks (T001) and Epics (E001) can have dependencies.`
         };
     }
-    // Validate blocker
-    if (!blockerFilePath || !blockerType) {
+    if (!blocker || (blocker.type !== 'task' && blocker.type !== 'epic')) {
         return {
-            id: normalizedId,
-            blockedBy: normalizedBlocker,
+            id: source.id,
+            blockedBy: normalizeId(blockedBy),
             added: false,
-            message: `Blocker not found: ${normalizedBlocker}. Only Tasks (T001) and Epics (E001) can be blockers.`
+            message: `Blocker not found: ${blockedBy}. Only Tasks (T001) and Epics (E001) can be blockers.`
         };
     }
     // Load and update
-    const file = loadFile(filePath);
+    const file = loadFile(source.file);
     if (!file) {
         return {
-            id: normalizedId,
-            blockedBy: normalizedBlocker,
+            id: source.id,
+            blockedBy: blocker.id,
             added: false,
             message: `Could not load artefact file`
         };
@@ -407,21 +458,21 @@ export function addArtefactDependency(id, blockedBy) {
     if (!Array.isArray(file.data.blocked_by)) {
         file.data.blocked_by = [];
     }
-    if (file.data.blocked_by.includes(normalizedBlocker)) {
+    if (file.data.blocked_by.includes(blocker.id)) {
         return {
-            id: normalizedId,
-            blockedBy: normalizedBlocker,
+            id: source.id,
+            blockedBy: blocker.id,
             added: false,
             message: `Dependency already exists`
         };
     }
-    file.data.blocked_by.push(normalizedBlocker);
-    saveFile(filePath, file.data, file.body);
+    file.data.blocked_by.push(blocker.id);
+    saveFile(source.file, file.data, file.body);
     clearCache();
     return {
-        id: normalizedId,
-        blockedBy: normalizedBlocker,
+        id: source.id,
+        blockedBy: blocker.id,
         added: true,
-        message: `Added: ${normalizedId} (${idType}) blocked by ${normalizedBlocker} (${blockerType})`
+        message: `Added: ${source.id} (${source.type}) blocked by ${blocker.id} (${blocker.type})`
     };
 }

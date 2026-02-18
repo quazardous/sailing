@@ -28,19 +28,7 @@ if [[ "$CWD" != "$PROJECT_ROOT" && "$CWD" != "$PROJECT_ROOT/"* ]]; then
   exit 1
 fi
 
-# Read source path (.sailing/rudder)
-SOURCE_FILE="$PROJECT_ROOT/.sailing/SAILING_SOURCE"
-if [ ! -f "$SOURCE_FILE" ]; then
-  echo "Error: $SOURCE_FILE not found" >&2
-  echo "Please run install.sh" >&2
-  exit 1
-fi
-SAILING_SOURCE="$(cat "$SOURCE_FILE" | tr -d '[:space:]')"
-
-# Resolve relative paths
-if [[ "$SAILING_SOURCE" != /* ]]; then
-  SAILING_SOURCE="$PROJECT_ROOT/$SAILING_SOURCE"
-fi
+SAILING_SOURCE="$PROJECT_ROOT/.sailing/rudder"
 
 export SAILING_PROJECT="$PROJECT_ROOT"
 

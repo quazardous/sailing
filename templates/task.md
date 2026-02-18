@@ -10,15 +10,10 @@ blocked_by: []
 stories: []
 tags: []
 target_versions: {}
+created_at: ''
+updated_at: ''
 # MCP: artefact_update { "id": "<id>", "status": "...", "set": {...} }
 ---
-
-<!--
-MCP multi-section edit (preferred):
-artefact_edit { "id": "<id>", "content": "## Description\nYour description...\n\n## Deliverables\n- [ ] Item 1\n- [ ] Item 2" }
-
-With mode: artefact_edit { "id": "<id>", "content": "## Log [append]\n- Entry", "mode": "append" }
--->
 
 ## Description
 
