@@ -387,11 +387,11 @@ if [ -L "$COMMANDS" ]; then
 fi
 do_mkdir "$COMMANDS"
 # Symlink individual command files with variant selection
+# Generated variants (.inline.md / .worktree.md) come from build.sh
 for f in "$SCRIPT_DIR/commands/dev"/*.md; do
   [ -f "$f" ] || continue
   fname=$(basename "$f")
   case "$fname" in
-    *.base.md) continue ;;
     *.inline.md)
       [ "$USE_WORKTREE" = true ] && continue
       dest_name="${fname%.inline.md}.md"
@@ -403,6 +403,7 @@ for f in "$SCRIPT_DIR/commands/dev"/*.md; do
       do_ln "$f" "$COMMANDS/$dest_name"
       ;;
     *)
+      # Non-variant commands: symlink as-is
       do_ln "$f" "$COMMANDS/$fname"
       ;;
   esac
