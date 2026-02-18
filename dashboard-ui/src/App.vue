@@ -96,6 +96,13 @@ function getDefaultLayout(activityId: string): void {
       title: 'Graph',
       position: { referencePanel: 'detail', direction: 'within' },
     });
+
+    api.addPanel({
+      id: 'manage',
+      component: 'manage',
+      title: 'Manage',
+      position: { referencePanel: 'detail', direction: 'within' },
+    });
   } else if (activityId === 'agents') {
     api.addPanel({
       id: 'agent-detail',

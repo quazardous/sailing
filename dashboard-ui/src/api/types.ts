@@ -154,6 +154,30 @@ export interface ProjectInfo {
   name: string;
 }
 
+// Status update response
+export interface StatusUpdateResponse {
+  success: boolean;
+  error?: string;
+  id?: string;
+  status?: string;
+  previousStatus?: string;
+}
+
+// Valid statuses per entity type
+export interface StatusesResponse {
+  prd: string[];
+  epic: string[];
+  task: string[];
+}
+
+// Archive response
+export interface ArchiveResponse {
+  success: boolean;
+  error?: string;
+  prdId?: string;
+  movedFiles?: string[];
+}
+
 // API response wrapper
 export interface ApiResponse<T> {
   data: T;

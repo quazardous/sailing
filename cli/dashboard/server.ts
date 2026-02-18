@@ -18,6 +18,22 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 type RouteHandler = (req: http.IncomingMessage, res: http.ServerResponse) => void | Promise<void>;
 
+/**
+ * Parse JSON body from a POST request
+ */
+export async function parseBody(req: http.IncomingMessage): Promise<unknown> {
+  return new Promise((resolve, reject) => {
+    const chunks: Buffer[] = [];
+    req.on('data', (chunk: Buffer) => chunks.push(chunk));
+    req.on('end', () => {
+      try {
+        resolve(JSON.parse(Buffer.concat(chunks).toString()));
+      } catch { resolve(null); }
+    });
+    req.on('error', reject);
+  });
+}
+
 export interface DashboardServerOptions {
   /** Idle timeout in seconds. -1 = infinite, 0 = use default (300s) */
   timeout?: number;
@@ -69,6 +85,15 @@ export function createServer(
 
       // CORS for local dev
       res.setHeader('Access-Control-Allow-Origin', '*');
+      res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+      res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+
+      // Handle CORS preflight
+      if (req.method === 'OPTIONS') {
+        res.writeHead(204);
+        res.end();
+        return;
+      }
 
       // Vue app: serve index.html for root if Vue is enabled and built
       if (enableVue && pathname === '/' && vueDistExists()) {
@@ -81,18 +106,37 @@ export function createServer(
       }
 
       // Route matching (exact match first, then pattern match)
-      // Skip "/" route if Vue is enabled (handled above)
-      let handler = (enableVue && vueDistExists() && pathname === '/') ? undefined : routes[pathname];
+      // Routes can be plain pathnames (match any method) or "METHOD pathname" (match specific method)
+      const method = req.method || 'GET';
 
-      // Try pattern matching for dynamic routes like /api/prd/:id
-      if (!handler) {
-        for (const [pattern, h] of Object.entries(routes)) {
-          if (pattern.includes(':')) {
-            const regex = new RegExp('^' + pattern.replace(/:(\w+)/g, '([^/]+)') + '$');
-            if (regex.test(pathname)) {
-              handler = h;
-              break;
-            }
+      function matchRoute(routeKey: string): boolean {
+        // Check if route has a method prefix (e.g. "POST /api/v2/archive/:id")
+        const spaceIdx = routeKey.indexOf(' ');
+        if (spaceIdx > 0 && routeKey.substring(0, spaceIdx).match(/^[A-Z]+$/)) {
+          const routeMethod = routeKey.substring(0, spaceIdx);
+          const routePath = routeKey.substring(spaceIdx + 1);
+          if (routeMethod !== method) return false;
+          if (routePath.includes(':')) {
+            const regex = new RegExp('^' + routePath.replace(/:(\w+)/g, '([^/]+)') + '$');
+            return regex.test(pathname);
+          }
+          return routePath === pathname;
+        }
+        // No method prefix - match any method
+        if (routeKey.includes(':')) {
+          const regex = new RegExp('^' + routeKey.replace(/:(\w+)/g, '([^/]+)') + '$');
+          return regex.test(pathname);
+        }
+        return routeKey === pathname;
+      }
+
+      // Skip "/" route if Vue is enabled (handled above)
+      let handler: RouteHandler | undefined;
+      if (!(enableVue && vueDistExists() && pathname === '/')) {
+        for (const [routeKey, h] of Object.entries(routes)) {
+          if (matchRoute(routeKey)) {
+            handler = h;
+            break;
           }
         }
       }

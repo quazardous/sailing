@@ -4,6 +4,26 @@ All notable changes to the Sailing Framework will be documented in this file.
 
 <!-- NOTE: This is a USER changelog, not a commit log. Focus on user-visible features and benefits, not implementation details. -->
 
+## [1.21.0] - 2026-02-18
+
+### Added
+- **Dashboard Manage panel**: new "Manage" tab in the artefacts activity for management actions
+- **Dashboard status update**: change artefact status (PRD/Epic/Task) directly from the Manage panel with validated dropdown
+- **Dashboard PRD archive**: archive completed PRDs from the UI with safety confirmation (retype PRD ref)
+- **API `POST /api/v2/artefact/:id/status`**: update artefact status with lexicon validation
+- **API `GET /api/v2/statuses`**: retrieve valid status values per entity type
+- **API `POST /api/v2/archive/:id`**: archive a PRD via the dashboard API
+- **Archive manager** (`archive-manager.ts`): extracted archive logic from CLI command into a reusable manager
+- **Server POST support**: `parseBody()` helper and method-aware route matching in dashboard server
+
+### Changed
+- `cli/commands/archive.ts` is now a thin wrapper calling `archive-manager`
+- Nunjucks template engine for merge, task-start, and tasks-batch commands
+
+### Fixed
+- `devinstall.sh` symlink updates and `.gitignore` management
+- Dead `.base.md` skip removed from devinstall command loop
+
 ## [1.20.0] - 2026-02-18
 
 ### Added

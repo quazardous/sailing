@@ -12,6 +12,7 @@ import GanttPanel from './panels/GanttPanel.vue';
 import DagPanel from './panels/DagPanel.vue';
 import AgentDetailPanel from './panels/AgentDetailPanel.vue';
 import LogsPanel from './panels/LogsPanel.vue';
+import ManagePanel from './panels/ManagePanel.vue';
 import SettingsPanel from './panels/SettingsPanel.vue';
 
 // Import Dockview styles
@@ -34,6 +35,7 @@ app.component('gantt', GanttPanel);
 app.component('dag', DagPanel);
 app.component('agent-detail', AgentDetailPanel);
 app.component('logs', LogsPanel);
+app.component('manage', ManagePanel);
 app.component('settings-panel', SettingsPanel);
 
 app.use(pinia);

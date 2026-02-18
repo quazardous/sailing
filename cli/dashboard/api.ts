@@ -6,13 +6,15 @@
  */
 import http from 'http';
 import fs from 'fs';
-import { json } from './server.js';
+import { json, parseBody } from './server.js';
 
 // Import from managers (allowed at routes level)
 import { getAllVersions, getMainVersion } from '../managers/version-manager.js';
 import { getAllAgentsFromDb } from '../managers/db-manager.js';
-import { getAllFullPrds, buildTaskIndex, buildEpicIndex } from '../managers/artefacts/index.js';
+import { getAllFullPrds, buildTaskIndex, buildEpicIndex, updateArtefact } from '../managers/artefacts/index.js';
 import { checkPendingMemory, findPrdMemoryFile, findEpicMemoryFile } from '../managers/memory-manager.js';
+import { archivePrd } from '../managers/archive-manager.js';
+import { normalizeStatus, STATUS } from '../lib/lexicon.js';
 import { getConfigValue, findProjectRoot } from '../managers/core-manager.js';
 import os from 'os';
 
@@ -489,6 +491,95 @@ export function createApiV2Routes(): Record<string, (req: http.IncomingMessage, 
       json(res, { id, type, content: content || null });
     } catch (error) {
       json(res, { error: 'Failed to fetch memory' }, 500);
+    }
+  };
+
+  // GET /api/v2/statuses - Valid status values per entity type
+  routes['/api/v2/statuses'] = (_req, res) => {
+    json(res, {
+      prd: STATUS.prd,
+      epic: STATUS.epic,
+      task: STATUS.task,
+    });
+  };
+
+  // POST /api/v2/artefact/:id/status - Update artefact status
+  routes['POST /api/v2/artefact/:id/status'] = async (req, res) => {
+    try {
+      const url = new URL(req.url || '/', 'http://localhost');
+      const parts = url.pathname.split('/');
+      // /api/v2/artefact/:id/status → id is at index -2
+      const id = decodeURIComponent(parts[parts.length - 2] || '');
+
+      if (!id) {
+        json(res, { success: false, error: 'Missing artefact ID' }, 400);
+        return;
+      }
+
+      const body = await parseBody(req) as { status?: string } | null;
+
+      if (!body || !body.status) {
+        json(res, { success: false, error: 'Missing status in request body' }, 400);
+        return;
+      }
+
+      // Determine entity type from ID prefix
+      let entityType: 'prd' | 'epic' | 'task';
+      if (id.startsWith('PRD-')) {
+        entityType = 'prd';
+      } else if (id.startsWith('E')) {
+        entityType = 'epic';
+      } else if (id.startsWith('T')) {
+        entityType = 'task';
+      } else {
+        json(res, { success: false, error: 'Invalid artefact ID format' }, 400);
+        return;
+      }
+
+      // Validate and normalize the status
+      const canonical = normalizeStatus(body.status, entityType);
+      if (!canonical) {
+        const valid = STATUS[entityType].join(', ');
+        json(res, { success: false, error: `Invalid status "${body.status}" for ${entityType}. Valid: ${valid}` }, 400);
+        return;
+      }
+
+      const result = updateArtefact(id, { status: canonical });
+      json(res, { success: true, id: result.id, status: canonical });
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : 'Failed to update status';
+      console.error('API /api/v2/artefact/:id/status error:', error);
+      json(res, { success: false, error: msg }, 500);
+    }
+  };
+
+  // POST /api/v2/archive/:id - Archive a PRD
+  routes['POST /api/v2/archive/:id'] = async (req, res) => {
+    try {
+      const url = new URL(req.url || '/', 'http://localhost');
+      const id = decodeURIComponent(url.pathname.split('/').pop() || '');
+
+      if (!id) {
+        json(res, { success: false, error: 'Missing PRD ID' }, 400);
+        return;
+      }
+
+      const body = await parseBody(req) as { confirm?: string } | null;
+
+      if (!body || body.confirm !== id) {
+        json(res, { success: false, error: 'Confirmation does not match PRD ID' }, 400);
+        return;
+      }
+
+      const result = await archivePrd(id);
+      if (result.success) {
+        json(res, { success: true, prdId: result.prdId, movedFiles: result.movedFiles });
+      } else {
+        json(res, { success: false, error: result.error }, 400);
+      }
+    } catch (error) {
+      console.error('API /api/v2/archive error:', error);
+      json(res, { success: false, error: 'Failed to archive PRD' }, 500);
     }
   };
 

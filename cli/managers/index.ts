@@ -104,6 +104,15 @@ export {
 } from './memory-manager.js';
 export type { PendingMemoryResult, MergeLogsResult } from './memory-manager.js';
 
+// Archive operations
+export {
+  archivePrd,
+  getDonePrds,
+  isPrdDone,
+  getPrdStatus
+} from './archive-manager.js';
+export type { ArchiveResult } from './archive-manager.js';
+
 // ADR (Architecture Decision Records)
 export {
   getAdrDir,

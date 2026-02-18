@@ -9,6 +9,9 @@ import type {
   ArtefactResponse,
   AgentsResponse,
   ProjectInfo,
+  ArchiveResponse,
+  StatusUpdateResponse,
+  StatusesResponse,
   WsMessage,
 } from './types';
 
@@ -77,6 +80,33 @@ class ApiClient {
    */
   async getData(): Promise<unknown> {
     return this.fetch('/data');
+  }
+
+  /**
+   * Get valid statuses per entity type
+   */
+  async getStatuses(): Promise<StatusesResponse> {
+    return this.fetch<StatusesResponse>('/v2/statuses');
+  }
+
+  /**
+   * Update artefact status
+   */
+  async updateStatus(id: string, status: string): Promise<StatusUpdateResponse> {
+    return this.fetch<StatusUpdateResponse>(`/v2/artefact/${encodeURIComponent(id)}/status`, {
+      method: 'POST',
+      body: JSON.stringify({ status }),
+    });
+  }
+
+  /**
+   * Archive a PRD
+   */
+  async archivePrd(prdId: string, confirm: string): Promise<ArchiveResponse> {
+    return this.fetch<ArchiveResponse>(`/v2/archive/${encodeURIComponent(prdId)}`, {
+      method: 'POST',
+      body: JSON.stringify({ confirm }),
+    });
   }
 }
 

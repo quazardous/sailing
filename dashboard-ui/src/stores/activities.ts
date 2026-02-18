@@ -25,7 +25,7 @@ const activities: Activity[] = [
     label: 'Artefacts',
     icon: '📋',
     sidebarComponent: 'ArtefactsExplorer',
-    allowedPanels: ['detail', 'stats', 'meta', 'gantt', 'dag'],
+    allowedPanels: ['detail', 'stats', 'meta', 'gantt', 'dag', 'manage'],
     position: 'top',
   },
   {
