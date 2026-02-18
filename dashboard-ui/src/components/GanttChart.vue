@@ -1,8 +1,10 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue';
 import { useUiStore } from '../stores/ui';
+import { useArtefactsStore } from '../stores/artefacts';
 
 const uiStore = useUiStore();
+const artefactsStore = useArtefactsStore();
 
 interface GanttTask {
   id: string;
@@ -533,16 +535,20 @@ function formatDate(hours: number): string {
 
         <!-- Task labels (rendered before bars so they appear behind) -->
         <g class="task-labels">
-          <text
-            v-for="(task, index) in tasks"
-            :key="'label-' + task.id"
-            :x="8"
-            :y="headerHeight + index * rowHeight + rowHeight / 2 + 4"
-            class="task-label"
-          >
-            <tspan class="task-id">{{ task.id }}</tspan>
-            <tspan dx="8" class="task-name">{{ task.name.replace(task.id, '').trim() }}</tspan>
-          </text>
+          <g v-for="(task, index) in tasks" :key="'label-' + task.id">
+            <text
+              :x="8"
+              :y="headerHeight + index * rowHeight + rowHeight / 2 + 4"
+              class="task-label task-id-link"
+              @click="artefactsStore.selectArtefact(task.id)"
+            >{{ task.id }}</text>
+            <text
+              :x="8 + task.id.length * 7.2 + 8"
+              :y="headerHeight + index * rowHeight + rowHeight / 2 + 4"
+              class="task-label task-name"
+              clip-path="url(#label-clip)"
+            >{{ task.name.replace(task.id, '').trim() }}</text>
+          </g>
         </g>
 
         <!-- Task bars -->
@@ -554,6 +560,7 @@ function formatDate(hours: number): string {
               :y="headerHeight + index * rowHeight + 16"
               class="task-ref"
               text-anchor="end"
+              @click="artefactsStore.selectArtefact(task.id)"
             >{{ task.id }}</text>
             <!-- Main bar -->
             <rect
@@ -567,6 +574,7 @@ function formatDate(hours: number): string {
                 getStatusClass(task.status),
                 { critical: task.isCritical }
               ]"
+              @click="artefactsStore.selectArtefact(task.id)"
               @mouseenter="showTooltip($event, task)"
               @mousemove="updateTooltipPosition($event)"
               @mouseleave="hideTooltip"
@@ -760,9 +768,15 @@ function formatDate(hours: number): string {
   font-size: 12px;
 }
 
-.task-label .task-id {
+.task-id-link {
   font-weight: 600;
   fill: var(--accent);
+  cursor: pointer;
+}
+
+.task-id-link:hover {
+  text-decoration: underline;
+  opacity: 0.8;
 }
 
 /* Task ref before bar (discrete) */
@@ -770,6 +784,12 @@ function formatDate(hours: number): string {
   fill: var(--text-dim, #666);
   font-size: 9px;
   opacity: 0.6;
+  cursor: pointer;
+}
+
+.task-ref:hover {
+  opacity: 1;
+  fill: var(--accent);
 }
 
 .task-bar {

@@ -4,7 +4,7 @@
 import fs from 'fs';
 import path from 'path';
 import { loadFile, saveFile, jsonOut } from '../../managers/core-manager.js';
-import { normalizeId, extractTaskId } from '../../lib/normalize.js';
+import { normalizeId, buildIdResolver } from '../../lib/normalize.js';
 import { getAllEpics, matchesPrd } from '../../managers/artefacts-manager.js';
 import { STATUS, normalizeStatus, isStatusDone, isStatusNotStarted, isStatusInProgress, isStatusCancelled } from '../../lib/lexicon.js';
 import { buildDependencyGraph, detectCycles, type TaskNode } from '../../managers/graph-manager.js';
@@ -27,6 +27,7 @@ export function registerValidateCommand(deps: Command): void {
       const errors: ValidationError[] = [];
       const warnings: ValidationError[] = [];
       const fixes: Fix[] = [];
+      const resolveTask = buildIdResolver(tasks.keys());
 
       const prdFilter = options.prd ? normalizeId(options.prd) : null;
 
@@ -78,17 +79,17 @@ export function registerValidateCommand(deps: Command): void {
           }
         }
 
-        // 4. Format inconsistencies
+        // 4. Format inconsistencies — resolve to canonical entry ID
         for (const raw of task.blockedByRaw) {
-          const extracted = extractTaskId(raw as string);
-          if (extracted && raw !== extracted) {
+          const canonical = resolveTask(String(raw));
+          if (canonical && raw !== canonical) {
             warnings.push({
               type: 'format',
               task: id,
-              message: `${id}: blocked_by "${raw}" should be "${extracted}"`
+              message: `${id}: blocked_by "${raw}" should be "${canonical}"`
             });
             if (options.fix) {
-              fixes.push({ task: id, file: task.file, action: 'normalize', raw: raw as string, normalized: extracted });
+              fixes.push({ task: id, file: task.file, action: 'normalize', raw: raw as string, normalized: canonical });
             }
           }
         }
@@ -224,21 +225,23 @@ export function registerValidateCommand(deps: Command): void {
       }
 
       // 10. Epic/Task consistency
+      const allEpics = getAllEpics();
+      const resolveEpic = buildIdResolver(allEpics.map(e => e.id));
       const tasksByEpic = new Map<string, TaskNode[]>();
       for (const [, task] of tasks) {
         if (prdFilter && !task.prd?.includes(prdFilter)) continue;
         const epicMatch = task.parent?.match(/E(\d+)/i);
         if (epicMatch) {
-          const epicId = normalizeId(`E${epicMatch[1]}`);
+          const epicId = resolveEpic(`E${epicMatch[1]}`) ?? `E${epicMatch[1]}`;
           if (!tasksByEpic.has(epicId)) tasksByEpic.set(epicId, []);
           (tasksByEpic.get(epicId)).push(task);
         }
       }
 
-      for (const epicEntry of getAllEpics()) {
+      for (const epicEntry of allEpics) {
         if (prdFilter && !matchesPrd(epicEntry.prdId, options.prd)) continue;
 
-        const epicId = normalizeId(epicEntry.data?.id);
+        const epicId = epicEntry.id;
         if (!epicId) continue;
 
         const epicStatus = (epicEntry.data?.status) || 'Unknown';
@@ -322,7 +325,7 @@ export function registerValidateCommand(deps: Command): void {
                 break;
               }
               case 'remove_self': {
-                const filtered = file.data.blocked_by.filter(b => extractTaskId(b) !== fix.task);
+                const filtered = file.data.blocked_by.filter(b => (resolveTask(b) ?? b) !== fix.task);
                 if (filtered.length !== file.data.blocked_by.length) {
                   file.data.blocked_by = filtered;
                   updated = true;
@@ -332,7 +335,7 @@ export function registerValidateCommand(deps: Command): void {
               }
               case 'remove_missing':
               case 'remove_cancelled': {
-                const filtered = file.data.blocked_by.filter(b => extractTaskId(b) !== fix.blockerId);
+                const filtered = file.data.blocked_by.filter(b => (resolveTask(b) ?? b) !== fix.blockerId);
                 if (filtered.length !== file.data.blocked_by.length) {
                   file.data.blocked_by = filtered;
                   updated = true;

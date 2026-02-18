@@ -9,6 +9,7 @@
 export {
   clearCache,
   updateArtefact,
+  touchArtefact,
   getArtefactBody,
   editArtefactSection,
   editArtefactMultiSection,
@@ -19,6 +20,7 @@ export {
 export type {
   UpdateArtefactOptions,
   UpdateArtefactResult,
+  TouchArtefactResult,
   EditSectionOptions,
   EditSectionResult,
   EditMultiSectionResult,

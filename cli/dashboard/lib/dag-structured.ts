@@ -3,6 +3,7 @@
  *
  * Generates node/edge data structures instead of Mermaid code.
  */
+import { buildIdResolver } from '../../lib/normalize.js';
 import type { PrdData, EpicData, TaskData, StructuredDagResult, DagNode, DagEdge } from './types.js';
 
 /**
@@ -11,6 +12,15 @@ import type { PrdData, EpicData, TaskData, StructuredDagResult, DagNode, DagEdge
 export function generateStructuredPrdDag(prd: PrdData, showTasks: boolean = true, criticalPath?: string[]): StructuredDagResult {
   const nodes: DagNode[] = [];
   const edges: DagEdge[] = [];
+
+  // Build resolver from all task IDs for robust dependency matching
+  const taskIds: string[] = [];
+  if (showTasks) {
+    for (const epic of prd.epics) {
+      for (const task of epic.tasks) taskIds.push(task.id);
+    }
+  }
+  const resolve = buildIdResolver(taskIds);
 
   // PRD node (level 0)
   nodes.push({
@@ -56,14 +66,14 @@ export function generateStructuredPrdDag(prd: PrdData, showTasks: boolean = true
           type: 'hierarchy'
         });
 
-        // Blocked-by edges (dependency)
+        // Blocked-by edges (dependency) — resolve to canonical ID
         const blockedBy = task.meta?.blocked_by;
         if (blockedBy) {
           const blockers = Array.isArray(blockedBy) ? blockedBy : [blockedBy];
           for (const blocker of blockers) {
             if (blocker && typeof blocker === 'string') {
               edges.push({
-                from: blocker,
+                from: resolve(blocker) ?? blocker,
                 to: task.id,
                 type: 'dependency'
               });
@@ -87,6 +97,7 @@ export function generateStructuredEpicDag(
 ): StructuredDagResult {
   const nodes: DagNode[] = [];
   const edges: DagEdge[] = [];
+  const resolve = buildIdResolver(epic.tasks.map(t => t.id));
 
   // PRD node (level 0)
   nodes.push({
@@ -130,14 +141,14 @@ export function generateStructuredEpicDag(
       type: 'hierarchy'
     });
 
-    // Blocked-by edges
+    // Blocked-by edges — resolve to canonical ID
     const blockedBy = task.meta?.blocked_by;
     if (blockedBy) {
       const blockers = Array.isArray(blockedBy) ? blockedBy : [blockedBy];
       for (const blocker of blockers) {
         if (blocker && typeof blocker === 'string') {
           edges.push({
-            from: blocker,
+            from: resolve(blocker) ?? blocker,
             to: task.id,
             type: 'dependency'
           });
@@ -213,11 +224,11 @@ export function generateStructuredTaskDag(
     const blockers = Array.isArray(blockedBy) ? blockedBy : [blockedBy];
     for (const blocker of blockers) {
       if (blocker && typeof blocker === 'string') {
-        // Add blocker node at same level
+        // Add blocker node at same level (use raw ID since we don't have full data to resolve)
         nodes.push({
           id: blocker,
           type: 'task',
-          title: blocker, // Just the ID as title since we don't have full data
+          title: blocker,
           status: 'Unknown',
           level: 2
         });

@@ -4,6 +4,36 @@ All notable changes to the Sailing Framework will be documented in this file.
 
 <!-- NOTE: This is a USER changelog, not a commit log. Focus on user-visible features and benefits, not implementation details. -->
 
+## [1.20.0] - 2026-02-18
+
+### Added
+- **MCP `artefact_update`**: dedicated `milestone` parameter for epics
+- **MCP `artefact_list`**: `milestone` and `tags` filters for epics/tasks
+- **MCP `artefact_edit`**: richer return with section name and line count per edited section
+- **MCP `artefact_edit`**: patch mode (`old_string`/`new_string`) for precise in-section edits
+- **MCP `artefact_show`**: `section` filter to return a single section's content
+- **MCP `artefact_create`**: custom `created_at` parameter support
+- Artefacts now track `created_at` / `updated_at` timestamps automatically
+- `buildIdResolver()` utility for format-agnostic ID resolution (T001 = T0001 = T00001)
+- Dashboard: clickable task IDs and bars in Gantt chart (navigate to task detail)
+
+### Fixed
+- **ID normalization across the board**: dependency graph, Gantt, DAG, validator, and deps commands now resolve IDs through `buildIdResolver` instead of fixed-width `normalizeId` — eliminates false `missing_ref` errors when project digit config differs from default
+- `deps:add` no longer stores short IDs (T457) when project uses padded format (T00457)
+- `resolveArtefact()` uses index entry IDs instead of re-normalizing with wrong digit count
+- Backfill `created_at` from file mtime on existing artefacts
+- Memory/log file paths now use project digit config
+
+### Changed
+- Breakdown command prompts now include explicit "After Completion" guidance to prevent conductor from suggesting reviews after breakdown (reviews happen before, not after)
+- Install scripts use inline `SAILING_SOURCE` patching instead of external config file
+
+## [1.19.0] - 2026-01-27
+
+### Added
+- MCP stdio mode (`rdrmcp`) for non-worktree setups
+- Install command auto-detects worktree vs inline mode
+
 ## [1.18.1] - 2026-01-26
 
 ### Added

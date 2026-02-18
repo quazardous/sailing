@@ -96,6 +96,18 @@ Then fill content via `artefact_edit` (see Artefact Editing Rules).
 
 Target: **1-2h per task**, 5-10 tasks per epic. Set `effort` field in frontmatter.
 
+## After Completion — Next Steps
+
+Once tasks are created, suggest **in this order**:
+
+1. `workflow_validate` — validate dependency graph
+2. `workflow_ready` — find first ready task to start
+
+**Do NOT suggest** `/dev:prd-review` or `/dev:epic-review` — reviews happen BEFORE breakdown, not after.
+Tasks exist now — move to execution.
+
+---
+
 ## Non-Goals
 
 - Start implementation

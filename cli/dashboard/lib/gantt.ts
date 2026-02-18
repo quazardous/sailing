@@ -11,7 +11,26 @@ import {
   getScheduleEnvelope,
   RealSchedulableTask
 } from '../../lib/scheduling.js';
+import { buildIdResolver } from '../../lib/normalize.js';
 import type { PrdData, EpicData, SailingGanttTask, SimpleGanttTask, GanttResult, SimpleGanttResult, EffortConfig } from './types.js';
+
+/** Collect all task IDs from a PRD's epics */
+function collectTaskIds(epics: EpicData[]): string[] {
+  const ids: string[] = [];
+  for (const epic of epics) {
+    for (const task of epic.tasks) ids.push(task.id);
+  }
+  return ids;
+}
+
+/** Extract and resolve blocked_by from task meta against known IDs */
+function resolveBlockers(meta: Record<string, unknown> | undefined, resolve: (id: string) => string | null): string[] {
+  const blockedBy = meta?.blocked_by;
+  const raw = blockedBy ? (Array.isArray(blockedBy) ? blockedBy : [blockedBy]) : [];
+  return raw
+    .filter((b): b is string => typeof b === 'string')
+    .map(b => resolve(b) ?? b);
+}
 
 /**
  * Generate custom Gantt data for a PRD (hour-based with real scheduling)
@@ -19,11 +38,10 @@ import type { PrdData, EpicData, SailingGanttTask, SimpleGanttTask, GanttResult,
 export function generatePrdGantt(prd: PrdData, effortConfig: EffortConfig): GanttResult {
   const taskData: Map<string, RealSchedulableTask & { title: string; epicId: string; epicTitle: string }> = new Map();
   let earliestDate: Date | null = null;
+  const resolve = buildIdResolver(collectTaskIds(prd.epics));
 
   for (const epic of prd.epics) {
     for (const task of epic.tasks) {
-      const blockedBy = task.meta?.blocked_by;
-      const blockers = blockedBy ? (Array.isArray(blockedBy) ? blockedBy : [blockedBy]) : [];
       const effort = task.meta?.effort as string | undefined;
       const startedAt = task.meta?.started_at as string | undefined;
       const doneAt = task.meta?.done_at as string | undefined;
@@ -40,7 +58,7 @@ export function generatePrdGantt(prd: PrdData, effortConfig: EffortConfig): Gant
         title: task.title,
         status: task.status,
         effort: effort || null,
-        blockedBy: blockers.filter((b): b is string => typeof b === 'string'),
+        blockedBy: resolveBlockers(task.meta, resolve),
         startedAt,
         doneAt,
         epicId: epic.id,
@@ -69,11 +87,9 @@ export function generatePrdGantt(prd: PrdData, effortConfig: EffortConfig): Gant
   }
   for (const epic of prd.epics) {
     for (const task of epic.tasks) {
-      const blockers = task.meta?.blocked_by;
-      if (!blockers) continue;
-      const blockerList = Array.isArray(blockers) ? blockers : [blockers];
-      for (const blockerId of blockerList) {
-        if (typeof blockerId !== 'string') continue;
+      const data = taskData.get(task.id);
+      if (!data) continue;
+      for (const blockerId of data.blockedBy) {
         const blockerEpicId = taskToEpic.get(blockerId);
         if (blockerEpicId && blockerEpicId !== epic.id) {
           epicBlockedBy.get(epic.id)?.add(blockerEpicId);
@@ -190,10 +206,9 @@ export function generatePrdGantt(prd: PrdData, effortConfig: EffortConfig): Gant
 export function generateEpicGantt(epic: EpicData, effortConfig: EffortConfig): GanttResult {
   const taskData: Map<string, RealSchedulableTask & { title: string }> = new Map();
   let earliestDate: Date | null = null;
+  const resolve = buildIdResolver(epic.tasks.map(t => t.id));
 
   for (const task of epic.tasks) {
-    const blockedBy = task.meta?.blocked_by;
-    const blockers = blockedBy ? (Array.isArray(blockedBy) ? blockedBy : [blockedBy]) : [];
     const effort = task.meta?.effort as string | undefined;
     const startedAt = task.meta?.started_at as string | undefined;
     const doneAt = task.meta?.done_at as string | undefined;
@@ -210,7 +225,7 @@ export function generateEpicGantt(epic: EpicData, effortConfig: EffortConfig): G
       title: task.title,
       status: task.status,
       effort: effort || null,
-      blockedBy: blockers.filter((b): b is string => typeof b === 'string'),
+      blockedBy: resolveBlockers(task.meta, resolve),
       startedAt,
       doneAt
     });
@@ -301,11 +316,10 @@ export function generatePrdOverviewGantt(prds: PrdData[], effortConfig: EffortCo
   for (const prd of prds) {
     const taskData: Map<string, RealSchedulableTask> = new Map();
     let earliestStartedAt: string | undefined;
+    const resolve = buildIdResolver(collectTaskIds(prd.epics));
 
     for (const epic of prd.epics) {
       for (const task of epic.tasks) {
-        const blockedBy = task.meta?.blocked_by;
-        const blockers = blockedBy ? (Array.isArray(blockedBy) ? blockedBy : [blockedBy]) : [];
         const effort = task.meta?.effort as string | undefined;
         const startedAt = task.meta?.started_at as string | undefined;
         const doneAt = task.meta?.done_at as string | undefined;
@@ -317,7 +331,7 @@ export function generatePrdOverviewGantt(prds: PrdData[], effortConfig: EffortCo
         taskData.set(task.id, {
           id: task.id,
           effort: effort || null,
-          blockedBy: blockers.filter((b): b is string => typeof b === 'string'),
+          blockedBy: resolveBlockers(task.meta, resolve),
           status: task.status,
           startedAt,
           doneAt

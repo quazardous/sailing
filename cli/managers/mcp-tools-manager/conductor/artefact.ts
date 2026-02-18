@@ -17,6 +17,7 @@ import {
   createPrd,
   createStory,
   updateArtefact,
+  touchArtefact,
   editArtefactSection,
   editArtefactMultiSection,
   patchArtefact
@@ -40,22 +41,25 @@ export const ARTEFACT_TOOLS: ToolDefinition[] = [
           type: { type: 'string', enum: ['task', 'epic', 'prd', 'story'], description: 'Artefact type' },
           scope: { type: 'string', description: 'Filter scope (PRD-001 for epics, E001 for tasks)' },
           status: { type: 'string', description: 'Filter by status' },
+          milestone: { type: 'string', description: 'Filter by milestone (epics only)' },
+          tags: { type: 'array', items: { type: 'string' }, description: 'Filter by tags (any match)' },
           limit: { type: 'number', description: 'Limit results' }
         },
         required: ['type']
       }
     },
     handler: (args) => {
-      const { type, scope, status, limit } = args;
+      const { type, scope, status, milestone, tags, limit } = args;
       const nextActions: NextAction[] = [];
 
       try {
         let items: Array<{ id: string; title?: string; status?: string; [key: string]: unknown }> = [];
 
         if (type === 'task') {
-          const opts: { epicId?: string; status?: string } = {};
+          const opts: { epicId?: string; status?: string; tags?: string[] } = {};
           if (scope) opts.epicId = scope;
           if (status) opts.status = status;
+          if (tags) opts.tags = tags;
           items = getAllTasks(opts).map(t => ({
             id: t.id,
             title: t.data?.title,
@@ -64,13 +68,16 @@ export const ARTEFACT_TOOLS: ToolDefinition[] = [
             assignee: t.data?.assignee
           }));
         } else if (type === 'epic') {
-          const opts: { status?: string } = {};
+          const opts: { status?: string; milestone?: string; tags?: string[] } = {};
           if (status) opts.status = status;
+          if (milestone) opts.milestone = milestone;
+          if (tags) opts.tags = tags;
           items = getAllEpics(opts).map(e => ({
             id: e.id,
             title: e.data?.title,
             status: e.data?.status,
-            parent: e.data?.parent
+            parent: e.data?.parent,
+            milestone: e.data?.milestone
           }));
         } else if (type === 'prd') {
           items = getAllPrds().map(p => ({
@@ -290,6 +297,7 @@ export const ARTEFACT_TOOLS: ToolDefinition[] = [
           title: { type: 'string', description: 'New title' },
           effort: { type: 'string', description: 'Effort estimate (tasks only)' },
           priority: { type: 'string', description: 'Priority (tasks only)' },
+          milestone: { type: 'string', description: 'Milestone (epics only)' },
           set: { type: 'object', description: 'Additional frontmatter fields to set' }
         },
         required: ['id']
@@ -310,9 +318,33 @@ export const ARTEFACT_TOOLS: ToolDefinition[] = [
           assignee: args.assignee,
           effort: args.effort,
           priority: args.priority,
+          milestone: args.milestone,
           set: args.set
         });
 
+        return ok({ success: true, data: result });
+      } catch (error: any) {
+        return err(error.message);
+      }
+    }
+  },
+  {
+    tool: {
+      name: 'artefact_touch',
+      description: 'Touch artefact - stamp updated_at (and backfill created_at) without modifying body. Useful for testing timestamp behavior.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          id: { type: 'string', description: 'Artefact ID (T001, E001, PRD-001, S001)' }
+        },
+        required: ['id']
+      }
+    },
+    handler: (args) => {
+      const id = normalizeId(args.id);
+
+      try {
+        const result = touchArtefact(id);
         return ok({ success: true, data: result });
       } catch (error: any) {
         return err(error.message);

@@ -230,4 +230,51 @@ export function extractNumericKey(id: string | null | undefined): string | null 
   return match[1] + (match[2] ? match[2].toLowerCase() : '');
 }
 
+// ============================================================================
+// ID Resolution (format-agnostic comparison)
+// ============================================================================
+
+/**
+ * Extract prefix-aware comparison key from an entity ID.
+ * T001, T0001, T1 all produce "T:1". E097, E0097 produce "E:97".
+ * Handles "T002 (description)" format by extracting the ID part.
+ */
+function idKey(id: string): string | null {
+  // Strip trailing descriptions: "T002 (some note)" → "T002"
+  const clean = id.match(/^([A-Z]+-?\d+)/i)?.[1] || id;
+
+  const prdMatch = clean.match(/^PRD-?0*(\d+)$/i);
+  if (prdMatch) return `PRD:${prdMatch[1]}`;
+
+  const match = clean.match(/^([TES])0*(\d+)([a-z])?$/i);
+  if (match) return `${match[1].toUpperCase()}:${match[2]}${match[3]?.toLowerCase() || ''}`;
+
+  return null;
+}
+
+/**
+ * Build a resolver that maps any ID format variant to the canonical form found in knownIds.
+ * T1, T01, T001, T0001 all resolve to whichever form is in knownIds.
+ * Prefix-aware: T001 and E001 are distinct.
+ *
+ * Pure function — no config dependency, works in lib layer.
+ *
+ * @example
+ *   const resolve = buildIdResolver(['T00457', 'T00458', 'E0097']);
+ *   resolve('T457')   // → 'T00457'
+ *   resolve('T00457') // → 'T00457'
+ *   resolve('E97')    // → 'E0097'
+ *   resolve('T999')   // → null (not in known set)
+ */
+export function buildIdResolver(knownIds: Iterable<string>): (rawId: string) => string | null {
+  const keyMap = new Map<string, string>();
+  for (const id of knownIds) {
+    const k = idKey(id);
+    if (k) keyMap.set(k, id);
+  }
+  return (rawId: string): string | null => {
+    const k = idKey(rawId);
+    return k ? (keyMap.get(k) ?? null) : null;
+  };
+}
 

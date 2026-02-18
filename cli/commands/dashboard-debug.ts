@@ -11,6 +11,7 @@ import {
   EffortConfig,
   RealSchedulableTask
 } from '../lib/scheduling.js';
+import { buildIdResolver } from '../lib/normalize.js';
 import { getSystemLocale } from '../lib/format.js';
 import { FullPrd } from '../lib/types/entities.js';
 
@@ -303,16 +304,26 @@ function getEffortConfig(): EffortConfig {
 }
 
 function buildTaskDataFromPrd(prd: FullPrd): Map<string, RealSchedulableTask> {
+  // Collect all task IDs for resolver
+  const allIds: string[] = [];
+  for (const epic of prd.epics) {
+    for (const task of epic.tasks) allIds.push(task.id);
+  }
+  const resolve = buildIdResolver(allIds);
+
   const taskData = new Map<string, RealSchedulableTask>();
   for (const epic of prd.epics) {
     for (const task of epic.tasks) {
       const blockedBy = task.meta?.blocked_by;
-      const blockers = blockedBy ? (Array.isArray(blockedBy) ? blockedBy : [blockedBy]) : [];
+      const raw = blockedBy ? (Array.isArray(blockedBy) ? blockedBy : [blockedBy]) : [];
+      const blockers = raw
+        .filter((b): b is string => typeof b === 'string')
+        .map(b => resolve(b) ?? b);
       taskData.set(task.id, {
         id: task.id,
         status: task.status,
         effort: task.meta?.effort as string | undefined,
-        blockedBy: blockers as string[],
+        blockedBy: blockers,
         startedAt: task.meta?.started_at as string | undefined,
         doneAt: task.meta?.done_at as string | undefined
       });

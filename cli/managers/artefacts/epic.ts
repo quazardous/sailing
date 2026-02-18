@@ -108,6 +108,8 @@ export function getEpic(epicId: string | number): EpicIndexEntry | null {
 export interface EpicQueryOptions {
   prdDir?: string;
   status?: string | string[];
+  milestone?: string;
+  tags?: string[];
 }
 
 /**
@@ -124,6 +126,17 @@ export function getAllEpics(options: EpicQueryOptions = {}): EpicIndexEntry[] {
   if (options.status) {
     const statuses = Array.isArray(options.status) ? options.status : [options.status];
     epics = epics.filter(e => statuses.includes(e.data?.status));
+  }
+
+  if (options.milestone) {
+    epics = epics.filter(e => e.data?.milestone === options.milestone);
+  }
+
+  if (options.tags && options.tags.length > 0) {
+    epics = epics.filter(e => {
+      const epicTags = e.data?.tags || [];
+      return options.tags!.some(t => epicTags.includes(t));
+    });
   }
 
   return epics;

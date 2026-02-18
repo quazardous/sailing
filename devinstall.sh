@@ -319,7 +319,7 @@ if [ "$DRY_RUN" = true ]; then
   echo "  Would copy: bin/rudder (from rudder.dev)"
   echo "  Would copy: bin/rdrctl (from rdrctl.dev)"
   echo "  Would copy: bin/rdrmcp (from rdrmcp.dev)"
-  echo "  Would write: .sailing/SAILING_SOURCE"
+  echo "  Would patch: SAILING_SOURCE in bin wrappers"
   echo "  Would write: SAILING_DIST"
 else
   # Copy dev wrapper scripts from sailing repo
@@ -335,9 +335,9 @@ else
   chmod +x bin/rdrmcp
   echo -e "  ${GREEN}Created: bin/rdrmcp${NC}"
 
-  # Create config file for wrappers (path to sailing repo)
-  echo "$SCRIPT_DIR" > "$DEFAULT_SAILING_DIR/SAILING_SOURCE"
-  echo -e "  ${GREEN}Created: .sailing/SAILING_SOURCE${NC}"
+  # Patch SAILING_SOURCE path directly into wrappers
+  sed -i "s|^SAILING_SOURCE=\"\" # patched by devinstall.sh|SAILING_SOURCE=\"$SCRIPT_DIR\" # patched by devinstall.sh|" bin/rudder bin/rdrctl bin/rdrmcp
+  echo -e "  ${GREEN}Patched: SAILING_SOURCE in bin wrappers${NC}"
 
   # SAILING_DIST at project root determines dev vs dist mode
   echo "dev" > "SAILING_DIST"
@@ -421,6 +421,14 @@ if [ -d "$DEFAULT_SAILING_DIR/core" ]; then
   else
     rm -rf "$DEFAULT_SAILING_DIR/core"
     echo -e "  ${GREEN}Removed: $DEFAULT_SAILING_DIR/core/ (legacy)${NC}"
+  fi
+fi
+if [ -f "$DEFAULT_SAILING_DIR/SAILING_SOURCE" ]; then
+  if [ "$DRY_RUN" = true ]; then
+    echo "  Would remove: $DEFAULT_SAILING_DIR/SAILING_SOURCE (legacy)"
+  else
+    rm -f "$DEFAULT_SAILING_DIR/SAILING_SOURCE"
+    echo -e "  ${GREEN}Removed: $DEFAULT_SAILING_DIR/SAILING_SOURCE (legacy)${NC}"
   fi
 fi
 

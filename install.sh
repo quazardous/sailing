@@ -378,7 +378,6 @@ if [ "$DRY_RUN" = true ]; then
   echo "  Would copy: bin/rudder (from rudder.dist)"
   echo "  Would copy: bin/rdrctl (from rdrctl.dist)"
   echo "  Would copy: bin/rdrmcp (from rdrmcp.dist)"
-  echo "  Would write: .sailing/SAILING_SOURCE"
 else
   # Copy dist wrapper scripts
   copy_file "$SRC/scripts/rudder.dist" "bin/rudder" false
@@ -392,10 +391,6 @@ else
   copy_file "$SRC/scripts/rdrmcp.dist" "bin/rdrmcp" false
   chmod +x "bin/rdrmcp"
   echo -e "  ${GREEN}Installed: bin/rdrmcp (dist mode)${NC}"
-
-  # Create config file for wrappers (relative path to installed dist)
-  echo ".sailing/rudder" > "$DEFAULT_SAILING_DIR/SAILING_SOURCE"
-  echo -e "  ${GREEN}Created: .sailing/SAILING_SOURCE${NC}"
 fi
 
 # Templates (always updated)
@@ -450,6 +445,15 @@ if [ -d "$DEFAULT_SAILING_DIR/core" ]; then
   else
     rm -rf "$DEFAULT_SAILING_DIR/core"
     echo -e "  ${GREEN}Removed: $DEFAULT_SAILING_DIR/core/ (replaced by prompting/)${NC}"
+  fi
+fi
+if [ -f "$DEFAULT_SAILING_DIR/SAILING_SOURCE" ]; then
+  echo -e "${BLUE}Cleaning up legacy files...${NC}"
+  if [ "$DRY_RUN" = true ]; then
+    echo "  Would remove: $DEFAULT_SAILING_DIR/SAILING_SOURCE (legacy)"
+  else
+    rm -f "$DEFAULT_SAILING_DIR/SAILING_SOURCE"
+    echo -e "  ${GREEN}Removed: $DEFAULT_SAILING_DIR/SAILING_SOURCE (legacy)${NC}"
   fi
 fi
 
