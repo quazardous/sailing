@@ -15,7 +15,7 @@ import { getAllFullPrds, buildTaskIndex, buildEpicIndex, updateArtefact } from '
 import { checkPendingMemory, findPrdMemoryFile, findEpicMemoryFile } from '../managers/memory-manager.js';
 import { archivePrd } from '../managers/archive-manager.js';
 import { normalizeStatus, STATUS } from '../lib/lexicon.js';
-import { getConfigValue, findProjectRoot } from '../managers/core-manager.js';
+import { getConfigValue, findProjectRoot, getAgentConfig } from '../managers/core-manager.js';
 import os from 'os';
 
 // Import from dashboard lib (PURE utilities)
@@ -464,10 +464,12 @@ export function createApiV2Routes(): Record<string, (req: http.IncomingMessage, 
         ? '~' + projectRoot.slice(homeDir.length)
         : projectRoot;
 
+      const agentConfig = getAgentConfig();
       json(res, {
         path: projectRoot,
         relativePath,
         name: projectRoot.split('/').pop() || 'Project',
+        useWorktrees: agentConfig.use_worktrees ?? false,
       });
     } catch (error) {
       json(res, { error: 'Failed to get project info' }, 500);

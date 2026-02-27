@@ -152,6 +152,7 @@ export interface ProjectInfo {
   path: string;
   relativePath: string;
   name: string;
+  useWorktrees?: boolean;
 }
 
 // Status update response

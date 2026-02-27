@@ -15,6 +15,7 @@ export const useProjectStore = defineStore('project', () => {
   // Computed
   const projectName = computed(() => project.value?.name || 'Sailing');
   const projectPath = computed(() => project.value?.relativePath || '');
+  const useWorktrees = computed(() => project.value?.useWorktrees ?? false);
 
   // Actions
   async function fetchProject(): Promise<void> {
@@ -40,6 +41,7 @@ export const useProjectStore = defineStore('project', () => {
     error,
     projectName,
     projectPath,
+    useWorktrees,
     fetchProject,
   };
 });

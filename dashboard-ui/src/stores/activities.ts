@@ -48,6 +48,7 @@ const activities: Activity[] = [
 
 export const useActivitiesStore = defineStore('activities', () => {
   const currentActivityId = ref<string>('welcome');
+  const hiddenIds = ref<Set<string>>(new Set());
 
   // Load last activity from localStorage
   const savedActivity = localStorage.getItem('currentActivity');
@@ -55,18 +56,22 @@ export const useActivitiesStore = defineStore('activities', () => {
     currentActivityId.value = savedActivity;
   }
 
-  const allActivities = computed(() => activities);
+  const visibleActivities = computed(() =>
+    activities.filter(a => !hiddenIds.value.has(a.id))
+  );
+
+  const allActivities = computed(() => visibleActivities.value);
 
   const topActivities = computed(() =>
-    activities.filter(a => a.position === 'top')
+    visibleActivities.value.filter(a => a.position === 'top')
   );
 
   const bottomActivities = computed(() =>
-    activities.filter(a => a.position === 'bottom')
+    visibleActivities.value.filter(a => a.position === 'bottom')
   );
 
   const currentActivity = computed(() =>
-    activities.find(a => a.id === currentActivityId.value) || activities[0]
+    visibleActivities.value.find(a => a.id === currentActivityId.value) || visibleActivities.value[0]
   );
 
   interface SetActivityOptions {
@@ -74,8 +79,19 @@ export const useActivitiesStore = defineStore('activities', () => {
     skipPush?: boolean;
   }
 
+  function setHiddenActivities(ids: string[]) {
+    hiddenIds.value = new Set(ids);
+    // If current activity is now hidden, switch to first visible
+    if (hiddenIds.value.has(currentActivityId.value)) {
+      const first = visibleActivities.value[0];
+      if (first) {
+        currentActivityId.value = first.id;
+      }
+    }
+  }
+
   function setActivity(activityId: string, options: SetActivityOptions = {}) {
-    const activity = activities.find(a => a.id === activityId);
+    const activity = visibleActivities.value.find(a => a.id === activityId);
     if (activity) {
       // Save current layout before switching
       saveCurrentLayout();
@@ -131,6 +147,7 @@ export const useActivitiesStore = defineStore('activities', () => {
     bottomActivities,
     currentActivity,
     setActivity,
+    setHiddenActivities,
     saveLayout,
     loadLayout,
     registerSaveLayoutFn,

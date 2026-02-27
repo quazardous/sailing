@@ -213,10 +213,39 @@ function stopResize() {
   localStorage.setItem('sidebarWidth', sidebarWidth.value.toString());
 }
 
+// Keyboard shortcuts
+function handleKeydown(e: KeyboardEvent) {
+  // Ignore when typing in inputs
+  const tag = (e.target as HTMLElement)?.tagName;
+  if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+
+  if (e.ctrlKey || e.metaKey) {
+    switch (e.key) {
+      case '1':
+        e.preventDefault();
+        activitiesStore.setActivity('welcome');
+        break;
+      case '2':
+        e.preventDefault();
+        activitiesStore.setActivity('artefacts');
+        break;
+      case '3':
+        e.preventDefault();
+        activitiesStore.setActivity('agents');
+        break;
+      case ',':
+        e.preventDefault();
+        activitiesStore.setActivity('settings');
+        break;
+    }
+  }
+}
+
 onUnmounted(() => {
   document.removeEventListener('mousemove', handleResize);
   document.removeEventListener('mouseup', stopResize);
   window.removeEventListener('popstate', handlePopState);
+  window.removeEventListener('keydown', handleKeydown);
 });
 
 /**
@@ -266,6 +295,11 @@ onMounted(async () => {
   // Load project first (sets storage key hash)
   await projectStore.fetchProject();
 
+  // Hide agents activity when worktrees are disabled
+  if (!projectStore.useWorktrees) {
+    activitiesStore.setHiddenActivities(['agents']);
+  }
+
   // Initialize storage-dependent stores
   notificationsStore.init();
   treeStateStore.loadState();
@@ -284,6 +318,9 @@ onMounted(async () => {
 
   // Listen for back/forward navigation
   window.addEventListener('popstate', handlePopState);
+
+  // Keyboard shortcuts
+  window.addEventListener('keydown', handleKeydown);
 
   // Initialize event bus (WebSocket + event handlers)
   eventBus.init();

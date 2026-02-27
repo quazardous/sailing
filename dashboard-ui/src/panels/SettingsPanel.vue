@@ -17,15 +17,19 @@
           <div class="shortcut-list">
             <div class="shortcut-row">
               <span class="shortcut-key">Ctrl + 1</span>
-              <span class="shortcut-desc">Switch to Artefacts activity</span>
+              <span class="shortcut-desc">Welcome</span>
             </div>
             <div class="shortcut-row">
               <span class="shortcut-key">Ctrl + 2</span>
-              <span class="shortcut-desc">Switch to Agents activity</span>
+              <span class="shortcut-desc">Artefacts</span>
+            </div>
+            <div class="shortcut-row">
+              <span class="shortcut-key">Ctrl + 3</span>
+              <span class="shortcut-desc">Agents</span>
             </div>
             <div class="shortcut-row">
               <span class="shortcut-key">Ctrl + ,</span>
-              <span class="shortcut-desc">Open Settings</span>
+              <span class="shortcut-desc">Settings</span>
             </div>
           </div>
         </div>

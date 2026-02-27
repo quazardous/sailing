@@ -4,6 +4,17 @@ All notable changes to the Sailing Framework will be documented in this file.
 
 <!-- NOTE: This is a USER changelog, not a commit log. Focus on user-visible features and benefits, not implementation details. -->
 
+## [1.22.0] - 2026-02-27
+
+### Added
+- **Dashboard keyboard shortcuts**: Ctrl+1/2/3 to switch activities, Ctrl+, for settings
+- **Mode-aware tool visibility**: conductor agent tools (`agent_*`) are only exposed when subprocess mode is enabled
+
+### Changed
+- **Dashboard agents activity hidden** when worktrees are disabled (`use_worktrees: false`)
+- **Workflow next actions**: task creation suggests `artefact_show` instead of `agent_spawn` when subprocess mode is off
+- **System hints**: `agent_list` suggestion for in-progress tasks is conditional on subprocess mode
+
 ## [1.21.0] - 2026-02-18
 
 ### Added

@@ -14,6 +14,7 @@ import {
   detectType
 } from '../types.js';
 import { normalizeId } from '../../../lib/normalize.js';
+import { getAgentConfig } from '../../config-manager.js';
 import type { ToolDefinition, NextAction } from '../types.js';
 
 export const WORKFLOW_TOOLS: ToolDefinition[] = [
@@ -119,12 +120,20 @@ export const WORKFLOW_TOOLS: ToolDefinition[] = [
           assignee: (args.assignee as string) || 'agent'
         });
 
-        const nextActions: NextAction[] = [{
-          tool: 'agent_spawn',
-          args: { task_id: result.id },
-          reason: 'Spawn agent to execute task',
-          priority: 'high'
-        }];
+        const config = getAgentConfig();
+        const nextActions: NextAction[] = config.use_subprocess
+          ? [{
+              tool: 'agent_spawn',
+              args: { task_id: result.id },
+              reason: 'Spawn agent to execute task',
+              priority: 'high'
+            }]
+          : [{
+              tool: 'artefact_show',
+              args: { id: result.id, raw: true },
+              reason: 'Read task spec to begin implementation',
+              priority: 'high'
+            }];
 
         return ok({
           success: true,

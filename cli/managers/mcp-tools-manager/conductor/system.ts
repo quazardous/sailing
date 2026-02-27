@@ -4,6 +4,7 @@
 import { getConductorManager } from '../../conductor-manager.js';
 import { getAllPrds, getAllTasks } from '../../artefacts-manager.js';
 import { getAllVersions } from '../../version-manager.js';
+import { getAgentConfig } from '../../config-manager.js';
 import {
   ok
 } from '../types.js';
@@ -36,8 +37,9 @@ export const SYSTEM_TOOLS: ToolDefinition[] = [
         byStatus[status] = (byStatus[status] || 0) + 1;
       });
 
+      const config = getAgentConfig();
       const nextActions: NextAction[] = [];
-      if (byStatus['In Progress'] > 0) {
+      if (byStatus['In Progress'] > 0 && config.use_subprocess) {
         nextActions.push({
           tool: 'agent_list',
           args: { status: 'running' },
