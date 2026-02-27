@@ -334,8 +334,7 @@ function getChildExpanded(childId: string): boolean {
   font-weight: 500;
   font-size: 13px;
   white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  flex-shrink: 0;
 }
 
 .tree-label-secondary {

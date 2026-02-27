@@ -4,6 +4,15 @@ All notable changes to the Sailing Framework will be documented in this file.
 
 <!-- NOTE: This is a USER changelog, not a commit log. Focus on user-visible features and benefits, not implementation details. -->
 
+## [1.22.1] - 2026-02-27
+
+### Added
+- **Explorer filter**: search/filter artefacts tree by id, title or status with debounced input
+- **Explorer follow mode**: auto-expand tree path to the selected artefact
+
+### Changed
+- Tree node primary label no longer truncates (uses `flex-shrink: 0`)
+
 ## [1.22.0] - 2026-02-27
 
 ### Added
