@@ -1,32 +1,14 @@
 /**
  * MCP Conductor Tools - Artefact operations
  */
-import { loadFile } from '../../core-manager.js';
 import { logDebug } from '../../mcp-manager.js';
-import {
-  getAllTasks,
-  getAllEpics,
-  getAllPrds,
-  getAllStories,
-  getTask,
-  getEpic,
-  getPrd,
-  getStory,
-  createTask,
-  createEpic,
-  createPrd,
-  createStory,
-  updateArtefact,
-  touchArtefact,
-  editArtefactSection,
-  editArtefactMultiSection,
-  patchArtefact
-} from '../../artefacts-manager.js';
+import { getStore } from '../../artefacts-manager.js';
 import {
   ok,
   err,
   normalizeId,
-  detectType
+  detectType,
+  canonicalId
 } from '../types.js';
 import type { ToolDefinition, NextAction } from '../types.js';
 
@@ -50,6 +32,7 @@ export const ARTEFACT_TOOLS: ToolDefinition[] = [
     },
     handler: (args) => {
       const { type, scope, status, milestone, tags, limit } = args;
+      const store = getStore();
       const nextActions: NextAction[] = [];
 
       try {
@@ -60,8 +43,8 @@ export const ARTEFACT_TOOLS: ToolDefinition[] = [
           if (scope) opts.epicId = scope;
           if (status) opts.status = status;
           if (tags) opts.tags = tags;
-          items = getAllTasks(opts).map(t => ({
-            id: t.id,
+          items = store.getAllTasks(opts).map(t => ({
+            id: canonicalId(t.id),
             title: t.data?.title,
             status: t.data?.status,
             parent: t.data?.parent,
@@ -72,16 +55,16 @@ export const ARTEFACT_TOOLS: ToolDefinition[] = [
           if (status) opts.status = status;
           if (milestone) opts.milestone = milestone;
           if (tags) opts.tags = tags;
-          items = getAllEpics(opts).map(e => ({
-            id: e.id,
+          items = store.getAllEpics(opts).map(e => ({
+            id: canonicalId(e.id),
             title: e.data?.title,
             status: e.data?.status,
             parent: e.data?.parent,
             milestone: e.data?.milestone
           }));
         } else if (type === 'prd') {
-          items = getAllPrds().map(p => ({
-            id: p.id,
+          items = store.getAllPrds().map(p => ({
+            id: canonicalId(p.id),
             title: p.data?.title,
             status: p.data?.status
           }));
@@ -89,8 +72,8 @@ export const ARTEFACT_TOOLS: ToolDefinition[] = [
             items = items.filter(i => i.status === status);
           }
         } else if (type === 'story') {
-          items = getAllStories().map(s => ({
-            id: s.id,
+          items = store.getAllStories().map(s => ({
+            id: canonicalId(s.id),
             title: s.data?.title,
             type: s.data?.type,
             parent: s.data?.parent
@@ -140,23 +123,26 @@ export const ARTEFACT_TOOLS: ToolDefinition[] = [
       }
 
       try {
-        let entry: { file: string; data?: Record<string, unknown> } | null = null;
+        const store = getStore();
+        let entry: { id: string; file: string; data?: Record<string, unknown> } | null = null;
 
         if (type === 'task') {
-          entry = getTask(id);
+          entry = store.getTask(id);
         } else if (type === 'epic') {
-          entry = getEpic(id);
+          entry = store.getEpic(id);
         } else if (type === 'prd') {
-          entry = getPrd(id);
+          entry = store.getPrd(id);
         } else if (type === 'story') {
-          entry = getStory(id);
+          entry = store.getStory(id);
         }
 
         if (!entry) {
           return err(`Artefact not found: ${id}`);
         }
 
-        const file = loadFile(entry.file);
+        // Normalize to canonical form using project digit config (e.g. T515 → T00515)
+        const entryCanonicalId = canonicalId(entry.id);
+        const file = store.loadFile(entry.file);
         if (!file) {
           return err(`Could not load file for: ${id}`);
         }
@@ -170,18 +156,19 @@ export const ARTEFACT_TOOLS: ToolDefinition[] = [
             return err(`Section not found: ${args.section}`);
           }
           const sectionStart = match.index + match[0].length;
-          const nextSectionMatch = body.slice(sectionStart).match(/^## /m);
+          const nextSectionMatch = /^## /m.exec(body.slice(sectionStart));
           const sectionEnd = nextSectionMatch ? sectionStart + nextSectionMatch.index : body.length;
           const sectionContent = body.slice(sectionStart, sectionEnd).trim();
 
           return ok({
             success: true,
-            data: { ...file.data, section: args.section, body: sectionContent }
+            data: { ...file.data, id: entryCanonicalId, section: args.section, body: sectionContent }
           });
         }
 
         const data = {
           ...file.data,
+          id: entryCanonicalId,
           ...(args.raw ? { body: file.body } : {})
         };
 
@@ -189,7 +176,7 @@ export const ARTEFACT_TOOLS: ToolDefinition[] = [
         if (type === 'epic' && !file.body?.includes('## Technical Notes')) {
           nextActions.push({
             tool: 'artefact_edit',
-            args: { id, section: 'Technical Notes', content: '' },
+            args: { id: entryCanonicalId, section: 'Technical Notes', content: '' },
             reason: 'Technical Notes section is empty',
             priority: 'high'
           });
@@ -197,7 +184,7 @@ export const ARTEFACT_TOOLS: ToolDefinition[] = [
         if (type === 'task' && !file.body?.includes('## Deliverables')) {
           nextActions.push({
             tool: 'artefact_edit',
-            args: { id, section: 'Deliverables', content: '' },
+            args: { id: entryCanonicalId, section: 'Deliverables', content: '' },
             reason: 'Deliverables section is empty',
             priority: 'high'
           });
@@ -240,16 +227,17 @@ export const ARTEFACT_TOOLS: ToolDefinition[] = [
       }
 
       try {
+        const store = getStore();
         let result: { id: string; title: string; parent?: string; file?: string; dir?: string };
 
         if (type === 'task') {
-          result = createTask(parent, title, { tags, created_at });
+          result = store.createTask(parent, title, { tags, created_at });
         } else if (type === 'epic') {
-          result = createEpic(parent, title, { tags, created_at });
+          result = store.createEpic(parent, title, { tags, created_at });
         } else if (type === 'prd') {
-          result = createPrd(title, { tags, created_at });
+          result = store.createPrd(title, { tags, created_at });
         } else if (type === 'story') {
-          result = createStory(parent, title, { tags, created_at });
+          result = store.createStory(parent, title, { tags, created_at });
         } else {
           return err(`Unknown artefact type: ${type}`);
         }
@@ -312,7 +300,8 @@ export const ARTEFACT_TOOLS: ToolDefinition[] = [
       }
 
       try {
-        const result = updateArtefact(id, {
+        const store = getStore();
+        const result = store.updateArtefact(id, {
           status: args.status,
           title: args.title,
           assignee: args.assignee,
@@ -344,7 +333,8 @@ export const ARTEFACT_TOOLS: ToolDefinition[] = [
       const id = normalizeId(args.id);
 
       try {
-        const result = touchArtefact(id);
+        const store = getStore();
+        const result = store.touchArtefact(id);
         return ok({ success: true, data: result });
       } catch (error: any) {
         return err(error.message);
@@ -384,9 +374,11 @@ export const ARTEFACT_TOOLS: ToolDefinition[] = [
         return err(`Cannot detect artefact type from ID: ${id}`);
       }
 
+      const store = getStore();
+
       // Get artefact to log file path for debugging
       if (type === 'prd') {
-        const prd = getPrd(id);
+        const prd = store.getPrd(id);
         logDebug(`artefact_edit: PRD lookup`, { id, found: !!prd, file: prd?.file, title: prd?.data?.title });
       }
 
@@ -394,7 +386,7 @@ export const ARTEFACT_TOOLS: ToolDefinition[] = [
         // Patch mode: old_string + new_string
         if (args.old_string !== undefined && args.new_string !== undefined) {
           logDebug(`artefact_edit: patch mode`, { section: args.section, regexp: !!args.regexp });
-          const result = patchArtefact(id, args.old_string, args.new_string, {
+          const result = store.patchArtefact(id, args.old_string, args.new_string, {
             section: args.section,
             regexp: args.regexp
           });
@@ -410,7 +402,7 @@ export const ARTEFACT_TOOLS: ToolDefinition[] = [
         // If section is provided, use single-section mode
         if (args.section) {
           logDebug(`artefact_edit: single-section mode`, { section: args.section });
-          const result = editArtefactSection(id, args.section, args.content, {
+          const result = store.editArtefactSection(id, args.section, args.content, {
             mode: args.mode || 'replace'
           });
           logDebug(`artefact_edit: result`, { result });
@@ -419,11 +411,165 @@ export const ARTEFACT_TOOLS: ToolDefinition[] = [
 
         // Otherwise, use multi-section mode (preferred)
         logDebug(`artefact_edit: multi-section mode`);
-        const result = editArtefactMultiSection(id, args.content, args.mode || 'replace');
+        const result = store.editArtefactMultiSection(id, args.content, args.mode || 'replace');
         logDebug(`artefact_edit: result`, { result });
         return ok({ success: true, data: result });
       } catch (error: any) {
         logDebug(`artefact_edit: error`, { error: error.message, stack: error.stack });
+        return err(error.message);
+      }
+    }
+  },
+  {
+    tool: {
+      name: 'archive_show',
+      description: 'Show an archived artefact by ID. Returns frontmatter + optional body.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          id: { type: 'string', description: 'Artefact ID (T001, E001, PRD-001)' },
+          raw: { type: 'boolean', description: 'Include raw markdown body' },
+          section: { type: 'string', description: 'Return only this section (saves context)' }
+        },
+        required: ['id']
+      }
+    },
+    handler: (args) => {
+      try {
+        const store = getStore();
+        const entry = store.getArchivedArtefact(args.id);
+        if (!entry) {
+          return err(`Archived artefact not found: ${args.id}`);
+        }
+
+        const file = store.loadFile(entry.file);
+        if (!file) {
+          return err(`Could not load archive file for: ${args.id}`);
+        }
+
+        // Section filter mode
+        if (args.section) {
+          const body = file.body || '';
+          const sectionRegex = new RegExp(`^## ${args.section.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s*$`, 'im');
+          const match = sectionRegex.exec(body);
+          if (!match) {
+            return err(`Section not found: ${args.section}`);
+          }
+          const sectionStart = match.index + match[0].length;
+          const nextSectionMatch = /^## /m.exec(body.slice(sectionStart));
+          const sectionEnd = nextSectionMatch ? sectionStart + nextSectionMatch.index : body.length;
+          const sectionContent = body.slice(sectionStart, sectionEnd).trim();
+
+          return ok({
+            success: true,
+            data: { id: canonicalId(entry.id), ...file.data, archived: true, prdId: entry.prdId, section: args.section, body: sectionContent }
+          });
+        }
+
+        const data = {
+          id: canonicalId(entry.id),
+          ...file.data,
+          archived: true,
+          prdId: entry.prdId,
+          ...(args.raw ? { body: file.body } : {})
+        };
+
+        return ok({ success: true, data });
+      } catch (error: any) {
+        return err(error.message);
+      }
+    }
+  },
+  {
+    tool: {
+      name: 'archive_list',
+      description: 'List archived artefacts. Compact output for context efficiency.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          type: { type: 'string', enum: ['task', 'epic', 'prd'], description: 'Filter by type' },
+          prd: { type: 'string', description: 'Filter by PRD (e.g., PRD-013)' },
+          status: { type: 'string', description: 'Filter by status' },
+          limit: { type: 'number', description: 'Max results (default 50)' }
+        }
+      }
+    },
+    handler: (args) => {
+      try {
+        const store = getStore();
+        let entries = store.getAllArchivedArtefacts({
+          type: args.type,
+          prd: args.prd,
+          status: args.status
+        });
+
+        const limit = args.limit || 50;
+        if (entries.length > limit) {
+          entries = entries.slice(0, limit);
+        }
+
+        const items = entries.map(e => ({
+          id: canonicalId(e.id),
+          title: e.title,
+          status: e.status,
+          type: e.type,
+          parent: e.parent,
+          prdId: e.prdId
+        }));
+
+        return ok({ success: true, data: { items, count: items.length } });
+      } catch (error: any) {
+        return err(error.message);
+      }
+    }
+  },
+  {
+    tool: {
+      name: 'artefact_search',
+      description: 'Full-text search across active + archived artefacts. Supports fuzzy matching, prefix search, and multi-word AND queries with relevance ranking.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          query: { type: 'string', description: 'Search query (supports fuzzy matching, prefix, multi-word AND)' },
+          type: { type: 'string', enum: ['task', 'epic', 'prd', 'story'], description: 'Filter by artefact type' },
+          status: { type: 'string', description: 'Filter by status (substring match)' },
+          prd: { type: 'string', description: 'Filter by PRD (e.g., PRD-013)' },
+          archived: { type: 'boolean', description: 'true = archive only, false = active only, omit = both' },
+          limit: { type: 'number', description: 'Max results (default 30)' },
+          fuzzy: { type: 'number', description: 'Fuzzy edit-distance ratio 0..1 (default 0 = exact match)' },
+          accent_sensitive: { type: 'boolean', description: 'Accent-sensitive post-filter (default false). When true, "geo" won\'t match "Géolocalisation".' },
+          snippet: { type: 'boolean', description: 'Include contextual snippets (±2 lines around match). Default false.' }
+        },
+        required: ['query']
+      }
+    },
+    handler: (args) => {
+      try {
+        const store = getStore();
+        const hits = store.search(args.query, {
+          type: args.type,
+          status: args.status,
+          prd: args.prd,
+          archived: args.archived,
+          limit: args.limit,
+          fuzzy: args.fuzzy,
+          accent_sensitive: args.accent_sensitive,
+          snippet: args.snippet
+        });
+
+        const items = hits.map(h => ({
+          id: canonicalId(h.id),
+          type: h.type,
+          title: h.title,
+          status: h.status,
+          parent: h.parent,
+          prdId: h.prdId,
+          archived: h.archived,
+          ...(h.snippet ? { snippet: h.snippet } : {})
+        }));
+
+        return ok({ success: true, data: { items, count: items.length } });
+      } catch (error: any) {
         return err(error.message);
       }
     }

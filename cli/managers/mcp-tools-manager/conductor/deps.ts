@@ -8,7 +8,8 @@ import { isStatusDone, isStatusCancelled } from '../../../lib/lexicon.js';
 import {
   ok,
   err,
-  normalizeId
+  normalizeId,
+  canonicalId
 } from '../types.js';
 import type { ToolDefinition, NextAction } from '../types.js';
 
@@ -35,10 +36,10 @@ export const DEPS_TOOLS: ToolDefinition[] = [
       return ok({
         success: true,
         data: {
-          id: result.id,
-          blockers: result.blockers,
+          id: canonicalId(result.id),
+          blockers: result.blockers.map(canonicalId),
           blockers_resolved: result.blockersResolved,
-          dependents: result.dependents,
+          dependents: result.dependents.map(canonicalId),
           impact: result.impact
         }
       });
@@ -122,7 +123,7 @@ export const DEPS_TOOLS: ToolDefinition[] = [
         const { length: criticalPathLen } = longestPath(id, tasks, blocks);
 
         scores.push({
-          id,
+          id: canonicalId(id),
           title: task.title,
           status: task.status,
           dependents: dependents.length,

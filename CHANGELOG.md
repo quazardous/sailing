@@ -4,6 +4,20 @@ All notable changes to the Sailing Framework will be documented in this file.
 
 <!-- NOTE: This is a USER changelog, not a commit log. Focus on user-visible features and benefits, not implementation details. -->
 
+## [1.23.0] - 2026-03-02
+
+### Added
+- **Search snippets**: `artefact_search` can return contextual snippets (±2 lines around match) with `snippet: true`
+- **Accent-insensitive search**: search index now normalizes accents (`geo` finds `Géolocalisation`)
+- **Accent-sensitive filter**: `accent_sensitive: true` option for strict accent matching when needed
+
+### Fixed
+- **Canonical IDs everywhere**: `workflow_ready`, `workflow_start`, `workflow_complete`, `deps_show`, `deps_critical`, `story_orphans`, `story_validate` now return canonical IDs (e.g., T00515 instead of T515)
+
+### Changed
+- **Search fuzzy default**: changed from `0.1` to `0` (exact match by default) to reduce false positives
+- **Shared `canonicalId()`**: moved from `artefact.ts` to shared `types.ts` for reuse across conductor modules
+
 ## [1.22.1] - 2026-02-27
 
 ### Added

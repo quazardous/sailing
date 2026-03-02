@@ -3,6 +3,8 @@
  */
 import type { Tool } from '@modelcontextprotocol/sdk/types.js';
 import type { RunResult } from '../mcp-manager.js';
+import { normalizeId as normalizeIdLib } from '../../lib/normalize.js';
+import { getDigitConfig } from '../config-manager.js';
 
 // =============================================================================
 // Types
@@ -50,6 +52,11 @@ export function detectType(id: string): ArtefactType {
 
 export function normalizeId(id: string): string {
   return id.toUpperCase().replace(/^PRD(\d)/, 'PRD-$1');
+}
+
+/** Normalize an ID to canonical form using project digit config */
+export function canonicalId(id: string): string {
+  return normalizeIdLib(id, getDigitConfig()) ?? id;
 }
 
 // =============================================================================

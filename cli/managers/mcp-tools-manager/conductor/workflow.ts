@@ -11,7 +11,8 @@ import {
 import {
   ok,
   err,
-  detectType
+  detectType,
+  canonicalId
 } from '../types.js';
 import { normalizeId } from '../../../lib/normalize.js';
 import { getAgentConfig } from '../../config-manager.js';
@@ -62,7 +63,7 @@ export const WORKFLOW_TOOLS: ToolDefinition[] = [
 
       return ok({
         success: true,
-        data: result.tasks,
+        data: result.tasks.map(t => ({ ...t, id: canonicalId(t.id) })),
         next_actions: nextActions
       });
     }
@@ -137,7 +138,7 @@ export const WORKFLOW_TOOLS: ToolDefinition[] = [
 
         return ok({
           success: true,
-          data: result,
+          data: { ...result, id: canonicalId(result.id) },
           next_actions: nextActions
         });
       } catch (error) {
@@ -160,7 +161,7 @@ export const WORKFLOW_TOOLS: ToolDefinition[] = [
     },
     handler: (args) => {
       try {
-        const id = normalizeId(args.task_id as string, undefined, 'task')!;
+        const id = normalizeId(args.task_id as string, undefined, 'task');
         const result = completeTask(id, {
           message: args.message as string | undefined
         });
@@ -169,7 +170,8 @@ export const WORKFLOW_TOOLS: ToolDefinition[] = [
 
         // Get epic from task to suggest memory sync
         const task = getTask(id);
-        const epicId = task?.data?.parent?.match(/E\d+/)?.[0];
+        const rawEpicId = task?.data?.parent ? /E\d+/.exec(task.data.parent)?.[0] : undefined;
+        const epicId = rawEpicId ? canonicalId(rawEpicId) : undefined;
 
         nextActions.push({
           tool: 'workflow_ready',
@@ -186,7 +188,7 @@ export const WORKFLOW_TOOLS: ToolDefinition[] = [
 
         return ok({
           success: true,
-          data: result,
+          data: { ...result, id: canonicalId(result.id), cascades: result.cascades.map(canonicalId) },
           next_actions: nextActions
         });
       } catch (error) {
