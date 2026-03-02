@@ -182,7 +182,7 @@ function parseEffortMap(mapStr: string): Record<string, number> {
   for (const pair of mapStr.split(',')) {
     const [key, value] = pair.trim().split('=');
     if (key && value) {
-      const match = value.match(/^(\d+(?:\.\d+)?)\s*h?$/i);
+      const match = /^(\d+(?:\.\d+)?)\s*h?$/i.exec(value);
       if (match) {
         map[key.toUpperCase()] = parseFloat(match[1]);
       }
@@ -209,13 +209,13 @@ export function getDuration(
   const effortMapStr = config?.effort_map || 'S=0.5h,M=1h,L=2h,XL=4h';
 
   // Parse default duration
-  const defaultMatch = defaultDuration.match(/^(\d+(?:\.\d+)?)\s*h?$/i);
+  const defaultMatch = /^(\d+(?:\.\d+)?)\s*h?$/i.exec(defaultDuration);
   const defaultHours = defaultMatch ? parseFloat(defaultMatch[1]) : 1;
 
   if (!effort) return defaultHours;
 
   // Check if it's a duration format (e.g., "4h", "0.5h")
-  const durationMatch = effort.match(DURATION_PATTERN);
+  const durationMatch = DURATION_PATTERN.exec(effort);
   if (durationMatch) {
     return parseFloat(durationMatch[1]);
   }

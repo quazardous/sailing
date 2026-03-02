@@ -77,8 +77,8 @@ export function registerWorkflowCommands(task: Command): void {
         const pa = (priorityOrder[a.priority]) ?? 2;
         const pb = (priorityOrder[b.priority]) ?? 2;
         if (pa !== pb) return pa - pb;
-        const numA = parseInt(a.id.match(/\d+/)?.[0] || '0');
-        const numB = parseInt(b.id.match(/\d+/)?.[0] || '0');
+        const numA = parseInt(/\d+/.exec(a.id)?.[0] || '0');
+        const numB = parseInt(/\d+/.exec(b.id)?.[0] || '0');
         return numA - numB;
       });
 

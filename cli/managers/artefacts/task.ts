@@ -36,7 +36,7 @@ export function buildTaskIndex(): Map<string, TaskIndexEntry> {
       if (key === null) continue;
 
       const filePath = path.join(tasksDir, file);
-      const idMatch = file.match(/^(T\d+[a-z]?)/i);
+      const idMatch = /^(T\d+[a-z]?)/i.exec(file);
       const id = idMatch ? idMatch[1] : `T${key}`;
 
       const loaded = loadFile<Task>(filePath);
@@ -44,9 +44,9 @@ export function buildTaskIndex(): Map<string, TaskIndexEntry> {
 
       if (index.has(key)) {
         const existingEntry = index.get(key);
-        const existingStatus = existingEntry!.data?.status;
+        const existingStatus = existingEntry.data?.status;
         if (status !== 'Done' || existingStatus !== 'Done') {
-          duplicates.push({ key, existing: existingEntry!.file, new: filePath });
+          duplicates.push({ key, existing: existingEntry.file, new: filePath });
         }
       }
 
@@ -90,7 +90,7 @@ export function getTask(taskId: string | number): TaskIndexEntry | null {
   if (typeof taskId === 'number') {
     key = String(taskId);
   } else {
-    const match = String(taskId).match(/^T?0*(\d+)([a-z])?$/i);
+    const match = /^T?0*(\d+)([a-z])?$/i.exec(String(taskId));
     if (match) {
       key = match[1] + (match[2] ? match[2].toLowerCase() : '');
     } else {
@@ -128,7 +128,7 @@ export function getAllTasks(options: TaskQueryOptions = {}): TaskIndexEntry[] {
     const epicKey = String(options.epicId).replace(/^E0*/i, '').toLowerCase();
     tasks = tasks.filter(t => {
       const parent = t.data?.parent || '';
-      const match = parent.match(/E0*(\d+)([a-z])?/i);
+      const match = /E0*(\d+)([a-z])?/i.exec(parent);
       if (!match) return false;
       const taskEpicKey = match[1] + (match[2] ? match[2].toLowerCase() : '');
       return taskEpicKey === epicKey;
@@ -143,7 +143,7 @@ export function getAllTasks(options: TaskQueryOptions = {}): TaskIndexEntry[] {
   if (options.tags && options.tags.length > 0) {
     tasks = tasks.filter(t => {
       const taskTags = t.data?.tags || [];
-      return options.tags!.some(tag => taskTags.includes(tag));
+      return options.tags.some(tag => taskTags.includes(tag));
     });
   }
 
@@ -167,7 +167,7 @@ export function getTaskEpic(taskId: string | number) {
   const parent = task.data?.parent;
   if (!parent) return null;
 
-  const epicMatch = parent.match(/E0*(\d+)([a-z])?/i);
+  const epicMatch = /E0*(\d+)([a-z])?/i.exec(parent);
   if (!epicMatch) return null;
 
   const epicKey = epicMatch[1] + (epicMatch[2] ? epicMatch[2].toLowerCase() : '');
@@ -213,7 +213,7 @@ export function createTask(epicId: string, title: string, options: CreateTaskOpt
 
   const prdDir = epic.prdDir;
   const dirname = path.basename(prdDir);
-  const prdIdMatch = dirname.match(/^(PRD-\d+)/i);
+  const prdIdMatch = /^(PRD-\d+)/i.exec(dirname);
   const prdId = prdIdMatch ? prdIdMatch[1] : dirname.split('-').slice(0, 2).join('-');
 
   const tasksDir = path.join(prdDir, 'tasks');

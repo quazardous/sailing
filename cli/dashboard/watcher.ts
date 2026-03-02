@@ -10,7 +10,7 @@ import { getPath } from '../managers/core-manager.js';
 import { broadcast, getConnectionCount, WsMessageType } from './websocket.js';
 import { clearCache as clearDashboardCache } from './lib/cache.js';
 import { clearCache as clearArtefactsCache } from '../managers/artefacts/common.js';
-import { normalizeId, getEntityType } from '../lib/normalize.js';
+import { normalizeId } from '../lib/normalize.js';
 import { prdIdFromDir } from '../managers/artefacts/prd.js';
 
 // =============================================================================
@@ -89,7 +89,7 @@ function extractArtefactInfo(filepath: string): { id: string; type: 'prd' | 'epi
 
   // Task: tasks/T001-xxx.md
   if (filepath.includes('/tasks/') || filepath.includes('\\tasks\\')) {
-    const match = filename.match(/^(T\d+[a-z]?)/i);
+    const match = /^(T\d+[a-z]?)/i.exec(filename);
     if (match) {
       const id = normalizeId(match[1]);
       return id ? { id, type: 'task' } : null;
@@ -98,7 +98,7 @@ function extractArtefactInfo(filepath: string): { id: string; type: 'prd' | 'epi
 
   // Epic: epics/E001-xxx.md
   if (filepath.includes('/epics/') || filepath.includes('\\epics\\')) {
-    const match = filename.match(/^(E\d+[a-z]?)/i);
+    const match = /^(E\d+[a-z]?)/i.exec(filename);
     if (match) {
       const id = normalizeId(match[1]);
       return id ? { id, type: 'epic' } : null;
@@ -109,7 +109,7 @@ function extractArtefactInfo(filepath: string): { id: string; type: 'prd' | 'epi
   if (filename === 'prd.md') {
     const parentDir = path.dirname(filepath);
     const id = prdIdFromDir(parentDir);
-    if (id && id.match(/^PRD-\d+$/i)) {
+    if (id && /^PRD-\d+$/i.exec(id)) {
       return { id, type: 'prd' };
     }
   }

@@ -66,7 +66,7 @@ export function formatIdFrom(prefix: string, num: number, config: DigitConfig = 
  */
 export function extractPrdId(parent: string | null | undefined): string | null {
   if (!parent) return null;
-  const match = parent.match(/PRD-\d+/);
+  const match = /PRD-\d+/.exec(parent);
   return match ? match[0] : null;
 }
 
@@ -77,7 +77,7 @@ export function extractPrdId(parent: string | null | undefined): string | null {
  */
 export function extractEpicId(parent: string | null | undefined): string | null {
   if (!parent) return null;
-  const match = parent.match(/E\d+/);
+  const match = /E\d+/.exec(parent);
   return match ? match[0] : null;
 }
 
@@ -98,31 +98,31 @@ export function normalizeId(id: string | null | undefined, digitConfig: DigitCon
   if (!id) return id ?? null;
 
   // PRD format
-  const prdMatch = id.match(/^PRD-?(\d+)$/i);
+  const prdMatch = /^PRD-?(\d+)$/i.exec(id);
   if (prdMatch) {
     return formatIdFrom('PRD-', parseInt(prdMatch[1], 10), digitConfig);
   }
 
   // Epic format
-  const epicMatch = id.match(/^E(\d+)$/i);
+  const epicMatch = /^E(\d+)$/i.exec(id);
   if (epicMatch) {
     return formatIdFrom('E', parseInt(epicMatch[1], 10), digitConfig);
   }
 
   // Task format
-  const taskMatch = id.match(/^T(\d+)$/i);
+  const taskMatch = /^T(\d+)$/i.exec(id);
   if (taskMatch) {
     return formatIdFrom('T', parseInt(taskMatch[1], 10), digitConfig);
   }
 
   // Story format
-  const storyMatch = id.match(/^S(\d+)$/i);
+  const storyMatch = /^S(\d+)$/i.exec(id);
   if (storyMatch) {
     return formatIdFrom('S', parseInt(storyMatch[1], 10), digitConfig);
   }
 
   // Numeric-only format with defaultType
-  const numericMatch = id.match(/^(\d+)$/);
+  const numericMatch = /^(\d+)$/.exec(id);
   if (numericMatch && defaultType) {
     const prefixMap: Record<EntityType, string> = {
       'prd': 'PRD-',
@@ -145,7 +145,7 @@ export function matchesId(filename: string, rawId: string, digitConfig: DigitCon
   if (!normalizedInput) return false;
   const basename = path.basename(filename, '.md');
   // Extract ID from filename (e.g., "T002" from "T002-some-task")
-  const filenameIdMatch = basename.match(/^(T\d+|E\d+|S\d+|PRD-\d+)/i);
+  const filenameIdMatch = /^(T\d+|E\d+|S\d+|PRD-\d+)/i.exec(basename);
   if (!filenameIdMatch) return false;
   const normalizedFilename = normalizeId(filenameIdMatch[1], digitConfig);
   return normalizedFilename === normalizedInput;
@@ -158,15 +158,15 @@ export function matchesId(filename: string, rawId: string, digitConfig: DigitCon
  */
 export function matchesPrd(prdId: string, filter: string, digitConfig: DigitConfig = DEFAULT_DIGITS): boolean {
   // Try normalized PRD ID match (PRD-1 → PRD-001)
-  const filterMatch = filter.match(/^PRD-?(\d+)/i);
+  const filterMatch = /^PRD-?(\d+)/i.exec(filter);
   if (filterMatch) {
     return normalizeId(prdId, digitConfig) === normalizeId(filter, digitConfig);
   }
 
   // Try numeric-only match (e.g., "1" matches "PRD-001")
-  const numericMatch = filter.match(/^(\d+)$/);
+  const numericMatch = /^(\d+)$/.exec(filter);
   if (numericMatch) {
-    const prdNum = prdId.match(/PRD-0*(\d+)/i);
+    const prdNum = /PRD-0*(\d+)/i.exec(prdId);
     return prdNum ? prdNum[1] === numericMatch[1] : false;
   }
 
@@ -186,9 +186,9 @@ export function matchesPrdDir(dirname: string, rawId: string, digitConfig: Digit
   const basename = path.basename(dirname);
 
   // Try normalized PRD ID match first (PRD-1 → PRD-001)
-  const inputIdMatch = rawId.match(/^PRD-?(\d+)/i);
+  const inputIdMatch = /^PRD-?(\d+)/i.exec(rawId);
   if (inputIdMatch) {
-    const dirIdMatch = basename.match(/^(PRD-\d+)/i);
+    const dirIdMatch = /^(PRD-\d+)/i.exec(basename);
     if (dirIdMatch) {
       return normalizeId(dirIdMatch[1], digitConfig) === normalizeId(rawId, digitConfig);
     }
@@ -203,7 +203,7 @@ export function matchesPrdDir(dirname: string, rawId: string, digitConfig: Digit
  * Always returns normalized format (T001, not T1)
  */
 export function extractTaskId(blockerEntry: string, digitConfig: DigitConfig = DEFAULT_DIGITS): string | null {
-  const match = blockerEntry.match(/^(T\d+)/i);
+  const match = /^(T\d+)/i.exec(blockerEntry);
   return match ? normalizeId(match[1], digitConfig) : null;
 }
 
@@ -212,10 +212,10 @@ export function extractTaskId(blockerEntry: string, digitConfig: DigitConfig = D
  */
 export function getEntityType(id: string | null | undefined): 'prd' | 'epic' | 'task' | 'story' | null {
   if (!id) return null;
-  if (id.match(/^PRD-?\d+$/i)) return 'prd';
-  if (id.match(/^E\d+$/i)) return 'epic';
-  if (id.match(/^T\d+$/i)) return 'task';
-  if (id.match(/^S\d+$/i)) return 'story';
+  if (/^PRD-?\d+$/i.exec(id)) return 'prd';
+  if (/^E\d+$/i.exec(id)) return 'epic';
+  if (/^T\d+$/i.exec(id)) return 'task';
+  if (/^S\d+$/i.exec(id)) return 'story';
   return null;
 }
 
@@ -225,7 +225,7 @@ export function getEntityType(id: string | null | undefined): 'prd' | 'epic' | '
  */
 export function extractNumericKey(id: string | null | undefined): string | null {
   if (!id) return null;
-  const match = id.match(/^[A-Z]+-?0*(\d+)([a-z])?/i);
+  const match = /^[A-Z]+-?0*(\d+)([a-z])?/i.exec(id);
   if (!match) return null;
   return match[1] + (match[2] ? match[2].toLowerCase() : '');
 }
@@ -241,12 +241,12 @@ export function extractNumericKey(id: string | null | undefined): string | null 
  */
 function idKey(id: string): string | null {
   // Strip trailing descriptions: "T002 (some note)" → "T002"
-  const clean = id.match(/^([A-Z]+-?\d+)/i)?.[1] || id;
+  const clean = /^([A-Z]+-?\d+)/i.exec(id)?.[1] || id;
 
-  const prdMatch = clean.match(/^PRD-?0*(\d+)$/i);
+  const prdMatch = /^PRD-?0*(\d+)$/i.exec(clean);
   if (prdMatch) return `PRD:${prdMatch[1]}`;
 
-  const match = clean.match(/^([TES])0*(\d+)([a-z])?$/i);
+  const match = /^([TES])0*(\d+)([a-z])?$/i.exec(clean);
   if (match) return `${match[1].toUpperCase()}:${match[2]}${match[3]?.toLowerCase() || ''}`;
 
   return null;

@@ -13,7 +13,7 @@ export function registerFixCommands(program) {
     .description('Fix common issues');
 
   fix.command('chmod')
-    .description('Fix file permissions (600 → 644) caused by Claude Code Write tool')
+    .description('Fix file permissions (600 → 640) caused by Claude Code Write tool')
     .option('--dry-run', 'Show what would be done')
     .action((options) => {
       const projectRoot = findProjectRoot();
@@ -29,7 +29,7 @@ export function registerFixCommands(program) {
             if (options.dryRun) {
               console.log(`Would fix: ${path.relative(projectRoot, filePath)}`);
             } else {
-              fs.chmodSync(filePath, 0o644);
+              fs.chmodSync(filePath, 0o640);
               console.log(`Fixed: ${path.relative(projectRoot, filePath)}`);
             }
             fixed++;

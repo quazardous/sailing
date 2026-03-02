@@ -131,12 +131,12 @@ export function getEpicPendingLogs(epicId: string): EpicPendingLogsResult {
   for (const line of lines) {
     // Format: 2024-01-15T10:30:00.000Z [T001] [INFO] message {{meta}}
     // Or: 2024-01-15T10:30:00.000Z [INFO] message {{meta}}
-    const match = line.match(/^(\d{4}-\d{2}-\d{2}T[\d:.]+Z)\s+(?:\[([T]\d+)\]\s+)?\[(\w+)\]\s+(.+)$/);
+    const match = /^(\d{4}-\d{2}-\d{2}T[\d:.]+Z)\s+(?:\[([T]\d+)\]\s+)?\[(\w+)\]\s+(.+)$/.exec(line);
     if (match) {
       const [, timestamp, taskId, level, rest] = match;
 
       // Extract meta if present
-      const metaMatch = rest.match(/^(.+?)\s*\{\{(.+)\}\}$/);
+      const metaMatch = /^(.+?)\s*\{\{(.+)\}\}$/.exec(rest);
       let message = rest;
       let meta: Record<string, unknown> | undefined;
 

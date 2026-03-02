@@ -23,6 +23,16 @@ export let _storyIndex: Map<string, StoryIndexEntry> | null = null;
 export let _memoryIndex: Map<string, { key: string; type: 'epic' | 'prd'; file: string }> | null = null;
 export let _logIndex: Map<string, { key: string; type: 'epic' | 'task'; file: string }> | null = null;
 
+// Extensible clear callbacks — allows modules (e.g. search) to register
+// their own cache invalidation without creating circular imports.
+const _onClearCallbacks: (() => void)[] = [];
+
+/**
+ * Register a callback invoked on clearCache(). Used by search.ts to
+ * invalidate its MiniSearch index without a circular dependency.
+ */
+export function onClear(cb: () => void) { _onClearCallbacks.push(cb); }
+
 /**
  * Clear all caches (call after artefact changes)
  */
@@ -33,6 +43,7 @@ export function clearCache() {
   _storyIndex = null;
   _memoryIndex = null;
   _logIndex = null;
+  for (const cb of _onClearCallbacks) cb();
 }
 
 export function setTaskIndex(index: Map<string, TaskIndexEntry>) { _taskIndex = index; }

@@ -7,7 +7,6 @@ import { findPrdDirs, loadFile, saveFile, toKebab, loadTemplate, formatId, getFi
 import { nextId } from '../state-manager.js';
 import { createEpicMemoryFile } from '../memory-manager.js';
 import { extractIdKey } from '../../lib/artefacts.js';
-import { normalizeId } from '../../lib/normalize.js';
 import { _epicIndex, setEpicIndex, clearCache } from './common.js';
 import { getPrd, prdIdFromDir } from './prd.js';
 import type { Epic, EpicIndexEntry } from '../../lib/types/entities.js';
@@ -36,7 +35,7 @@ export function buildEpicIndex(): Map<string, EpicIndexEntry> {
       if (key === null) continue;
 
       const filePath = path.join(epicsDir, file);
-      const idMatch = file.match(/^(E\d+[a-z]?)/i);
+      const idMatch = /^(E\d+[a-z]?)/i.exec(file);
       const id = idMatch ? idMatch[1] : `E${key}`;
 
       const loaded = loadFile<Epic>(filePath);
@@ -44,9 +43,9 @@ export function buildEpicIndex(): Map<string, EpicIndexEntry> {
 
       if (index.has(key)) {
         const existingEntry = index.get(key);
-        const existingStatus = existingEntry!.data?.status;
+        const existingStatus = existingEntry.data?.status;
         if (status !== 'Done' || existingStatus !== 'Done') {
-          duplicates.push({ key, existing: existingEntry!.file, new: filePath });
+          duplicates.push({ key, existing: existingEntry.file, new: filePath });
         }
       }
 
@@ -89,7 +88,7 @@ export function getEpic(epicId: string | number): EpicIndexEntry | null {
   if (typeof epicId === 'number') {
     key = String(epicId);
   } else {
-    const match = String(epicId).match(/^E?0*(\d+)([a-z])?$/i);
+    const match = /^E?0*(\d+)([a-z])?$/i.exec(String(epicId));
     if (match) {
       key = match[1] + (match[2] ? match[2].toLowerCase() : '');
     } else {
@@ -135,7 +134,7 @@ export function getAllEpics(options: EpicQueryOptions = {}): EpicIndexEntry[] {
   if (options.tags && options.tags.length > 0) {
     epics = epics.filter(e => {
       const epicTags = e.data?.tags || [];
-      return options.tags!.some(t => epicTags.includes(t));
+      return options.tags.some(t => epicTags.includes(t));
     });
   }
 
@@ -159,7 +158,7 @@ export function getEpicPrd(epicId: string | number) {
   if (!epic) return null;
 
   const dirname = path.basename(epic.prdDir);
-  const match = dirname.match(/^PRD-0*(\d+)/i);
+  const match = /^PRD-0*(\d+)/i.exec(dirname);
   if (!match) return null;
 
   const prdNum = parseInt(match[1], 10);

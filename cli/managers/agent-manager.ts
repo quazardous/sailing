@@ -157,7 +157,7 @@ export class AgentLifecycleManager {
         const conflictFiles: string[] = [];
         for (const line of mergeTree.split('\n')) {
           if (line.startsWith('changed in both')) {
-            const match = line.match(/changed in both\s+(.+)/);
+            const match = /changed in both\s+(.+)/.exec(line);
             if (match) conflictFiles.push(match[1]);
           }
         }

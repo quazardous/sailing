@@ -266,7 +266,7 @@ function createAgentRoutes(): Record<string, RouteHandler> {
     },
 
     // Get agent status
-    '/api/agents/:taskId': async (req, res) => {
+    '/api/agents/:taskId': (req, res) => {
       const taskId = extractParam(req.url, 'taskId');
       const status = conductor.getStatus(taskId);
 
@@ -278,7 +278,7 @@ function createAgentRoutes(): Record<string, RouteHandler> {
     },
 
     // Get agent log
-    '/api/agents/:taskId/log': async (req, res) => {
+    '/api/agents/:taskId/log': (req, res) => {
       const taskId = extractParam(req.url, 'taskId');
       const url = new URL(req.url, 'http://localhost');
       const tail = parseInt(url.searchParams.get('tail') || '100', 10);
@@ -288,7 +288,7 @@ function createAgentRoutes(): Record<string, RouteHandler> {
     },
 
     // Stream agent log (SSE)
-    '/api/agents/:taskId/log/stream': async (req, res) => {
+    '/api/agents/:taskId/log/stream': (req, res) => {
       const taskId = extractParam(req.url, 'taskId');
 
       // SSE headers
@@ -315,22 +315,22 @@ function createAgentRoutes(): Record<string, RouteHandler> {
           }
 
           res.write(`event: log\ndata: ${JSON.stringify(value)}\n\n`);
-          sendNext();
-        } catch (e) {
+          void sendNext();
+        } catch {
           res.end();
         }
       };
 
-      sendNext();
+      void sendNext();
 
       // Cleanup on close
       req.on('close', () => {
-        iterator.return?.();
+        void iterator.return?.();
       });
     },
 
     // List all agents
-    '/api/agents': async (req, res) => {
+    '/api/agents': (req, res) => {
       const agents = conductor.getAllAgents();
       json(res, { agents });
     }
@@ -344,7 +344,7 @@ function createAgentRoutes(): Record<string, RouteHandler> {
 function createSystemRoutes(): Record<string, RouteHandler> {
   return {
     // System status
-    '/api/system/status': async (req, res) => {
+    '/api/system/status': (req, res) => {
       const conductor = getConductorManager();
       const agents = conductor.getAllAgents();
       const running = Object.values(agents).filter(a => a.status === 'running' || a.status === 'spawned').length;
@@ -359,7 +359,7 @@ function createSystemRoutes(): Record<string, RouteHandler> {
     },
 
     // Health check
-    '/api/health': async (req, res) => {
+    '/api/health': (req, res) => {
       json(res, { status: 'ok', timestamp: new Date().toISOString() });
     }
   };
@@ -393,7 +393,7 @@ function setupEventBroadcast(wsHandler: WebSocketHandler) {
 // Helpers
 // ============================================================================
 
-function extractParam(url: string, param: string): string {
+function extractParam(url: string, _param: string): string {
   // Simple extraction for /api/agents/:taskId pattern
   const parts = url.split('/');
   // Find 'agents' and get next segment

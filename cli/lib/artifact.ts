@@ -92,7 +92,7 @@ export function parseMarkdownSections(content: string): ParsedMarkdown {
       continue;
     }
 
-    const headingMatch: RegExpMatchArray | null = line.match(/^## (.+)$/);
+    const headingMatch: RegExpMatchArray | null = /^## (.+)$/.exec(line);
 
     if (headingMatch) {
       // Save previous section
@@ -232,7 +232,7 @@ export function parseMarkdownSectionsRaw(content: string): {
       continue;
     }
 
-    const headingMatch = line.match(/^## (.+)$/);
+    const headingMatch = /^## (.+)$/.exec(line);
 
     if (headingMatch) {
       // Save previous section
@@ -430,7 +430,7 @@ function toggleCheckbox(sections: Map<string, string>, sectionName: string, item
 
   const updatedLines: string[] = lines.map((line: string): string => {
     // Match checkbox pattern: - [ ] or - [x] or - [X]
-    const checkboxMatch: RegExpMatchArray | null = line.match(/^(\s*-\s*)\[([ xX])\](\s*.*)$/);
+    const checkboxMatch: RegExpMatchArray | null = /^(\s*-\s*)\[([ xX])\](\s*.*)$/.exec(line);
     if (checkboxMatch) {
       const [, prefix, currentState, rest] = checkboxMatch as [string, string, string, string];
       const lineText: string = rest.trim();
@@ -564,7 +564,7 @@ export function applySearchReplace(content: string, search: string, replace: str
     }
 
     // Replace with proper indentation preserved from first line
-    const indentMatch: RegExpMatchArray | null = contentLines[startIdx].match(/^(\s*)/);
+    const indentMatch: RegExpMatchArray | null = /^(\s*)/.exec(contentLines[startIdx]);
     const indent: string = indentMatch ? indentMatch[1] : '';
     const replaceLines: string[] = normalizedReplace.split('\n').map((line: string, idx: number): string => {
       if (idx === 0) return indent + line.trim();
@@ -710,7 +710,7 @@ export function parseSedCommands(content: string): SedCommand[] {
   for (const line of lines) {
     // Match s/search/replace/ or s/search/replace/g
     // Support different delimiters: s|search|replace| or s#search#replace#
-    const match: RegExpMatchArray | null = line.match(/^s([\/|#@])(.+?)\1(.*?)\1(g)?$/);
+    const match: RegExpMatchArray | null = /^s([\/|#@])(.+?)\1(.*?)\1(g)?$/.exec(line);
     if (match) {
       commands.push({
         search: match[2],
@@ -765,7 +765,7 @@ export function parseMultiSectionContent(content: string, defaultOp = 'replace')
   const headerRegex = new RegExp(`^##\\s+(.+?)(?:\\s+\\[(${opPattern})\\])?\\s*$`);
 
   for (const line of lines) {
-    const match: RegExpMatchArray | null = line.match(headerRegex);
+    const match: RegExpMatchArray | null = headerRegex.exec(line);
     if (match) {
       // Save previous section
       if (currentSection) {

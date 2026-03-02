@@ -17,7 +17,7 @@ export function toKebab(str: string): string {
     .replace(/[\u0300-\u036f]/g, '')
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-|-$/g, '');
+    .replace(/(^-)|(-$)/g, '');
 }
 
 /**
@@ -27,7 +27,7 @@ export function toKebab(str: string): string {
  */
 export function stripComments(content: string): string {
   // Split frontmatter and body
-  const match = content.match(/^---\n([\s\S]*?)\n---\n([\s\S]*)$/);
+  const match = /^---\n([\s\S]*?)\n---\n([\s\S]*)$/.exec(content);
   if (!match) {
     // No frontmatter, just strip HTML comments from body
     return content

@@ -173,7 +173,7 @@ async function createCore(taskId: string, options: PrOptions = {}) {
       const args = ['mr', 'create', '--source-branch', branch, '--title', title, '--description', body];
       if (options.draft) args.push('--draft');
       const { stdout } = await execa('glab', args, { cwd });
-      const urlMatch = stdout.match(/https:\/\/[^\s]+/);
+      const urlMatch = /https:\/\/[^\s]+/.exec(stdout);
       return { url: urlMatch ? urlMatch[0] : stdout.trim(), provider: 'gitlab' };
     }
   } catch (e: any) {

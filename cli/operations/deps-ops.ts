@@ -169,7 +169,7 @@ export interface ValidateDepsResult {
  * Validate dependencies for issues (cycles, missing refs, status inconsistencies)
  */
 export function validateDeps(options: ValidateDepsOptions = {}): ValidateDepsResult {
-  const { tasks, blocks } = buildDependencyGraph();
+  const { tasks, blocks: _blocks } = buildDependencyGraph();
   const errors: ValidationError[] = [];
   const warnings: ValidationError[] = [];
   let fixable = 0;
@@ -250,7 +250,7 @@ export function validateDeps(options: ValidateDepsOptions = {}): ValidateDepsRes
     }
 
     // 6. Task without epic parent
-    if (!task.epic && !task.parent?.match(/E\d+/i)) {
+    if (!task.epic && !(task.parent ? /E\d+/i.exec(task.parent) : null)) {
       errors.push({
         type: 'missing_epic',
         task: id,

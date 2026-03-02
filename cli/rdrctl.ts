@@ -195,10 +195,10 @@ async function startDashboardService(options: Record<string, unknown>) {
 
   setupShutdown(() => server.stop());
 
-  server.start(async (actualPort) => {
+  server.start((actualPort) => {
     console.log(`[rdrctl] Dashboard: http://127.0.0.1:${actualPort}`);
     if (openBrowser) {
-      await openUrl(`http://127.0.0.1:${actualPort}`);
+      void openUrl(`http://127.0.0.1:${actualPort}`);
     }
   }, () => process.exit(0));
 }
@@ -222,11 +222,11 @@ async function startServeService(options: Record<string, unknown>) {
 
   setupShutdown(() => server.stop());
 
-  server.start(async (actualPort) => {
+  server.start((actualPort) => {
     console.log(`[rdrctl] Conductor: http://127.0.0.1:${actualPort}`);
     console.log(`[rdrctl] WebSocket: ws://127.0.0.1:${actualPort}`);
     if (openBrowser) {
-      await openUrl(`http://127.0.0.1:${actualPort}`);
+      void openUrl(`http://127.0.0.1:${actualPort}`);
     }
   }, () => process.exit(0));
 }

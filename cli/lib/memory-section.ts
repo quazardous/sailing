@@ -30,7 +30,7 @@ export function extractAllSections(content: string): Section[] {
 
   for (const part of parts) {
     // Check if this part starts with a section header
-    const match = part.match(/^## ([^\n]+)\n([\s\S]*)/);
+    const match = /^## ([^\n]+)\n([\s\S]*)/.exec(part);
     if (!match) continue;
 
     const sectionName = match[1].trim();
@@ -57,7 +57,7 @@ export function findSection(content: string, sectionName: string): FoundSection 
   // Match section header followed by content until next ## or end
   // Use [ \t]* instead of \s* to avoid consuming newlines needed for lookahead
   const sectionRegex = new RegExp(`(${escapeRegex(sectionHeader)}[ \\t]*\\n)([\\s\\S]*?)(?=\\n## |$)`);
-  const match = content.match(sectionRegex);
+  const match = sectionRegex.exec(content);
 
   if (!match) return null;
 
@@ -188,7 +188,7 @@ export function parseLogLevels(content: string): LogLevelCounts {
 
   for (const line of lines) {
     if (!line.trim()) continue;
-    const match = line.match(/ \[T\d+\]\s*\[(\w+)\]|\[(\w+)\]/);
+    const match = / \[T\d+\]\s*\[(\w+)\]|\[(\w+)\]/.exec(line);
     if (match) {
       const level = (match[1] || match[2]).toUpperCase();
       if (Object.prototype.hasOwnProperty.call(counts, level)) {

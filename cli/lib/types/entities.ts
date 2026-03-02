@@ -80,6 +80,17 @@ export interface StoryIndexEntry extends FileTimestamps {
   data: Partial<Story>;
 }
 
+export interface ArchiveEntry extends FileTimestamps {
+  key: string;       // numeric key: "364", "1", "97"
+  id: string;        // normalized: T00364, E0097, PRD-013
+  type: 'task' | 'epic' | 'prd';
+  title: string;
+  status: string;
+  parent: string;    // "PRD-013 / E0082"
+  prdId: string;     // "PRD-013"
+  file: string;      // absolute path
+}
+
 /**
  * Full task with all metadata for display/scheduling
  */

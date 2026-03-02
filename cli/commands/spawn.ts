@@ -212,14 +212,6 @@ async function checkConflicts(taskId) {
 /**
  * Register spawn commands
  */
-interface CommandInterface {
-  command(name: string): CommandInterface;
-  description(desc: string): CommandInterface;
-  argument(name: string, desc: string): CommandInterface;
-  option(flags: string, desc: string): CommandInterface;
-  action(fn: (...args: any[]) => void | Promise<void>): CommandInterface;
-}
-
 export function registerSpawnCommands(program: any) {
   const spawn = program.command('spawn')
     .description('Spawn preflight and postflight checks') as Command;

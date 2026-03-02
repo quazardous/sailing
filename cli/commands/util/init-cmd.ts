@@ -5,7 +5,6 @@ import fs from 'fs';
 import path from 'path';
 import {
   getSailingDir,
-  findProjectRoot,
   getArtefactsDir,
   getMemoryDir,
   getPrdsDir,
@@ -22,7 +21,6 @@ export function registerInitCommand(program) {
     .option('-y, --yes', 'Overwrite existing files without prompting')
     .option('--dry-run', 'Show what would be done without making changes')
     .action((options) => {
-      const projectRoot = findProjectRoot();
       const sailingDir = getSailingDir();
       const artefactsDir = getArtefactsDir();
       const distDir = path.join(path.dirname(path.dirname(import.meta.dirname)), 'disttpl');

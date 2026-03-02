@@ -51,7 +51,7 @@ interface PrdInfo {
  */
 function extractEpicId(parent: string | undefined): string | null {
   if (!parent) return null;
-  const match = parent.match(/E(\d+)/i);
+  const match = /E(\d+)/i.exec(parent);
   return match ? normalizeId(`E${match[1]}`) : null;
 }
 
@@ -59,7 +59,7 @@ function extractEpicId(parent: string | undefined): string | null {
  * Extract PRD ID from parent field or prdDir
  */
 function extractPrdId(prdDir: string): string {
-  const match = prdDir.match(/PRD-(\d+)/i);
+  const match = /PRD-(\d+)/i.exec(prdDir);
   return match ? `PRD-${match[1].padStart(3, '0')}` : 'Unknown';
 }
 

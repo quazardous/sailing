@@ -21,7 +21,7 @@ export function formatTaskId(taskNum: number, digits: number = 3): string {
  */
 export function parseTaskNum(taskId: string | null | undefined): number | null {
   if (!taskId) return null;
-  const match = taskId.match(/^T(\d+)$/i);
+  const match = /^T(\d+)$/i.exec(taskId);
   if (!match) return null;
   return parseInt(match[1], 10);
 }

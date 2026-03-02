@@ -95,7 +95,7 @@ export function detectEntityType(id: string): { type: 'task' | 'epic' | 'prd' | 
     return { type: 'task', id: normalized };
   } else if (normalized.startsWith('E')) {
     return { type: 'epic', id: normalized };
-  } else if (normalized.startsWith('PRD-') || normalized.match(/^PRD\d+$/i)) {
+  } else if (normalized.startsWith('PRD-') || /^PRD\d+$/i.exec(normalized)) {
     return { type: 'prd', id: normalized };
   }
   return { type: 'unknown', id: normalized };
@@ -242,7 +242,7 @@ export function getTaskMemory(taskId: string): { found: boolean; epicId: string 
   const parent = (file.data?.parent as string | undefined) || '';
 
   // Extract epic ID from parent (e.g., "PRD-006 / E043" → "E043")
-  const epicMatch = parent.match(/E(\d+)/i);
+  const epicMatch = /E(\d+)/i.exec(parent);
   if (!epicMatch) {
     return { found: false, epicId: null, content: '' };
   }
@@ -258,7 +258,7 @@ export function getTaskMemory(taskId: string): { found: boolean; epicId: string 
   const fullContent = fs.readFileSync(memoryFile, 'utf8');
 
   // Extract Agent Context section only
-  const match = fullContent.match(/## Agent Context\s*([\s\S]*?)(?=\n## |$)/);
+  const match = /## Agent Context\s*([\s\S]*?)(?=\n## |$)/.exec(fullContent);
   if (!match || !match[1].trim()) {
     return { found: true, epicId, content: '' };
   }
@@ -280,11 +280,11 @@ export function getEpicSummary(epicId: string): EpicSummary | null {
   const data = file.data || {};
 
   // Extract description section
-  const contentMatch = file.body?.match(/## Description\s*([\s\S]*?)(?=\n## |$)/);
+  const contentMatch = file.body ? /## Description\s*([\s\S]*?)(?=\n## |$)/.exec(file.body) : null;
   const description = contentMatch ? contentMatch[1].trim() : '';
 
   // Extract Technical Notes section
-  const techMatch = file.body?.match(/## Technical Notes\s*([\s\S]*?)(?=\n## |$)/);
+  const techMatch = file.body ? /## Technical Notes\s*([\s\S]*?)(?=\n## |$)/.exec(file.body) : null;
   const techNotes = techMatch ? techMatch[1].replace(/<!--[\s\S]*?-->/g, '').trim() : '';
 
   return {
@@ -364,7 +364,7 @@ export async function handleTaskClaim(taskId: string, options: TaskClaimOptions)
 
     const file = loadFile(taskFile);
     const parent = (file.data?.parent as string | undefined) || '';
-    const epicMatch = parent.match(/E(\d+)/i);
+    const epicMatch = /E(\d+)/i.exec(parent);
     epicId = epicMatch ? normalizeId(`E${epicMatch[1]}`) : null;
 
     assignment = { taskId, epicId, operation };
@@ -479,7 +479,7 @@ export function handleEpicClaim(epicId: string, options: EpicClaimOptions) {
 
   const file = loadFile(epicFile);
   const parent = (file.data?.parent as string | undefined) || '';
-  const prdMatch = parent.match(/PRD-\d+/i);
+  const prdMatch = /PRD-\d+/i.exec(parent);
   const prdId = prdMatch ? prdMatch[0] : null;
 
   // Default operation for epics

@@ -76,7 +76,7 @@ export function registerDiagnoseCommands(agent) {
     .description('Analyze agent run log for errors and issues')
     .option('--json', 'JSON output')
     .option('--max-line-len <n>', 'Max error line length', '500')
-    .action(async (taskId: string, options: any) => {
+    .action((taskId: string, options: any) => {
       const maxLineLen = parseInt(options.maxLineLen) || 500;
       const normalized = normalizeId(taskId, undefined, 'task');
       const agentUtils = new AgentUtils(getAgentsDir());
@@ -117,7 +117,7 @@ export function registerDiagnoseCommands(agent) {
     .option('--type <type>', 'Event type to match')
     .option('--contains <text>', 'Text to match')
     .option('--pattern <regex>', 'Regex pattern to match')
-    .action(async (id: string, taskOrEpic: string | undefined, options: any) => {
+    .action((id: string, taskOrEpic: string | undefined, options: any) => {
       const epicId = resolveEpicId(taskOrEpic);
 
       if (!options.contains && !options.pattern && !options.type) {
@@ -154,7 +154,7 @@ export function registerDiagnoseCommands(agent) {
   agent.command('log-noise-list-filters [task-or-epic]')
     .description('List noise filters (accepts task ID, epic ID, or "global")')
     .option('--json', 'JSON output')
-    .action(async (taskOrEpic: string | undefined, options: any) => {
+    .action((taskOrEpic: string | undefined, options: any) => {
       const epicId = resolveEpicId(taskOrEpic);
       const filters = getDiagnoseOps().loadNoiseFilters(epicId);
 
@@ -178,7 +178,7 @@ export function registerDiagnoseCommands(agent) {
   // agent:log-noise-rm-filter - Remove noise filter
   agent.command('log-noise-rm-filter <id> [task-or-epic]')
     .description('Remove noise filter (task ID, epic ID, or "global")')
-    .action(async (id: string, taskOrEpic: string | undefined) => {
+    .action((id: string, taskOrEpic: string | undefined) => {
       const epicId = resolveEpicId(taskOrEpic);
       const ops = getDiagnoseOps();
       const filters = ops.loadNoiseFilters(epicId);

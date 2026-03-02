@@ -64,10 +64,10 @@ function matchQuery<T>(doc: T, query: Query<T>): boolean {
     if (condition && typeof condition === 'object' && !Array.isArray(condition)) {
       for (const [op, opValue] of Object.entries(condition)) {
         switch (op) {
-          case '$gt': if (!((value as number) > (opValue as number))) return false; break;
-          case '$gte': if (!((value as number) >= (opValue as number))) return false; break;
-          case '$lt': if (!((value as number) < (opValue as number))) return false; break;
-          case '$lte': if (!((value as number) <= (opValue as number))) return false; break;
+          case '$gt': if ((value as number) <= (opValue as number)) return false; break;
+          case '$gte': if ((value as number) < (opValue as number)) return false; break;
+          case '$lt': if ((value as number) >= (opValue as number)) return false; break;
+          case '$lte': if ((value as number) > (opValue as number)) return false; break;
           case '$ne': if (value === opValue) return false; break;
           case '$in': if (!Array.isArray(opValue) || !opValue.includes(value)) return false; break;
           case '$nin': if (Array.isArray(opValue) && opValue.includes(value)) return false; break;

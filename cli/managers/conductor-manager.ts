@@ -448,7 +448,7 @@ export class ConductorManager {
       });
 
       // Setup exit handler
-      spawnResult.process.on('exit', async (code, signal) => {
+      spawnResult.process.on('exit', (code, signal) => void (async () => {
         this.activeProcesses.delete(taskId);
 
         // Check result status
@@ -490,7 +490,7 @@ export class ConductorManager {
         if (code === 0) {
           runManager.release(taskId);
         }
-      });
+      })());
 
       return {
         success: true,
@@ -659,7 +659,7 @@ export class ConductorManager {
           }
         };
 
-        const init = async () => {
+        const init = () => {
           if (initialized) return;
           initialized = true;
 
@@ -709,7 +709,7 @@ export class ConductorManager {
 
         return {
           async next(): Promise<IteratorResult<LogLine>> {
-            await init();
+            init();
 
             if (closed) {
               return { done: true, value: undefined };
@@ -774,7 +774,7 @@ export class ConductorManager {
    * Stop all log streams
    */
   stopAllLogStreams(): void {
-    for (const [taskId, watcher] of this.logStreams) {
+    for (const [_taskId, watcher] of this.logStreams) {
       watcher.close();
     }
     this.logStreams.clear();

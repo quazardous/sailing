@@ -161,7 +161,7 @@ function getServerStatus() {
           // Port is no longer used by our process, clean up
           throw new Error('Port not owned by MCP');
         }
-      } catch (e) {
+      } catch {
         // lsof failed or port not owned - clean up and report not running
         try { fs.unlinkSync(pidFile); } catch {}
         try { fs.unlinkSync(portFile); } catch {}
@@ -172,7 +172,7 @@ function getServerStatus() {
     }
 
     return { running: true, pid, mode, port, socket };
-  } catch (e) {
+  } catch {
     // Process not running, clean up stale files
     try { fs.unlinkSync(pidFile); } catch {}
     try { fs.unlinkSync(defaultSocket); } catch {}
@@ -446,13 +446,13 @@ switch (command) {
     break;
   case 'restart':
     stopServer();
-    handleStart();
+    void handleStart();
     break;
   case 'log':
     handleLog();
     break;
   case 'start':
   default:
-    handleStart();
+    void handleStart();
     break;
 }

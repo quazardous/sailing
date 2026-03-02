@@ -29,14 +29,14 @@ export function buildMemoryIndex(): Map<string, { key: string; type: 'epic' | 'p
   for (const file of files) {
     const filePath = path.join(memDir, file);
 
-    const epicMatch = file.match(/^E0*(\d+)([a-z])?\.md$/i);
+    const epicMatch = /^E0*(\d+)([a-z])?\.md$/i.exec(file);
     if (epicMatch) {
       const key = 'E' + epicMatch[1] + (epicMatch[2] ? epicMatch[2].toLowerCase() : '');
       index.set(key, { key, type: 'epic', file: filePath });
       continue;
     }
 
-    const prdMatch = file.match(/^PRD-0*(\d+)\.md$/i);
+    const prdMatch = /^PRD-0*(\d+)\.md$/i.exec(file);
     if (prdMatch) {
       const key = 'PRD-' + prdMatch[1];
       index.set(key, { key, type: 'prd', file: filePath });
@@ -57,13 +57,13 @@ export function buildMemoryIndex(): Map<string, { key: string; type: 'epic' | 'p
 export function getMemoryFile(id: string | number) {
   const index = buildMemoryIndex();
 
-  const epicMatch = String(id).match(/^E0*(\d+)([a-z])?$/i);
+  const epicMatch = /^E0*(\d+)([a-z])?$/i.exec(String(id));
   if (epicMatch) {
     const key = 'E' + epicMatch[1] + (epicMatch[2] ? epicMatch[2].toLowerCase() : '');
     return index.get(key) || null;
   }
 
-  const prdMatch = String(id).match(/^PRD-?0*(\d+)$/i);
+  const prdMatch = /^PRD-?0*(\d+)$/i.exec(String(id));
   if (prdMatch) {
     const key = 'PRD-' + prdMatch[1];
     return index.get(key) || null;
@@ -95,14 +95,14 @@ export function buildLogIndex(): Map<string, { key: string; type: 'epic' | 'task
   for (const file of files) {
     const filePath = path.join(memDir, file);
 
-    const epicMatch = file.match(/^E0*(\d+)([a-z])?\.log$/i);
+    const epicMatch = /^E0*(\d+)([a-z])?\.log$/i.exec(file);
     if (epicMatch) {
       const key = 'E' + epicMatch[1] + (epicMatch[2] ? epicMatch[2].toLowerCase() : '');
       index.set(key, { key, type: 'epic', file: filePath });
       continue;
     }
 
-    const taskMatch = file.match(/^T0*(\d+)\.log$/i);
+    const taskMatch = /^T0*(\d+)\.log$/i.exec(file);
     if (taskMatch) {
       const key = 'T' + taskMatch[1];
       index.set(key, { key, type: 'task', file: filePath });
@@ -119,13 +119,13 @@ export function buildLogIndex(): Map<string, { key: string; type: 'epic' | 'task
 export function getLogFile(id: string | number): { key: string; type: 'epic' | 'task'; file: string } | null {
   const index = buildLogIndex();
 
-  const epicMatch = String(id).match(/^E0*(\d+)([a-z])?$/i);
+  const epicMatch = /^E0*(\d+)([a-z])?$/i.exec(String(id));
   if (epicMatch) {
     const key = 'E' + epicMatch[1] + (epicMatch[2] ? epicMatch[2].toLowerCase() : '');
     return index.get(key) || null;
   }
 
-  const taskMatch = String(id).match(/^T0*(\d+)$/i);
+  const taskMatch = /^T0*(\d+)$/i.exec(String(id));
   if (taskMatch) {
     const key = 'T' + taskMatch[1];
     return index.get(key) || null;

@@ -150,7 +150,8 @@ export function registerGraphCommands(story: Command): void {
         if (ancestors.length === 0) {
           console.log(`Story not found: ${id}`);
         } else {
-          ancestors.reverse().forEach((s, i) => {
+          ancestors.reverse();
+          ancestors.forEach((s, i) => {
             const indent = '  '.repeat(i);
             const typeIcon = s.type === 'user' ? '👤' : s.type === 'technical' ? '⚙️' : '🔌';
             console.log(`${indent}${typeIcon} ${s.id}: ${s.title}`);

@@ -15,7 +15,7 @@ import yaml from 'js-yaml';
 import { formatIdFrom } from '../lib/normalize.js';
 import type { SailingConfig, ConfigSchemaEntry, ConfigDisplayItem, ConfigSchema } from '../lib/types/config.js';
 
-// Import path resolution from core-manager (breaks circular by using late binding)
+// Import path resolution from core-manager
 import { getPath } from './core-manager.js';
 
 // ============================================================================
@@ -247,7 +247,7 @@ export function setConfigOverrides(overrides: Record<string, any>): void {
  * Handles type coercion based on schema
  */
 export function parseConfigOverride(override: string): { key: string; value: any } | null {
-  const match = override.match(/^([^=]+)=(.*)$/);
+  const match = /^([^=]+)=(.*)$/.exec(override);
   if (!match) {
     console.error(`Invalid config override format: ${override}`);
     console.error(`Expected: key=value (e.g., agent.use_subprocess=true)`);

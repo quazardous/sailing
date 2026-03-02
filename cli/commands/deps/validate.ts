@@ -196,7 +196,7 @@ export function registerValidateCommand(deps: Command): void {
       // 8b. Tasks without epic parent
       for (const [id, task] of tasks) {
         if (prdFilter && !task.prd?.includes(prdFilter)) continue;
-        if (!task.epic && !task.parent?.match(/E\d+/i)) {
+        if (!task.epic && !(task.parent ? /E\d+/i.exec(task.parent) : null)) {
           errors.push({
             type: 'missing_epic',
             task: id,
@@ -210,7 +210,7 @@ export function registerValidateCommand(deps: Command): void {
         if (prdFilter && !task.prd?.includes(prdFilter)) continue;
         if (!task.file) continue;
         const actualFilename = path.basename(task.file, '.md');
-        const filenameId = actualFilename.match(/^(T\d+)/)?.[1];
+        const filenameId = /^(T\d+)/.exec(actualFilename)?.[1];
         if (filenameId && filenameId !== id) {
           errors.push({
             type: 'id_mismatch',
@@ -230,7 +230,7 @@ export function registerValidateCommand(deps: Command): void {
       const tasksByEpic = new Map<string, TaskNode[]>();
       for (const [, task] of tasks) {
         if (prdFilter && !task.prd?.includes(prdFilter)) continue;
-        const epicMatch = task.parent?.match(/E(\d+)/i);
+        const epicMatch = task.parent ? /E(\d+)/i.exec(task.parent) : null;
         if (epicMatch) {
           const epicId = resolveEpic(`E${epicMatch[1]}`) ?? `E${epicMatch[1]}`;
           if (!tasksByEpic.has(epicId)) tasksByEpic.set(epicId, []);

@@ -3,11 +3,9 @@
  */
 import {
   getAllAdrs,
-  getAdr,
   getFullAdr,
   createAdr,
   updateAdrStatus,
-  getAcceptedAdrs,
   getRelevantAdrs,
   normalizeAdrId,
   getAdrDir

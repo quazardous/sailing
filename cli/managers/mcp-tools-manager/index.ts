@@ -150,7 +150,7 @@ export function formatToolHelp(tools: ToolDefinition[], verbose = false): string
       }
 
       if (verbose) {
-        for (const [name, prop] of Object.entries(props) as [string, any][]) {
+        for (const [name, prop] of Object.entries(props) as [string, { description?: string; type?: string }][]) {
           const isRequired = required.includes(name);
           lines.push(`    --${name}${isRequired ? ' (required)' : ''}: ${prop.description || prop.type}`);
         }

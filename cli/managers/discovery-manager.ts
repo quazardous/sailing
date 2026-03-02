@@ -67,6 +67,6 @@ export function findPrdDirs(): string[] {
 export function findFiles(dir: string, pattern: RegExp | string): string[] {
   if (!fs.existsSync(dir)) return [];
   return fs.readdirSync(dir)
-    .filter(f => f.match(pattern))
+    .filter(f => (pattern instanceof RegExp ? pattern : new RegExp(pattern)).exec(f))
     .map(f => path.join(dir, f));
 }

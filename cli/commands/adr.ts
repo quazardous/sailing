@@ -12,7 +12,6 @@
 import { jsonOut } from '../managers/core-manager.js';
 import {
   getAllAdrs,
-  getAdr,
   getFullAdr,
   createAdr,
   updateAdrStatus,
@@ -76,7 +75,7 @@ export function registerAdrCommands(program: Command): void {
       if (options.tag && options.tag.length > 0) {
         entries = entries.filter(e => {
           const adrTags = e.data.tags || [];
-          return options.tag!.some(t => adrTags.includes(t));
+          return options.tag.some(t => adrTags.includes(t));
         });
       }
 
@@ -216,7 +215,7 @@ export function registerAdrCommands(program: Command): void {
   // adr:wizard - Interactive ADR creation
   adr.command('wizard')
     .description('Interactive ADR creation wizard')
-    .action(async () => {
+    .action(() => {
       console.log('ADR Wizard\n');
       console.log('The wizard helps you create well-structured ADRs.');
       console.log('For full interactive experience, use Claude with /dev:adr-scan\n');

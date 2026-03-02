@@ -129,7 +129,7 @@ function buildTaskIndexForDuplicates(): Map<string, TaskEntry[]> {
 
     // Extract epic from parent field
     const parent = (data.parent) || '';
-    const epicMatch = parent.match(/E\d+/i);
+    const epicMatch = /E\d+/i.exec(parent);
     const epicId = epicMatch ? epicMatch[0].toUpperCase() : null;
 
     const entry: TaskEntry = {
@@ -345,7 +345,7 @@ function renameTask(taskFile: string, newId: string, scope: string, prdDir: stri
     // Filter by epic scope if needed
     if (scope === 'epic' && epicId) {
       const otherParent = (otherData.data.parent as string) || '';
-      const otherEpicMatch = otherParent.match(/E\d+/i);
+      const otherEpicMatch = /E\d+/i.exec(otherParent);
       const otherEpicId = otherEpicMatch ? otherEpicMatch[0].toUpperCase() : null;
       if (extractNumericKey(otherEpicId) !== extractNumericKey(epicId)) continue;
     }
@@ -399,7 +399,7 @@ function updateTaskRef(str: string, oldId: string, newId: string): string {
  * Parse a path like "PRD-001/E001" or "PRD-001/T042"
  */
 function parsePath(pathStr: string): ParsedPath | null {
-  const match = pathStr.match(/^(PRD-?\d+)\/([ET])(\d+[a-z]?)$/i);
+  const match = /^(PRD-?\d+)\/([ET])(\d+[a-z]?)$/i.exec(pathStr);
   if (!match) return null;
 
   const prdId = normalizeId(match[1]);

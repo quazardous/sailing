@@ -109,7 +109,7 @@ export function setupAgentLogTail(
  * Parse duration string (e.g., "1h", "24h", "1d", "2d") to milliseconds
  */
 function parseDuration(duration: string): number {
-  const match = duration.match(/^(\d+)(h|d)$/);
+  const match = /^(\d+)(h|d)$/.exec(duration);
   if (!match) {
     throw new Error(`Invalid duration format: ${duration}. Use format like "1h", "24h", "1d"`);
   }
@@ -322,7 +322,6 @@ export function registerMonitorCommands(agent) {
       const green = '\x1b[32m';
       const yellow = '\x1b[33m';
       const red = '\x1b[31m';
-      const cyan = '\x1b[36m';
       const reset = '\x1b[0m';
       const dim = '\x1b[2m';
 
@@ -434,7 +433,6 @@ export function registerMonitorCommands(agent) {
       taskId = normalizeId(taskId, undefined, 'task');
 
       const agentInfo = getAgentFromDb(taskId);
-      const projectRoot = findProjectRoot();
       const agentUtils = new AgentUtils(getAgentsDir());
 
       if (!agentInfo) {
@@ -467,7 +465,6 @@ export function registerMonitorCommands(agent) {
       const heartbeatInterval = heartbeatSec * 1000;
       const shouldHeartbeat = options.heartbeat !== false;
       const shouldLog = options.log !== false;
-      let lastHeartbeat = startTime;
 
       const pid = agentInfo.pid;
       const logFile = getAgentLogFile(taskId);
@@ -496,7 +493,6 @@ export function registerMonitorCommands(agent) {
         const memInfo = stats.mem ? ` (mem: ${stats.mem})` : '';
         const statusText = stats.running ? 'running' : 'stopped';
         console.log(`\n[${formatDuration(elapsed)}] pong — ${taskId} ${statusText}${memInfo}`);
-        lastHeartbeat = Date.now();
       };
 
       const sighupHandler = () => emitHeartbeat();
@@ -529,7 +525,6 @@ export function registerMonitorCommands(agent) {
         }, heartbeatInterval);
       }
 
-      let completed = false;
       let exitCode = null;
 
       await new Promise<void>((resolve) => {
@@ -547,7 +542,6 @@ export function registerMonitorCommands(agent) {
           const currentAgentRecord = getAgentFromDb(taskId);
           const completion = agentUtils.checkCompletion(taskId, currentAgentRecord as AgentCompletionInfo);
           if (completion.complete) {
-            completed = true;
             exitCode = currentAgentRecord?.exit_code ?? 0;
             resolve();
           }
@@ -660,7 +654,6 @@ export function registerMonitorCommands(agent) {
 
       return new Promise<void>((resolve) => {
         let watcher;
-        let pollInterval;
 
         const cleanup = () => {
           if (watcher) watcher.close();
@@ -699,14 +692,14 @@ export function registerMonitorCommands(agent) {
               onComplete();
             }
           });
-        } catch (e) {
+        } catch {
           // fs.watch not available, use polling
         }
 
         const heartbeatIntervalMs = (typeof options.heartbeat === 'number' ? options.heartbeat : 30) * 1000;
         let lastHeartbeat = startTime;
 
-        pollInterval = setInterval(() => {
+        const pollInterval = setInterval(() => {
           const elapsed = Date.now() - startTime;
 
           if (elapsed > timeoutMs) {
@@ -934,10 +927,10 @@ export function registerMonitorCommands(agent) {
 
       // 5. Compute discrepancies
       const dbIds = new Set(dbAgents.map(a => a.id));
-      const agentDirIds = new Set(rawAgentDirs.filter(d => d.match(/^T\d+$/i)));
-      const worktreeDirIds = new Set(rawWorktreeDirs.filter(d => d.match(/^T\d+$/i)));
+      const agentDirIds = new Set(rawAgentDirs.filter(d => /^T\d+$/i.exec(d)));
+      const worktreeDirIds = new Set(rawWorktreeDirs.filter(d => /^T\d+$/i.exec(d)));
       const gitWorktreeIds = new Set(gitWorktrees.map(w => {
-        const match = w.path.match(/\/(T\d+)$/i);
+        const match = /\/(T\d+)$/i.exec(w.path);
         return match ? match[1].toUpperCase() : null;
       }).filter(Boolean));
 

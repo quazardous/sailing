@@ -94,6 +94,24 @@ export type {
   CreateStoryResult
 } from './story.js';
 
+// Archive operations
+export {
+  buildArchiveIndex,
+  getArchivedArtefact,
+  getAllArchivedTasks,
+  getAllArchivedEpics,
+  getAllArchivedPrds
+} from './archive.js';
+export type { ArchiveQueryOptions } from './archive.js';
+
+// Search operations
+export { searchArtefacts } from './search.js';
+export type { SearchOptions, SearchHit } from './search.js';
+
+// Store abstraction
+export type { ArtefactReadStore, ArtefactStore } from './store.js';
+export { FileArtefactStore, getStore } from './file-store.js';
+
 // Memory operations
 export {
   buildMemoryIndex,
@@ -106,9 +124,8 @@ export {
 // Relationship queries that span multiple types
 import { getPrd } from './prd.js';
 import { getAllTasks } from './task.js';
-import { getAllStories } from './story.js';
 import { normalizeId, matchesPrd as matchesPrdLib } from '../../lib/normalize.js';
-import type { TaskIndexEntry, StoryIndexEntry } from '../../lib/types/entities.js';
+import type { TaskIndexEntry } from '../../lib/types/entities.js';
 
 /**
  * Match PRD ID (handles format variations: PRD-1, PRD-001, 1)
@@ -141,6 +158,7 @@ export type {
   EpicIndexEntry,
   PrdIndexEntry,
   StoryIndexEntry,
+  ArchiveEntry,
   FullPrd,
   FullEpic,
   FullTask

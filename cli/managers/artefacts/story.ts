@@ -35,13 +35,13 @@ export function buildStoryIndex(): Map<string, StoryIndexEntry> {
       if (key === null) continue;
 
       const filePath = path.join(storiesDir, file);
-      const idMatch = file.match(/^(S\d+[a-z]?)/i);
+      const idMatch = /^(S\d+[a-z]?)/i.exec(file);
       const id = idMatch ? idMatch[1] : `S${key}`;
 
       const loaded = loadFile<Story>(filePath);
 
       if (index.has(key)) {
-        duplicates.push({ key, existing: index.get(key)!.file, new: filePath });
+        duplicates.push({ key, existing: index.get(key).file, new: filePath });
       }
 
       const timestamps = getFileTimestamps(filePath);
@@ -83,7 +83,7 @@ export function getStory(storyId: string | number): StoryIndexEntry | null {
   if (typeof storyId === 'number') {
     key = String(storyId);
   } else {
-    const match = String(storyId).match(/^S?0*(\d+)([a-z])?$/i);
+    const match = /^S?0*(\d+)([a-z])?$/i.exec(String(storyId));
     if (match) {
       key = match[1] + (match[2] ? match[2].toLowerCase() : '');
     } else {

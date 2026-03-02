@@ -20,6 +20,7 @@ import crypto from 'crypto';
 import yaml from 'js-yaml';
 import { execaSync } from 'execa';
 import type { Placeholders } from '../lib/types/config.js';
+import { clearConfigCache } from './config-manager.js';
 
 // Re-export pure utilities for convenience
 export { toKebab, stripComments, jsonOut } from '../lib/strings.js';
@@ -105,7 +106,7 @@ export function setPathOverrides(overrides: Record<string, string>): void {
 }
 
 export function parsePathOverride(override: string): { key: string; value: string } | null {
-  const match = override.match(/^([^=]+)=(.*)$/);
+  const match = /^([^=]+)=(.*)$/.exec(override);
   if (!match) {
     console.error(`Invalid path override format: ${override}`);
     return null;
@@ -134,7 +135,14 @@ export function setScriptDir(dir: string) {
 
 export function setProjectRoot(dir: string) {
   _projectRoot = dir;
+  // Clear ALL caches that depend on project root.
+  // Direct calls — no observer pattern needed since project root is set once.
   _config = null;
+  _placeholderCache.clear();
+  _projectHash = null;
+  _repoRoot = undefined;
+  // Config cache (circular import but safe at runtime — modules are fully loaded)
+  clearConfigCache();
 }
 
 export function getRepoRoot(): string | null {
@@ -581,8 +589,6 @@ export function getAssignmentsDir() {
   return getPath('assignments');
 }
 
-// Legacy export
-export const PROJECT_ROOT = findProjectRoot();
 
 // ============================================================================
 // DEV INSTALL DETECTION

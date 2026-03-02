@@ -10,7 +10,7 @@
 import path from 'path';
 import { loadFile, saveFile, findPrdDirs } from './core-manager.js';
 import { normalizeId, matchesPrdDir } from '../lib/normalize.js';
-import { getEpic, getEpicsForPrd } from './artefacts-manager.js';
+import { getStore } from './artefacts-manager.js';
 import {
   isStatusDone,
   isStatusNotStarted,
@@ -37,14 +37,14 @@ export interface CascadeResult {
  * Find an epic file by ID
  */
 function findEpicFile(epicId: string): string | null {
-  return getEpic(epicId)?.file || null;
+  return getStore().getEpic(epicId)?.file || null;
 }
 
 /**
  * Find PRD file from parent string
  */
 function findPrdFile(parent: string): { prdId: string; prdFile: string; prdDir: string } | null {
-  const prdMatch = parent?.match(/PRD-(\d+)/i);
+  const prdMatch = parent ? /PRD-(\d+)/i.exec(parent) : null;
   if (!prdMatch) return null;
 
   const prdId = `PRD-${prdMatch[1].padStart(3, '0')}`;
@@ -135,7 +135,7 @@ export function escalateOnTaskStart(taskData: { parent?: string }): {
   const result: { epic?: StatusTransitionResult; prd?: StatusTransitionResult } = {};
 
   // Extract Epic ID from parent
-  const epicMatch = taskData.parent?.match(/E(\d+)/i);
+  const epicMatch = taskData.parent ? /E(\d+)/i.exec(taskData.parent) : null;
   if (epicMatch) {
     const epicId = normalizeId(`E${epicMatch[1]}`);
     result.epic = escalateEpicToInProgress(epicId);
@@ -157,7 +157,7 @@ function areAllEpicTasksDone(epicId: string, currentTaskId?: string): boolean {
 
   // Find all tasks for this epic
   const epicTasks = [...tasks.values()].filter(t =>
-    t.parent?.match(/E\d+/i)?.[0]?.toUpperCase() === epicId.toUpperCase()
+    (t.parent ? /E\d+/i.exec(t.parent)?.[0] : null)?.toUpperCase() === epicId.toUpperCase()
   );
 
   if (epicTasks.length === 0) return false;
@@ -175,10 +175,10 @@ function areAllEpicTasksDone(epicId: string, currentTaskId?: string): boolean {
 function areAllPrdEpicsDone(prdDir: string): boolean {
   // Find PRD from prdDir
   const prdDirname = path.basename(prdDir);
-  const prdMatch = prdDirname.match(/^PRD-0*(\d+)/i);
+  const prdMatch = /^PRD-0*(\d+)/i.exec(prdDirname);
   if (!prdMatch) return false;
 
-  const epics = getEpicsForPrd(parseInt(prdMatch[1], 10));
+  const epics = getStore().getEpicsForPrd(parseInt(prdMatch[1], 10));
   if (epics.length === 0) return false;
 
   return epics.every(epic =>
@@ -268,7 +268,7 @@ export function cascadeTaskCompletion(taskId: string, taskData: { parent?: strin
   };
 
   // Extract Epic ID from parent
-  const epicMatch = taskData.parent?.match(/E(\d+)/i);
+  const epicMatch = taskData.parent ? /E(\d+)/i.exec(taskData.parent) : null;
   if (!epicMatch) return result;
 
   const epicId = normalizeId(`E${epicMatch[1]}`);

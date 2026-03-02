@@ -7,7 +7,7 @@
 import fs from 'fs';
 import path from 'path';
 import { getArchiveDir, getMemoryDir, loadFile, saveFile, findProjectRoot } from './core-manager.js';
-import { getPrd, buildPrdIndex, clearCache } from './artefacts-manager.js';
+import { getStore } from './artefacts-manager.js';
 import { findEpicPrd, findTaskEpic } from './memory-manager.js';
 import { normalizeId } from '../lib/normalize.js';
 import { getGit } from '../lib/git.js';
@@ -98,7 +98,7 @@ function getPrdMemoryFiles(targetPrdId: string): Array<{ id: string; type: strin
     const baseName = path.basename(file, ext);
 
     // PRD memory files
-    if (baseName.match(/^PRD-?\d+$/i)) {
+    if (/^PRD-?\d+$/i.exec(baseName)) {
       const prdId = normalizeId(baseName);
       if (prdId === normalizedPrdId) {
         memoryFiles.push({ id: prdId, type: 'prd', file: filePath });
@@ -107,7 +107,7 @@ function getPrdMemoryFiles(targetPrdId: string): Array<{ id: string; type: strin
     }
 
     // Epic memory files
-    if (baseName.match(/^E\d+[a-z]?$/i)) {
+    if (/^E\d+[a-z]?$/i.exec(baseName)) {
       const epicId = normalizeId(baseName);
       const epicPrd = findEpicPrd(epicId);
       if (epicPrd && normalizeId(epicPrd) === normalizedPrdId) {
@@ -117,7 +117,7 @@ function getPrdMemoryFiles(targetPrdId: string): Array<{ id: string; type: strin
     }
 
     // Task log files
-    if (baseName.match(/^T\d+[a-z]?$/i) && ext === '.log') {
+    if (/^T\d+[a-z]?$/i.exec(baseName) && ext === '.log') {
       const taskId = normalizeId(baseName);
       const taskInfo = findTaskEpic(taskId);
       if (taskInfo) {
@@ -126,7 +126,6 @@ function getPrdMemoryFiles(targetPrdId: string): Array<{ id: string; type: strin
           memoryFiles.push({ id: taskId, type: 'task', file: filePath });
         }
       }
-      continue;
     }
   }
 
@@ -152,7 +151,8 @@ export async function archivePrd(prdId: string, options: ArchiveOptions = {}): P
   const { force = false, dryRun = false } = options;
 
   // Find PRD
-  const prd = getPrd(prdId);
+  const store = getStore();
+  const prd = store.getPrd(prdId);
   if (!prd) {
     return { success: false, error: `PRD not found: ${prdId}` };
   }
@@ -210,7 +210,7 @@ export async function archivePrd(prdId: string, options: ArchiveOptions = {}): P
   movedFiles.push(prd.dir);
 
   // Clear index cache
-  clearCache();
+  store.clearCache();
 
   return { success: true, prdId: prd.id, movedFiles };
 }
@@ -219,12 +219,5 @@ export async function archivePrd(prdId: string, options: ArchiveOptions = {}): P
  * Get all PRDs with status Done
  */
 export function getDonePrds(): Array<{ id: string; dir: string; data?: Record<string, unknown> }> {
-  const prdIndex = buildPrdIndex();
-  const donePrds: Array<{ id: string; dir: string; data?: Record<string, unknown> }> = [];
-  for (const [, prd] of prdIndex) {
-    if (prd.data?.status === 'Done') {
-      donePrds.push(prd);
-    }
-  }
-  return donePrds;
+  return getStore().getAllPrds().filter(prd => prd.data?.status === 'Done');
 }

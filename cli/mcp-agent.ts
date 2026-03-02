@@ -66,7 +66,7 @@ function createConnectionHandler(mode: 'tcp' | 'unix') {
       { capabilities: { tools: {} } }
     );
 
-    clientServer.setRequestHandler(ListToolsRequestSchema, async () => {
+    clientServer.setRequestHandler(ListToolsRequestSchema, () => {
       return { tools: TOOLS };
     });
 
@@ -101,17 +101,17 @@ async function main() {
 
   if (port) {
     log('INFO', 'MCP agent server starting', { mode: 'tcp', port, projectRoot });
-    createTcpServer(port, createConnectionHandler('tcp'));
+    createTcpServer(port, (socket) => void createConnectionHandler('tcp')(socket));
   } else if (socketPath) {
     log('INFO', 'MCP agent server starting', { mode: 'unix', socket: socketPath, projectRoot });
-    createSocketServer(socketPath, createConnectionHandler('unix'));
+    createSocketServer(socketPath, (socket) => void createConnectionHandler('unix')(socket));
   } else {
     // Stdio mode
     const server = new Server(
       { name: 'rdrctl-agent', version: '1.0.0' },
       { capabilities: { tools: {} } }
     );
-    server.setRequestHandler(ListToolsRequestSchema, async () => ({ tools: TOOLS }));
+    server.setRequestHandler(ListToolsRequestSchema, () => ({ tools: TOOLS }));
     server.setRequestHandler(CallToolRequestSchema, async (request) => {
       const { name, arguments: callArgs } = request.params;
       const result = await handleAgentTool(name, callArgs as Record<string, any>);

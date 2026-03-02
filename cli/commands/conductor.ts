@@ -28,7 +28,7 @@ export function registerConductorCommands(program: any) {
     .option('-c, --cache <seconds>', `Data cache TTL in seconds (default: ${DEFAULT_CACHE}, 0 to disable)`, String(DEFAULT_CACHE))
     .option('--no-open', 'Do not open browser automatically')
     .option('--no-websocket', 'Disable WebSocket (HTTP only)')
-    .action(async (options: {
+    .action((options: {
       port: string;
       timeout: string;
       cache: string;
@@ -141,7 +141,7 @@ export function registerConductorCommands(program: any) {
           console.log(`Conductor not responding on port ${port}`);
           process.exit(1);
         }
-      } catch (e) {
+      } catch {
         console.log(`Conductor not running on port ${port}`);
         process.exit(1);
       }

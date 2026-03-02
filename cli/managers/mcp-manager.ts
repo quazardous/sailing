@@ -11,7 +11,7 @@ import { execaSync } from 'execa';
 import fs from 'fs';
 import path from 'path';
 import net from 'net';
-import { findProjectRoot, setProjectRoot as setCoreProjectRoot, clearPathsCache } from './core-manager.js';
+import { findProjectRoot, setProjectRoot as setCoreProjectRoot } from './core-manager.js';
 
 // =============================================================================
 // Types
@@ -65,9 +65,8 @@ let _projectRoot: string | null = null;
 
 export function setProjectRoot(root: string) {
   _projectRoot = root;
-  // Also set core-manager's project root and clear its caches
+  // setCoreProjectRoot handles ALL cache invalidation centrally
   setCoreProjectRoot(root);
-  clearPathsCache();
 }
 
 export function getProjectRoot(): string {

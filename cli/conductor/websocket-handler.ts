@@ -54,7 +54,7 @@ export class WebSocketHandler {
   /**
    * Handle HTTP upgrade to WebSocket
    */
-  handleUpgrade(req: http.IncomingMessage, socket: Socket, head: Buffer) {
+  handleUpgrade(req: http.IncomingMessage, socket: Socket, _head: Buffer) {
     const key = req.headers['sec-websocket-key'];
     if (!key) {
       socket.destroy();
@@ -124,7 +124,7 @@ export class WebSocketHandler {
           this.handleMessage(client, frame.payload);
           break;
       }
-    } catch (e) {
+    } catch {
       // Ignore parse errors
     }
   }
@@ -145,7 +145,7 @@ export class WebSocketHandler {
           error: `Unknown message type: ${message.type}`
         });
       }
-    } catch (e) {
+    } catch {
       this.send(client, {
         type: 'error',
         error: 'Invalid JSON'
@@ -192,7 +192,7 @@ export class WebSocketHandler {
     });
 
     // Spawn agent
-    this.messageHandlers.set('spawn', async (client, msg) => {
+    this.messageHandlers.set('spawn', (client, msg) => void (async () => {
       const taskId = normalizeId(msg.taskId);
       const result = await conductor.spawn(taskId, msg.options || {});
       this.send(client, {
@@ -200,10 +200,10 @@ export class WebSocketHandler {
         taskId,
         ...result
       });
-    });
+    })());
 
     // Reap agent
-    this.messageHandlers.set('reap', async (client, msg) => {
+    this.messageHandlers.set('reap', (client, msg) => void (async () => {
       const taskId = normalizeId(msg.taskId);
       const result = await conductor.reap(taskId, msg.options || {});
       this.send(client, {
@@ -211,10 +211,10 @@ export class WebSocketHandler {
         taskId,
         ...result
       });
-    });
+    })());
 
     // Kill agent
-    this.messageHandlers.set('kill', async (client, msg) => {
+    this.messageHandlers.set('kill', (client, msg) => void (async () => {
       const taskId = normalizeId(msg.taskId);
       const result = await conductor.kill(taskId);
       this.send(client, {
@@ -222,7 +222,7 @@ export class WebSocketHandler {
         taskId,
         ...result
       });
-    });
+    })());
 
     // Get agent status
     this.messageHandlers.set('status', (client, msg) => {
@@ -282,7 +282,7 @@ export class WebSocketHandler {
       const payload = JSON.stringify(message);
       const frame = this.encodeFrame(payload);
       client.socket.write(frame);
-    } catch (e) {
+    } catch {
       // Ignore send errors
     }
   }

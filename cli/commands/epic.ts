@@ -130,8 +130,8 @@ export function registerEpicCommands(program: Command) {
 
       // Sort by ID
       epics.sort((a, b) => {
-        const numA = parseInt(a.id?.match(/\d+/)?.[0] || '0');
-        const numB = parseInt(b.id?.match(/\d+/)?.[0] || '0');
+        const numA = parseInt(a.id ? /\d+/.exec(a.id)?.[0] || '0' : '0');
+        const numB = parseInt(b.id ? /\d+/.exec(b.id)?.[0] || '0' : '0');
         return numA - numB;
       });
 
@@ -146,7 +146,7 @@ export function registerEpicCommands(program: Command) {
         } else {
           limited.forEach(e => {
             const sym = statusSymbol(e.status);
-            const prdId = e.prd.match(/^PRD-\d+/)?.[0] || e.prd;
+            const prdId = /^PRD-\d+/.exec(e.prd)?.[0] || e.prd;
             console.log(`${sym} ${e.id}: ${e.title} [${e.status}] (${e.tasks} tasks) ${prdId}`);
           });
           if (options.limit && epics.length > options.limit) {
@@ -178,7 +178,7 @@ export function registerEpicCommands(program: Command) {
         process.exit(1);
       }
 
-      const { file: epicFile, prdDir, prdId } = result;
+      const { file: epicFile, prdDir: _prdDir, prdId } = result;
 
       // Raw mode: dump file content
       if (options.raw) {

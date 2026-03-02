@@ -190,7 +190,7 @@ export function registerShowCommands(task: Command): void {
 
           // 2. Epic Technical Notes (from epic file, not memory)
           const epicContent = epicFileData.body || '';
-          const techNotesMatch = epicContent.match(/## Technical Notes\n([\s\S]*?)(?=\n## |$)/);
+          const techNotesMatch = /## Technical Notes\n([\s\S]*?)(?=\n## |$)/.exec(epicContent);
           if (techNotesMatch) {
             context.technicalNotes = techNotesMatch[1].replace(/<!--[\s\S]*?-->/g, '').trim();
           }

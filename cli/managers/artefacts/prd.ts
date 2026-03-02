@@ -33,18 +33,18 @@ export function buildPrdIndex(): Map<number, PrdIndexEntry> {
 
   for (const prdDir of findPrdDirs()) {
     const dirname = path.basename(prdDir);
-    const match = dirname.match(/^PRD-0*(\d+)/i);
+    const match = /^PRD-0*(\d+)/i.exec(dirname);
     if (!match) continue;
 
     const num = parseInt(match[1], 10);
-    const idMatch = dirname.match(/^(PRD-\d+)/i);
+    const idMatch = /^(PRD-\d+)/i.exec(dirname);
     const id = idMatch ? idMatch[1] : `PRD-${num}`;
 
     const prdFile = path.join(prdDir, 'prd.md');
     const loaded = fs.existsSync(prdFile) ? loadFile<Prd>(prdFile) : null;
 
     if (index.has(num)) {
-      duplicates.push({ num, existing: index.get(num)!.dir, new: prdDir });
+      duplicates.push({ num, existing: index.get(num).dir, new: prdDir });
     }
 
     const timestamps = fs.existsSync(prdFile) ? getFileTimestamps(prdFile) : { createdAt: new Date().toISOString(), modifiedAt: new Date().toISOString() };
@@ -84,7 +84,7 @@ export function getPrd(prdId: string | number): PrdIndexEntry | null {
   if (typeof prdId === 'number') {
     num = prdId;
   } else {
-    const match = String(prdId).match(/^(?:PRD-?)?0*(\d+)$/i);
+    const match = /^(?:PRD-?)?0*(\d+)$/i.exec(String(prdId));
     num = match ? parseInt(match[1], 10) : null;
   }
 
@@ -98,7 +98,7 @@ export function getPrd(prdId: string | number): PrdIndexEntry | null {
  */
 export function prdIdFromDir(prdDir: string): string {
   const dirname = path.basename(prdDir);
-  const match = dirname.match(/^(PRD-\d+)/i);
+  const match = /^(PRD-\d+)/i.exec(dirname);
   return match ? match[1] : dirname;
 }
 

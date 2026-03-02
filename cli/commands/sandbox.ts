@@ -74,7 +74,7 @@ function checkSrt() {
   try {
     const { stdout } = execaSync('npm', ['list', '-g', '@anthropic-ai/sandbox-runtime', '--depth=0'], { reject: false });
     results.srtInstalled = stdout.includes('@anthropic-ai/sandbox-runtime');
-    const match = stdout.match(/@anthropic-ai\/sandbox-runtime@([\d.]+)/);
+    const match = /@anthropic-ai\/sandbox-runtime@([\d.]+)/.exec(stdout);
     if (match) results.srtVersion = match[1];
   } catch {
     results.srtInstalled = commandExists('srt');

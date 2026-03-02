@@ -104,7 +104,7 @@ export function getAgentFromDb(taskIdOrNum: string | number): AgentRecord | null
   if (!doc) return null;
 
   // Convert db doc to AgentRecord (remove internal fields)
-  const { _id, _createdAt, _updatedAt, migratedAt, ...record } = doc;
+  const { _id, _createdAt, _updatedAt, migratedAt: _migratedAt, ...record } = doc;
   return record as AgentRecord;
 }
 
@@ -128,7 +128,7 @@ export function getAllAgentsFromDb(options: { status?: string } = {}): Record<st
   const result: Record<string, AgentRecord> = {};
 
   for (const doc of docs) {
-    const { _id, _createdAt, _updatedAt, migratedAt, ...record } = doc;
+    const { _id, _createdAt, _updatedAt, migratedAt: _migratedAt, ...record } = doc;
     // Skip records with invalid taskNum
     if (typeof record.taskNum !== 'number' || isNaN(record.taskNum)) continue;
     const taskId = formatTaskId(record.taskNum, digits);
@@ -149,7 +149,7 @@ export function getAgentsArray(options: { status?: string } = {}): Array<AgentRe
   return docs
     .filter(doc => typeof doc.taskNum === 'number' && !isNaN(doc.taskNum))
     .map(doc => {
-      const { _id, _createdAt, _updatedAt, migratedAt, ...record } = doc;
+      const { _id, _createdAt, _updatedAt, migratedAt: _migratedAt, ...record } = doc;
       return {
         ...record,
         taskId: formatTaskId(record.taskNum, digits)

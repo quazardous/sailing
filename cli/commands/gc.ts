@@ -158,14 +158,14 @@ export async function gcAgentsAction(options: { dryRun?: boolean; worktree?: boo
   // Scan agent directories
   if (fs.existsSync(agentsDir)) {
     fs.readdirSync(agentsDir)
-      .filter(d => d.match(/^T\d+$/i) && fs.statSync(path.join(agentsDir, d)).isDirectory())
+      .filter(d => /^T\d+$/i.exec(d) && fs.statSync(path.join(agentsDir, d)).isDirectory())
       .forEach(d => taskIdsFromDirs.add(d));
   }
 
   // Scan worktree directories (if included)
   if (includeWorktrees && fs.existsSync(worktreesDir)) {
     fs.readdirSync(worktreesDir)
-      .filter(d => d.match(/^T\d+$/i) && fs.statSync(path.join(worktreesDir, d)).isDirectory())
+      .filter(d => /^T\d+$/i.exec(d) && fs.statSync(path.join(worktreesDir, d)).isDirectory())
       .forEach(d => taskIdsFromDirs.add(d));
   }
 
@@ -466,7 +466,7 @@ export function registerGcCommands(program: Command) {
 
       // Read directories and check against state (DIR → STATE direction)
       const worktreeDirs = fs.readdirSync(worktreesDir).filter(d =>
-        d.match(/^T\d+$/i) && fs.statSync(path.join(worktreesDir, d)).isDirectory()
+        /^T\d+$/i.exec(d) && fs.statSync(path.join(worktreesDir, d)).isDirectory()
       );
 
       interface OrphanInfo {

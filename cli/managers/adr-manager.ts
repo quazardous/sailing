@@ -61,7 +61,7 @@ export function ensureAdrDir(): string {
  * ADR-001 → "1", ADR-042 → "42"
  */
 function extractAdrKey(input: string): string | null {
-  const match = input.match(/ADR-?0*(\d+)/i);
+  const match = /ADR-?0*(\d+)/i.exec(input);
   return match ? match[1] : null;
 }
 
@@ -180,7 +180,7 @@ export function getFullAdr(id: string): FullAdr | null {
 function extractSection(body: string, headings: string[]): string | undefined {
   for (const heading of headings) {
     const regex = new RegExp(`^## ${heading}\\s*\\n([\\s\\S]*?)(?=^## |$)`, 'mi');
-    const match = body.match(regex);
+    const match = regex.exec(body);
     if (match) {
       return match[1].trim();
     }
@@ -242,7 +242,7 @@ export function createAdr(title: string, options: {
   };
 
   // Replace placeholders in body
-  let body = templateBody
+  const body = templateBody
     .replace(/ADR-NNN/g, id)
     .replace(/Decision Title/g, title)
     .replace(/YYYY-MM-DD/g, today);
@@ -341,7 +341,7 @@ export function getRelevantAdrs(options: {
   if (options.tags && options.tags.length > 0) {
     entries = entries.filter(e => {
       const adrTags = e.data.tags || [];
-      return options.tags!.some(t => adrTags.includes(t));
+      return options.tags.some(t => adrTags.includes(t));
     });
   }
 
@@ -370,7 +370,7 @@ export function normalizeAdrId(input: string): string {
   }
 
   // ADR-N or adr-n
-  const match = input.toUpperCase().match(/^ADR-?(\d+)$/);
+  const match = /^ADR-?(\d+)$/.exec(input.toUpperCase());
   if (match) {
     return `ADR-${match[1].padStart(3, '0')}`;
   }

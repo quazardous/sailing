@@ -93,8 +93,8 @@ export function registerListCommand(task: Command): void {
 
       // Sort by ID
       filtered.sort((a, b) => {
-        const numA = parseInt(a.id?.match(/\d+/)?.[0] || '0');
-        const numB = parseInt(b.id?.match(/\d+/)?.[0] || '0');
+        const numA = parseInt(a.id ? /\d+/.exec(a.id)?.[0] || '0' : '0');
+        const numB = parseInt(b.id ? /\d+/.exec(b.id)?.[0] || '0' : '0');
         return numA - numB;
       });
 

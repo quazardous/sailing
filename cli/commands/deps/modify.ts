@@ -44,7 +44,7 @@ export function registerModifyCommands(deps: Command): void {
               console.error(`Epic not found: ${targetId}`);
               continue;
             }
-            const target = epics.get(tid)!;
+            const target = epics.get(tid);
 
             const file = loadFile<TaskFrontmatter>(target.file);
             if (!file) continue;
@@ -58,7 +58,7 @@ export function registerModifyCommands(deps: Command): void {
         }
 
         if (options.blockedBy) {
-          const epic = epics.get(id)!;
+          const epic = epics.get(id);
           const file = loadFile<TaskFrontmatter>(epic.file);
           if (!file) return;
           if (!Array.isArray(file.data.blocked_by)) file.data.blocked_by = [];
@@ -92,7 +92,7 @@ export function registerModifyCommands(deps: Command): void {
           process.exit(1);
         }
 
-        const task = tasks.get(id)!;
+        const task = tasks.get(id);
 
         if (options.blocks) {
           for (const targetId of options.blocks) {
@@ -105,7 +105,7 @@ export function registerModifyCommands(deps: Command): void {
               console.error(`Task not found: ${targetId}`);
               continue;
             }
-            const target = tasks.get(tid)!;
+            const target = tasks.get(tid);
 
             const file = loadFile<TaskFrontmatter>(target.file);
             if (!file) continue;
@@ -151,7 +151,7 @@ export function registerModifyCommands(deps: Command): void {
     .description('Show dependencies (TNNN for task, ENNN for epic with blockers)')
     .option('--role <role>', 'Role context: agent blocked, skill/coordinator allowed')
     .option('--json', 'JSON output')
-    .action(async (id: string, options: ShowOptions) => {
+    .action((id: string, options: ShowOptions) => {
       if (options.role === 'agent') {
         console.error('ERROR: deps:show cannot be called with --role agent');
         console.error('Agents execute assigned tasks. Use task:show-memory for context.');
