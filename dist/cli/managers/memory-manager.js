@@ -13,7 +13,7 @@
 import fs from 'fs';
 import path from 'path';
 import { getMemoryDir, resolvePlaceholders, resolvePath, getRepoRoot } from './core-manager.js';
-import { getTaskEpic as artefactsGetTaskEpic, getEpicPrd as artefactsGetEpicPrd, getTasksForEpic as artefactsGetTasksForEpic, getMemoryFile, getLogFile, invalidateLogIndex } from './artefacts-manager.js';
+import { getStore, getMemoryFile, getLogFile, invalidateLogIndex } from './artefacts-manager.js';
 import { normalizeId } from '../lib/normalize.js';
 import { getDigitConfig } from './config-manager.js';
 import { extractAllSections, findSection, editSection, parseMultiSectionInput, parseLogLevels, AGENT_RELEVANT_SECTIONS } from '../lib/memory-section.js';
@@ -233,7 +233,7 @@ updated: '${now}'
             }
         }
         // 2. PRD memory (if exists)
-        const prd = artefactsGetEpicPrd(this.epicId);
+        const prd = getStore().getEpicPrd(this.epicId);
         if (prd) {
             const prdMemoryPath = path.join(this.memoryDir, `${prd.prdId}.md`);
             if (fs.existsSync(prdMemoryPath)) {
@@ -278,7 +278,7 @@ export function getEpicMemory(epicId) {
 // Helper for EpicMemoryManager (internal)
 // ============================================================================
 function findTasksForEpic(epicId) {
-    const tasks = artefactsGetTasksForEpic(epicId);
+    const tasks = getStore().getTasksForEpic(epicId);
     return tasks.map(t => ({
         id: normalizeId(t.data?.id || t.id),
         title: t.data?.title || 'Untitled'
@@ -345,7 +345,7 @@ export function hasPendingMemoryLogs() {
 // Hierarchy Lookups
 // ============================================================================
 export function findTaskEpic(taskId) {
-    const result = artefactsGetTaskEpic(taskId);
+    const result = getStore().getTaskEpic(taskId);
     if (!result)
         return null;
     return {
@@ -354,7 +354,7 @@ export function findTaskEpic(taskId) {
     };
 }
 export function findEpicPrd(epicId) {
-    const result = artefactsGetEpicPrd(epicId);
+    const result = getStore().getEpicPrd(epicId);
     if (!result)
         return null;
     return normalizeId(result.prdId);
@@ -516,7 +516,7 @@ export function mergeTaskLog(taskId, actualPath = null) {
         fs.unlinkSync(taskLogPath);
         return { merged: false, epicId: null, deleted: true };
     }
-    const taskNumMatch = taskId.match(/^T0*(\d+)$/i);
+    const taskNumMatch = /^T0*(\d+)$/i.exec(taskId);
     const taskNum = taskNumMatch ? parseInt(taskNumMatch[1], 10) : null;
     let taskInfo = findTaskEpic(taskId);
     if (!taskInfo && taskNum !== null) {

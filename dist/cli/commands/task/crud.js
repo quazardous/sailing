@@ -28,7 +28,7 @@ export function registerCrudCommands(task) {
         let epicPart;
         let prdId;
         // Check if parent is just an epic ID (e.g., E0076)
-        const epicOnlyMatch = parent.match(/^E\d+$/i);
+        const epicOnlyMatch = /^E\d+$/i.exec(parent);
         if (epicOnlyMatch) {
             // Find PRD from epic
             const epicInfo = findEpicParent(parent);
@@ -56,7 +56,7 @@ export function registerCrudCommands(task) {
                 console.error(`PRD not found: ${prdPart}`);
                 process.exit(1);
             }
-            prdId = path.basename(prdDir).match(/^PRD-\d+/)?.[0] || path.basename(prdDir).split('-').slice(0, 2).join('-');
+            prdId = /^PRD-\d+/.exec(path.basename(prdDir))?.[0] || path.basename(prdDir).split('-').slice(0, 2).join('-');
         }
         const tasksDir = path.join(prdDir, 'tasks');
         if (!fs.existsSync(tasksDir)) {

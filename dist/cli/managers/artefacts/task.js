@@ -31,7 +31,7 @@ export function buildTaskIndex() {
             if (key === null)
                 continue;
             const filePath = path.join(tasksDir, file);
-            const idMatch = file.match(/^(T\d+[a-z]?)/i);
+            const idMatch = /^(T\d+[a-z]?)/i.exec(file);
             const id = idMatch ? idMatch[1] : `T${key}`;
             const loaded = loadFile(filePath);
             const status = loaded?.data?.status;
@@ -78,7 +78,7 @@ export function getTask(taskId) {
         key = String(taskId);
     }
     else {
-        const match = String(taskId).match(/^T?0*(\d+)([a-z])?$/i);
+        const match = /^T?0*(\d+)([a-z])?$/i.exec(String(taskId));
         if (match) {
             key = match[1] + (match[2] ? match[2].toLowerCase() : '');
         }
@@ -103,7 +103,7 @@ export function getAllTasks(options = {}) {
         const epicKey = String(options.epicId).replace(/^E0*/i, '').toLowerCase();
         tasks = tasks.filter(t => {
             const parent = t.data?.parent || '';
-            const match = parent.match(/E0*(\d+)([a-z])?/i);
+            const match = /E0*(\d+)([a-z])?/i.exec(parent);
             if (!match)
                 return false;
             const taskEpicKey = match[1] + (match[2] ? match[2].toLowerCase() : '');
@@ -138,7 +138,7 @@ export function getTaskEpic(taskId) {
     const parent = task.data?.parent;
     if (!parent)
         return null;
-    const epicMatch = parent.match(/E0*(\d+)([a-z])?/i);
+    const epicMatch = /E0*(\d+)([a-z])?/i.exec(parent);
     if (!epicMatch)
         return null;
     const epicKey = epicMatch[1] + (epicMatch[2] ? epicMatch[2].toLowerCase() : '');
@@ -162,7 +162,7 @@ export function createTask(epicId, title, options = {}) {
     }
     const prdDir = epic.prdDir;
     const dirname = path.basename(prdDir);
-    const prdIdMatch = dirname.match(/^(PRD-\d+)/i);
+    const prdIdMatch = /^(PRD-\d+)/i.exec(dirname);
     const prdId = prdIdMatch ? prdIdMatch[1] : dirname.split('-').slice(0, 2).join('-');
     const tasksDir = path.join(prdDir, 'tasks');
     if (!fs.existsSync(tasksDir)) {

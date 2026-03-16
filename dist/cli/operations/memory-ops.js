@@ -17,7 +17,8 @@ export function showMemory(id, options = {}) {
     const sectionFilter = options.section?.toLowerCase();
     // Agent-relevant sections (default view)
     const agentRelevantSections = [
-        'Agent Context', 'Escalation', 'Cross-Epic Patterns',
+        'Agent Context', 'Key Files', 'Gotchas', 'Decisions', 'Cross-refs', 'Escalation',
+        'Cross-Epic Patterns',
         'Architecture Decisions', 'Patterns & Conventions'
     ];
     // Project level
@@ -70,11 +71,11 @@ export function getEpicPendingLogs(epicId) {
     for (const line of lines) {
         // Format: 2024-01-15T10:30:00.000Z [T001] [INFO] message {{meta}}
         // Or: 2024-01-15T10:30:00.000Z [INFO] message {{meta}}
-        const match = line.match(/^(\d{4}-\d{2}-\d{2}T[\d:.]+Z)\s+(?:\[([T]\d+)\]\s+)?\[(\w+)\]\s+(.+)$/);
+        const match = /^(\d{4}-\d{2}-\d{2}T[\d:.]+Z)\s+(?:\[([T]\d+)\]\s+)?\[(\w+)\]\s+(.+)$/.exec(line);
         if (match) {
             const [, timestamp, taskId, level, rest] = match;
             // Extract meta if present
-            const metaMatch = rest.match(/^(.+?)\s*\{\{(.+)\}\}$/);
+            const metaMatch = /^(.+?)\s*\{\{(.+)\}\}$/.exec(rest);
             let message = rest;
             let meta;
             if (metaMatch) {
@@ -100,16 +101,24 @@ export function getEpicPendingLogs(epicId) {
  * Used by AI to synthesize logs into structured memory
  */
 export function consolidateMemory(level, targetId, section, content, options = {}) {
-    const operation = options.operation || 'append';
+    const operation = options.operation || 'replace';
+    const shouldFlush = options.flush !== false;
     const normalized = normalizeId(targetId);
     const result = editMemorySection(level, normalized, section, content, operation);
-    return {
+    const output = {
         level,
         targetId: normalized,
         section,
         success: result.success,
         message: result.message
     };
+    // Auto-flush epic logs after successful consolidation
+    if (result.success && shouldFlush && level === 'epic') {
+        const flushResult = flushEpicLogs(normalized);
+        output.flushed = flushResult.flushed;
+        output.entriesCleared = flushResult.entriesCleared;
+    }
+    return output;
 }
 /**
  * Flush/clear epic logs after AI has consolidated them into memory
@@ -135,15 +144,23 @@ export function syncMemory(options = {}) {
     // Merge task logs and get pending epics
     const { pending, epics, tasksMerged } = checkPendingMemory(epicFilter);
     // Get stats for each pending epic
+    // Only include full parsedEntries when a scope is specified (avoids huge payloads)
+    const includeEntries = !!scopeId;
     const logs = [];
     for (const epicId of epics) {
         const stats = getLogStats(epicId);
         if (stats.exists) {
-            logs.push({
+            const logStats = {
                 id: epicId,
                 entries: stats.lines,
                 levels: stats.levels
-            });
+            };
+            if (includeEntries) {
+                const pendingLogs = getEpicPendingLogs(epicId);
+                logStats.parsedEntries = pendingLogs.entries;
+                logStats.rawContent = pendingLogs.rawContent;
+            }
+            logs.push(logStats);
         }
     }
     return {

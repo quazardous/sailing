@@ -7,7 +7,7 @@ import { getAllFullPrds, buildTaskIndex, buildEpicIndex, updateArtefact } from '
 import { checkPendingMemory, findPrdMemoryFile, findEpicMemoryFile } from '../managers/memory-manager.js';
 import { archivePrd } from '../managers/archive-manager.js';
 import { normalizeStatus, STATUS } from '../lib/lexicon.js';
-import { getConfigValue, findProjectRoot } from '../managers/core-manager.js';
+import { getConfigValue, findProjectRoot, getAgentConfig } from '../managers/core-manager.js';
 import os from 'os';
 // Import from dashboard lib (PURE utilities)
 import { initCache, getCachedPrdsData, getCachedBlockers, getCachedPendingMemory, generateStructuredPrdDag, generateStructuredEpicDag, generateStructuredTaskDag, generatePrdGantt, generateEpicGantt, generatePrdOverviewGantt, } from './lib/index.js';
@@ -104,7 +104,7 @@ function getMemoryContent(entityId, type) {
         if (found.exists && fs.existsSync(found.path)) {
             const content = fs.readFileSync(found.path, 'utf8');
             // Extract body (after frontmatter)
-            const bodyMatch = content.match(/^---[\s\S]*?---\s*([\s\S]*)$/);
+            const bodyMatch = /^---[\s\S]*?---\s*([\s\S]*)$/.exec(content);
             return bodyMatch ? bodyMatch[1].trim() : content;
         }
     }
@@ -287,7 +287,7 @@ export function createApiV2Routes() {
             const blockers = getCachedBlockers();
             json(res, { blockers });
         }
-        catch (error) {
+        catch {
             json(res, { error: 'Failed to fetch blockers' }, 500);
         }
     };
@@ -311,7 +311,7 @@ export function createApiV2Routes() {
                 mainVersion: getMainVersion(),
             });
         }
-        catch (error) {
+        catch {
             json(res, { error: 'Failed to fetch stats' }, 500);
         }
     };
@@ -336,13 +336,15 @@ export function createApiV2Routes() {
             const relativePath = projectRoot.startsWith(homeDir)
                 ? '~' + projectRoot.slice(homeDir.length)
                 : projectRoot;
+            const agentConfig = getAgentConfig();
             json(res, {
                 path: projectRoot,
                 relativePath,
                 name: projectRoot.split('/').pop() || 'Project',
+                useWorktrees: agentConfig.use_worktrees ?? false,
             });
         }
-        catch (error) {
+        catch {
             json(res, { error: 'Failed to get project info' }, 500);
         }
     };
@@ -360,7 +362,7 @@ export function createApiV2Routes() {
             const content = getMemoryContent(id, type);
             json(res, { id, type, content: content || null });
         }
-        catch (error) {
+        catch {
             json(res, { error: 'Failed to fetch memory' }, 500);
         }
     };
@@ -373,7 +375,7 @@ export function createApiV2Routes() {
         });
     };
     // POST /api/v2/artefact/:id/status - Update artefact status
-    routes['POST /api/v2/artefact/:id/status'] = async (req, res) => {
+    routes['POST /api/v2/artefact/:id/status'] = (req, res) => void (async () => {
         try {
             const url = new URL(req.url || '/', 'http://localhost');
             const parts = url.pathname.split('/');
@@ -418,9 +420,9 @@ export function createApiV2Routes() {
             console.error('API /api/v2/artefact/:id/status error:', error);
             json(res, { success: false, error: msg }, 500);
         }
-    };
+    })();
     // POST /api/v2/archive/:id - Archive a PRD
-    routes['POST /api/v2/archive/:id'] = async (req, res) => {
+    routes['POST /api/v2/archive/:id'] = (req, res) => void (async () => {
         try {
             const url = new URL(req.url || '/', 'http://localhost');
             const id = decodeURIComponent(url.pathname.split('/').pop() || '');
@@ -445,6 +447,6 @@ export function createApiV2Routes() {
             console.error('API /api/v2/archive error:', error);
             json(res, { success: false, error: 'Failed to archive PRD' }, 500);
         }
-    };
+    })();
     return routes;
 }

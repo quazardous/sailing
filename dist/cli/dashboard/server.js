@@ -83,7 +83,7 @@ export function createServer(port, routes, options = {}) {
             function matchRoute(routeKey) {
                 // Check if route has a method prefix (e.g. "POST /api/v2/archive/:id")
                 const spaceIdx = routeKey.indexOf(' ');
-                if (spaceIdx > 0 && routeKey.substring(0, spaceIdx).match(/^[A-Z]+$/)) {
+                if (spaceIdx > 0 && /^[A-Z]+$/.exec(routeKey.substring(0, spaceIdx))) {
                     const routeMethod = routeKey.substring(0, spaceIdx);
                     const routePath = routeKey.substring(spaceIdx + 1);
                     if (routeMethod !== method)

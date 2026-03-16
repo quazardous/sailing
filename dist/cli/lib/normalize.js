@@ -50,7 +50,7 @@ export function formatIdFrom(prefix, num, config = DEFAULT_DIGITS) {
 export function extractPrdId(parent) {
     if (!parent)
         return null;
-    const match = parent.match(/PRD-\d+/);
+    const match = /PRD-\d+/.exec(parent);
     return match ? match[0] : null;
 }
 /**
@@ -61,8 +61,8 @@ export function extractPrdId(parent) {
 export function extractEpicId(parent) {
     if (!parent)
         return null;
-    const match = parent.match(/E\d+/);
-    return match ? match[0] : null;
+    const match = /E(\d+)/.exec(parent);
+    return match ? formatIdFrom('E', parseInt(match[1], 10)) : null;
 }
 /**
  * Normalize entity IDs to canonical format (pure function)
@@ -75,27 +75,27 @@ export function normalizeId(id, digitConfig = DEFAULT_DIGITS, defaultType) {
     if (!id)
         return id ?? null;
     // PRD format
-    const prdMatch = id.match(/^PRD-?(\d+)$/i);
+    const prdMatch = /^PRD-?(\d+)$/i.exec(id);
     if (prdMatch) {
         return formatIdFrom('PRD-', parseInt(prdMatch[1], 10), digitConfig);
     }
     // Epic format
-    const epicMatch = id.match(/^E(\d+)$/i);
+    const epicMatch = /^E(\d+)$/i.exec(id);
     if (epicMatch) {
         return formatIdFrom('E', parseInt(epicMatch[1], 10), digitConfig);
     }
     // Task format
-    const taskMatch = id.match(/^T(\d+)$/i);
+    const taskMatch = /^T(\d+)$/i.exec(id);
     if (taskMatch) {
         return formatIdFrom('T', parseInt(taskMatch[1], 10), digitConfig);
     }
     // Story format
-    const storyMatch = id.match(/^S(\d+)$/i);
+    const storyMatch = /^S(\d+)$/i.exec(id);
     if (storyMatch) {
         return formatIdFrom('S', parseInt(storyMatch[1], 10), digitConfig);
     }
     // Numeric-only format with defaultType
-    const numericMatch = id.match(/^(\d+)$/);
+    const numericMatch = /^(\d+)$/.exec(id);
     if (numericMatch && defaultType) {
         const prefixMap = {
             'prd': 'PRD-',
@@ -108,6 +108,51 @@ export function normalizeId(id, digitConfig = DEFAULT_DIGITS, defaultType) {
     return id;
 }
 /**
+ * Compare two IDs, ignoring padding differences.
+ *
+ * Rules:
+ * - Same prefix: compare numbers → isSameId("E107", "E0107") = true
+ * - Different prefixes: false → isSameId("E001", "T001") = false
+ * - Raw number + prefixed: optimistic → isSameId("107", "E107") = true
+ * - Both raw numbers: optimistic → isSameId("1", "001") = true
+ * - type hint: forces prefix for raw numbers → isSameId("107", "E0107", "epic") = true
+ */
+export function isSameId(a, b, type) {
+    if (!a || !b)
+        return false;
+    // Extract prefix and numeric part
+    const parse = (s) => {
+        const prd = /^PRD-?(\d+)$/i.exec(s);
+        if (prd)
+            return { prefix: 'PRD', num: parseInt(prd[1], 10) };
+        const prefixed = /^([ETSPRD]+)(\d+)$/i.exec(s);
+        if (prefixed)
+            return { prefix: prefixed[1].toUpperCase(), num: parseInt(prefixed[2], 10) };
+        const raw = /^(\d+)$/.exec(s);
+        if (raw)
+            return { prefix: null, num: parseInt(raw[1], 10) };
+        return null;
+    };
+    const pa = parse(a.trim());
+    const pb = parse(b.trim());
+    if (!pa || !pb)
+        return false;
+    // Apply type hint to raw numbers
+    if (type) {
+        const prefixMap = { prd: 'PRD', epic: 'E', task: 'T', story: 'S' };
+        if (!pa.prefix)
+            pa.prefix = prefixMap[type];
+        if (!pb.prefix)
+            pb.prefix = prefixMap[type];
+    }
+    // Both have prefixes: must match
+    if (pa.prefix && pb.prefix) {
+        return pa.prefix === pb.prefix && pa.num === pb.num;
+    }
+    // One or both raw: optimistic, compare numbers only
+    return pa.num === pb.num;
+}
+/**
  * Check if a filename matches a normalized ID
  * e.g., matchesId("T002-some-task.md", "T2") => true
  */
@@ -117,7 +162,7 @@ export function matchesId(filename, rawId, digitConfig = DEFAULT_DIGITS) {
         return false;
     const basename = path.basename(filename, '.md');
     // Extract ID from filename (e.g., "T002" from "T002-some-task")
-    const filenameIdMatch = basename.match(/^(T\d+|E\d+|S\d+|PRD-\d+)/i);
+    const filenameIdMatch = /^(T\d+|E\d+|S\d+|PRD-\d+)/i.exec(basename);
     if (!filenameIdMatch)
         return false;
     const normalizedFilename = normalizeId(filenameIdMatch[1], digitConfig);
@@ -130,14 +175,14 @@ export function matchesId(filename, rawId, digitConfig = DEFAULT_DIGITS) {
  */
 export function matchesPrd(prdId, filter, digitConfig = DEFAULT_DIGITS) {
     // Try normalized PRD ID match (PRD-1 → PRD-001)
-    const filterMatch = filter.match(/^PRD-?(\d+)/i);
+    const filterMatch = /^PRD-?(\d+)/i.exec(filter);
     if (filterMatch) {
         return normalizeId(prdId, digitConfig) === normalizeId(filter, digitConfig);
     }
     // Try numeric-only match (e.g., "1" matches "PRD-001")
-    const numericMatch = filter.match(/^(\d+)$/);
+    const numericMatch = /^(\d+)$/.exec(filter);
     if (numericMatch) {
-        const prdNum = prdId.match(/PRD-0*(\d+)/i);
+        const prdNum = /PRD-0*(\d+)/i.exec(prdId);
         return prdNum ? prdNum[1] === numericMatch[1] : false;
     }
     // Fall back to case-insensitive comparison
@@ -154,9 +199,9 @@ export function matchesPrd(prdId, filter, digitConfig = DEFAULT_DIGITS) {
 export function matchesPrdDir(dirname, rawId, digitConfig = DEFAULT_DIGITS) {
     const basename = path.basename(dirname);
     // Try normalized PRD ID match first (PRD-1 → PRD-001)
-    const inputIdMatch = rawId.match(/^PRD-?(\d+)/i);
+    const inputIdMatch = /^PRD-?(\d+)/i.exec(rawId);
     if (inputIdMatch) {
-        const dirIdMatch = basename.match(/^(PRD-\d+)/i);
+        const dirIdMatch = /^(PRD-\d+)/i.exec(basename);
         if (dirIdMatch) {
             return normalizeId(dirIdMatch[1], digitConfig) === normalizeId(rawId, digitConfig);
         }
@@ -169,7 +214,7 @@ export function matchesPrdDir(dirname, rawId, digitConfig = DEFAULT_DIGITS) {
  * Always returns normalized format (T001, not T1)
  */
 export function extractTaskId(blockerEntry, digitConfig = DEFAULT_DIGITS) {
-    const match = blockerEntry.match(/^(T\d+)/i);
+    const match = /^(T\d+)/i.exec(blockerEntry);
     return match ? normalizeId(match[1], digitConfig) : null;
 }
 /**
@@ -178,13 +223,13 @@ export function extractTaskId(blockerEntry, digitConfig = DEFAULT_DIGITS) {
 export function getEntityType(id) {
     if (!id)
         return null;
-    if (id.match(/^PRD-?\d+$/i))
+    if (/^PRD-?\d+$/i.exec(id))
         return 'prd';
-    if (id.match(/^E\d+$/i))
+    if (/^E\d+$/i.exec(id))
         return 'epic';
-    if (id.match(/^T\d+$/i))
+    if (/^T\d+$/i.exec(id))
         return 'task';
-    if (id.match(/^S\d+$/i))
+    if (/^S\d+$/i.exec(id))
         return 'story';
     return null;
 }
@@ -195,7 +240,7 @@ export function getEntityType(id) {
 export function extractNumericKey(id) {
     if (!id)
         return null;
-    const match = id.match(/^[A-Z]+-?0*(\d+)([a-z])?/i);
+    const match = /^[A-Z]+-?0*(\d+)([a-z])?/i.exec(id);
     if (!match)
         return null;
     return match[1] + (match[2] ? match[2].toLowerCase() : '');
@@ -210,11 +255,11 @@ export function extractNumericKey(id) {
  */
 function idKey(id) {
     // Strip trailing descriptions: "T002 (some note)" → "T002"
-    const clean = id.match(/^([A-Z]+-?\d+)/i)?.[1] || id;
-    const prdMatch = clean.match(/^PRD-?0*(\d+)$/i);
+    const clean = /^([A-Z]+-?\d+)/i.exec(id)?.[1] || id;
+    const prdMatch = /^PRD-?0*(\d+)$/i.exec(clean);
     if (prdMatch)
         return `PRD:${prdMatch[1]}`;
-    const match = clean.match(/^([TES])0*(\d+)([a-z])?$/i);
+    const match = /^([TES])0*(\d+)([a-z])?$/i.exec(clean);
     if (match)
         return `${match[1].toUpperCase()}:${match[2]}${match[3]?.toLowerCase() || ''}`;
     return null;

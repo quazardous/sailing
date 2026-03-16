@@ -59,7 +59,7 @@ function extractArtefactInfo(filepath) {
     const filename = path.basename(filepath);
     // Task: tasks/T001-xxx.md
     if (filepath.includes('/tasks/') || filepath.includes('\\tasks\\')) {
-        const match = filename.match(/^(T\d+[a-z]?)/i);
+        const match = /^(T\d+[a-z]?)/i.exec(filename);
         if (match) {
             const id = normalizeId(match[1]);
             return id ? { id, type: 'task' } : null;
@@ -67,7 +67,7 @@ function extractArtefactInfo(filepath) {
     }
     // Epic: epics/E001-xxx.md
     if (filepath.includes('/epics/') || filepath.includes('\\epics\\')) {
-        const match = filename.match(/^(E\d+[a-z]?)/i);
+        const match = /^(E\d+[a-z]?)/i.exec(filename);
         if (match) {
             const id = normalizeId(match[1]);
             return id ? { id, type: 'epic' } : null;
@@ -77,7 +77,7 @@ function extractArtefactInfo(filepath) {
     if (filename === 'prd.md') {
         const parentDir = path.dirname(filepath);
         const id = prdIdFromDir(parentDir);
-        if (id && id.match(/^PRD-\d+$/i)) {
+        if (id && /^PRD-\d+$/i.exec(id)) {
             return { id, type: 'prd' };
         }
     }

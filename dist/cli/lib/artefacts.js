@@ -16,7 +16,7 @@
  */
 export function extractIdKey(filename, prefix = 'T') {
     // Match prefix + optional leading zeros + digits + optional letter suffix
-    const match = filename.match(new RegExp(`^${prefix}0*(\\d+)([a-z])?`, 'i'));
+    const match = new RegExp(`^${prefix}0*(\\d+)([a-z])?`, 'i').exec(filename);
     if (!match)
         return null;
     const num = match[1];
@@ -27,6 +27,6 @@ export function extractIdKey(filename, prefix = 'T') {
  * Extract numeric part only (for backward compat)
  */
 export function extractNumericId(filename, prefix = 'T') {
-    const match = filename.match(new RegExp(`^${prefix}0*(\\d+)`, 'i'));
+    const match = new RegExp(`^${prefix}0*(\\d+)`, 'i').exec(filename);
     return match ? parseInt(match[1], 10) : null;
 }

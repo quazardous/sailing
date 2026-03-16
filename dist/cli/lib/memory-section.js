@@ -9,7 +9,7 @@ export function extractAllSections(content) {
     const parts = content.split(/^(?=## )/m);
     for (const part of parts) {
         // Check if this part starts with a section header
-        const match = part.match(/^## ([^\n]+)\n([\s\S]*)/);
+        const match = /^## ([^\n]+)\n([\s\S]*)/.exec(part);
         if (!match)
             continue;
         const sectionName = match[1].trim();
@@ -33,7 +33,7 @@ export function findSection(content, sectionName) {
     // Match section header followed by content until next ## or end
     // Use [ \t]* instead of \s* to avoid consuming newlines needed for lookahead
     const sectionRegex = new RegExp(`(${escapeRegex(sectionHeader)}[ \\t]*\\n)([\\s\\S]*?)(?=\\n## |$)`);
-    const match = content.match(sectionRegex);
+    const match = sectionRegex.exec(content);
     if (!match)
         return null;
     return {
@@ -53,7 +53,10 @@ export function findSection(content, sectionName) {
 export function editSection(content, sectionName, newContent, operation = 'replace') {
     const section = findSection(content, sectionName);
     if (!section) {
-        return { warning: `Section "${sectionName}" not found` };
+        // Auto-create section at end of file
+        const sectionBlock = `\n## ${sectionName}\n\n${newContent}\n`;
+        const updatedContent = content.trimEnd() + '\n' + sectionBlock;
+        return { success: true, content: updatedContent };
     }
     const existingContent = section.content;
     let newSectionContent;
@@ -113,11 +116,12 @@ export function parseMultiSectionInput(input) {
  * These are the only sections shown to agents by default
  */
 export const AGENT_RELEVANT_SECTIONS = [
-    'Agent Context',
-    'Escalation',
+    // Epic level
+    'Agent Context', 'Key Files', 'Gotchas', 'Decisions', 'Cross-refs', 'Escalation',
+    // PRD level
     'Cross-Epic Patterns',
-    'Architecture Decisions',
-    'Patterns & Conventions'
+    // Project level
+    'Architecture Decisions', 'Patterns & Conventions'
 ];
 /**
  * Parse log content and count log levels
@@ -130,7 +134,7 @@ export function parseLogLevels(content) {
     for (const line of lines) {
         if (!line.trim())
             continue;
-        const match = line.match(/ \[T\d+\]\s*\[(\w+)\]|\[(\w+)\]/);
+        const match = / \[T\d+\]\s*\[(\w+)\]|\[(\w+)\]/.exec(line);
         if (match) {
             const level = (match[1] || match[2]).toUpperCase();
             if (Object.prototype.hasOwnProperty.call(counts, level)) {

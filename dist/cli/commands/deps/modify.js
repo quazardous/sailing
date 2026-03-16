@@ -140,7 +140,7 @@ export function registerModifyCommands(deps) {
         .description('Show dependencies (TNNN for task, ENNN for epic with blockers)')
         .option('--role <role>', 'Role context: agent blocked, skill/coordinator allowed')
         .option('--json', 'JSON output')
-        .action(async (id, options) => {
+        .action((id, options) => {
         if (options.role === 'agent') {
             console.error('ERROR: deps:show cannot be called with --role agent');
             console.error('Agents execute assigned tasks. Use task:show-memory for context.');

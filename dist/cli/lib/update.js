@@ -119,7 +119,7 @@ export function parseUpdateOptions(options, data, entityType, digitConfig = DEFA
         if (options.story) {
             const stories = Array.isArray(options.story) ? options.story : [options.story];
             data.stories = stories.map(s => {
-                const num = s.match(/\d+/)?.[0];
+                const num = /\d+/.exec(s)?.[0];
                 return num ? formatIdFrom('S', parseInt(num, 10), digitConfig) : s;
             });
             updated = true;
@@ -130,7 +130,7 @@ export function parseUpdateOptions(options, data, entityType, digitConfig = DEFA
             if (!Array.isArray(data.stories))
                 data.stories = [];
             stories.forEach(s => {
-                const num = s.match(/\d+/)?.[0];
+                const num = /\d+/.exec(s)?.[0];
                 const normalized = num ? formatIdFrom('S', parseInt(num, 10), digitConfig) : s;
                 if (!data.stories.includes(normalized)) {
                     data.stories.push(normalized);
@@ -143,7 +143,7 @@ export function parseUpdateOptions(options, data, entityType, digitConfig = DEFA
             const stories = Array.isArray(options.removeStory) ? options.removeStory : [options.removeStory];
             if (Array.isArray(data.stories)) {
                 const toRemove = stories.map(s => {
-                    const num = s.match(/\d+/)?.[0];
+                    const num = /\d+/.exec(s)?.[0];
                     return num ? formatIdFrom('S', parseInt(num, 10), digitConfig) : s;
                 });
                 data.stories = data.stories.filter(s => !toRemove.includes(s));
@@ -264,7 +264,7 @@ export function addLogEntry(body, message, author = 'agent') {
     const date = new Date().toISOString().split('T')[0];
     const entry = `- ${date}: ${message} - ${author}`;
     // Find ## Log section and append
-    const logMatch = body.match(/^## Log\s*$/m);
+    const logMatch = /^## Log\s*$/m.exec(body);
     if (logMatch) {
         const insertPos = body.indexOf('\n', logMatch.index + logMatch[0].length);
         return body.slice(0, insertPos + 1) + '\n' + entry + body.slice(insertPos);

@@ -20,7 +20,7 @@ export function formatTaskId(taskNum, digits = 3) {
 export function parseTaskNum(taskId) {
     if (!taskId)
         return null;
-    const match = taskId.match(/^T(\d+)$/i);
+    const match = /^T(\d+)$/i.exec(taskId);
     if (!match)
         return null;
     return parseInt(match[1], 10);

@@ -154,7 +154,7 @@ async function createCore(taskId, options = {}) {
             if (options.draft)
                 args.push('--draft');
             const { stdout } = await execa('glab', args, { cwd });
-            const urlMatch = stdout.match(/https:\/\/[^\s]+/);
+            const urlMatch = /https:\/\/[^\s]+/.exec(stdout);
             return { url: urlMatch ? urlMatch[0] : stdout.trim(), provider: 'gitlab' };
         }
     }

@@ -67,7 +67,7 @@ export function registerDiagnoseCommands(agent) {
         .description('Analyze agent run log for errors and issues')
         .option('--json', 'JSON output')
         .option('--max-line-len <n>', 'Max error line length', '500')
-        .action(async (taskId, options) => {
+        .action((taskId, options) => {
         const maxLineLen = parseInt(options.maxLineLen) || 500;
         const normalized = normalizeId(taskId, undefined, 'task');
         const agentUtils = new AgentUtils(getAgentsDir());
@@ -106,7 +106,7 @@ export function registerDiagnoseCommands(agent) {
         .option('--type <type>', 'Event type to match')
         .option('--contains <text>', 'Text to match')
         .option('--pattern <regex>', 'Regex pattern to match')
-        .action(async (id, taskOrEpic, options) => {
+        .action((id, taskOrEpic, options) => {
         const epicId = resolveEpicId(taskOrEpic);
         if (!options.contains && !options.pattern && !options.type) {
             console.error('At least one of --contains, --pattern, or --type is required');
@@ -138,7 +138,7 @@ export function registerDiagnoseCommands(agent) {
     agent.command('log-noise-list-filters [task-or-epic]')
         .description('List noise filters (accepts task ID, epic ID, or "global")')
         .option('--json', 'JSON output')
-        .action(async (taskOrEpic, options) => {
+        .action((taskOrEpic, options) => {
         const epicId = resolveEpicId(taskOrEpic);
         const filters = getDiagnoseOps().loadNoiseFilters(epicId);
         if (options.json) {
@@ -165,7 +165,7 @@ export function registerDiagnoseCommands(agent) {
     // agent:log-noise-rm-filter - Remove noise filter
     agent.command('log-noise-rm-filter <id> [task-or-epic]')
         .description('Remove noise filter (task ID, epic ID, or "global")')
-        .action(async (id, taskOrEpic) => {
+        .action((id, taskOrEpic) => {
         const epicId = resolveEpicId(taskOrEpic);
         const ops = getDiagnoseOps();
         const filters = ops.loadNoiseFilters(epicId);

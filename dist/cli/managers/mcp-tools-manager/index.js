@@ -11,20 +11,25 @@ import { DEPS_TOOLS } from './conductor/deps.js';
 import { STORY_TOOLS } from './conductor/story.js';
 import { ADR_TOOLS } from './conductor/adr.js';
 import { SYSTEM_TOOLS, setConductorToolsRef } from './conductor/system.js';
+import { getAgentConfig } from '../config-manager.js';
 import { err } from './types.js';
 // Re-export AGENT_TOOLS
 export { AGENT_TOOLS };
-// Combine all conductor tools
-export const CONDUCTOR_TOOLS = [
-    ...ARTEFACT_TOOLS,
-    ...WORKFLOW_TOOLS,
-    ...AGENT_CONDUCTOR_TOOLS,
-    ...MEMORY_TOOLS,
-    ...DEPS_TOOLS,
-    ...STORY_TOOLS,
-    ...ADR_TOOLS,
-    ...SYSTEM_TOOLS
-];
+// Combine conductor tools — agent_* tools only available in subprocess mode
+function buildConductorTools() {
+    const config = getAgentConfig();
+    return [
+        ...ARTEFACT_TOOLS,
+        ...WORKFLOW_TOOLS,
+        ...(config.use_subprocess ? AGENT_CONDUCTOR_TOOLS : []),
+        ...MEMORY_TOOLS,
+        ...DEPS_TOOLS,
+        ...STORY_TOOLS,
+        ...ADR_TOOLS,
+        ...SYSTEM_TOOLS
+    ];
+}
+export const CONDUCTOR_TOOLS = buildConductorTools();
 // Set reference for system_help tool
 setConductorToolsRef(CONDUCTOR_TOOLS);
 // =============================================================================

@@ -30,7 +30,7 @@ export function registerLifecycleCommands(assign) {
         }
         const file = loadFile(taskFile);
         const parent = file.data?.parent || '';
-        const epicMatch = parent.match(/E(\d+)/i);
+        const epicMatch = /E(\d+)/i.exec(parent);
         const epicId = epicMatch ? normalizeId(`E${epicMatch[1]}`) : null;
         const filePath = assignmentPath(normalized);
         // Check if assignment already exists

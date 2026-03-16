@@ -137,6 +137,12 @@ After user validates recommendations, update the epic via `artefact_edit`:
 }
 ```
 
+Update epic status to reflect review completion:
+```json
+// MCP: artefact_update
+{ "id": "ENNN", "status": "Reviewed" }
+```
+
 For frontmatter (target versions), use `artefact_update`:
 ```json
 // MCP: artefact_update

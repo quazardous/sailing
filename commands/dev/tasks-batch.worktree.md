@@ -56,7 +56,9 @@ This tells you:
    | Output | Action |
    |--------|--------|
    | `✓ No pending logs` | Proceed to step 2 |
-   | `⚠ MEMORY SYNC REQUIRED` | Consolidate logs, then re-run sync |
+   | `⚠ MEMORY SYNC REQUIRED` | For each pending epic: `memory_sync { scope: "ENNN" }` → synthesize → `memory_consolidate` |
+
+   Unscoped sync returns a lightweight summary. Use scoped sync per epic to get full entries, then consolidate (auto-flushes, creates files if needed). Re-run `memory_sync {}` to confirm clean.
 
    **Invariant**: Memory not consolidated = lost. Lost memory = system failure.
 
@@ -147,7 +149,7 @@ This tells you:
    {}
    ```
 
-   Consolidate any pending logs before spawning new agents.
+   If pending: scoped sync per epic → consolidate (auto-flushes, creates files if needed). Re-run `memory_sync {}` to confirm clean before spawning new agents.
 
 ---
 

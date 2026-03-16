@@ -77,7 +77,7 @@ export function diagnoseWorktreeState(worktreePath, projectRoot, baseBranch = 'm
     // Check for merge/rebase in progress
     try {
         const gitDirContent = fs.readFileSync(path.join(worktreePath, '.git'), 'utf8');
-        const gitDirMatch = gitDirContent.match(/gitdir:\s*(.+)/);
+        const gitDirMatch = /gitdir:\s*(.+)/.exec(gitDirContent);
         if (gitDirMatch) {
             const actualGitDir = gitDirMatch[1].trim();
             details.mergeInProgress = fs.existsSync(path.join(actualGitDir, 'MERGE_HEAD'));

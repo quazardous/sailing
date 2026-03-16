@@ -147,7 +147,7 @@ async function doInstall(options) {
     // If --check, just show status
     if (options.check) {
         const mcpStatus = checkMcp();
-        const permissionsOk = await checkPermissions();
+        const permissionsOk = checkPermissions();
         const result = {
             mcp: {
                 configured: mcpStatus.configured,
@@ -186,7 +186,7 @@ async function doInstall(options) {
     const mcpResult = fixMcp({ dryRun: options.dryRun, force: options.force });
     results.mcp = mcpResult;
     // Fix Permissions
-    const permResult = await fixPermissions({ dryRun: options.dryRun });
+    const permResult = fixPermissions({ dryRun: options.dryRun });
     results.permissions = permResult;
     if (options.json) {
         jsonOut(results);
@@ -376,7 +376,7 @@ export function registerInstallCommands(program) {
 // =============================================================================
 // Helper functions (import from permissions module logic)
 // =============================================================================
-async function checkPermissions() {
+function checkPermissions() {
     const projectRoot = findProjectRoot();
     const settingsPath = path.join(projectRoot, '.claude', 'settings.local.json');
     let existing = [];
@@ -466,7 +466,7 @@ const BASE_PERMISSIONS = [
     'Read(.claude/**)',
     'Read(.sailing/**)'
 ];
-async function fixPermissions(options) {
+function fixPermissions(options) {
     const projectRoot = findProjectRoot();
     const settingsPath = path.join(projectRoot, '.claude', 'settings.local.json');
     let settings = {

@@ -183,6 +183,9 @@ async function checkConflicts(taskId) {
     }
     return { ready: true, issues: [], conflicts: [] };
 }
+/**
+ * Register spawn commands
+ */
 export function registerSpawnCommands(program) {
     const spawn = program.command('spawn')
         .description('Spawn preflight and postflight checks');

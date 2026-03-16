@@ -157,13 +157,15 @@ Agents and coordinators NEVER chain. They return output and stop.
 
 ## Memory Philosophy
 
-**Memory = institutional knowledge. Logs = raw observations.**
+**Memory = only what was DISCOVERED, not what was KNOWN.**
 
 ```
 Agents PRODUCE logs → task_log MCP tool (NOT files)
-Skill CONSOLIDATES logs → memory files
+Skill CONSOLIDATES logs → memory files (structured sections)
 Memory GUIDES future agents
 ```
+
+**Cardinal rule:** If it's in the epic definition, it doesn't belong in memory. Memory captures what you learned *during implementation* — gotchas, file paths, non-obvious decisions, cross-epic links.
 
 ⚠️ **NEVER create log files directly** (no `.tip-log.txt`, no `*.log` files).
 Always use: `task_log { "task_id": "TNNN", "message": "...", "level": "tip" }`
@@ -177,15 +179,28 @@ Lost memory is a **system failure**.
 
 ```
 MEMORY.md (project)      ← Universal patterns, architecture decisions
-    └── PRD-NNN.md       ← Cross-epic patterns for this PRD
-        └── ENNN.md      ← Epic-specific agent context
+    └── PRD-NNN.md       ← Cross-epic patterns, integration points
+        └── ENNN.md      ← Key Files, Gotchas, Decisions, Cross-refs
             └── TNNN.log ← Raw task logs (temporary)
 ```
 
+**Epic memory sections** (structured, not prose):
+
+| Section | Content |
+|---------|---------|
+| `Key Files` | path → role (one line each) |
+| `Gotchas` | Traps + solutions (highest value) |
+| `Decisions` | Non-obvious choices + rationale |
+| `Cross-refs` | Links to other epics |
+| `Escalation` | Unresolved issues [TNNN] |
+| `Changelog` | What was built (summary) |
+
 | Action | MCP Tool |
 |--------|----------|
-| Read | `memory_read { "scope": "ENNN" }` or `memory_read { "scope": "PROJECT" }` |
-| Consolidate | `memory_sync {}` (shows pending + edit hints) |
+| Read | `memory_read { "scope": "ENNN" }` |
+| Sync (summary) | `memory_sync {}` (lightweight index) |
+| Sync (detailed) | `memory_sync { "scope": "ENNN" }` (full parsedEntries) |
+| Consolidate | `memory_consolidate { "level": "epic", "target_id": "ENNN", "section": "Gotchas", "content": "..." }` |
 | Agent view | `artefact_show { "id": "TNNN" }` + `memory_read { "scope": "TNNN" }` |
 
 ---

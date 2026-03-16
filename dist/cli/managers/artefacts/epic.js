@@ -30,7 +30,7 @@ export function buildEpicIndex() {
             if (key === null)
                 continue;
             const filePath = path.join(epicsDir, file);
-            const idMatch = file.match(/^(E\d+[a-z]?)/i);
+            const idMatch = /^(E\d+[a-z]?)/i.exec(file);
             const id = idMatch ? idMatch[1] : `E${key}`;
             const loaded = loadFile(filePath);
             const status = loaded?.data?.status;
@@ -76,7 +76,7 @@ export function getEpic(epicId) {
         key = String(epicId);
     }
     else {
-        const match = String(epicId).match(/^E?0*(\d+)([a-z])?$/i);
+        const match = /^E?0*(\d+)([a-z])?$/i.exec(String(epicId));
         if (match) {
             key = match[1] + (match[2] ? match[2].toLowerCase() : '');
         }
@@ -129,7 +129,7 @@ export function getEpicPrd(epicId) {
     if (!epic)
         return null;
     const dirname = path.basename(epic.prdDir);
-    const match = dirname.match(/^PRD-0*(\d+)/i);
+    const match = /^PRD-0*(\d+)/i.exec(dirname);
     if (!match)
         return null;
     const prdNum = parseInt(match[1], 10);

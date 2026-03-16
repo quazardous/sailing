@@ -2,7 +2,7 @@
  * MCP Conductor Tools - Story operations
  */
 import { getOrphanStories, validateStories } from '../../../operations/story-ops.js';
-import { ok } from '../types.js';
+import { ok, canonicalId } from '../types.js';
 export const STORY_TOOLS = [
     {
         tool: {
@@ -18,17 +18,18 @@ export const STORY_TOOLS = [
         handler: (args) => {
             const result = getOrphanStories({ prd: args.scope });
             const nextActions = [];
-            if (result.orphans.length > 0) {
+            const orphans = result.orphans.map(o => ({ ...o, id: canonicalId(o.id) }));
+            if (orphans.length > 0) {
                 nextActions.push({
                     tool: 'artefact_show',
-                    args: { id: result.orphans[0].id },
-                    reason: `Review first orphan story: ${result.orphans[0].id}`,
+                    args: { id: orphans[0].id },
+                    reason: `Review first orphan story: ${orphans[0].id}`,
                     priority: 'normal'
                 });
             }
             return ok({
                 success: true,
-                data: result,
+                data: { ...result, orphans },
                 next_actions: nextActions
             });
         }
@@ -47,8 +48,9 @@ export const STORY_TOOLS = [
         handler: (args) => {
             const result = validateStories({ prd: args.scope });
             const nextActions = [];
-            if (!result.valid && result.issues.length > 0) {
-                const orphanIssues = result.issues.filter(i => i.type === 'orphan');
+            const issues = result.issues.map(i => ({ ...i, storyId: canonicalId(i.storyId) }));
+            if (!result.valid && issues.length > 0) {
+                const orphanIssues = issues.filter(i => i.type === 'orphan');
                 if (orphanIssues.length > 0) {
                     nextActions.push({
                         tool: 'story_orphans',
@@ -60,7 +62,7 @@ export const STORY_TOOLS = [
             }
             return ok({
                 success: true,
-                data: result,
+                data: { ...result, issues },
                 next_actions: nextActions
             });
         }

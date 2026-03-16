@@ -14,6 +14,11 @@ export { buildEpicIndex, getEpic, getAllEpics, getEpicsForPrd, getEpicPrd, count
 export { buildPrdIndex, getPrd, prdIdFromDir, getAllPrds, getPrdBranching, getFullPrd, getAllFullPrds, createPrd } from './prd.js';
 // Story operations
 export { buildStoryIndex, getStory, getAllStories, getStoriesForPrd, countStories, findStoryFile, createStory } from './story.js';
+// Archive operations
+export { buildArchiveIndex, getArchivedArtefact, getAllArchivedTasks, getAllArchivedEpics, getAllArchivedPrds } from './archive.js';
+// Search operations
+export { searchArtefacts } from './search.js';
+export { FileArtefactStore, getStore } from './file-store.js';
 // Memory operations
 export { buildMemoryIndex, getMemoryFile, buildLogIndex, getLogFile, invalidateLogIndex } from './memory.js';
 // Relationship queries that span multiple types

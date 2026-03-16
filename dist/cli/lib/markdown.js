@@ -20,11 +20,11 @@ export function parseMarkdown(content) {
     // Fallback: parse markdown headers if no frontmatter
     if (Object.keys(data).length === 0) {
         // Extract title from # heading
-        const titleMatch = body.match(/^#\s+(.+)$/m);
+        const titleMatch = /^#\s+(.+)$/m.exec(body);
         if (titleMatch) {
             const fullTitle = titleMatch[1];
             // Parse "T001: Title" or "PRD-001: Title" format
-            const idMatch = fullTitle.match(/^([A-Z]+-?\d+):\s*(.*)$/);
+            const idMatch = /^([A-Z]+-?\d+):\s*(.*)$/.exec(fullTitle);
             if (idMatch) {
                 data.id = idMatch[1];
                 data.title = idMatch[2];
@@ -34,22 +34,22 @@ export function parseMarkdown(content) {
             }
         }
         // Extract status from ## Status section
-        const statusMatch = body.match(/^## Status\s*\n+([^\n#]+)/m);
+        const statusMatch = /^## Status\s*\n+([^\n#]+)/m.exec(body);
         if (statusMatch) {
             data.status = statusMatch[1].trim().split(/\s*\|\s*/)[0].trim();
         }
         // Extract parent from ## Parent section
-        const parentMatch = body.match(/^## Parent\s*\n+([^\n#]+)/m);
+        const parentMatch = /^## Parent\s*\n+([^\n#]+)/m.exec(body);
         if (parentMatch) {
             data.parent = parentMatch[1].trim();
         }
         // Extract assignee from ## Assignee section
-        const assigneeMatch = body.match(/^## Assignee\s*\n+([^\n#]+)/m);
+        const assigneeMatch = /^## Assignee\s*\n+([^\n#]+)/m.exec(body);
         if (assigneeMatch) {
             data.assignee = assigneeMatch[1].trim();
         }
         // Extract blocked_by from ## Blocked By section
-        const blockedMatch = body.match(/^## Blocked By\s*\n+([\s\S]*?)(?=\n##|\n*$)/m);
+        const blockedMatch = /^## Blocked By\s*\n+([\s\S]*?)(?=\n##|\n*$)/m.exec(body);
         if (blockedMatch) {
             const blockedText = blockedMatch[1].trim();
             if (blockedText === '- None' || blockedText === 'None' || blockedText === '') {

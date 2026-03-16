@@ -8,7 +8,7 @@
 import { execSync } from 'child_process';
 import { findProjectRoot, getMainBranch } from './core-manager.js';
 import { getAllAgentsFromDb } from './db-manager.js';
-import { getTask } from './artefacts-manager.js';
+import { getStore } from './artefacts-manager.js';
 import { extractPrdId, extractEpicId } from '../lib/normalize.js';
 import { getBranchName, getPrdBranchName, getEpicBranchName, branchExists, getBranchDivergence, syncBranch, listAgentWorktrees } from './worktree-manager.js';
 /**
@@ -81,7 +81,7 @@ export function getTrackedBranches() {
             tasks.push(getBranchName(taskId));
         }
         // Get epic_id and prd_id from task artefacts (not stored in agent record)
-        const taskInfo = getTask(taskId);
+        const taskInfo = getStore().getTask(taskId);
         const epicId = taskInfo?.data?.parent ? extractEpicId(taskInfo.data.parent) : null;
         const prdId = taskInfo?.data?.parent ? extractPrdId(taskInfo.data.parent) : null;
         if (epicId) {

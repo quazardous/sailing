@@ -7,8 +7,8 @@ export const ENTITY_TYPES = ['prd', 'epic', 'task'];
 // Canonical status values per entity type
 export const STATUS = {
     task: ['Not Started', 'In Progress', 'Blocked', 'Done', 'Cancelled'],
-    epic: ['Not Started', 'In Progress', 'Auto-Done', 'Done'],
-    prd: ['Draft', 'In Review', 'Approved', 'In Progress', 'Auto-Done', 'Done']
+    epic: ['Not Started', 'Draft', 'Reviewed', 'Breakdown', 'In Progress', 'Auto-Done', 'Done'],
+    prd: ['Draft', 'In Review', 'Approved', 'Breakdown', 'In Progress', 'Auto-Done', 'Done']
 };
 // Aliases mapping (lowercase, no spaces/dashes/underscores) → canonical
 export const STATUS_ALIASES = {
@@ -39,8 +39,13 @@ export const STATUS_ALIASES = {
     cancel: 'Cancelled',
     dropped: 'Cancelled',
     abandoned: 'Cancelled',
-    // PRD-specific
+    // Draft (epic + PRD lifecycle)
     draft: 'Draft',
+    // Reviewed (epic lifecycle - after epic-review)
+    reviewed: 'Reviewed',
+    // Breakdown (epic + PRD lifecycle - after breakdown into children)
+    breakdown: 'Breakdown',
+    // PRD review statuses
     inreview: 'In Review',
     review: 'In Review',
     reviewing: 'In Review',
@@ -108,6 +113,15 @@ export function isStatusBlocked(status) {
 export function isStatusAutoDone(status) {
     return statusEquals(status, 'autodone');
 }
+export function isStatusDraft(status) {
+    return statusEquals(status, 'draft');
+}
+export function isStatusReviewed(status) {
+    return statusEquals(status, 'reviewed');
+}
+export function isStatusBreakdown(status) {
+    return statusEquals(status, 'breakdown');
+}
 /**
  * Validate status and return error message if invalid
  */
@@ -155,7 +169,7 @@ function parseEffortMap(mapStr) {
     for (const pair of mapStr.split(',')) {
         const [key, value] = pair.trim().split('=');
         if (key && value) {
-            const match = value.match(/^(\d+(?:\.\d+)?)\s*h?$/i);
+            const match = /^(\d+(?:\.\d+)?)\s*h?$/i.exec(value);
             if (match) {
                 map[key.toUpperCase()] = parseFloat(match[1]);
             }
@@ -177,12 +191,12 @@ export function getDuration(effort, config) {
     const defaultDuration = config?.default_duration || '1h';
     const effortMapStr = config?.effort_map || 'S=0.5h,M=1h,L=2h,XL=4h';
     // Parse default duration
-    const defaultMatch = defaultDuration.match(/^(\d+(?:\.\d+)?)\s*h?$/i);
+    const defaultMatch = /^(\d+(?:\.\d+)?)\s*h?$/i.exec(defaultDuration);
     const defaultHours = defaultMatch ? parseFloat(defaultMatch[1]) : 1;
     if (!effort)
         return defaultHours;
     // Check if it's a duration format (e.g., "4h", "0.5h")
-    const durationMatch = effort.match(DURATION_PATTERN);
+    const durationMatch = DURATION_PATTERN.exec(effort);
     if (durationMatch) {
         return parseFloat(durationMatch[1]);
     }
@@ -221,5 +235,9 @@ export function statusSymbol(status) {
         return '✗';
     if (isStatusCancelled(status))
         return '○';
+    if (isStatusReviewed(status))
+        return '◎'; // Reviewed: double circle
+    if (isStatusBreakdown(status))
+        return '◈'; // Breakdown: diamond in circle
     return '◌';
 }

@@ -12,7 +12,7 @@ import { loadComponents as loadComponentsConfig, getComponentsFile, findProjectR
  * @returns {{ major: number, minor: number, patch: number } | null}
  */
 function parseSemver(version) {
-    const match = version?.match(/^(\d+)\.(\d+)\.(\d+)$/);
+    const match = version ? /^(\d+)\.(\d+)\.(\d+)$/.exec(version) : null;
     if (!match)
         return null;
     return {
@@ -70,7 +70,7 @@ const extractors = {
         if (!filePath || !pattern)
             return { version: null, source: 'missing file or pattern' };
         const content = fs.readFileSync(filePath, 'utf8');
-        const match = content.match(new RegExp(pattern));
+        const match = new RegExp(pattern).exec(content);
         return { version: match?.[1] ?? null, source: `${path.basename(filePath)}:/${pattern}/` };
     },
     // Git tag - gets latest tag matching pattern (default: v*)
@@ -134,7 +134,7 @@ const bumpers = {
         const oldVersion = typeof parentObj[lastKey] === 'string' ? (parentObj[lastKey]) : undefined;
         parentObj[lastKey] = newVersion;
         // Preserve original formatting (detect indent)
-        const indent = content.match(/^[ \t]+/m)?.[0]?.length || 2;
+        const indent = /^[ \t]+/m.exec(content)?.[0]?.length || 2;
         fs.writeFileSync(filePath, JSON.stringify(data, null, indent) + '\n', 'utf8');
         return {
             success: true,
@@ -158,7 +158,7 @@ const bumpers = {
     regex: (filePath, pattern, newVersion) => {
         const content = fs.readFileSync(filePath, 'utf8');
         const regex = new RegExp(pattern);
-        const match = content.match(regex);
+        const match = regex.exec(content);
         if (!match || !match[1]) {
             return { success: false, error: `Pattern not found: ${pattern}` };
         }

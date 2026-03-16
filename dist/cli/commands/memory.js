@@ -63,7 +63,8 @@ export function registerMemoryCommands(program) {
         const sectionFilter = options.section?.toLowerCase();
         // Agent-relevant sections (default view)
         const agentRelevantSections = [
-            'Agent Context', 'Escalation', 'Cross-Epic Patterns',
+            'Agent Context', 'Key Files', 'Gotchas', 'Decisions', 'Cross-refs', 'Escalation',
+            'Cross-Epic Patterns',
             'Architecture Decisions', 'Patterns & Conventions'
         ];
         // Project level
@@ -485,7 +486,7 @@ export function registerMemoryCommands(program) {
                 continue;
             const content = fs.readFileSync(filePath, 'utf8');
             // Extract Escalation section (between ## Escalation and next ## heading)
-            const match = content.match(/## Escalation\s*\n([\s\S]*?)(?=\n## [A-Z])/);
+            const match = /## Escalation\s*\n([\s\S]*?)(?=\n## [A-Z])/.exec(content);
             if (match) {
                 const section = match[1].trim();
                 // Remove HTML comments
@@ -523,10 +524,10 @@ export function registerMemoryCommands(program) {
             return memFile.file;
         }
         // Fallback to constructed path (for new files)
-        if (id.match(/^E\d+/i)) {
+        if (/^E\d+/i.exec(id)) {
             return getEpicMemory(id).getMemoryPath();
         }
-        else if (id.match(/^PRD-?\d+/i)) {
+        else if (/^PRD-?\d+/i.exec(id)) {
             return prdMemoryFilePath(id);
         }
         return null;

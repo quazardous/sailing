@@ -175,7 +175,7 @@ export function registerAdrCommands(program) {
     // adr:wizard - Interactive ADR creation
     adr.command('wizard')
         .description('Interactive ADR creation wizard')
-        .action(async () => {
+        .action(() => {
         console.log('ADR Wizard\n');
         console.log('The wizard helps you create well-structured ADRs.');
         console.log('For full interactive experience, use Claude with /dev:adr-scan\n');

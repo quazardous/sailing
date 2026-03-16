@@ -48,7 +48,7 @@ export function getReconcileBranchName(branchId) {
  * Parse a merge branch name to extract source and target
  */
 export function parseMergeBranchName(branchName) {
-    const match = branchName.match(/^merge\/([^-]+)-to-(.+)$/);
+    const match = /^merge\/([^-]+)-to-(.+)$/.exec(branchName);
     if (!match)
         return null;
     return { source: match[1], target: match[2] };
@@ -362,7 +362,7 @@ export class WorktreeOps {
                 else if (line.startsWith('branch ')) {
                     current.branch = line.substring(7);
                     // Extract task ID from task/TNNN pattern
-                    const match = current.branch.match(/refs\/heads\/task\/(T\d+)$/);
+                    const match = /refs\/heads\/task\/(T\d+)$/.exec(current.branch);
                     if (match) {
                         current.taskId = match[1];
                     }

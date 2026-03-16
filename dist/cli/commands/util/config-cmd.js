@@ -205,9 +205,9 @@ export function registerConfigCommands(program) {
                 }
             }
             else if (inSection && trimmed && !trimmed.startsWith('#')) {
-                const match = trimmed.match(/^(\w+):/);
+                const match = /^(\w+):/.exec(trimmed);
                 if (match && match[1] === property) {
-                    const commentMatch = line.match(/#.*$/);
+                    const commentMatch = /#.*$/.exec(line);
                     const comment = commentMatch ? '  ' + commentMatch[0] : '';
                     lines[i] = `  ${property}: ${yamlValue}${comment}`;
                     foundKey = true;

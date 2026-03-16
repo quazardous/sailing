@@ -23,11 +23,11 @@ export function buildPrdIndex() {
     const duplicates = [];
     for (const prdDir of findPrdDirs()) {
         const dirname = path.basename(prdDir);
-        const match = dirname.match(/^PRD-0*(\d+)/i);
+        const match = /^PRD-0*(\d+)/i.exec(dirname);
         if (!match)
             continue;
         const num = parseInt(match[1], 10);
-        const idMatch = dirname.match(/^(PRD-\d+)/i);
+        const idMatch = /^(PRD-\d+)/i.exec(dirname);
         const id = idMatch ? idMatch[1] : `PRD-${num}`;
         const prdFile = path.join(prdDir, 'prd.md');
         const loaded = fs.existsSync(prdFile) ? loadFile(prdFile) : null;
@@ -67,7 +67,7 @@ export function getPrd(prdId) {
         num = prdId;
     }
     else {
-        const match = String(prdId).match(/^(?:PRD-?)?0*(\d+)$/i);
+        const match = /^(?:PRD-?)?0*(\d+)$/i.exec(String(prdId));
         num = match ? parseInt(match[1], 10) : null;
     }
     if (num === null)
@@ -80,7 +80,7 @@ export function getPrd(prdId) {
  */
 export function prdIdFromDir(prdDir) {
     const dirname = path.basename(prdDir);
-    const match = dirname.match(/^(PRD-\d+)/i);
+    const match = /^(PRD-\d+)/i.exec(dirname);
     return match ? match[1] : dirname;
 }
 // ============================================================================

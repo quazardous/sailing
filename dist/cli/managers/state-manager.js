@@ -5,9 +5,8 @@
  * TODO[P3]: Consider splitting lock/file I/O from state helpers for easier TS migration.
  */
 import fs from 'fs';
-import path from 'path';
-import { getStateFile, findPrdDirs, findFiles, getSailingDir } from './core-manager.js';
-import { buildTaskIndex, buildEpicIndex, buildPrdIndex } from './artefacts-manager.js';
+import { getStateFile, getSailingDir } from './core-manager.js';
+import { getStore } from './artefacts-manager.js';
 /**
  * Acquire exclusive lock on state file
  * Uses a simple .lock file with PID and timestamp
@@ -80,35 +79,29 @@ export function loadState() {
     if (fs.existsSync(stateFile)) {
         return JSON.parse(fs.readFileSync(stateFile, 'utf8'));
     }
-    // Auto-init: scan existing files to find max IDs using artefacts index
+    // Auto-init: scan existing artefacts to find max IDs
+    const store = getStore();
     let maxPrd = 0, maxEpic = 0, maxTask = 0, maxStory = 0;
-    // Use artefacts.ts indexes for PRD, Epic, Task
-    const prdIndex = buildPrdIndex();
-    for (const [num] of prdIndex) {
+    for (const p of store.getAllPrds()) {
+        const num = parseInt(/(\d+)/.exec(p.id)?.[1] || '0', 10);
         if (num > maxPrd)
             maxPrd = num;
     }
-    const epicIndex = buildEpicIndex();
-    for (const [key] of epicIndex) {
-        const num = parseInt(key.replace(/[a-z]/i, ''), 10);
+    for (const e of store.getAllEpics()) {
+        const num = parseInt(/(\d+)/.exec(e.id)?.[1] || '0', 10);
         if (num > maxEpic)
             maxEpic = num;
     }
-    const taskIndex = buildTaskIndex();
-    for (const [key] of taskIndex) {
-        const num = parseInt(key.replace(/[a-z]/i, ''), 10);
+    for (const t of store.getAllTasks()) {
+        const num = parseInt(/(\d+)/.exec(t.id)?.[1] || '0', 10);
         if (num > maxTask)
             maxTask = num;
     }
-    // Stories still need direct scan (not yet in artefacts.ts)
-    // TODO: Add story index to artefacts.ts
-    findPrdDirs().forEach(prdDir => {
-        findFiles(path.join(prdDir, 'stories'), /^S\d+.*\.md$/).forEach(f => {
-            const num = parseInt(path.basename(f).match(/S(\d+)/)?.[1] || '0');
-            if (num > maxStory)
-                maxStory = num;
-        });
-    });
+    for (const s of store.getAllStories()) {
+        const num = parseInt(/(\d+)/.exec(s.id)?.[1] || '0', 10);
+        if (num > maxStory)
+            maxStory = num;
+    }
     const state = { counters: { prd: maxPrd, epic: maxEpic, task: maxTask, story: maxStory } };
     saveState(state);
     return state;
@@ -168,6 +161,6 @@ export function getNextNumber(dir, prefix) {
     const files = fs.readdirSync(dir).filter(f => f.startsWith(prefix));
     if (files.length === 0)
         return 1;
-    const nums = files.map(f => parseInt(f.match(/\d+/)?.[0] || '0'));
+    const nums = files.map(f => parseInt(/\d+/.exec(f)?.[0] || '0'));
     return Math.max(...nums) + 1;
 }

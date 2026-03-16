@@ -358,7 +358,7 @@ export class ConductorManager {
                 timestamp: new Date().toISOString()
             });
             // Setup exit handler
-            spawnResult.process.on('exit', async (code, signal) => {
+            spawnResult.process.on('exit', (code, signal) => void (async () => {
                 this.activeProcesses.delete(taskId);
                 // Check result status
                 const agentDir = agentUtils.getAgentDir(taskId);
@@ -397,7 +397,7 @@ export class ConductorManager {
                 if (code === 0) {
                     runManager.release(taskId);
                 }
-            });
+            })());
             return {
                 success: true,
                 taskId,
@@ -547,7 +547,7 @@ export class ConductorManager {
                         lineQueue.push(logLine);
                     }
                 };
-                const init = async () => {
+                const init = () => {
                     if (initialized)
                         return;
                     initialized = true;
@@ -593,7 +593,7 @@ export class ConductorManager {
                 };
                 return {
                     async next() {
-                        await init();
+                        init();
                         if (closed) {
                             return { done: true, value: undefined };
                         }
@@ -647,7 +647,7 @@ export class ConductorManager {
      * Stop all log streams
      */
     stopAllLogStreams() {
-        for (const [taskId, watcher] of this.logStreams) {
+        for (const [_taskId, watcher] of this.logStreams) {
             watcher.close();
         }
         this.logStreams.clear();

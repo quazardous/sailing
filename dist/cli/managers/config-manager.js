@@ -13,7 +13,7 @@
 import fs from 'fs';
 import yaml from 'js-yaml';
 import { formatIdFrom } from '../lib/normalize.js';
-// Import path resolution from core-manager (breaks circular by using late binding)
+// Import path resolution from core-manager
 import { getPath } from './core-manager.js';
 // ============================================================================
 // CONFIGURATION SCHEMA
@@ -236,7 +236,7 @@ export function setConfigOverrides(overrides) {
  * Handles type coercion based on schema
  */
 export function parseConfigOverride(override) {
-    const match = override.match(/^([^=]+)=(.*)$/);
+    const match = /^([^=]+)=(.*)$/.exec(override);
     if (!match) {
         console.error(`Invalid config override format: ${override}`);
         console.error(`Expected: key=value (e.g., agent.use_subprocess=true)`);

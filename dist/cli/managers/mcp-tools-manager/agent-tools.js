@@ -2,7 +2,7 @@
  * MCP Agent Tools - Limited tools for sandbox agents
  */
 import { getConductorManager } from '../conductor-manager.js';
-import { getAllPrds, getAllTasks } from '../artefacts-manager.js';
+import { getStore } from '../artefacts-manager.js';
 import { getAllAdrs, getFullAdr, getRelevantAdrs, normalizeAdrId, getAdrDir } from '../adr-manager.js';
 import { logTask, showArtefact, showDeps, loadContext, showMemory } from '../../operations/index.js';
 import { ok, err } from './types.js';
@@ -144,8 +144,9 @@ export const AGENT_TOOLS = [
             inputSchema: { type: 'object', properties: {} }
         },
         handler: () => {
-            const prds = getAllPrds();
-            const tasks = getAllTasks();
+            const store = getStore();
+            const prds = store.getAllPrds();
+            const tasks = store.getAllTasks();
             const conductor = getConductorManager();
             const agentsRecord = conductor.getAllAgents();
             const agentsList = Object.values(agentsRecord);

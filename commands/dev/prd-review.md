@@ -229,6 +229,12 @@ After user validates:
 - Agent updates PRD `milestones[].versions` with confirmed targets
 - Agent applies approved improvements to PRD
 
+Update PRD status to reflect review completion:
+```json
+// MCP: artefact_update
+{ "id": "PRD-NNN", "status": "Approved" }
+```
+
 ---
 
 ## Non-Goals

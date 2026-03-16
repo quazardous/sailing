@@ -17,14 +17,14 @@ const STATUS_AUTO_DONE = 'Auto-Done';
 function extractEpicId(parent) {
     if (!parent)
         return null;
-    const match = parent.match(/E(\d+)/i);
+    const match = /E(\d+)/i.exec(parent);
     return match ? normalizeId(`E${match[1]}`) : null;
 }
 /**
  * Extract PRD ID from parent field or prdDir
  */
 function extractPrdId(prdDir) {
-    const match = prdDir.match(/PRD-(\d+)/i);
+    const match = /PRD-(\d+)/i.exec(prdDir);
     return match ? `PRD-${match[1].padStart(3, '0')}` : 'Unknown';
 }
 /**

@@ -3,7 +3,7 @@
  */
 import fs from 'fs';
 import path from 'path';
-import { jsonOut, resolvePlaceholders, getAgentConfig } from '../../managers/core-manager.js';
+import { jsonOut, resolvePlaceholders } from '../../managers/core-manager.js';
 import { getGit } from '../../lib/git.js';
 import { getAllAgentsFromDb, getAgentFromDb, saveAgentToDb, deleteAgentFromDb } from '../../managers/db-manager.js';
 import { withModifies } from '../../lib/help.js';
@@ -15,7 +15,6 @@ export function registerManageCommands(agent) {
     withModifies(agent.command('sync'), ['db'])
         .description('Sync db with actual worktrees/agents (recover from ghosts)')
         .action(async (options) => {
-        const config = getAgentConfig();
         const havenPath = resolvePlaceholders('${haven}');
         const worktreesDir = path.join(havenPath, 'worktrees');
         const agentsDir = path.join(havenPath, 'agents');
@@ -118,7 +117,7 @@ export function registerManageCommands(agent) {
     withModifies(agent.command('clear [task-id]'), ['db'])
         .description('Clear agent tracking (all or specific task)')
         .option('--force', 'Clear without confirmation')
-        .action(async (taskId, options) => {
+        .action(async (taskId, _options) => {
         const agents = getAllAgentsFromDb();
         const agentCount = Object.keys(agents).length;
         if (agentCount === 0) {

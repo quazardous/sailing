@@ -143,20 +143,27 @@ export function calculateRealSchedule(taskData, effortConfig, t0, now) {
         if (isDone) {
             // Done: use real dates but can shift forward to honor blockers
             // Rule: can't move to past (respect known dates), can move forward for blockers
-            if (task.startedAt) {
-                // Has start date: use it as minimum, but shift forward if blockers require
+            if (task.startedAt && task.doneAt) {
+                // Both dates known: use actual start/end
                 startHour = Math.max(dateToHours(task.startedAt), maxBlockerEnd);
+                endHour = Math.max(dateToHours(task.doneAt), startHour + durationHours);
+            }
+            else if (task.startedAt) {
+                // Has start date only: use it as minimum, but shift forward if blockers require
+                startHour = Math.max(dateToHours(task.startedAt), maxBlockerEnd);
+                endHour = startHour + durationHours;
             }
             else if (task.doneAt) {
                 // Only done_at: start = max(done_at - duration, maxBlockerEnd)
                 const doneHour = dateToHours(task.doneAt);
                 startHour = Math.max(doneHour - durationHours, maxBlockerEnd);
+                endHour = startHour + durationHours;
             }
             else {
                 // No dates: position after blockers
                 startHour = maxBlockerEnd;
+                endHour = startHour + durationHours;
             }
-            endHour = startHour + durationHours;
         }
         else if (isInProgress) {
             // In Progress: end = max(now + duration, blockerEnd + duration)

@@ -48,19 +48,19 @@ function matchQuery(doc, query) {
             for (const [op, opValue] of Object.entries(condition)) {
                 switch (op) {
                     case '$gt':
-                        if (!(value > opValue))
+                        if (value <= opValue)
                             return false;
                         break;
                     case '$gte':
-                        if (!(value >= opValue))
+                        if (value < opValue)
                             return false;
                         break;
                     case '$lt':
-                        if (!(value < opValue))
+                        if (value >= opValue)
                             return false;
                         break;
                     case '$lte':
-                        if (!(value <= opValue))
+                        if (value > opValue)
                             return false;
                         break;
                     case '$ne':

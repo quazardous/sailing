@@ -71,7 +71,7 @@ function getEnv() {
 export function parseTemplateHeader(content) {
     const variables = [];
     // Extract header comment
-    const headerMatch = content.match(/^\{#\s*\n([\s\S]*?)\n#\}/);
+    const headerMatch = /^\{#\s*\n([\s\S]*?)\n#\}/.exec(content);
     if (!headerMatch)
         return variables;
     const header = headerMatch[1];
@@ -85,7 +85,7 @@ export function parseTemplateHeader(content) {
         }
         if (inVariables && trimmed) {
             // Parse: varName: type  # description
-            const match = trimmed.match(/^(\w+):\s*([^#]+?)(?:\s*#\s*(.*))?$/);
+            const match = /^(\w+):\s*([^#]+?)(?:\s*#\s*(.*))?$/.exec(trimmed);
             if (match) {
                 const [, name, type, description = ''] = match;
                 const isOptional = type.includes('|null') || type.includes('optional');

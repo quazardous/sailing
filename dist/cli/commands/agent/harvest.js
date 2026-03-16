@@ -129,7 +129,7 @@ export function registerHarvestCommands(agent) {
                     const conflictFiles = [];
                     for (const line of mergeTree.split('\n')) {
                         if (line.startsWith('changed in both')) {
-                            const match = line.match(/changed in both\s+(.+)/);
+                            const match = /changed in both\s+(.+)/.exec(line);
                             if (match)
                                 conflictFiles.push(match[1]);
                         }
@@ -396,7 +396,6 @@ export function registerHarvestCommands(agent) {
         .option('--json', 'JSON output')
         .action(async (taskIds, options) => {
         const agents = getAllAgentsFromDb();
-        const projectRoot = findProjectRoot();
         const agentUtilsReapAll = new AgentUtils(getAgentsDir());
         const toReap = taskIds.length > 0 ? taskIds.map(id => normalizeId(id)) : Object.keys(agents);
         const completed = toReap.filter(taskId => {

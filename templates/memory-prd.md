@@ -9,24 +9,24 @@ updated: ''
 ## Cross-Epic Patterns
 
 <!--
-Insights valid across all epics of this PRD.
-Escalated from epic memories by skill curation.
+Integration points, shared resources, and dependencies between epics.
+This is the MOST valuable section — the only place that shows the big picture.
 
 Examples:
-- API rate limit: 100 req/min, use debouncing
-- All forms use Formik + Yup validation
-- Auth token stored in httpOnly cookie
+- The claim endpoint is the integration point between E0099, E0100, E0102 — changes here impact all 3
+- Config resolution is tested in 3 files (one per epic) — watch for shared fixture conflicts
+- E0097 provides the base task schema that E0099 and E0101 extend
 -->
 
 ## Decisions
 
 <!--
-PRD-level architectural decisions.
-Document rationale for future reference.
+PRD-level architectural decisions. Document rationale.
 
 Examples:
 - Chose PostgreSQL over MongoDB for relational integrity
 - WebSocket for real-time updates (not polling)
+- File-based locking instead of DB advisory locks — simpler failure modes
 -->
 
 ## Escalation

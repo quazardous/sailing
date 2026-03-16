@@ -40,7 +40,7 @@ export function registerStatusCommand(program) {
             const prdFile = path.join(d, 'prd.md');
             const file = loadFile(prdFile);
             return {
-                id: file?.data?.id || path.basename(d).match(/PRD-\d+/)?.[0],
+                id: file?.data?.id || /PRD-\d+/.exec(path.basename(d))?.[0],
                 title: file?.data?.title || '',
                 status: file?.data?.status || 'Unknown'
             };

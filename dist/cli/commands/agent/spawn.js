@@ -495,7 +495,7 @@ export function registerSpawnCommand(agent) {
         };
         await saveAgentToDb(taskId, agentEntry);
         // Handle process exit
-        spawnResult.process.on('exit', async (code, signal) => {
+        spawnResult.process.on('exit', (code, signal) => void (async () => {
             const exitGit = getGit(cwd);
             const gitStatusResult = await exitGit.status();
             const dirtyWorktree = !gitStatusResult.isClean();
@@ -577,15 +577,13 @@ export function registerSpawnCommand(agent) {
                     }
                 }
             }
-        });
+        })());
         // === WAIT MODE: wait with heartbeat, auto-reap ===
         const startTime = Date.now();
         const defaultHeartbeat = isQuiet ? 60 : 30;
         const heartbeatSec = typeof options.heartbeat === 'number' ? options.heartbeat : defaultHeartbeat;
         const heartbeatInterval = heartbeatSec * 1000;
         const shouldHeartbeat = options.heartbeat !== false;
-        let lastHeartbeat = startTime;
-        let detached = false;
         let exitCode = null;
         let exitSignal = null;
         if (!options.json) {
@@ -628,7 +626,6 @@ export function registerSpawnCommand(agent) {
                 const memInfo = stats.mem ? ` (mem: ${stats.mem})` : '';
                 console.log(`[${formatDuration(elapsed)}] pong — ${taskId} ${stats.running ? 'running' : 'stopped'}${memInfo}`);
             }
-            lastHeartbeat = Date.now();
         };
         const sighupHandler = () => {
             emitHeartbeat();
@@ -641,7 +638,6 @@ export function registerSpawnCommand(agent) {
                 console.log(`Monitor: bin/rudder agent:log ${taskId} --tail`);
                 console.log(`Reap:    bin/rudder agent:reap ${taskId}`);
             }
-            detached = true;
             cleanup();
             process.exit(0);
         };

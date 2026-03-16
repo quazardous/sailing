@@ -14,12 +14,12 @@ export function getSystemLocale(env = process.env) {
     const envLocale = env.LC_ALL || env.LC_TIME || env.LANG || env.LANGUAGE;
     if (envLocale) {
         // Extract locale code (e.g., "fr_FR.UTF-8" -> "fr-FR")
-        const match = envLocale.match(/^([a-z]{2})[-_]([A-Z]{2})/i);
+        const match = /^([a-z]{2})[-_]([A-Z]{2})/i.exec(envLocale);
         if (match) {
             return `${match[1]}-${match[2].toUpperCase()}`;
         }
         // Simple locale (e.g., "fr" or "en")
-        const simple = envLocale.match(/^([a-z]{2})/i);
+        const simple = /^([a-z]{2})/i.exec(envLocale);
         if (simple) {
             return simple[1];
         }

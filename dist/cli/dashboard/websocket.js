@@ -3,7 +3,6 @@ import { createHash } from 'crypto';
 const OPCODE_TEXT = 0x1;
 const OPCODE_CLOSE = 0x8;
 const OPCODE_PING = 0x9;
-const OPCODE_PONG = 0xa;
 // Store active WebSocket connections
 const connections = new Set();
 /**

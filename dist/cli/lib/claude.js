@@ -37,7 +37,7 @@ export function generateAgentSrtConfig(options) {
     if (fs.existsSync(gitFile) && fs.statSync(gitFile).isFile()) {
         try {
             const gitContent = fs.readFileSync(gitFile, 'utf8').trim();
-            const match = gitContent.match(/^gitdir:\s*(.+)$/);
+            const match = /^gitdir:\s*(.+)$/.exec(gitContent);
             if (match) {
                 const gitWorktreeDir = match[1].trim();
                 additionalWritePaths.push(gitWorktreeDir);

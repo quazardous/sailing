@@ -1,3 +1,5 @@
+import { normalizeId as normalizeIdLib } from '../../lib/normalize.js';
+import { getDigitConfig } from '../config-manager.js';
 export function detectType(id) {
     if (/^T\d+$/i.test(id))
         return 'task';
@@ -11,6 +13,10 @@ export function detectType(id) {
 }
 export function normalizeId(id) {
     return id.toUpperCase().replace(/^PRD(\d)/, 'PRD-$1');
+}
+/** Normalize an ID to canonical form using project digit config */
+export function canonicalId(id) {
+    return normalizeIdLib(id, getDigitConfig()) ?? id;
 }
 // =============================================================================
 // Response Helpers
