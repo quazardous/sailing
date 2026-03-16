@@ -627,7 +627,7 @@ export const ARTEFACT_TOOLS: ToolDefinition[] = [
   {
     tool: {
       name: 'artefact_create_batch',
-      description: 'Create multiple artefacts in one call. Supports inline effort, priority, content, and blocked_by. Use "T-1" in blocked_by to reference the 1st item created, "T-2" for the 2nd, etc.',
+      description: 'Create multiple artefacts in one call. Supports inline effort, priority, content, and blocked_by. Use "T@1" in blocked_by to reference the 1st task created, "E@2" for the 2nd epic, etc.',
       inputSchema: {
         type: 'object',
         properties: {
@@ -642,7 +642,7 @@ export const ARTEFACT_TOOLS: ToolDefinition[] = [
                 effort: { type: 'string', description: 'Effort estimate (e.g., "1h", "2h")' },
                 priority: { type: 'string', description: 'Priority (low, normal, high, critical)' },
                 content: { type: 'string', description: 'Body content (markdown with ## sections)' },
-                blocked_by: { type: 'array', items: { type: 'string' }, description: 'Dependency IDs. Use T-1, T-2 etc. to reference items by position in this batch (1-based)' },
+                blocked_by: { type: 'array', items: { type: 'string' }, description: 'Dependency IDs. Use T@1, T@2 (tasks) or E@1 (epics) to reference items by position in this batch (1-based)' },
                 tags: { type: 'array', items: { type: 'string' }, description: 'Tags' }
               },
               required: ['title']
@@ -708,14 +708,14 @@ export const ARTEFACT_TOOLS: ToolDefinition[] = [
           if (!createdItem) continue;
 
           for (const dep of item.blocked_by) {
-            // Resolve T-N relative references
-            const relMatch = /^T-(\d+)$/i.exec(dep);
+            // Resolve relative references: T@N, E@N (prefix + @ + position)
+            const relMatch = /^[TE]@(\d+)$/i.exec(dep);
             let resolvedDep: string;
             if (relMatch) {
               const refIndex = parseInt(relMatch[1], 10);
               const refItem = created.find(c => c.index === refIndex);
               if (!refItem) {
-                errors.push(`${createdItem.id}: T-${refIndex} refers to item ${refIndex} which was not created`);
+                errors.push(`${createdItem.id}: ${dep} refers to item ${refIndex} which was not created`);
                 continue;
               }
               resolvedDep = refItem.id;
