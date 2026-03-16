@@ -77,8 +77,8 @@ export function extractPrdId(parent: string | null | undefined): string | null {
  */
 export function extractEpicId(parent: string | null | undefined): string | null {
   if (!parent) return null;
-  const match = /E\d+/.exec(parent);
-  return match ? match[0] : null;
+  const match = /E(\d+)/.exec(parent);
+  return match ? formatIdFrom('E', parseInt(match[1], 10)) : null;
 }
 
 // ============================================================================
@@ -134,6 +134,54 @@ export function normalizeId(id: string | null | undefined, digitConfig: DigitCon
   }
 
   return id;
+}
+
+/**
+ * Compare two IDs, ignoring padding differences.
+ *
+ * Rules:
+ * - Same prefix: compare numbers → isSameId("E107", "E0107") = true
+ * - Different prefixes: false → isSameId("E001", "T001") = false
+ * - Raw number + prefixed: optimistic → isSameId("107", "E107") = true
+ * - Both raw numbers: optimistic → isSameId("1", "001") = true
+ * - type hint: forces prefix for raw numbers → isSameId("107", "E0107", "epic") = true
+ */
+export function isSameId(
+  a: string | null | undefined,
+  b: string | null | undefined,
+  type?: EntityType
+): boolean {
+  if (!a || !b) return false;
+
+  // Extract prefix and numeric part
+  const parse = (s: string): { prefix: string | null; num: number } | null => {
+    const prd = /^PRD-?(\d+)$/i.exec(s);
+    if (prd) return { prefix: 'PRD', num: parseInt(prd[1], 10) };
+    const prefixed = /^([ETSPRD]+)(\d+)$/i.exec(s);
+    if (prefixed) return { prefix: prefixed[1].toUpperCase(), num: parseInt(prefixed[2], 10) };
+    const raw = /^(\d+)$/.exec(s);
+    if (raw) return { prefix: null, num: parseInt(raw[1], 10) };
+    return null;
+  };
+
+  const pa = parse(a.trim());
+  const pb = parse(b.trim());
+  if (!pa || !pb) return false;
+
+  // Apply type hint to raw numbers
+  if (type) {
+    const prefixMap: Record<EntityType, string> = { prd: 'PRD', epic: 'E', task: 'T', story: 'S' };
+    if (!pa.prefix) pa.prefix = prefixMap[type];
+    if (!pb.prefix) pb.prefix = prefixMap[type];
+  }
+
+  // Both have prefixes: must match
+  if (pa.prefix && pb.prefix) {
+    return pa.prefix === pb.prefix && pa.num === pb.num;
+  }
+
+  // One or both raw: optimistic, compare numbers only
+  return pa.num === pb.num;
 }
 
 /**

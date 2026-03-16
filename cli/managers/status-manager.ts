@@ -9,7 +9,7 @@
  */
 import path from 'path';
 import { loadFile, saveFile, findPrdDirs } from './core-manager.js';
-import { normalizeId, matchesPrdDir } from '../lib/normalize.js';
+import { normalizeId, matchesPrdDir, isSameId } from '../lib/normalize.js';
 import { getStore } from './artefacts-manager.js';
 import {
   isStatusDone,
@@ -266,9 +266,10 @@ function areAllEpicTasksDone(epicId: string, currentTaskId?: string): boolean {
   const { tasks } = buildDependencyGraph();
 
   // Find all tasks for this epic
-  const epicTasks = [...tasks.values()].filter(t =>
-    (t.parent ? /E\d+/i.exec(t.parent)?.[0] : null)?.toUpperCase() === epicId.toUpperCase()
-  );
+  const epicTasks = [...tasks.values()].filter(t => {
+    const taskEpicRaw = t.parent ? /E\d+/i.exec(t.parent)?.[0] : null;
+    return taskEpicRaw ? isSameId(taskEpicRaw, epicId) : false;
+  });
 
   if (epicTasks.length === 0) return false;
 
