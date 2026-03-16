@@ -7,7 +7,7 @@ import { formatIdFrom, DigitConfig } from './normalize.js';
 import { Task, Epic, Prd } from './types/entities.js';
 
 // Default digit config if not provided
-const DEFAULT_DIGITS: DigitConfig = { prd: 3, epic: 3, task: 3, story: 3 };
+const DEFAULT_DIGITS: DigitConfig = { prd: 3, epic: 3, task: 3, story: 3, panic: 3 };
 
 interface UpdateOptions {
   status?: string;

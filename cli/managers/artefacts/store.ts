@@ -10,6 +10,7 @@ import type {
   EpicIndexEntry,
   PrdIndexEntry,
   StoryIndexEntry,
+  PanicIndexEntry,
   ArchiveEntry,
   FullPrd
 } from '../../lib/types/entities.js';
@@ -17,6 +18,7 @@ import type { TaskQueryOptions, CreateTaskOptions, CreateTaskResult } from './ta
 import type { EpicQueryOptions, CreateEpicOptions, CreateEpicResult } from './epic.js';
 import type { CreatePrdOptions, CreatePrdResult } from './prd.js';
 import type { StoryQueryOptions, CreateStoryOptions, CreateStoryResult } from './story.js';
+import type { PanicQueryOptions, CreatePanicOptions, CreatePanicResult } from './panic.js';
 import type { ArchiveQueryOptions } from './archive.js';
 import type { SearchOptions, SearchHit } from './search.js';
 import type {
@@ -41,6 +43,7 @@ export interface ArtefactReadStore {
   getEpic(id: string | number): EpicIndexEntry | null;
   getPrd(id: string | number): PrdIndexEntry | null;
   getStory(id: string | number): StoryIndexEntry | null;
+  getPanic(id: string | number): PanicIndexEntry | null;
   getArchivedArtefact(id: string): ArchiveEntry | null;
 
   // List queries
@@ -48,6 +51,7 @@ export interface ArtefactReadStore {
   getAllEpics(opts?: EpicQueryOptions): EpicIndexEntry[];
   getAllPrds(): PrdIndexEntry[];
   getAllStories(opts?: StoryQueryOptions): StoryIndexEntry[];
+  getAllPanics(opts?: PanicQueryOptions): PanicIndexEntry[];
   getAllArchivedTasks(opts?: ArchiveQueryOptions): ArchiveEntry[];
   getAllArchivedEpics(opts?: ArchiveQueryOptions): ArchiveEntry[];
   getAllArchivedPrds(): ArchiveEntry[];
@@ -71,6 +75,8 @@ export interface ArtefactStore extends ArtefactReadStore {
   getEpicsForPrd(prdId: string | number): EpicIndexEntry[];
   getEpicPrd(epicId: string | number): { prdId: string; prdNum: number } | null;
   getStoriesForPrd(prdId: string | number): StoryIndexEntry[];
+  getPanicsForScope(scopeId: string): PanicIndexEntry[];
+  countOpenPanics(opts?: PanicQueryOptions): number;
   getTasksForPrd(prdId: string | number): TaskIndexEntry[];
 
   // Counts
@@ -93,6 +99,7 @@ export interface ArtefactStore extends ArtefactReadStore {
   createEpic(prdId: string, title: string, options?: CreateEpicOptions): CreateEpicResult;
   createPrd(title: string, options?: CreatePrdOptions): CreatePrdResult;
   createStory(prdId: string, title: string, options?: CreateStoryOptions): CreateStoryResult;
+  createPanic(scopeId: string, title: string, options?: CreatePanicOptions): CreatePanicResult;
 
   // Update
   updateArtefact(id: string, options: UpdateArtefactOptions): UpdateArtefactResult;

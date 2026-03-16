@@ -23,8 +23,8 @@ export const ARTEFACT_TOOLS: ToolDefinition[] = [
       inputSchema: {
         type: 'object',
         properties: {
-          type: { type: 'string', enum: ['task', 'epic', 'prd', 'story'], description: 'Artefact type' },
-          scope: { type: 'string', description: 'Filter scope (PRD-001 for epics, E001 for tasks)' },
+          type: { type: 'string', enum: ['task', 'epic', 'prd', 'story', 'panic'], description: 'Artefact type' },
+          scope: { type: 'string', description: 'Filter scope (PRD-001 for epics, E001 for tasks, artefact ID for panics)' },
           status: { type: 'string', description: 'Filter by status' },
           milestone: { type: 'string', description: 'Filter by milestone (epics only)' },
           tags: { type: 'array', items: { type: 'string' }, description: 'Filter by tags (any match)' },
@@ -100,6 +100,18 @@ export const ARTEFACT_TOOLS: ToolDefinition[] = [
             type: s.data?.type,
             parent: s.data?.parent
           }));
+        } else if (type === 'panic') {
+          const opts: { scope?: string; source?: 'agent' | 'framework'; status?: string } = {};
+          if (scope) opts.scope = scope;
+          if (status) opts.status = status;
+          items = store.getAllPanics(opts).map(p => ({
+            id: canonicalId(p.id),
+            title: p.data?.title,
+            status: p.data?.status,
+            scope: p.data?.scope,
+            source: p.data?.source,
+            severity: p.data?.severity
+          }));
         }
 
         if (limit && items.length > limit) {
@@ -156,6 +168,8 @@ export const ARTEFACT_TOOLS: ToolDefinition[] = [
           entry = store.getPrd(id);
         } else if (type === 'story') {
           entry = store.getStory(id);
+        } else if (type === 'panic') {
+          entry = store.getPanic(id);
         }
 
         if (!entry) {
@@ -238,13 +252,15 @@ export const ARTEFACT_TOOLS: ToolDefinition[] = [
   {
     tool: {
       name: 'artefact_create',
-      description: 'Create new artefact (task, epic, prd, story)',
+      description: 'Create new artefact (task, epic, prd, story, panic)',
       inputSchema: {
         type: 'object',
         properties: {
-          type: { type: 'string', enum: ['task', 'epic', 'prd', 'story'], description: 'Artefact type' },
+          type: { type: 'string', enum: ['task', 'epic', 'prd', 'story', 'panic'], description: 'Artefact type' },
           parent: { type: 'string', description: 'Parent ID (E001 for task, PRD-001 for epic/story)' },
           title: { type: 'string', description: 'Title' },
+          scope: { type: 'string', description: 'Artefact the panic is about (required for panic, e.g. T001, E001)' },
+          source: { type: 'string', enum: ['agent', 'framework'], description: 'Panic source (default: agent)' },
           tags: { type: 'array', items: { type: 'string' }, description: 'Tags to add' },
           created_at: { type: 'string', description: 'ISO date for creation timestamp (default: now)' }
         },
@@ -265,9 +281,14 @@ export const ARTEFACT_TOOLS: ToolDefinition[] = [
         }]);
       }
 
+      // Validate scope requirement for panic
+      if (type === 'panic' && !args.scope) {
+        return err(`scope is required for panic creation (the artefact this panic is about, e.g. T001)`);
+      }
+
       try {
         const store = getStore();
-        let result: { id: string; title: string; parent?: string; file?: string; dir?: string };
+        let result: { id: string; title: string; parent?: string; scope?: string; file?: string; dir?: string };
 
         if (type === 'task') {
           result = store.createTask(parent, title, { tags, created_at });
@@ -277,6 +298,8 @@ export const ARTEFACT_TOOLS: ToolDefinition[] = [
           result = store.createPrd(title, { tags, created_at });
         } else if (type === 'story') {
           result = store.createStory(parent, title, { tags, created_at });
+        } else if (type === 'panic') {
+          result = store.createPanic(args.scope, title, { source: args.source, tags, created_at });
         } else {
           return err(`Unknown artefact type: ${type}`);
         }

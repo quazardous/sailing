@@ -12,7 +12,7 @@ import {
   RealSchedulableTask
 } from '../../lib/scheduling.js';
 import { buildIdResolver } from '../../lib/normalize.js';
-import type { PrdData, EpicData, SailingGanttTask, SimpleGanttTask, GanttResult, SimpleGanttResult, EffortConfig } from './types.js';
+import type { PrdData, EpicData, TaskData, SailingGanttTask, SimpleGanttTask, GanttResult, SimpleGanttResult, EffortConfig } from './types.js';
 
 /** Collect all task IDs from a PRD's epics */
 function collectTaskIds(epics: EpicData[]): string[] {
@@ -21,6 +21,33 @@ function collectTaskIds(epics: EpicData[]): string[] {
     for (const task of epic.tasks) ids.push(task.id);
   }
   return ids;
+}
+
+/** Best available date for a task: started_at > created_at (frontmatter) > createdAt (fstat) */
+function getTaskDateForT0(task: TaskData): Date | null {
+  const iso = (task.meta?.started_at as string | undefined)
+    || (task.meta?.created_at as string | undefined)
+    || task.createdAt;
+  if (!iso) return null;
+  const d = new Date(iso);
+  return isNaN(d.getTime()) ? null : d;
+}
+
+/** Find earliest date across tasks, returns null if none found */
+function findEarliestTaskDate(tasks: Iterable<TaskData>): Date | null {
+  let earliest: Date | null = null;
+  for (const task of tasks) {
+    const d = getTaskDateForT0(task);
+    if (d && (!earliest || d < earliest)) earliest = d;
+  }
+  return earliest;
+}
+
+/** Build t0 from earliest date, truncated to midnight */
+function buildT0(earliestDate: Date | null): Date {
+  const t0 = earliestDate ? new Date(earliestDate) : new Date();
+  t0.setHours(0, 0, 0, 0);
+  return t0;
 }
 
 /** Extract and resolve blocked_by from task meta against known IDs */
@@ -37,21 +64,15 @@ function resolveBlockers(meta: Record<string, unknown> | undefined, resolve: (id
  */
 export function generatePrdGantt(prd: PrdData, effortConfig: EffortConfig): GanttResult {
   const taskData: Map<string, RealSchedulableTask & { title: string; epicId: string; epicTitle: string }> = new Map();
-  let earliestDate: Date | null = null;
+  const allTasks: TaskData[] = [];
   const resolve = buildIdResolver(collectTaskIds(prd.epics));
 
   for (const epic of prd.epics) {
     for (const task of epic.tasks) {
+      allTasks.push(task);
       const effort = task.meta?.effort as string | undefined;
-      const startedAt = task.meta?.started_at as string | undefined;
+      const startedAt = (task.meta?.started_at as string | undefined) || (task.meta?.created_at as string | undefined);
       const doneAt = task.meta?.done_at as string | undefined;
-
-      if (startedAt) {
-        const d = new Date(startedAt);
-        if (!earliestDate || d < earliestDate) {
-          earliestDate = d;
-        }
-      }
 
       taskData.set(task.id, {
         id: task.id,
@@ -67,8 +88,7 @@ export function generatePrdGantt(prd: PrdData, effortConfig: EffortConfig): Gant
     }
   }
 
-  const t0 = earliestDate ? new Date(earliestDate) : new Date();
-  t0.setHours(0, 0, 0, 0);
+  const t0 = buildT0(findEarliestTaskDate(allTasks));
 
   const metrics = calculateGanttMetrics(taskData, effortConfig, t0);
   const schedule = getTaskSchedules(taskData, effortConfig, t0);
@@ -205,20 +225,12 @@ export function generatePrdGantt(prd: PrdData, effortConfig: EffortConfig): Gant
  */
 export function generateEpicGantt(epic: EpicData, effortConfig: EffortConfig): GanttResult {
   const taskData: Map<string, RealSchedulableTask & { title: string }> = new Map();
-  let earliestDate: Date | null = null;
   const resolve = buildIdResolver(epic.tasks.map(t => t.id));
 
   for (const task of epic.tasks) {
     const effort = task.meta?.effort as string | undefined;
-    const startedAt = task.meta?.started_at as string | undefined;
+    const startedAt = (task.meta?.started_at as string | undefined) || (task.meta?.created_at as string | undefined);
     const doneAt = task.meta?.done_at as string | undefined;
-
-    if (startedAt) {
-      const d = new Date(startedAt);
-      if (!earliestDate || d < earliestDate) {
-        earliestDate = d;
-      }
-    }
 
     taskData.set(task.id, {
       id: task.id,
@@ -231,8 +243,7 @@ export function generateEpicGantt(epic: EpicData, effortConfig: EffortConfig): G
     });
   }
 
-  const t0 = earliestDate ? new Date(earliestDate) : new Date();
-  t0.setHours(0, 0, 0, 0);
+  const t0 = buildT0(findEarliestTaskDate(epic.tasks));
 
   const metrics = calculateGanttMetrics(taskData, effortConfig, t0);
   const schedule = getTaskSchedules(taskData, effortConfig, t0);
@@ -294,24 +305,15 @@ export function generateEpicGantt(epic: EpicData, effortConfig: EffortConfig): G
 export function generatePrdOverviewGantt(prds: PrdData[], effortConfig: EffortConfig): SimpleGanttResult {
   const tasks: SimpleGanttTask[] = [];
   let maxEndHour = 0;
-  let globalEarliestDate: Date | null = null;
 
+  const allTasks: TaskData[] = [];
   for (const prd of prds) {
     for (const epic of prd.epics) {
-      for (const task of epic.tasks) {
-        const startedAt = task.meta?.started_at as string | undefined;
-        if (startedAt) {
-          const d = new Date(startedAt);
-          if (!globalEarliestDate || d < globalEarliestDate) {
-            globalEarliestDate = d;
-          }
-        }
-      }
+      for (const task of epic.tasks) allTasks.push(task);
     }
   }
 
-  const t0 = globalEarliestDate ? new Date(globalEarliestDate) : new Date();
-  t0.setHours(0, 0, 0, 0);
+  const t0 = buildT0(findEarliestTaskDate(allTasks));
 
   for (const prd of prds) {
     const taskData: Map<string, RealSchedulableTask> = new Map();
@@ -321,7 +323,7 @@ export function generatePrdOverviewGantt(prds: PrdData[], effortConfig: EffortCo
     for (const epic of prd.epics) {
       for (const task of epic.tasks) {
         const effort = task.meta?.effort as string | undefined;
-        const startedAt = task.meta?.started_at as string | undefined;
+        const startedAt = (task.meta?.started_at as string | undefined) || (task.meta?.created_at as string | undefined);
         const doneAt = task.meta?.done_at as string | undefined;
 
         if (startedAt && (!earliestStartedAt || startedAt < earliestStartedAt)) {

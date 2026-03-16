@@ -10,6 +10,7 @@ import type {
   EpicIndexEntry,
   PrdIndexEntry,
   StoryIndexEntry,
+  PanicIndexEntry,
   ArchiveEntry,
   FullPrd
 } from '../../lib/types/entities.js';
@@ -17,6 +18,7 @@ import type { TaskQueryOptions, CreateTaskOptions, CreateTaskResult } from './ta
 import type { EpicQueryOptions, CreateEpicOptions, CreateEpicResult } from './epic.js';
 import type { CreatePrdOptions, CreatePrdResult } from './prd.js';
 import type { StoryQueryOptions, CreateStoryOptions, CreateStoryResult } from './story.js';
+import type { PanicQueryOptions, CreatePanicOptions, CreatePanicResult } from './panic.js';
 import type { ArchiveQueryOptions } from './archive.js';
 import type { SearchOptions, SearchHit } from './search.js';
 import type {
@@ -36,6 +38,7 @@ import { getTask, getAllTasks as getAllTasksFn, getTasksForEpic as getTasksForEp
 import { getEpic, getAllEpics as getAllEpicsFn, getEpicsForPrd as getEpicsForPrdFn, getEpicPrd as getEpicPrdFn, countEpics as countEpicsFn, createEpic as createEpicFn } from './epic.js';
 import { getPrd, getAllPrds as getAllPrdsFn, getFullPrd as getFullPrdFn, getAllFullPrds as getAllFullPrdsFn, getPrdBranching as getPrdBranchingFn, createPrd as createPrdFn } from './prd.js';
 import { getStory, getAllStories as getAllStoriesFn, getStoriesForPrd as getStoriesForPrdFn, countStories as countStoriesFn, createStory as createStoryFn } from './story.js';
+import { getPanic, getAllPanics as getAllPanicsFn, getPanicsForScope as getPanicsForScopeFn, countOpenPanics as countOpenPanicsFn, createPanic as createPanicFn } from './panic.js';
 import { getArchivedArtefact as getArchivedArtefactFn, getAllArchivedTasks as getAllArchivedTasksFn, getAllArchivedEpics as getAllArchivedEpicsFn, getAllArchivedPrds as getAllArchivedPrdsFn, buildArchiveIndex } from './archive.js';
 import { searchArtefacts } from './search.js';
 import { loadFile as coreLoadFile } from '../core-manager.js';
@@ -48,6 +51,7 @@ export class FileArtefactStore implements ArtefactStore {
   getEpic(id: string | number): EpicIndexEntry | null { return getEpic(id); }
   getPrd(id: string | number): PrdIndexEntry | null { return getPrd(id); }
   getStory(id: string | number): StoryIndexEntry | null { return getStory(id); }
+  getPanic(id: string | number): PanicIndexEntry | null { return getPanic(id); }
   getArchivedArtefact(id: string): ArchiveEntry | null { return getArchivedArtefactFn(id); }
 
   // -- List queries --
@@ -55,6 +59,7 @@ export class FileArtefactStore implements ArtefactStore {
   getAllEpics(opts?: EpicQueryOptions): EpicIndexEntry[] { return getAllEpicsFn(opts); }
   getAllPrds(): PrdIndexEntry[] { return getAllPrdsFn(); }
   getAllStories(opts?: StoryQueryOptions): StoryIndexEntry[] { return getAllStoriesFn(opts); }
+  getAllPanics(opts?: PanicQueryOptions): PanicIndexEntry[] { return getAllPanicsFn(opts); }
   getAllArchivedTasks(opts?: ArchiveQueryOptions): ArchiveEntry[] { return getAllArchivedTasksFn(opts); }
   getAllArchivedEpics(opts?: ArchiveQueryOptions): ArchiveEntry[] { return getAllArchivedEpicsFn(opts); }
   getAllArchivedPrds(): ArchiveEntry[] { return getAllArchivedPrdsFn(); }
@@ -90,6 +95,8 @@ export class FileArtefactStore implements ArtefactStore {
   getEpicsForPrd(prdId: string | number): EpicIndexEntry[] { return getEpicsForPrdFn(prdId); }
   getEpicPrd(epicId: string | number) { return getEpicPrdFn(epicId); }
   getStoriesForPrd(prdId: string | number): StoryIndexEntry[] { return getStoriesForPrdFn(prdId); }
+  getPanicsForScope(scopeId: string): PanicIndexEntry[] { return getPanicsForScopeFn(scopeId); }
+  countOpenPanics(opts?: PanicQueryOptions): number { return countOpenPanicsFn(opts); }
   getTasksForPrd(prdId: string | number): TaskIndexEntry[] {
     const prd = getPrd(prdId);
     if (!prd) return [];
@@ -116,6 +123,7 @@ export class FileArtefactStore implements ArtefactStore {
   createEpic(prdId: string, title: string, options?: CreateEpicOptions): CreateEpicResult { return createEpicFn(prdId, title, options); }
   createPrd(title: string, options?: CreatePrdOptions): CreatePrdResult { return createPrdFn(title, options); }
   createStory(prdId: string, title: string, options?: CreateStoryOptions): CreateStoryResult { return createStoryFn(prdId, title, options); }
+  createPanic(scopeId: string, title: string, options?: CreatePanicOptions): CreatePanicResult { return createPanicFn(scopeId, title, options); }
 
   // -- Update --
   updateArtefact(id: string, options: UpdateArtefactOptions): UpdateArtefactResult { return updateArtefactFn(id, options); }

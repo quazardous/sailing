@@ -94,6 +94,21 @@ export type {
   CreateStoryResult
 } from './story.js';
 
+// Panic operations
+export {
+  buildPanicIndex,
+  getPanic,
+  getAllPanics,
+  getPanicsForScope,
+  countOpenPanics,
+  createPanic
+} from './panic.js';
+export type {
+  PanicQueryOptions,
+  CreatePanicOptions,
+  CreatePanicResult
+} from './panic.js';
+
 // Archive operations
 export {
   buildArchiveIndex,
@@ -158,6 +173,7 @@ export type {
   EpicIndexEntry,
   PrdIndexEntry,
   StoryIndexEntry,
+  PanicIndexEntry,
   ArchiveEntry,
   FullPrd,
   FullEpic,
@@ -169,6 +185,7 @@ import { setGetters } from './common.js';
 import { getTask } from './task.js';
 import { getEpic } from './epic.js';
 import { getStory } from './story.js';
+import { getPanic } from './panic.js';
 
 // Auto-initialize on import
-setGetters(getTask, getEpic, getPrd, getStory);
+setGetters(getTask, getEpic, getPrd, getStory, getPanic);

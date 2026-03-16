@@ -79,7 +79,7 @@ export function loadState(): State {
   }
   // Auto-init: scan existing artefacts to find max IDs
   const store = getStore();
-  let maxPrd = 0, maxEpic = 0, maxTask = 0, maxStory = 0;
+  let maxPrd = 0, maxEpic = 0, maxTask = 0, maxStory = 0, maxPanic = 0;
 
   for (const p of store.getAllPrds()) {
     const num = parseInt(/(\d+)/.exec(p.id)?.[1] || '0', 10);
@@ -97,8 +97,12 @@ export function loadState(): State {
     const num = parseInt(/(\d+)/.exec(s.id)?.[1] || '0', 10);
     if (num > maxStory) maxStory = num;
   }
+  for (const p of store.getAllPanics()) {
+    const num = parseInt(/(\d+)/.exec(p.id)?.[1] || '0', 10);
+    if (num > maxPanic) maxPanic = num;
+  }
 
-  const state: State = { counters: { prd: maxPrd, epic: maxEpic, task: maxTask, story: maxStory } };
+  const state: State = { counters: { prd: maxPrd, epic: maxEpic, task: maxTask, story: maxStory, panic: maxPanic } };
   saveState(state);
   return state;
 }

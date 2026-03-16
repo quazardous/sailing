@@ -186,6 +186,11 @@ export const CONFIG_SCHEMA: Record<string, ConfigSchemaEntry> = {
     default: 3,
     description: 'Number of digits for Story IDs (S001)'
   },
+  'ids.panic_digits': {
+    type: 'number',
+    default: 3,
+    description: 'Number of digits for Panic IDs (P001)'
+  },
   'task.default_duration': {
     type: 'string',
     default: '1h',
@@ -516,7 +521,8 @@ export function getDigitConfig() {
     prd: ids.prd_digits,
     epic: ids.epic_digits,
     task: ids.task_digits,
-    story: ids.story_digits
+    story: ids.story_digits,
+    panic: ids.panic_digits
   };
 }
 

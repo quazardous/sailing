@@ -83,7 +83,7 @@ export const AGENT_CONDUCTOR_TOOLS: ToolDefinition[] = [
           priority: 'high'
         });
         nextActions.push({
-          tool: 'memory_status',
+          tool: 'memory_sync',
           args: {},
           reason: 'Check memory consolidation status',
           priority: 'normal'

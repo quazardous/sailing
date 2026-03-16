@@ -17,6 +17,7 @@ export interface DigitConfig {
   epic: number;
   task: number;
   story: number;
+  panic: number;
 }
 
 // Default digit configuration
@@ -24,7 +25,8 @@ const DEFAULT_DIGITS: DigitConfig = {
   prd: 3,
   epic: 3,
   task: 3,
-  story: 3
+  story: 3,
+  panic: 3
 };
 
 // ============================================================================
@@ -49,7 +51,8 @@ export function formatIdFrom(prefix: string, num: number, config: DigitConfig = 
     'PRD-': config.prd,
     'E': config.epic,
     'T': config.task,
-    'S': config.story
+    'S': config.story,
+    'P': config.panic
   };
   const digits = digitMap[prefix] || 3;
   return formatIdWith(prefix, num, digits);
@@ -85,7 +88,7 @@ export function extractEpicId(parent: string | null | undefined): string | null 
 // ID Normalization
 // ============================================================================
 
-export type EntityType = 'prd' | 'epic' | 'task' | 'story';
+export type EntityType = 'prd' | 'epic' | 'task' | 'story' | 'panic';
 
 /**
  * Normalize entity IDs to canonical format (pure function)
@@ -121,6 +124,12 @@ export function normalizeId(id: string | null | undefined, digitConfig: DigitCon
     return formatIdFrom('S', parseInt(storyMatch[1], 10), digitConfig);
   }
 
+  // Panic format (must be before numeric-only, after PRD check since PRD uses 3+ chars)
+  const panicMatch = /^P(\d+)$/i.exec(id);
+  if (panicMatch) {
+    return formatIdFrom('P', parseInt(panicMatch[1], 10), digitConfig);
+  }
+
   // Numeric-only format with defaultType
   const numericMatch = /^(\d+)$/.exec(id);
   if (numericMatch && defaultType) {
@@ -128,7 +137,8 @@ export function normalizeId(id: string | null | undefined, digitConfig: DigitCon
       'prd': 'PRD-',
       'epic': 'E',
       'task': 'T',
-      'story': 'S'
+      'story': 'S',
+      'panic': 'P'
     };
     return formatIdFrom(prefixMap[defaultType], parseInt(numericMatch[1], 10), digitConfig);
   }
@@ -170,7 +180,7 @@ export function isSameId(
 
   // Apply type hint to raw numbers
   if (type) {
-    const prefixMap: Record<EntityType, string> = { prd: 'PRD', epic: 'E', task: 'T', story: 'S' };
+    const prefixMap: Record<EntityType, string> = { prd: 'PRD', epic: 'E', task: 'T', story: 'S', panic: 'P' };
     if (!pa.prefix) pa.prefix = prefixMap[type];
     if (!pb.prefix) pb.prefix = prefixMap[type];
   }
@@ -193,7 +203,7 @@ export function matchesId(filename: string, rawId: string, digitConfig: DigitCon
   if (!normalizedInput) return false;
   const basename = path.basename(filename, '.md');
   // Extract ID from filename (e.g., "T002" from "T002-some-task")
-  const filenameIdMatch = /^(T\d+|E\d+|S\d+|PRD-\d+)/i.exec(basename);
+  const filenameIdMatch = /^(T\d+|E\d+|S\d+|P\d+|PRD-\d+)/i.exec(basename);
   if (!filenameIdMatch) return false;
   const normalizedFilename = normalizeId(filenameIdMatch[1], digitConfig);
   return normalizedFilename === normalizedInput;
@@ -258,12 +268,13 @@ export function extractTaskId(blockerEntry: string, digitConfig: DigitConfig = D
 /**
  * Determine entity type from ID
  */
-export function getEntityType(id: string | null | undefined): 'prd' | 'epic' | 'task' | 'story' | null {
+export function getEntityType(id: string | null | undefined): 'prd' | 'epic' | 'task' | 'story' | 'panic' | null {
   if (!id) return null;
   if (/^PRD-?\d+$/i.exec(id)) return 'prd';
   if (/^E\d+$/i.exec(id)) return 'epic';
   if (/^T\d+$/i.exec(id)) return 'task';
   if (/^S\d+$/i.exec(id)) return 'story';
+  if (/^P\d+$/i.exec(id)) return 'panic';
   return null;
 }
 
@@ -294,7 +305,7 @@ function idKey(id: string): string | null {
   const prdMatch = /^PRD-?0*(\d+)$/i.exec(clean);
   if (prdMatch) return `PRD:${prdMatch[1]}`;
 
-  const match = /^([TES])0*(\d+)([a-z])?$/i.exec(clean);
+  const match = /^([TESP])0*(\d+)([a-z])?$/i.exec(clean);
   if (match) return `${match[1].toUpperCase()}:${match[2]}${match[3]?.toLowerCase() || ''}`;
 
   return null;

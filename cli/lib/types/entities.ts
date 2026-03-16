@@ -38,6 +38,13 @@ export interface Story extends BaseEntity {
   parent_story?: string | null;
 }
 
+export interface Panic extends BaseEntity {
+  scope: string;
+  source: 'agent' | 'framework';
+  severity?: 'critical' | 'high';
+  resolved_at?: string;
+}
+
 /** File timestamps */
 export interface FileTimestamps {
   createdAt: string;   // ISO date string
@@ -78,6 +85,15 @@ export interface StoryIndexEntry extends FileTimestamps {
   prdId: string;
   prdDir: string;  // Internal use only - managers
   data: Partial<Story>;
+}
+
+export interface PanicIndexEntry extends FileTimestamps {
+  key: string;
+  id: string;
+  file: string;
+  prdId: string;
+  prdDir: string;
+  data: Partial<Panic>;
 }
 
 export interface ArchiveEntry extends FileTimestamps {

@@ -30,9 +30,12 @@ function formatMeta(meta: Record<string, unknown> | undefined): Array<{ key: str
 const timestamps = computed(() => {
   const data = selectedArtefact.value?.data;
   if (!data) return null;
+  // Prefer frontmatter created_at/updated_at over fstat timestamps
+  const createdAt = (data.meta?.created_at as string) || data.createdAt;
+  const modifiedAt = (data.meta?.updated_at as string) || data.modifiedAt;
   return {
-    createdAt: formatDate(data.createdAt),
-    modifiedAt: formatDate(data.modifiedAt)
+    createdAt: formatDate(createdAt),
+    modifiedAt: formatDate(modifiedAt)
   };
 });
 

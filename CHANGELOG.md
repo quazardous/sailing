@@ -4,6 +4,23 @@ All notable changes to the Sailing Framework will be documented in this file.
 
 <!-- NOTE: This is a USER changelog, not a commit log. Focus on user-visible features and benefits, not implementation details. -->
 
+## [1.25.0] - 2026-03-16
+
+### Added
+- **Panic artefact type**: New `P`-prefixed artefact for imperative blockers requiring human intervention. Statuses: Open → Acknowledged → Resolved. Created via `artefact_create type=panic scope=T001` or `/dev:panic` slash command
+- **Open panic warnings**: `workflow_ready` and `workflow_start` warn about unresolved panics in scope
+- **Dashboard panic blockers**: Open panics appear in the blockers endpoint and dashboard
+- **Panic statuses in lexicon**: `Open`, `Acknowledged`, `Resolved` with aliases (`ack`)
+
+### Fixed
+- **PRD Auto-Done cascade**: PRD now correctly cascades to Auto-Done when all epics are Auto-Done (was only checking Done/Cancelled, ignoring Auto-Done)
+- **Epic Auto-Done cache staleness**: Cache is now cleared after epic status update so PRD auto-done check sees fresh data
+- **`started_at`/`done_at` stamping via MCP**: `updateArtefact()` now stamps `started_at` on In Progress and `done_at` on Done transitions (was only done by CLI path, not MCP)
+- **Ghost MCP tool references**: Fixed `memory_status` → `memory_sync` and `memory_analyze` → `memory_sync` in next_actions (tools didn't exist)
+- **Gantt t0 fallback**: Gantt chart now falls back to `created_at` when `started_at` is missing for t0 calculation and task scheduling (prevents epoch dates)
+- **Dashboard "Created" timestamp**: MetaPanel now prefers frontmatter `created_at` over fstat timestamp
+- **Gantt dependency line visibility**: Increased stroke width and opacity for better contrast against colored bars
+
 ## [1.24.1] - 2026-03-16
 
 ### Added

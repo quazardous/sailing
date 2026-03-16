@@ -258,8 +258,8 @@ export class ConductorManager {
           reason: `Pending memory logs for epic(s): ${pendingMemory.epics.join(', ')}`,
           nextSteps: [
             'Memory logs must be analyzed before spawning new agents',
-            `memory_analyze ${pendingMemory.epics[0]}   # Analyze and consolidate logs`,
-            'memory_status                             # Check memory status'
+            `memory_sync scope=${pendingMemory.epics[0]}   # Analyze and consolidate logs`,
+            'memory_sync                               # Check memory status'
           ]
         }
       };

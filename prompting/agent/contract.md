@@ -21,9 +21,17 @@ Agents rely ONLY on MCP tool output, never on file structure assumptions.
 
 ## Escalation
 
+When blocked by an imperative issue requiring human intervention:
+
 ```json
-// MCP: task_log
-{ "task_id": "TNNN", "message": "BLOCKED: <reason>", "level": "error" }
+// MCP: artefact_create
+{ "type": "panic", "scope": "TNNN", "title": "Brief description of blocker", "source": "agent" }
 ```
 
-Then **STOP**. Do not continue. Skill decides next.
+Then edit the panic with details:
+```json
+// MCP: artefact_edit
+{ "id": "PNNN", "content": "## Description\n\n<what happened>\n\n## Impact\n\n<what is blocked>" }
+```
+
+Then **STOP**. Do not continue. Human resolves the panic.

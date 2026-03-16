@@ -40,13 +40,14 @@ export interface ToolDefinition {
 // ID Type Detection
 // =============================================================================
 
-export type ArtefactType = 'task' | 'epic' | 'prd' | 'story' | 'unknown';
+export type ArtefactType = 'task' | 'epic' | 'prd' | 'story' | 'panic' | 'unknown';
 
 export function detectType(id: string): ArtefactType {
   if (/^T\d+$/i.test(id)) return 'task';
   if (/^E\d+$/i.test(id)) return 'epic';
   if (/^PRD-?\d+$/i.test(id)) return 'prd';
   if (/^S\d+$/i.test(id)) return 'story';
+  if (/^P\d+$/i.test(id)) return 'panic';
   return 'unknown';
 }
 

@@ -9,7 +9,8 @@ import type {
   TaskIndexEntry,
   EpicIndexEntry,
   PrdIndexEntry,
-  StoryIndexEntry
+  StoryIndexEntry,
+  PanicIndexEntry
 } from '../../lib/types/entities.js';
 
 // ============================================================================
@@ -20,6 +21,7 @@ export let _taskIndex: Map<string, TaskIndexEntry> | null = null;
 export let _epicIndex: Map<string, EpicIndexEntry> | null = null;
 export let _prdIndex: Map<number, PrdIndexEntry> | null = null;
 export let _storyIndex: Map<string, StoryIndexEntry> | null = null;
+export let _panicIndex: Map<string, PanicIndexEntry> | null = null;
 export let _memoryIndex: Map<string, { key: string; type: 'epic' | 'prd'; file: string }> | null = null;
 export let _logIndex: Map<string, { key: string; type: 'epic' | 'task'; file: string }> | null = null;
 
@@ -41,6 +43,7 @@ export function clearCache() {
   _epicIndex = null;
   _prdIndex = null;
   _storyIndex = null;
+  _panicIndex = null;
   _memoryIndex = null;
   _logIndex = null;
   for (const cb of _onClearCallbacks) cb();
@@ -50,6 +53,7 @@ export function setTaskIndex(index: Map<string, TaskIndexEntry>) { _taskIndex = 
 export function setEpicIndex(index: Map<string, EpicIndexEntry>) { _epicIndex = index; }
 export function setPrdIndex(index: Map<number, PrdIndexEntry>) { _prdIndex = index; }
 export function setStoryIndex(index: Map<string, StoryIndexEntry>) { _storyIndex = index; }
+export function setPanicIndex(index: Map<string, PanicIndexEntry>) { _panicIndex = index; }
 export function setMemoryIndex(index: Map<string, { key: string; type: 'epic' | 'prd'; file: string }>) { _memoryIndex = index; }
 export function setLogIndex(index: Map<string, { key: string; type: 'epic' | 'task'; file: string }>) { _logIndex = index; }
 
@@ -96,23 +100,26 @@ let _getTask: ((id: string | number) => TaskIndexEntry | null) | null = null;
 let _getEpic: ((id: string | number) => EpicIndexEntry | null) | null = null;
 let _getPrd: ((id: string | number) => PrdIndexEntry | null) | null = null;
 let _getStory: ((id: string | number) => StoryIndexEntry | null) | null = null;
+let _getPanic: ((id: string | number) => PanicIndexEntry | null) | null = null;
 
 export function setGetters(
   getTask: (id: string | number) => TaskIndexEntry | null,
   getEpic: (id: string | number) => EpicIndexEntry | null,
   getPrd: (id: string | number) => PrdIndexEntry | null,
-  getStory: (id: string | number) => StoryIndexEntry | null
+  getStory: (id: string | number) => StoryIndexEntry | null,
+  getPanic?: (id: string | number) => PanicIndexEntry | null
 ) {
   _getTask = getTask;
   _getEpic = getEpic;
   _getPrd = getPrd;
   _getStory = getStory;
+  if (getPanic) _getPanic = getPanic;
 }
 
 interface ResolvedArtefact {
   id: string;
   file: string;
-  type: 'task' | 'epic' | 'prd' | 'story';
+  type: 'task' | 'epic' | 'prd' | 'story' | 'panic';
 }
 
 /**
@@ -146,6 +153,10 @@ function resolveArtefact(id: string, mode?: 'required' | 'optional'): ResolvedAr
     type = 'story';
     const s = _getStory(normalized);
     if (s) entry = { id: s.id, file: s.file };
+  } else if (normalized.startsWith('P') && _getPanic) {
+    type = 'panic';
+    const p = _getPanic(normalized);
+    if (p) entry = { id: p.id, file: p.file };
   } else {
     if (mode === 'required') throw new Error(`Artefact not found: ${id}`);
     return null;
@@ -174,8 +185,19 @@ export function updateArtefact(id: string, options: UpdateArtefactOptions): Upda
   let updated = false;
 
   if (options.status !== undefined) {
+    const now = new Date().toISOString();
+    const prevStatus = data.status as string | undefined;
     data.status = options.status;
     updated = true;
+
+    // Stamp started_at / done_at on status transitions
+    if (options.status === 'In Progress' && prevStatus !== 'In Progress') {
+      if (!data.started_at) data.started_at = now;
+    }
+    if (options.status === 'Done' && prevStatus !== 'Done') {
+      data.done_at = now;
+      if (!data.started_at) data.started_at = now;
+    }
   }
   if (options.title !== undefined) {
     data.title = options.title;

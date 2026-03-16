@@ -11,7 +11,7 @@ import { json, parseBody } from './server.js';
 // Import from managers (allowed at routes level)
 import { getAllVersions, getMainVersion } from '../managers/version-manager.js';
 import { getAllAgentsFromDb } from '../managers/db-manager.js';
-import { getAllFullPrds, buildTaskIndex, buildEpicIndex, updateArtefact } from '../managers/artefacts/index.js';
+import { getAllFullPrds, buildTaskIndex, buildEpicIndex, buildPanicIndex, updateArtefact } from '../managers/artefacts/index.js';
 import { checkPendingMemory, findPrdMemoryFile, findEpicMemoryFile } from '../managers/memory-manager.js';
 import { archivePrd } from '../managers/archive-manager.js';
 import { normalizeStatus, STATUS } from '../lib/lexicon.js';
@@ -110,6 +110,19 @@ function fetchBlockers(): BlockerData[] {
         id: task.data?.id || `T${task.key}`,
         title: task.data?.title || 'Untitled',
         reason: (task.data as Record<string, unknown>)?.blocked_reason as string || 'Unknown',
+      });
+    }
+  }
+
+  // Include open panics as blockers
+  const panicIndex = buildPanicIndex();
+  for (const [, panic] of panicIndex) {
+    if (panic.data?.status !== 'Resolved') {
+      blockers.push({
+        type: 'panic',
+        id: panic.data?.id || `P${panic.key}`,
+        title: panic.data?.title || 'Untitled',
+        reason: `Panic (scope: ${panic.data?.scope || 'unknown'})`,
       });
     }
   }
@@ -502,6 +515,7 @@ export function createApiV2Routes(): Record<string, (req: http.IncomingMessage, 
       prd: STATUS.prd,
       epic: STATUS.epic,
       task: STATUS.task,
+      panic: STATUS.panic,
     });
   };
 

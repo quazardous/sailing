@@ -1,7 +1,7 @@
 /**
  * MCP Conductor Tools - Workflow operations
  */
-import { getTask } from '../../artefacts-manager.js';
+import { getTask, getAllPanics } from '../../artefacts-manager.js';
 import { getStore } from '../../artefacts-manager.js';
 import {
   getReadyTasks,
@@ -88,6 +88,36 @@ function getEpicHealthWarnings(scope?: { prd?: string; epic?: string }): EpicWar
   return warnings;
 }
 
+/**
+ * Get open panic warnings for a scope
+ */
+function getOpenPanicWarnings(scope?: { prd?: string; epic?: string }): string[] {
+  const warnings: string[] = [];
+  const panics = getAllPanics();
+
+  for (const p of panics) {
+    if (p.data?.status === 'Resolved') continue;
+
+    const panicScope = p.data?.scope || '';
+
+    // Filter by PRD or epic scope if provided
+    if (scope?.prd) {
+      if (p.prdId !== scope.prd && !p.prdId?.includes(scope.prd.replace(/^PRD-?0*/i, ''))) {
+        continue;
+      }
+    }
+    if (scope?.epic) {
+      const normEpic = canonicalId(scope.epic);
+      if (panicScope !== normEpic && p.prdId !== normEpic) continue;
+    }
+
+    const cid = canonicalId(p.id);
+    warnings.push(`⚠ PANIC ${cid}: ${p.data?.title || 'Untitled'} (scope: ${panicScope})`);
+  }
+
+  return warnings;
+}
+
 export const WORKFLOW_TOOLS: ToolDefinition[] = [
   {
     tool: {
@@ -120,6 +150,12 @@ export const WORKFLOW_TOOLS: ToolDefinition[] = [
         epic: type === 'epic' ? args.scope as string : undefined
       });
 
+      // Check open panics
+      const panicWarnings = getOpenPanicWarnings({
+        prd: type === 'prd' ? args.scope as string : undefined,
+        epic: type === 'epic' ? args.scope as string : undefined
+      });
+
       if (result.tasks.length > 0) {
         nextActions.push({
           tool: 'workflow_start',
@@ -130,7 +166,7 @@ export const WORKFLOW_TOOLS: ToolDefinition[] = [
       }
       if (result.tasks.length === 0) {
         nextActions.push({
-          tool: 'memory_status',
+          tool: 'memory_sync',
           args: {},
           reason: 'No ready tasks - check if logs need consolidation',
           priority: 'normal'
@@ -142,7 +178,8 @@ export const WORKFLOW_TOOLS: ToolDefinition[] = [
         data: {
           tasks: result.tasks.map(t => ({ ...t, id: canonicalId(t.id) })),
           total: result.total,
-          ...(epicWarnings.length > 0 ? { warnings: epicWarnings } : {})
+          ...(epicWarnings.length > 0 ? { warnings: epicWarnings } : {}),
+          ...(panicWarnings.length > 0 ? { panicWarnings } : {})
         },
         next_actions: nextActions
       });
@@ -209,6 +246,13 @@ export const WORKFLOW_TOOLS: ToolDefinition[] = [
           assignee: (args.assignee as string) || 'agent'
         });
 
+        // Check for open panics in scope
+        const taskEntry = getTask(args.task_id as string);
+        const taskEpicId = taskEntry?.data?.parent ? /E\d+/.exec(taskEntry.data.parent)?.[0] : undefined;
+        const panicWarnings = getOpenPanicWarnings({
+          epic: taskEpicId || undefined
+        });
+
         const config = getAgentConfig();
         const nextActions: NextAction[] = config.use_subprocess
           ? [{
@@ -226,7 +270,11 @@ export const WORKFLOW_TOOLS: ToolDefinition[] = [
 
         return ok({
           success: true,
-          data: { ...result, id: canonicalId(result.id) },
+          data: {
+            ...result,
+            id: canonicalId(result.id),
+            ...(panicWarnings.length > 0 ? { panicWarnings } : {})
+          },
           next_actions: nextActions
         });
       } catch (error) {
@@ -268,7 +316,7 @@ export const WORKFLOW_TOOLS: ToolDefinition[] = [
           priority: 'high'
         });
         nextActions.push({
-          tool: 'memory_status',
+          tool: 'memory_sync',
           args: { scope: epicId },
           reason: 'Check if logs need consolidation',
           priority: 'normal'

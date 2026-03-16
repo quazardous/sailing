@@ -3,16 +3,18 @@
  * Status, effort, priority definitions and validation
  */
 
-type EntityType = 'prd' | 'epic' | 'task';
+type EntityType = 'prd' | 'epic' | 'task' | 'story' | 'panic';
 
 // Entity types
-export const ENTITY_TYPES: EntityType[] = ['prd', 'epic', 'task'];
+export const ENTITY_TYPES: EntityType[] = ['prd', 'epic', 'task', 'story', 'panic'];
 
 // Canonical status values per entity type
 export const STATUS: Record<EntityType, string[]> = {
   task: ['Not Started', 'In Progress', 'Blocked', 'Done', 'Cancelled'],
   epic: ['Not Started', 'Draft', 'Reviewed', 'Breakdown', 'In Progress', 'Auto-Done', 'Done'],
-  prd: ['Draft', 'In Review', 'Approved', 'Breakdown', 'In Progress', 'Auto-Done', 'Done']
+  prd: ['Draft', 'In Review', 'Approved', 'Breakdown', 'In Progress', 'Auto-Done', 'Done'],
+  story: ['Draft', 'Reviewed', 'Done'],
+  panic: ['Open', 'Acknowledged', 'Resolved']
 };
 
 // Aliases mapping (lowercase, no spaces/dashes/underscores) → canonical
@@ -63,7 +65,13 @@ export const STATUS_ALIASES: Record<string, string> = {
   inreview: 'In Review',
   review: 'In Review',
   reviewing: 'In Review',
-  approved: 'Approved'
+  approved: 'Approved',
+
+  // Panic statuses
+  open: 'Open',
+  acknowledged: 'Acknowledged',
+  ack: 'Acknowledged',
+  resolved: 'Resolved'
 };
 
 // Legacy effort levels (T-shirt sizes) - kept for backward compatibility
@@ -150,6 +158,14 @@ export function isStatusReviewed(status: string | null | undefined): boolean {
 
 export function isStatusBreakdown(status: string | null | undefined): boolean {
   return statusEquals(status, 'breakdown');
+}
+
+export function isStatusOpen(status: string | null | undefined): boolean {
+  return statusEquals(status, 'open');
+}
+
+export function isStatusResolved(status: string | null | undefined): boolean {
+  return statusEquals(status, 'resolved');
 }
 
 /**
@@ -274,5 +290,6 @@ export function statusSymbol(status: string | null | undefined): string {
   if (isStatusCancelled(status)) return '○';
   if (isStatusReviewed(status)) return '◎'; // Reviewed: double circle
   if (isStatusBreakdown(status)) return '◈'; // Breakdown: diamond in circle
+  if (isStatusOpen(status)) return '⚠'; // Open: warning (panic)
   return '◌';
 }

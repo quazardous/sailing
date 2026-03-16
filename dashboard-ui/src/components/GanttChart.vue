@@ -841,11 +841,11 @@ function formatDate(hours: number): string {
 /* Dependency lines */
 .dependency-line {
   fill: none;
-  stroke: #6B7280;
-  stroke-width: 1;
+  stroke: #4B5563;
+  stroke-width: 1.5;
   stroke-linecap: square;
   stroke-linejoin: miter;
-  opacity: 0.6;
+  opacity: 0.8;
   vector-effect: non-scaling-stroke;
 }
 

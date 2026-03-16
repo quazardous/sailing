@@ -125,5 +125,6 @@ export interface SailingConfig {
     epic_digits: number;
     task_digits: number;
     story_digits: number;
+    panic_digits: number;
   };
 }

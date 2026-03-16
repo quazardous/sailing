@@ -10,7 +10,7 @@
 import path from 'path';
 import { loadFile, saveFile, findPrdDirs } from './core-manager.js';
 import { normalizeId, matchesPrdDir, isSameId } from '../lib/normalize.js';
-import { getStore } from './artefacts-manager.js';
+import { getStore, clearCache } from './artefacts-manager.js';
 import {
   isStatusDone,
   isStatusNotStarted,
@@ -293,7 +293,7 @@ function areAllPrdEpicsDone(prdDir: string): boolean {
   if (epics.length === 0) return false;
 
   return epics.every(epic =>
-    isStatusDone(epic.data?.status) || isStatusCancelled(epic.data?.status)
+    isStatusDone(epic.data?.status) || isStatusCancelled(epic.data?.status) || isStatusAutoDone(epic.data?.status)
   );
 }
 
@@ -322,6 +322,7 @@ export function checkAndUpdateEpicAutoDone(epicId: string, currentTaskId?: strin
   const previousStatus = epicData.data.status as string;
   epicData.data.status = 'Auto-Done';
   saveFile(epicFile, epicData.data, epicData.body);
+  clearCache(); // Invalidate so PRD auto-done check sees updated epic status
 
   return {
     updated: true,
