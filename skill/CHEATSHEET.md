@@ -85,7 +85,16 @@ MCP tools are available via the `mcp` allowed-tool.
 
 ```json
 // MCP: memory_sync
-{}                              // Process pending logs
+{}                              // Lightweight summary: pending epic IDs + counts
+{ "scope": "ENNN" }            // Full parsedEntries for one epic
+
+// MCP: memory_consolidate — sections: Key Files, Gotchas, Decisions, Cross-refs, Escalation, Changelog
+{ "level": "epic", "target_id": "E001", "section": "Gotchas", "content": "..." }
+// Replaces section, auto-flushes logs, creates file if needed. Use "append": true for additive writes.
+// Rule: only write what was DISCOVERED, not what's already in the epic definition.
+
+// MCP: memory_flush_logs — manual cleanup for stale/orphaned logs
+{ "epic_id": "ENNN" }
 
 // MCP: memory_read
 { "scope": "ENNN" }             // Epic memory

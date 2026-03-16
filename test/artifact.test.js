@@ -180,7 +180,7 @@ describe('applyOp - replace', () => {
     assert.strictEqual(parsed.sections.get('Description'), 'New description.');
   });
 
-  it('should fail for non-existent section', () => {
+  it('should auto-create non-existent section', () => {
     const parsed = parseMarkdownSections(SIMPLE_MD);
     const result = applyOp(parsed.sections, parsed.order, {
       op: 'replace',
@@ -188,8 +188,9 @@ describe('applyOp - replace', () => {
       content: 'test'
     });
 
-    assert.ok(!result.success);
-    assert.ok(result.error.includes('not found'));
+    assert.ok(result.success);
+    assert.strictEqual(parsed.sections.get('NonExistent'), 'test');
+    assert.ok(parsed.order.includes('NonExistent'));
   });
 });
 
@@ -452,13 +453,16 @@ describe('editArtifact (integration)', () => {
     assert.strictEqual(result.applied, 2);
   });
 
-  it('should report errors for failed ops', () => {
+  it('should auto-create section via replace on non-existent section', () => {
     const result = editArtifact(tmpFile, [
-      { op: 'replace', section: 'NonExistent', content: 'fail' }
+      { op: 'replace', section: 'NonExistent', content: 'created' }
     ]);
 
-    assert.ok(!result.success);
-    assert.strictEqual(result.errors.length, 1);
+    assert.ok(result.success);
+    assert.strictEqual(result.applied, 1);
+    const content = fs.readFileSync(tmpFile, 'utf8');
+    assert.ok(content.includes('NonExistent'));
+    assert.ok(content.includes('created'));
   });
 
   it('should fail for non-existent file', () => {
