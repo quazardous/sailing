@@ -15,7 +15,11 @@ import {
   isStatusDone,
   isStatusNotStarted,
   isStatusCancelled,
-  isStatusAutoDone
+  isStatusAutoDone,
+  isStatusDraft,
+  isStatusReviewed,
+  isStatusBreakdown,
+  statusEquals
 } from '../lib/lexicon.js';
 import { buildDependencyGraph } from './graph-manager.js';
 
@@ -59,8 +63,24 @@ function findPrdFile(parent: string): { prdId: string; prdFile: string; prdDir: 
 }
 
 /**
+ * Check if a status is before Breakdown (should escalate to Breakdown)
+ */
+function isPreBreakdownStatus(status: string | null | undefined): boolean {
+  return isStatusNotStarted(status) || isStatusDraft(status)
+    || isStatusReviewed(status)
+    || statusEquals(status, 'approved') || statusEquals(status, 'inreview');
+}
+
+/**
+ * Check if a status is a pre-progress state (should escalate to In Progress)
+ */
+function isPreProgressStatus(status: string | null | undefined): boolean {
+  return isPreBreakdownStatus(status) || isStatusBreakdown(status);
+}
+
+/**
  * Auto-escalate Epic to "In Progress" when a task starts
- * Only escalates if Epic is in a "not started" status
+ * Only escalates if Epic is in a pre-progress status
  */
 export function escalateEpicToInProgress(epicId: string): StatusTransitionResult {
   const epicFile = findEpicFile(epicId);
@@ -73,7 +93,7 @@ export function escalateEpicToInProgress(epicId: string): StatusTransitionResult
     return { updated: false, entityId: epicId, message: 'Could not load epic' };
   }
 
-  if (!isStatusNotStarted(epicData.data.status)) {
+  if (!isPreProgressStatus(epicData.data.status)) {
     return { updated: false, entityId: epicId, message: 'Epic already started' };
   }
 
@@ -107,7 +127,7 @@ export function escalatePrdToInProgress(parent: string): StatusTransitionResult 
   }
 
   const status = prdData.data.status as string;
-  if (status !== 'Draft' && status !== 'Approved' && !isStatusNotStarted(status)) {
+  if (!isPreProgressStatus(status)) {
     return { updated: false, entityId: prdId, message: 'PRD already in progress' };
   }
 
@@ -144,6 +164,96 @@ export function escalateOnTaskStart(taskData: { parent?: string }): {
   // Extract PRD ID from parent
   if (taskData.parent) {
     result.prd = escalatePrdToInProgress(taskData.parent);
+  }
+
+  return result;
+}
+
+/**
+ * Auto-escalate Epic to "Breakdown" when a task is created under it
+ * Only escalates if Epic is in a pre-breakdown status
+ */
+export function escalateEpicToBreakdown(epicId: string): StatusTransitionResult {
+  const epicFile = findEpicFile(epicId);
+  if (!epicFile) {
+    return { updated: false, entityId: epicId, message: 'Epic not found' };
+  }
+
+  const epicData = loadFile(epicFile);
+  if (!epicData?.data) {
+    return { updated: false, entityId: epicId, message: 'Could not load epic' };
+  }
+
+  if (!isPreBreakdownStatus(epicData.data.status)) {
+    return { updated: false, entityId: epicId, message: 'Epic already at or past Breakdown' };
+  }
+
+  const previousStatus = epicData.data.status as string;
+  epicData.data.status = 'Breakdown';
+  saveFile(epicFile, epicData.data, epicData.body);
+
+  return {
+    updated: true,
+    entityId: epicId,
+    previousStatus,
+    newStatus: 'Breakdown',
+    message: `Epic ${epicId} → Breakdown`
+  };
+}
+
+/**
+ * Auto-escalate PRD to "Breakdown" when an epic is created under it
+ * Only escalates if PRD is in a pre-breakdown status
+ */
+export function escalatePrdToBreakdown(parent: string): StatusTransitionResult {
+  const prdInfo = findPrdFile(parent);
+  if (!prdInfo) {
+    return { updated: false, entityId: 'unknown', message: 'PRD not found' };
+  }
+
+  const { prdId, prdFile } = prdInfo;
+  const prdData = loadFile(prdFile);
+  if (!prdData?.data) {
+    return { updated: false, entityId: prdId, message: 'Could not load PRD' };
+  }
+
+  const status = prdData.data.status as string;
+  if (!isPreBreakdownStatus(status)) {
+    return { updated: false, entityId: prdId, message: 'PRD already at or past Breakdown' };
+  }
+
+  const previousStatus = status;
+  prdData.data.status = 'Breakdown';
+  saveFile(prdFile, prdData.data, prdData.body);
+
+  return {
+    updated: true,
+    entityId: prdId,
+    previousStatus,
+    newStatus: 'Breakdown',
+    message: `PRD ${prdId} → Breakdown`
+  };
+}
+
+/**
+ * Auto-escalate parent to "Breakdown" when a child artefact is created
+ * - Creating a task → escalates parent epic to Breakdown
+ * - Creating an epic → escalates parent PRD to Breakdown
+ */
+export function escalateOnChildCreate(childType: string, parent: string): {
+  epic?: StatusTransitionResult;
+  prd?: StatusTransitionResult;
+} {
+  const result: { epic?: StatusTransitionResult; prd?: StatusTransitionResult } = {};
+
+  if (childType === 'task') {
+    const epicMatch = /E(\d+)/i.exec(parent);
+    if (epicMatch) {
+      const epicId = normalizeId(`E${epicMatch[1]}`);
+      result.epic = escalateEpicToBreakdown(epicId);
+    }
+  } else if (childType === 'epic') {
+    result.prd = escalatePrdToBreakdown(parent);
   }
 
   return result;
@@ -287,7 +397,7 @@ export function cascadeTaskCompletion(taskId: string, taskData: { parent?: strin
         const prdData = loadFile(prdInfo.prdFile);
         if (prdData?.data) {
           const status = prdData.data.status as string;
-          if (status === 'Draft' || status === 'Approved') {
+          if (isPreProgressStatus(status)) {
             prdData.data.status = 'In Progress';
             saveFile(prdInfo.prdFile, prdData.data, prdData.body);
             result.prd = {

@@ -91,6 +91,78 @@ export const DEPS_TOOLS: ToolDefinition[] = [
   },
   {
     tool: {
+      name: 'deps_add_batch',
+      description: 'Add multiple dependencies in one call',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          deps: {
+            type: 'array',
+            items: {
+              type: 'object',
+              properties: {
+                id: { type: 'string', description: 'Task or Epic ID' },
+                blocked_by: { type: 'string', description: 'Blocking Task or Epic ID' }
+              },
+              required: ['id', 'blocked_by']
+            },
+            description: 'Array of { id, blocked_by } pairs'
+          }
+        },
+        required: ['deps']
+      }
+    },
+    handler: (args) => {
+      const { deps } = args;
+
+      if (!Array.isArray(deps) || deps.length === 0) {
+        return err('deps array is required and must not be empty');
+      }
+
+      const added: string[] = [];
+      const errors: string[] = [];
+
+      for (const dep of deps) {
+        const id = normalizeId(dep.id as string);
+        const blockedBy = normalizeId(dep.blocked_by as string);
+
+        if (!id.startsWith('T') && !id.startsWith('E')) {
+          errors.push(`${id}: must be Task (T001) or Epic (E001)`);
+          continue;
+        }
+        if (!blockedBy.startsWith('T') && !blockedBy.startsWith('E')) {
+          errors.push(`${blockedBy}: must be Task (T001) or Epic (E001)`);
+          continue;
+        }
+
+        const result = addArtefactDependency(id, blockedBy);
+        if (result.added) {
+          added.push(`${canonicalId(id)} blocked_by ${canonicalId(blockedBy)}`);
+        } else {
+          errors.push(`${canonicalId(id)} → ${canonicalId(blockedBy)}: ${result.message}`);
+        }
+      }
+
+      const nextActions: NextAction[] = [{
+        tool: 'workflow_validate',
+        args: {},
+        reason: 'Validate dependency graph after batch add',
+        priority: 'normal'
+      }];
+
+      return ok({
+        success: true,
+        data: {
+          added,
+          count: added.length,
+          ...(errors.length > 0 ? { errors } : {})
+        },
+        next_actions: nextActions
+      });
+    }
+  },
+  {
+    tool: {
       name: 'deps_critical',
       description: 'Find bottlenecks (tasks blocking the most work)',
       inputSchema: {

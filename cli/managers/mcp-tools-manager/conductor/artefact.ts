@@ -11,6 +11,9 @@ import {
   canonicalId
 } from '../types.js';
 import type { ToolDefinition, NextAction } from '../types.js';
+import { escalateOnChildCreate } from '../../status-manager.js';
+import { addArtefactDependency } from '../../artefacts/common.js';
+import { isStatusDraft, isStatusNotStarted } from '../../../lib/lexicon.js';
 
 export const ARTEFACT_TOOLS: ToolDefinition[] = [
   {
@@ -39,17 +42,36 @@ export const ARTEFACT_TOOLS: ToolDefinition[] = [
         let items: Array<{ id: string; title?: string; status?: string; [key: string]: unknown }> = [];
 
         if (type === 'task') {
-          const opts: { epicId?: string; status?: string; tags?: string[] } = {};
-          if (scope) opts.epicId = scope;
-          if (status) opts.status = status;
-          if (tags) opts.tags = tags;
-          items = store.getAllTasks(opts).map(t => ({
-            id: canonicalId(t.id),
-            title: t.data?.title,
-            status: t.data?.status,
-            parent: t.data?.parent,
-            assignee: t.data?.assignee
-          }));
+          const scopeType = scope ? detectType(scope) : null;
+          if (scopeType === 'prd') {
+            // PRD scope: get all tasks across all epics in this PRD
+            const prdMatch = /PRD-0*(\d+)/i.exec(scope);
+            if (prdMatch) {
+              const prdTasks = store.getTasksForPrd(scope);
+              items = prdTasks
+                .filter(t => !status || t.data?.status === status)
+                .filter(t => !tags?.length || tags.some((tag: string) => (t.data?.tags as string[] || []).includes(tag)))
+                .map(t => ({
+                  id: canonicalId(t.id),
+                  title: t.data?.title,
+                  status: t.data?.status,
+                  parent: t.data?.parent,
+                  assignee: t.data?.assignee
+                }));
+            }
+          } else {
+            const opts: { epicId?: string; status?: string; tags?: string[] } = {};
+            if (scope) opts.epicId = scope;
+            if (status) opts.status = status;
+            if (tags) opts.tags = tags;
+            items = store.getAllTasks(opts).map(t => ({
+              id: canonicalId(t.id),
+              title: t.data?.title,
+              status: t.data?.status,
+              parent: t.data?.parent,
+              assignee: t.data?.assignee
+            }));
+          }
         } else if (type === 'epic') {
           const opts: { status?: string; milestone?: string; tags?: string[] } = {};
           if (status) opts.status = status;
@@ -190,7 +212,24 @@ export const ARTEFACT_TOOLS: ToolDefinition[] = [
           });
         }
 
-        return ok({ success: true, data, next_actions: nextActions });
+        // Lifecycle warnings
+        const warnings: string[] = [];
+        if (type === 'epic') {
+          const epicStatus = file.data?.status as string | undefined;
+          if (isStatusDraft(epicStatus) || isStatusNotStarted(epicStatus)) {
+            warnings.push(`Epic is "${epicStatus}" — run /dev:epic-review before breakdown`);
+          }
+          const epicTasks = store.getTasksForEpic(id);
+          if (epicTasks.length === 0 && !isStatusDraft(epicStatus) && !isStatusNotStarted(epicStatus)) {
+            warnings.push(`Epic has 0 tasks — run /dev:epic-breakdown`);
+          }
+        }
+
+        return ok({
+          success: true,
+          data: { ...data, ...(warnings.length > 0 ? { warnings } : {}) },
+          next_actions: nextActions
+        });
       } catch (error: any) {
         return err(error.message);
       }
@@ -242,6 +281,17 @@ export const ARTEFACT_TOOLS: ToolDefinition[] = [
           return err(`Unknown artefact type: ${type}`);
         }
 
+        // Auto-escalate parent to Breakdown when creating children
+        if (parent && (type === 'task' || type === 'epic')) {
+          const escalation = escalateOnChildCreate(type, parent);
+          if (escalation.epic?.updated) {
+            logDebug(`artefact_create: ${escalation.epic.message}`);
+          }
+          if (escalation.prd?.updated) {
+            logDebug(`artefact_create: ${escalation.prd.message}`);
+          }
+        }
+
         // Suggest next actions
         nextActions.push({
           tool: 'artefact_edit',
@@ -275,7 +325,7 @@ export const ARTEFACT_TOOLS: ToolDefinition[] = [
   {
     tool: {
       name: 'artefact_update',
-      description: 'Update artefact frontmatter (status, assignee, etc.)',
+      description: 'Update artefact frontmatter. Supports MULTIPLE fields in ONE call (e.g., status + effort + priority together).',
       inputSchema: {
         type: 'object',
         properties: {
@@ -569,6 +619,139 @@ export const ARTEFACT_TOOLS: ToolDefinition[] = [
         }));
 
         return ok({ success: true, data: { items, count: items.length } });
+      } catch (error: any) {
+        return err(error.message);
+      }
+    }
+  },
+  {
+    tool: {
+      name: 'artefact_create_batch',
+      description: 'Create multiple artefacts in one call. Supports inline effort, priority, content, and blocked_by. Use "T-1" in blocked_by to reference the 1st item created, "T-2" for the 2nd, etc.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          type: { type: 'string', enum: ['task', 'epic'], description: 'Artefact type' },
+          parent: { type: 'string', description: 'Parent ID (E001 for tasks, PRD-001 for epics)' },
+          items: {
+            type: 'array',
+            items: {
+              type: 'object',
+              properties: {
+                title: { type: 'string', description: 'Title' },
+                effort: { type: 'string', description: 'Effort estimate (e.g., "1h", "2h")' },
+                priority: { type: 'string', description: 'Priority (low, normal, high, critical)' },
+                content: { type: 'string', description: 'Body content (markdown with ## sections)' },
+                blocked_by: { type: 'array', items: { type: 'string' }, description: 'Dependency IDs. Use T-1, T-2 etc. to reference items by position in this batch (1-based)' },
+                tags: { type: 'array', items: { type: 'string' }, description: 'Tags' }
+              },
+              required: ['title']
+            },
+            description: 'Array of artefacts to create'
+          }
+        },
+        required: ['type', 'parent', 'items']
+      }
+    },
+    handler: (args) => {
+      const { type, parent, items } = args;
+
+      if (!Array.isArray(items) || items.length === 0) {
+        return err('items array is required and must not be empty');
+      }
+
+      if (type !== 'task' && type !== 'epic') {
+        return err('Batch create only supports task and epic types');
+      }
+
+      try {
+        const store = getStore();
+        const created: Array<{ id: string; title: string; index: number }> = [];
+        const errors: string[] = [];
+
+        // Phase 1: Create all artefacts
+        for (let i = 0; i < items.length; i++) {
+          const item = items[i];
+          try {
+            let result: { id: string; title: string };
+            if (type === 'task') {
+              result = store.createTask(parent, item.title, { tags: item.tags });
+            } else {
+              result = store.createEpic(parent, item.title, { tags: item.tags });
+            }
+            created.push({ id: result.id, title: result.title, index: i + 1 });
+
+            // Set effort/priority if provided
+            if (item.effort || item.priority) {
+              store.updateArtefact(result.id, {
+                effort: item.effort,
+                priority: item.priority
+              });
+            }
+
+            // Set content if provided
+            if (item.content) {
+              store.editArtefactMultiSection(result.id, item.content, 'replace');
+            }
+          } catch (e: any) {
+            errors.push(`Item ${i + 1} "${item.title}": ${e.message}`);
+          }
+        }
+
+        // Phase 2: Add dependencies (after all items exist, so T-N refs resolve)
+        const depResults: string[] = [];
+        for (let i = 0; i < items.length; i++) {
+          const item = items[i];
+          if (!item.blocked_by?.length) continue;
+
+          const createdItem = created.find(c => c.index === i + 1);
+          if (!createdItem) continue;
+
+          for (const dep of item.blocked_by) {
+            // Resolve T-N relative references
+            const relMatch = /^T-(\d+)$/i.exec(dep);
+            let resolvedDep: string;
+            if (relMatch) {
+              const refIndex = parseInt(relMatch[1], 10);
+              const refItem = created.find(c => c.index === refIndex);
+              if (!refItem) {
+                errors.push(`${createdItem.id}: T-${refIndex} refers to item ${refIndex} which was not created`);
+                continue;
+              }
+              resolvedDep = refItem.id;
+            } else {
+              resolvedDep = normalizeId(dep);
+            }
+
+            const depResult = addArtefactDependency(createdItem.id, resolvedDep);
+            if (!depResult.added) {
+              errors.push(`${createdItem.id} → ${resolvedDep}: ${depResult.message}`);
+            } else {
+              depResults.push(`${canonicalId(createdItem.id)} blocked_by ${canonicalId(resolvedDep)}`);
+            }
+          }
+        }
+
+        // Auto-escalate parent to Breakdown (once, for first created item)
+        if (created.length > 0) {
+          const escalation = escalateOnChildCreate(type, parent);
+          if (escalation.epic?.updated) {
+            logDebug(`artefact_create_batch: ${escalation.epic.message}`);
+          }
+          if (escalation.prd?.updated) {
+            logDebug(`artefact_create_batch: ${escalation.prd.message}`);
+          }
+        }
+
+        return ok({
+          success: true,
+          data: {
+            created: created.map(c => ({ id: canonicalId(c.id), title: c.title })),
+            count: created.length,
+            dependencies: depResults,
+            ...(errors.length > 0 ? { errors } : {})
+          }
+        });
       } catch (error: any) {
         return err(error.message);
       }

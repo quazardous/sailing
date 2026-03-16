@@ -2,6 +2,7 @@
  * MCP Conductor Tools - Workflow operations
  */
 import { getTask } from '../../artefacts-manager.js';
+import { getStore } from '../../artefacts-manager.js';
 import {
   getReadyTasks,
   validateDeps,
@@ -16,7 +17,76 @@ import {
 } from '../types.js';
 import { normalizeId } from '../../../lib/normalize.js';
 import { getAgentConfig } from '../../config-manager.js';
+import { isStatusBreakdown, isStatusInProgress, isStatusDone, isStatusAutoDone } from '../../../lib/lexicon.js';
 import type { ToolDefinition, NextAction } from '../types.js';
+
+const MIN_TASKS_PER_EPIC = 3;
+
+interface EpicWarning {
+  epicId: string;
+  type: 'not_breakdown' | 'too_few_tasks' | 'no_tasks';
+  message: string;
+  suggestion?: string;
+}
+
+/**
+ * Check epic health within a scope (PRD or single epic)
+ * Returns warnings for epics that aren't ready for execution
+ */
+function getEpicHealthWarnings(scope?: { prd?: string; epic?: string }): EpicWarning[] {
+  const warnings: EpicWarning[] = [];
+  const store = getStore();
+
+  let epics: Array<{ id: string; data?: Record<string, unknown> }>;
+
+  if (scope?.epic) {
+    const epic = store.getEpic(scope.epic);
+    epics = epic ? [epic] : [];
+  } else if (scope?.prd) {
+    const prdMatch = /PRD-0*(\d+)/i.exec(scope.prd);
+    epics = prdMatch ? store.getEpicsForPrd(parseInt(prdMatch[1], 10)) : [];
+  } else {
+    epics = store.getAllEpics();
+  }
+
+  for (const epic of epics) {
+    const status = epic.data?.status as string | undefined;
+
+    // Skip done/auto-done epics
+    if (isStatusDone(status) || isStatusAutoDone(status)) continue;
+
+    const tasks = store.getTasksForEpic(epic.id);
+    const cid = canonicalId(epic.id);
+
+    if (tasks.length === 0) {
+      // Epic not yet in Breakdown is expected to have no tasks
+      if (isStatusBreakdown(status) || isStatusInProgress(status)) {
+        warnings.push({
+          epicId: cid,
+          type: 'no_tasks',
+          message: `${cid} is "${status}" but has 0 tasks`,
+          suggestion: `/dev:epic-breakdown ${cid}`
+        });
+      } else {
+        warnings.push({
+          epicId: cid,
+          type: 'not_breakdown',
+          message: `${cid} is "${status}" — needs review + breakdown before execution`,
+          suggestion: `/dev:epic-review ${cid}`
+        });
+      }
+    } else if (tasks.length < MIN_TASKS_PER_EPIC) {
+      warnings.push({
+        epicId: cid,
+        type: 'too_few_tasks',
+        message: `${cid} has only ${tasks.length} task(s) (minimum ${MIN_TASKS_PER_EPIC})`,
+        suggestion: `Review breakdown for ${cid} — may need more granularity`
+      });
+    }
+  }
+
+  return warnings;
+}
 
 export const WORKFLOW_TOOLS: ToolDefinition[] = [
   {
@@ -44,6 +114,12 @@ export const WORKFLOW_TOOLS: ToolDefinition[] = [
 
       const nextActions: NextAction[] = [];
 
+      // Check epic health warnings
+      const epicWarnings = getEpicHealthWarnings({
+        prd: type === 'prd' ? args.scope as string : undefined,
+        epic: type === 'epic' ? args.scope as string : undefined
+      });
+
       if (result.tasks.length > 0) {
         nextActions.push({
           tool: 'workflow_start',
@@ -63,7 +139,11 @@ export const WORKFLOW_TOOLS: ToolDefinition[] = [
 
       return ok({
         success: true,
-        data: result.tasks.map(t => ({ ...t, id: canonicalId(t.id) })),
+        data: {
+          tasks: result.tasks.map(t => ({ ...t, id: canonicalId(t.id) })),
+          total: result.total,
+          ...(epicWarnings.length > 0 ? { warnings: epicWarnings } : {})
+        },
         next_actions: nextActions
       });
     }
@@ -84,6 +164,11 @@ export const WORKFLOW_TOOLS: ToolDefinition[] = [
         prd: args.scope as string | undefined
       });
 
+      // Check epic health warnings
+      const epicWarnings = getEpicHealthWarnings({
+        prd: args.scope as string | undefined
+      });
+
       const nextActions: NextAction[] = [];
 
       if (result.valid) {
@@ -97,7 +182,10 @@ export const WORKFLOW_TOOLS: ToolDefinition[] = [
 
       return ok({
         success: true,
-        data: result,
+        data: {
+          ...result,
+          ...(epicWarnings.length > 0 ? { epicWarnings } : {})
+        },
         next_actions: nextActions
       });
     }

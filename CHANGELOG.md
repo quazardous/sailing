@@ -4,6 +4,22 @@ All notable changes to the Sailing Framework will be documented in this file.
 
 <!-- NOTE: This is a USER changelog, not a commit log. Focus on user-visible features and benefits, not implementation details. -->
 
+## [1.24.0] - 2026-03-16
+
+### Added
+- **Epic/PRD lifecycle statuses**: New `Reviewed` and `Breakdown` statuses for epics and PRDs, with `Draft` now valid for epics too
+- **Auto-escalation to Breakdown**: Creating tasks under an epic (or epics under a PRD) automatically promotes the parent to `Breakdown` if in a prior status
+- **`artefact_create_batch`**: Create multiple tasks/epics in one call with inline effort, priority, content, and `blocked_by` (supports `T-1`/`T-2` relative refs within the batch)
+- **`deps_add_batch`**: Add multiple dependencies in one call
+- **`prd_overview`**: Full PRD dashboard in one call — status, epics with task counts, ready tasks, blockers, and warnings
+- **`artefact_list` PRD scope for tasks**: `artefact_list type=task scope=PRD-017` now traverses epics and returns all tasks
+- **Epic health warnings**: `workflow_ready`, `workflow_validate`, and `artefact_show` warn when epics aren't broken down or have too few tasks
+- **Dashboard status badges**: CSS styles for Reviewed, Breakdown, Approved, In Review, and Auto-Done statuses
+
+### Changed
+- **`artefact_update` description**: Clarified that multiple fields (status + effort + priority) can be set in a single call
+- **Escalation logic broadened**: `escalateEpicToInProgress` and `escalatePrdToInProgress` now handle all pre-progress statuses (Draft, Reviewed, Breakdown, Approved)
+
 ## [1.23.0] - 2026-03-02
 
 ### Added

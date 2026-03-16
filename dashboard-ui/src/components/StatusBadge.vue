@@ -46,4 +46,25 @@ const badgeClass = computed(() => {
   background: rgba(158, 158, 158, 0.2);
   color: var(--draft);
 }
+
+.badge-reviewed {
+  background: rgba(33, 150, 243, 0.2);
+  color: var(--info, #2196f3);
+}
+
+.badge-breakdown {
+  background: rgba(156, 39, 176, 0.2);
+  color: var(--purple, #9c27b0);
+}
+
+.badge-approved,
+.badge-in-review {
+  background: rgba(0, 150, 136, 0.2);
+  color: var(--teal, #009688);
+}
+
+.badge-auto-done {
+  background: rgba(76, 175, 80, 0.15);
+  color: var(--ok);
+}
 </style>

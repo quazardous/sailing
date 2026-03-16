@@ -11,8 +11,8 @@ export const ENTITY_TYPES: EntityType[] = ['prd', 'epic', 'task'];
 // Canonical status values per entity type
 export const STATUS: Record<EntityType, string[]> = {
   task: ['Not Started', 'In Progress', 'Blocked', 'Done', 'Cancelled'],
-  epic: ['Not Started', 'In Progress', 'Auto-Done', 'Done'],
-  prd: ['Draft', 'In Review', 'Approved', 'In Progress', 'Auto-Done', 'Done']
+  epic: ['Not Started', 'Draft', 'Reviewed', 'Breakdown', 'In Progress', 'Auto-Done', 'Done'],
+  prd: ['Draft', 'In Review', 'Approved', 'Breakdown', 'In Progress', 'Auto-Done', 'Done']
 };
 
 // Aliases mapping (lowercase, no spaces/dashes/underscores) → canonical
@@ -50,8 +50,16 @@ export const STATUS_ALIASES: Record<string, string> = {
   dropped: 'Cancelled',
   abandoned: 'Cancelled',
 
-  // PRD-specific
+  // Draft (epic + PRD lifecycle)
   draft: 'Draft',
+
+  // Reviewed (epic lifecycle - after epic-review)
+  reviewed: 'Reviewed',
+
+  // Breakdown (epic + PRD lifecycle - after breakdown into children)
+  breakdown: 'Breakdown',
+
+  // PRD review statuses
   inreview: 'In Review',
   review: 'In Review',
   reviewing: 'In Review',
@@ -130,6 +138,18 @@ export function isStatusBlocked(status: string | null | undefined): boolean {
 
 export function isStatusAutoDone(status: string | null | undefined): boolean {
   return statusEquals(status, 'autodone');
+}
+
+export function isStatusDraft(status: string | null | undefined): boolean {
+  return statusEquals(status, 'draft');
+}
+
+export function isStatusReviewed(status: string | null | undefined): boolean {
+  return statusEquals(status, 'reviewed');
+}
+
+export function isStatusBreakdown(status: string | null | undefined): boolean {
+  return statusEquals(status, 'breakdown');
 }
 
 /**
@@ -252,5 +272,7 @@ export function statusSymbol(status: string | null | undefined): string {
   if (isStatusInProgress(status)) return '●';
   if (isStatusBlocked(status)) return '✗';
   if (isStatusCancelled(status)) return '○';
+  if (isStatusReviewed(status)) return '◎'; // Reviewed: double circle
+  if (isStatusBreakdown(status)) return '◈'; // Breakdown: diamond in circle
   return '◌';
 }
