@@ -57,7 +57,8 @@ export function showMemory(id: string, options: ShowMemoryOptions = {}): ShowMem
 
   // Agent-relevant sections (default view)
   const agentRelevantSections = [
-    'Agent Context', 'Escalation', 'Cross-Epic Patterns',
+    'Agent Context', 'Key Files', 'Gotchas', 'Decisions', 'Cross-refs', 'Escalation',
+    'Cross-Epic Patterns',
     'Architecture Decisions', 'Patterns & Conventions'
   ];
 
@@ -166,6 +167,7 @@ export function getEpicPendingLogs(epicId: string): EpicPendingLogsResult {
 
 export interface ConsolidateMemoryOptions {
   operation?: 'append' | 'prepend' | 'replace';
+  flush?: boolean;
 }
 
 export interface ConsolidateMemoryResult {
@@ -174,6 +176,8 @@ export interface ConsolidateMemoryResult {
   section: string;
   success: boolean;
   message: string;
+  flushed?: boolean;
+  entriesCleared?: number;
 }
 
 /**
@@ -187,18 +191,28 @@ export function consolidateMemory(
   content: string,
   options: ConsolidateMemoryOptions = {}
 ): ConsolidateMemoryResult {
-  const operation = options.operation || 'append';
+  const operation = options.operation || 'replace';
+  const shouldFlush = options.flush !== false;
   const normalized = normalizeId(targetId);
 
   const result = editMemorySection(level, normalized, section, content, operation);
 
-  return {
+  const output: ConsolidateMemoryResult = {
     level,
     targetId: normalized,
     section,
     success: result.success,
     message: result.message
   };
+
+  // Auto-flush epic logs after successful consolidation
+  if (result.success && shouldFlush && level === 'epic') {
+    const flushResult = flushEpicLogs(normalized);
+    output.flushed = flushResult.flushed;
+    output.entriesCleared = flushResult.entriesCleared;
+  }
+
+  return output;
 }
 
 // ============================================================================
@@ -230,6 +244,8 @@ export interface EpicLogStats {
   id: string;
   entries: number;
   levels: { TIP: number; INFO: number; WARN: number; ERROR: number; CRITICAL: number };
+  parsedEntries?: EpicLogEntry[];
+  rawContent?: string | null;
 }
 
 export interface SyncMemoryResult {
@@ -259,15 +275,23 @@ export function syncMemory(options: SyncMemoryOptions = {}): SyncMemoryResult {
   const { pending, epics, tasksMerged } = checkPendingMemory(epicFilter);
 
   // Get stats for each pending epic
+  // Only include full parsedEntries when a scope is specified (avoids huge payloads)
+  const includeEntries = !!scopeId;
   const logs: EpicLogStats[] = [];
   for (const epicId of epics) {
     const stats = getLogStats(epicId);
     if (stats.exists) {
-      logs.push({
+      const logStats: EpicLogStats = {
         id: epicId,
         entries: stats.lines,
         levels: stats.levels
-      });
+      };
+      if (includeEntries) {
+        const pendingLogs = getEpicPendingLogs(epicId);
+        logStats.parsedEntries = pendingLogs.entries;
+        logStats.rawContent = pendingLogs.rawContent;
+      }
+      logs.push(logStats);
     }
   }
 

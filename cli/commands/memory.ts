@@ -121,7 +121,8 @@ export function registerMemoryCommands(program: Command): void {
 
       // Agent-relevant sections (default view)
       const agentRelevantSections = [
-        'Agent Context', 'Escalation', 'Cross-Epic Patterns',
+        'Agent Context', 'Key Files', 'Gotchas', 'Decisions', 'Cross-refs', 'Escalation',
+        'Cross-Epic Patterns',
         'Architecture Decisions', 'Patterns & Conventions'
       ];
 

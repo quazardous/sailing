@@ -766,7 +766,7 @@ export function appendTaskLog(
 // ============================================================================
 
 export type MemoryLevel = 'epic' | 'prd' | 'project';
-export type MemorySectionName = 'Agent Context' | 'Escalation' | 'Cross-Epic Patterns' | 'Architecture Decisions' | 'Patterns & Conventions' | 'Changelog' | 'Tips' | 'Commands' | 'Issues' | 'Solutions';
+export type MemorySectionName = 'Agent Context' | 'Key Files' | 'Gotchas' | 'Decisions' | 'Cross-refs' | 'Escalation' | 'Changelog' | 'Cross-Epic Patterns' | 'Architecture Decisions' | 'Patterns & Conventions' | 'Lessons Learned' | 'Tips' | 'Commands' | 'Issues' | 'Solutions';
 
 export interface EditMemorySectionResult {
   success: boolean;

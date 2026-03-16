@@ -85,7 +85,10 @@ export function editSection(
   const section = findSection(content, sectionName);
 
   if (!section) {
-    return { warning: `Section "${sectionName}" not found` };
+    // Auto-create section at end of file
+    const sectionBlock = `\n## ${sectionName}\n\n${newContent}\n`;
+    const updatedContent = content.trimEnd() + '\n' + sectionBlock;
+    return { success: true, content: updatedContent };
   }
 
   const existingContent = section.content;
@@ -170,11 +173,12 @@ export function parseMultiSectionInput(input: string): ParsedSection[] {
  * These are the only sections shown to agents by default
  */
 export const AGENT_RELEVANT_SECTIONS = [
-  'Agent Context',
-  'Escalation',
+  // Epic level
+  'Agent Context', 'Key Files', 'Gotchas', 'Decisions', 'Cross-refs', 'Escalation',
+  // PRD level
   'Cross-Epic Patterns',
-  'Architecture Decisions',
-  'Patterns & Conventions'
+  // Project level
+  'Architecture Decisions', 'Patterns & Conventions'
 ];
 
 /**

@@ -164,11 +164,11 @@ describe('editSection - replace', () => {
     assert.ok(result.content.includes('## Changelog'));
   });
 
-  it('should return warning for non-existent section', () => {
+  it('should auto-create non-existent section', () => {
     const result = editSection(MEMORY_TEMPLATE, 'NonExistent', 'content', 'replace');
-    assert.ok(result.warning);
-    assert.ok(result.warning.includes('NonExistent'));
-    assert.strictEqual(result.success, undefined);
+    assert.ok(result.success);
+    assert.ok(result.content.includes('## NonExistent'));
+    assert.ok(result.content.includes('content'));
   });
 
   it('should handle empty replacement', () => {
