@@ -51,6 +51,24 @@ rm -rf "$WORK_DIR"/*
 
 # === Copy essential files ===
 
+# README for dist branch
+cat > "$WORK_DIR/README.md" << 'DISTREADME'
+# Sailing — Distribution Branch
+
+This branch contains pre-compiled files for the [Sailing](https://github.com/quazardous/sailing) project governance framework.
+
+**Do not edit files here** — they are auto-generated from `main` by `publish-dist.sh`.
+
+## Install
+
+```bash
+cd /path/to/your-project
+curl -sSL https://raw.githubusercontent.com/quazardous/sailing/main/install.sh | bash
+```
+
+See the [main branch](https://github.com/quazardous/sailing/tree/main) for documentation and source code.
+DISTREADME
+
 # Compiled CLI
 mkdir -p "$WORK_DIR/dist"
 cp -r dist/cli "$WORK_DIR/dist/"
