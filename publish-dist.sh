@@ -58,8 +58,9 @@ if [ -d "dashboard-ui/dist" ]; then
   echo "  ✓ Dashboard UI included"
 fi
 
-# Distribution templates
-cp disttpl/*.yaml-dist disttpl/*.md-dist "$WORK_DIR/dist/" 2>/dev/null || true
+# Distribution templates (install.sh expects $SRC/disttpl/)
+mkdir -p "$WORK_DIR/disttpl"
+cp disttpl/*.yaml-dist disttpl/*.md-dist "$WORK_DIR/disttpl/" 2>/dev/null || true
 
 # CLI wrappers (from scripts/*.dist)
 mkdir -p "$WORK_DIR/scripts"

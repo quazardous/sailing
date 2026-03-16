@@ -1,6 +1,6 @@
 {
   "name": "@quazardous/rudder",
-  "version": "1.20.0",
+  "version": "1.20.1",
   "description": "Sailing CLI - PRD/Epic/Task management",
   "type": "module",
   "bin": {

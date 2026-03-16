@@ -25,6 +25,27 @@ const currentStatus = computed(() => {
 });
 
 const isPrdDone = computed(() => prdData.value?.status === 'Done');
+const isAutoDone = computed(() => currentStatus.value === 'Auto-Done');
+
+async function validateDone() {
+  if (!selectedId.value) return;
+  statusUpdating.value = true;
+  statusError.value = null;
+  statusSuccess.value = null;
+  try {
+    const result = await api.updateStatus(selectedId.value, 'Done');
+    if (result.success) {
+      statusSuccess.value = `${selectedId.value} validated as Done`;
+      await artefactsStore.refresh();
+    } else {
+      statusError.value = result.error || 'Update failed';
+    }
+  } catch (e) {
+    statusError.value = e instanceof Error ? e.message : 'Update failed';
+  } finally {
+    statusUpdating.value = false;
+  }
+}
 
 // --- Status change state ---
 const statuses = ref<StatusesResponse | null>(null);
@@ -160,6 +181,14 @@ const confirmValid = computed(() =>
           <div class="status-row">
             <span class="label">Current:</span>
             <StatusBadge :status="currentStatus || 'Unknown'" />
+            <button
+              v-if="isAutoDone"
+              class="btn btn-validate"
+              :disabled="statusUpdating"
+              @click="validateDone"
+            >
+              {{ statusUpdating ? '...' : '✓ Validate Done' }}
+            </button>
           </div>
 
           <div v-if="statusSuccess" class="message message-success">
@@ -352,6 +381,18 @@ const confirmValid = computed(() =>
 .btn:disabled {
   opacity: 0.5;
   cursor: not-allowed;
+}
+
+.btn-validate {
+  background: rgba(76, 175, 80, 0.2);
+  color: var(--ok, #4caf50);
+  border-color: var(--ok, #4caf50);
+  font-size: var(--font-size-xs, 11px);
+  padding: 2px var(--spacing-sm);
+}
+
+.btn-validate:hover:not(:disabled) {
+  background: rgba(76, 175, 80, 0.35);
 }
 
 .btn-primary {

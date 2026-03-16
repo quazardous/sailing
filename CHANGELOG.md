@@ -4,6 +4,17 @@ All notable changes to the Sailing Framework will be documented in this file.
 
 <!-- NOTE: This is a USER changelog, not a commit log. Focus on user-visible features and benefits, not implementation details. -->
 
+## [1.24.1] - 2026-03-16
+
+### Added
+- **Dashboard "Validate Done" button**: One-click button to promote Auto-Done artefacts to Done, visible inline next to the status badge
+
+### Fixed
+- **Epic ID normalization**: `workflow_ready scope=ENNN` now correctly returns tasks (was returning 0 due to ID padding mismatch)
+- **Auto-Done cascade**: `workflow_complete` now correctly cascades epic to Auto-Done when all tasks are done
+- **Cascade status messages**: `workflow_complete` cascade messages now show actual status (Auto-Done) instead of always saying Done
+- **Auto-Done warnings**: `workflow_complete` emits explicit warnings when epic/PRD cascades to Auto-Done
+
 ## [1.24.0] - 2026-03-16
 
 ### Added
