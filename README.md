@@ -11,12 +11,12 @@
 ### 1. Install (30 seconds)
 
 ```bash
-curl -sSL https://raw.githubusercontent.com/quazardous/sailing/main/install.sh | bash
+curl -sSL https://raw.githubusercontent.com/quazardous/sailing/dist/install.sh | bash
 ```
 
 **Worktree mode** (experimental):
 ```bash
-curl -sSL https://raw.githubusercontent.com/quazardous/sailing/main/install.sh | bash -s -- --use-worktree --folders-profile=haven
+curl -sSL https://raw.githubusercontent.com/quazardous/sailing/dist/install.sh | bash -s -- --use-worktree --folders-profile=haven
 ```
 > ⚠️ **Experimental**: Worktree mode enables git worktree isolation for parallel agent execution. Each agent works in its own branch. Requires [sandbox-runtime (srt)](https://github.com/anthropic-experimental/sandbox-runtime) for OS-level isolation. The installer will guide you through the setup.
 >
@@ -132,9 +132,8 @@ your-project/
 └── .sailing/
     ├── artefacts/          # ROADMAP, PRDs, Epics, Tasks
     ├── memory/             # Epic memory (persists learnings)
-    ├── prompting/          # Agent context fragments
-    │   └── workflows.yaml  # ⭐ Central config (contexts + orchestration)
-    └── templates/          # Entity templates
+    ├── prompting/          # Context fragments (agent, skill, shared)
+    └── templates/          # Entity templates (nunjucks)
 ```
 
 [Detailed structure →](docs/folders.md)
