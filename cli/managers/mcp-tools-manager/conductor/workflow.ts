@@ -274,9 +274,22 @@ export const WORKFLOW_TOOLS: ToolDefinition[] = [
           priority: 'normal'
         });
 
+        // Build warnings for Auto-Done cascades
+        const warnings: string[] = [];
+        for (const cascade of result.cascades) {
+          if (cascade.includes('Auto-Done')) {
+            warnings.push(`${cascade} — review and mark Done when validated`);
+          }
+        }
+
         return ok({
           success: true,
-          data: { ...result, id: canonicalId(result.id), cascades: result.cascades.map(canonicalId) },
+          data: {
+            ...result,
+            id: canonicalId(result.id),
+            cascades: result.cascades.map(canonicalId),
+            ...(warnings.length > 0 ? { warnings } : {})
+          },
           next_actions: nextActions
         });
       } catch (error) {

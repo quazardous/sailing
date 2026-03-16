@@ -136,10 +136,10 @@ export function completeTask(taskId: string, options: CompleteTaskOptions = {}):
   const cascadeResult = cascadeTaskCompletion(id, taskData);
 
   if (cascadeResult.epic?.updated) {
-    cascades.push(`Epic ${cascadeResult.epic.entityId} → Done`);
+    cascades.push(`Epic ${cascadeResult.epic.entityId} → ${cascadeResult.epic.newStatus}`);
   }
   if (cascadeResult.prd?.updated) {
-    cascades.push(`PRD ${cascadeResult.prd.entityId} → Done`);
+    cascades.push(`PRD ${cascadeResult.prd.entityId} → ${cascadeResult.prd.newStatus}`);
   }
 
   return {
