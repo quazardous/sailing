@@ -63,11 +63,14 @@ This branch contains pre-compiled files for the [Sailing](https://github.com/qua
 
 ```bash
 cd /path/to/your-project
-curl -sSL https://raw.githubusercontent.com/quazardous/sailing/main/install.sh | bash
+curl -sSL https://raw.githubusercontent.com/quazardous/sailing/dist/install.sh | bash
 ```
 
 See the [main branch](https://github.com/quazardous/sailing/tree/main) for documentation and source code.
 DISTREADME
+
+# Install script (so users can curl from dist branch)
+cp install.sh "$WORK_DIR/"
 
 # Compiled CLI
 mkdir -p "$WORK_DIR/dist"
