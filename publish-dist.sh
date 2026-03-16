@@ -22,7 +22,11 @@ done
 LAST_MSG=$(git log -1 --format="%s" "$MAIN_BRANCH" 2>/dev/null || git log -1 --format="%s")
 LAST_SHA=$(git log -1 --format="%h" "$MAIN_BRANCH" 2>/dev/null || git log -1 --format="%h")
 
-echo "Publishing dist (ref: $LAST_SHA)..."
+# Read version from root package.json (source of truth)
+VERSION=$(node -p "require('./package.json').version" 2>/dev/null || echo "")
+TAG="v${VERSION}"
+
+echo "Publishing dist (ref: $LAST_SHA, version: $VERSION)..."
 
 # Create temp worktree for dist branch
 WORK_DIR=$(mktemp -d)
@@ -107,6 +111,17 @@ if [ "$DO_PUSH" = true ]; then
   cd - >/dev/null
   git push origin "$DIST_BRANCH"
   echo "✓ Pushed to origin/$DIST_BRANCH"
+
+  # Tag the main branch with version if not already tagged
+  if [ -n "$VERSION" ]; then
+    if git rev-parse "$TAG" >/dev/null 2>&1; then
+      echo "  Tag $TAG already exists, skipping"
+    else
+      git tag -a "$TAG" "$MAIN_BRANCH" -m "Release $TAG"
+      git push origin "$TAG"
+      echo "✓ Tagged: $TAG"
+    fi
+  fi
 else
   echo "  (use 'git push origin dist' to publish)"
 fi
