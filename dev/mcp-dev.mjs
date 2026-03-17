@@ -99,6 +99,45 @@ function lintRuleBreakdown(file) {
   };
 }
 
+function depsReport(top) {
+  const n = top || 20;
+  const { ok, out } = run('npx madge --extensions ts cli/ --json');
+  if (!ok) return { error: 'madge failed', output: out.slice(0, 500) };
+
+  const deps = JSON.parse(out);
+
+  // Count how many files import each file (reverse deps)
+  const importedBy = {};
+  for (const [file, imports] of Object.entries(deps)) {
+    for (const imp of imports) {
+      importedBy[imp] = (importedBy[imp] || 0) + 1;
+    }
+  }
+  const mostImported = Object.entries(importedBy).sort((a, b) => b[1] - a[1]).slice(0, n);
+
+  // Cross with lint errors
+  const { out: lintOut } = run('npx eslint cli/');
+  const fileCounts = {};
+  let currentFile = '';
+  for (const l of lintOut.split('\n')) {
+    if (l.startsWith('/')) currentFile = l.trim();
+    else if (l.includes(' error ')) fileCounts[currentFile] = (fileCounts[currentFile] || 0) + 1;
+  }
+
+  // Build combined report: deps × lint score
+  const combined = mostImported.map(([file, depCount]) => {
+    const fullPath = Object.keys(fileCounts).find(f => f.endsWith('/' + file));
+    const lintErrors = fullPath ? fileCounts[fullPath] : 0;
+    return { file, importedBy: depCount, lintErrors, impact: depCount * (lintErrors + 1) };
+  }).sort((a, b) => b.impact - a.impact);
+
+  return {
+    totalFiles: Object.keys(deps).length,
+    mostImported: mostImported.map(([f, c]) => [c, f]),
+    prioritized: combined.filter(c => c.lintErrors > 0).slice(0, n)
+  };
+}
+
 // -- MCP stdio protocol --
 
 const TOOLS = {
@@ -124,6 +163,10 @@ const TOOLS = {
   lint_rule_breakdown: {
     description: 'Show error count per rule for a specific file',
     inputSchema: { type: 'object', properties: { file: { type: 'string', description: 'File to analyze' } }, required: ['file'] }
+  },
+  deps_report: {
+    description: 'Dependency analysis: most imported files, cross-referenced with lint errors. Prioritizes high-impact refactor targets.',
+    inputSchema: { type: 'object', properties: { top: { type: 'number', description: 'Limit results (default: 20)' } } }
   }
 };
 
@@ -154,6 +197,7 @@ function handleRequest(req) {
       case 'lint_file': result = lintFile(args?.file, args?.rule); break;
       case 'lint_report': result = lintReport(args?.top); break;
       case 'lint_rule_breakdown': result = lintRuleBreakdown(args?.file); break;
+      case 'deps_report': result = depsReport(args?.top); break;
       default: return { jsonrpc: '2.0', id, result: { content: [{ type: 'text', text: `Unknown tool: ${name}` }], isError: true } };
     }
     return { jsonrpc: '2.0', id, result: { content: [{ type: 'text', text: JSON.stringify(result, null, 2) }] } };
