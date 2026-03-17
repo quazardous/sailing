@@ -95,82 +95,84 @@ interface Result {
  * @param {object} mission - Mission object to validate
  * @returns {string[]} Array of error messages (empty if valid)
  */
-export function validateMission(mission: any): string[] {
+// Runtime validation — input is untrusted JSON, so unknown is the correct type.
+// Single cast to Record after the object check, then property access is safe via runtime checks already present.
+export function validateMission(mission: unknown): string[] {
   const errors: string[] = [];
 
   if (!mission || typeof mission !== 'object') {
     return ['Mission must be an object'];
   }
 
+  const m = mission as Record<string, unknown>;
+
   // Required fields
-  if (!mission.version) {
+  if (!m.version) {
     errors.push('Missing required field: version');
-  } else if (mission.version !== PROTOCOL_VERSION) {
-    errors.push(`Unsupported version: ${mission.version} (expected ${PROTOCOL_VERSION})`);
+  } else if (m.version !== PROTOCOL_VERSION) {
+    errors.push(`Unsupported version: ${String(m.version)} (expected ${PROTOCOL_VERSION})`);
   }
 
-  if (!mission.task_id) {
+  if (!m.task_id) {
     errors.push('Missing required field: task_id');
-  } else if (!/^T\d+$/.test(mission.task_id)) {
-    errors.push(`Invalid task_id format: ${mission.task_id} (expected TNNN)`);
+  } else if (typeof m.task_id !== 'string' || !/^T\d+$/.test(m.task_id)) {
+    errors.push(`Invalid task_id format: ${String(m.task_id)} (expected TNNN)`);
   }
 
-  if (!mission.epic_id) {
+  if (!m.epic_id) {
     errors.push('Missing required field: epic_id');
-  } else if (!/^E\d+$/.test(mission.epic_id)) {
-    errors.push(`Invalid epic_id format: ${mission.epic_id} (expected ENNN)`);
+  } else if (typeof m.epic_id !== 'string' || !/^E\d+$/.test(m.epic_id)) {
+    errors.push(`Invalid epic_id format: ${String(m.epic_id)} (expected ENNN)`);
   }
 
-  if (!mission.prd_id) {
+  if (!m.prd_id) {
     errors.push('Missing required field: prd_id');
-  } else if (!/^PRD-\d+$/.test(mission.prd_id)) {
-    errors.push(`Invalid prd_id format: ${mission.prd_id} (expected PRD-NNN)`);
+  } else if (typeof m.prd_id !== 'string' || !/^PRD-\d+$/.test(m.prd_id)) {
+    errors.push(`Invalid prd_id format: ${String(m.prd_id)} (expected PRD-NNN)`);
   }
 
-  if (!mission.instruction) {
+  if (!m.instruction) {
     errors.push('Missing required field: instruction');
-  } else if (typeof mission.instruction !== 'string') {
+  } else if (typeof m.instruction !== 'string') {
     errors.push('Field instruction must be a string');
   }
 
   // Context validation
-  if (!mission.context) {
+  if (!m.context) {
     errors.push('Missing required field: context');
-  } else if (typeof mission.context !== 'object') {
+  } else if (typeof m.context !== 'object') {
     errors.push('Field context must be an object');
   } else {
-    // dev_md is optional (project may not have DEV.md)
-    if (!mission.context.epic_file) {
+    const ctx = m.context as Record<string, unknown>;
+    if (!ctx.epic_file) {
       errors.push('Missing required field: context.epic_file');
     }
-    if (!mission.context.task_file) {
+    if (!ctx.task_file) {
       errors.push('Missing required field: context.task_file');
     }
   }
 
   // Optional constraints validation
-  if (mission.constraints !== undefined) {
-    if (typeof mission.constraints !== 'object') {
+  if (m.constraints !== undefined) {
+    if (typeof m.constraints !== 'object') {
       errors.push('Field constraints must be an object');
     } else {
-      if (mission.constraints.max_files !== undefined &&
-          typeof mission.constraints.max_files !== 'number') {
+      const c = m.constraints as Record<string, unknown>;
+      if (c.max_files !== undefined && typeof c.max_files !== 'number') {
         errors.push('Field constraints.max_files must be a number');
       }
-      if (mission.constraints.no_git_commit !== undefined &&
-          typeof mission.constraints.no_git_commit !== 'boolean') {
+      if (c.no_git_commit !== undefined && typeof c.no_git_commit !== 'boolean') {
         errors.push('Field constraints.no_git_commit must be a boolean');
       }
-      if (mission.constraints.no_new_deps !== undefined &&
-          typeof mission.constraints.no_new_deps !== 'boolean') {
+      if (c.no_new_deps !== undefined && typeof c.no_new_deps !== 'boolean') {
         errors.push('Field constraints.no_new_deps must be a boolean');
       }
     }
   }
 
   // Optional timeout validation
-  if (mission.timeout !== undefined) {
-    if (typeof mission.timeout !== 'number' || mission.timeout < 0) {
+  if (m.timeout !== undefined) {
+    if (typeof m.timeout !== 'number' || m.timeout < 0) {
       errors.push('Field timeout must be a non-negative number');
     }
   }
@@ -183,64 +185,67 @@ export function validateMission(mission: any): string[] {
  * @param {object} result - Result object to validate
  * @returns {string[]} Array of error messages (empty if valid)
  */
-export function validateResult(result: any): string[] {
+// Runtime validation — input is untrusted YAML, so unknown is the correct type.
+export function validateResult(result: unknown): string[] {
   const errors: string[] = [];
 
   if (!result || typeof result !== 'object') {
     return ['Result must be an object'];
   }
 
+  const r = result as Record<string, unknown>;
+
   // Required fields
-  if (!result.version) {
+  if (!r.version) {
     errors.push('Missing required field: version');
-  } else if (result.version !== PROTOCOL_VERSION) {
-    errors.push(`Unsupported version: ${result.version} (expected ${PROTOCOL_VERSION})`);
+  } else if (r.version !== PROTOCOL_VERSION) {
+    errors.push(`Unsupported version: ${String(r.version)} (expected ${PROTOCOL_VERSION})`);
   }
 
-  if (!result.task_id) {
+  if (!r.task_id) {
     errors.push('Missing required field: task_id');
-  } else if (!/^T\d+$/.test(result.task_id)) {
-    errors.push(`Invalid task_id format: ${result.task_id} (expected TNNN)`);
+  } else if (typeof r.task_id !== 'string' || !/^T\d+$/.test(r.task_id)) {
+    errors.push(`Invalid task_id format: ${String(r.task_id)} (expected TNNN)`);
   }
 
-  if (!result.status) {
+  if (!r.status) {
     errors.push('Missing required field: status');
-  } else if (!VALID_STATUSES.includes(result.status)) {
-    errors.push(`Invalid status: ${result.status} (expected: ${VALID_STATUSES.join(', ')})`);
+  } else if (!VALID_STATUSES.includes(r.status as Status)) {
+    errors.push(`Invalid status: ${String(r.status)} (expected: ${VALID_STATUSES.join(', ')})`);
   }
 
   // files_modified validation
-  if (!result.files_modified) {
+  if (!r.files_modified) {
     errors.push('Missing required field: files_modified');
-  } else if (!Array.isArray(result.files_modified)) {
+  } else if (!Array.isArray(r.files_modified)) {
     errors.push('Field files_modified must be an array');
   } else {
-    result.files_modified.forEach((file: any, i: number) => {
+    (r.files_modified as Record<string, unknown>[]).forEach((file, i: number) => {
       if (!file.path) {
         errors.push(`files_modified[${i}]: missing path`);
       }
       if (!file.action) {
         errors.push(`files_modified[${i}]: missing action`);
-      } else if (!(VALID_FILE_ACTIONS as readonly string[]).includes(file.action)) {
-        errors.push(`files_modified[${i}]: invalid action '${file.action}'`);
+      } else if (!(VALID_FILE_ACTIONS as readonly string[]).includes(file.action as string)) {
+        errors.push(`files_modified[${i}]: invalid action '${String(file.action)}'`);
       }
     });
   }
 
   // log validation
-  if (!result.log) {
+  if (!r.log) {
     errors.push('Missing required field: log');
-  } else if (!Array.isArray(result.log)) {
+  } else if (!Array.isArray(r.log)) {
     errors.push('Field log must be an array');
   } else {
-    if (result.log.length < 2) {
+    if (r.log.length < 2) {
       errors.push('Log must contain at least 2 entries');
     }
-    result.log.forEach((entry: any, i: number) => {
+    (r.log as Record<string, unknown>[]).forEach((entry, i: number) => {
       if (!entry.level) {
         errors.push(`log[${i}]: missing level`);
-      } else if (!VALID_LOG_LEVELS.includes(entry.level)) {
-        errors.push(`log[${i}]: invalid level '${entry.level}'`);
+      } else if (!VALID_LOG_LEVELS.includes(entry.level as typeof VALID_LOG_LEVELS[number])) {
+        errors.push(`log[${i}]: invalid level '${String(entry.level)}'`);
       }
       if (!entry.message) {
         errors.push(`log[${i}]: missing message`);
@@ -252,15 +257,15 @@ export function validateResult(result: any): string[] {
   }
 
   // Optional issues validation
-  if (result.issues !== undefined) {
-    if (!Array.isArray(result.issues)) {
+  if (r.issues !== undefined) {
+    if (!Array.isArray(r.issues)) {
       errors.push('Field issues must be an array');
     } else {
-      result.issues.forEach((issue: any, i: number) => {
+      (r.issues as Record<string, unknown>[]).forEach((issue, i: number) => {
         if (!issue.type) {
           errors.push(`issues[${i}]: missing type`);
-        } else if (!(VALID_ISSUE_TYPES as readonly string[]).includes(issue.type)) {
-          errors.push(`issues[${i}]: invalid type '${issue.type}'`);
+        } else if (!(VALID_ISSUE_TYPES as readonly string[]).includes(issue.type as string)) {
+          errors.push(`issues[${i}]: invalid type '${String(issue.type)}'`);
         }
         if (!issue.description) {
           errors.push(`issues[${i}]: missing description`);
@@ -270,7 +275,7 @@ export function validateResult(result: any): string[] {
   }
 
   // completed_at validation
-  if (!result.completed_at) {
+  if (!r.completed_at) {
     errors.push('Missing required field: completed_at');
   }
 
