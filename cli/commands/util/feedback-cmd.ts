@@ -1,6 +1,7 @@
 /**
  * Feedback commands - Agent feedback management
  */
+import type { Command } from 'commander';
 import fs from 'fs';
 import path from 'path';
 import { getSailingDir } from '../../managers/core-manager.js';
@@ -9,7 +10,7 @@ import { addDynamicHelp } from '../../lib/help.js';
 /**
  * Register feedback commands
  */
-export function registerFeedbackCommands(program) {
+export function registerFeedbackCommands(program: Command) {
   const feedback = program.command('feedback')
     .description('Feedback management (agent systemic issues)');
 

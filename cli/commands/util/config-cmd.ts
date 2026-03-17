@@ -1,6 +1,7 @@
 /**
  * Config commands - Configuration management
  */
+import type { Command } from 'commander';
 import fs from 'fs';
 import path from 'path';
 import { execSync } from 'child_process';
@@ -36,7 +37,7 @@ import { ConfigDisplayItem, ConfigSchema, CheckResults, CheckEntry, ConfigSchema
 /**
  * Register config commands
  */
-export function registerConfigCommands(program) {
+export function registerConfigCommands(program: Command) {
   const config = program.command('config')
     .description('Configuration management (show, check)')
     .option('--json', 'JSON output')

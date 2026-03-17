@@ -2,6 +2,7 @@
  * Agent commands for rudder CLI
  * Manages agent lifecycle: spawn, collect, status, merge
  */
+import type { Command } from 'commander';
 import { addDynamicHelp } from '../../lib/help.js';
 import { registerSpawnCommand } from './spawn.js';
 import { registerHarvestCommands } from './harvest.js';
@@ -13,7 +14,7 @@ import { registerDiagnoseCommands } from './diagnose.js';
 /**
  * Register all agent commands
  */
-export function registerAgentCommands(program) {
+export function registerAgentCommands(program: Command) {
   const agent = program.command('agent')
     .description('Agent lifecycle management');
 

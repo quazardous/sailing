@@ -1,6 +1,7 @@
 /**
  * Status command - Project overview
  */
+import type { Command } from 'commander';
 import path from 'path';
 import {
   findPrdDirs,
@@ -14,7 +15,7 @@ import { isStatusDone, isStatusInProgress, isStatusNotStarted, statusSymbol } fr
 /**
  * Register status command
  */
-export function registerStatusCommand(program) {
+export function registerStatusCommand(program: Command) {
   program.command('status')
     .description('Project overview (tasks by status, PRDs)')
     .option('--json', 'JSON output')

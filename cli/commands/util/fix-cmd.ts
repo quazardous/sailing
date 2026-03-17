@@ -1,6 +1,7 @@
 /**
  * Fix commands - Fix common issues
  */
+import type { Command } from 'commander';
 import fs from 'fs';
 import path from 'path';
 import { findProjectRoot } from '../../managers/core-manager.js';
@@ -8,7 +9,7 @@ import { findProjectRoot } from '../../managers/core-manager.js';
 /**
  * Register fix commands
  */
-export function registerFixCommands(program) {
+export function registerFixCommands(program: Command) {
   const fix = program.command('fix')
     .description('Fix common issues');
 

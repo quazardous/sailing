@@ -1,6 +1,7 @@
 /**
  * Init command - Initialize sailing project
  */
+import type { Command } from 'commander';
 import fs from 'fs';
 import path from 'path';
 import {
@@ -15,7 +16,7 @@ import { ConfigSchema, ConfigSchemaEntry } from '../../lib/types/config.js';
 /**
  * Register init command
  */
-export function registerInitCommand(program) {
+export function registerInitCommand(program: Command) {
   program.command('init')
     .description('Initialize sailing project structure')
     .option('-y, --yes', 'Overwrite existing files without prompting')

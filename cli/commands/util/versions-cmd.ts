@@ -1,6 +1,7 @@
 /**
  * Versions commands - Version management
  */
+import type { Command } from 'commander';
 import fs from 'fs';
 import {
   jsonOut,
@@ -12,7 +13,7 @@ import { getAllVersions, bumpComponentVersion, findComponent, loadComponents } f
 /**
  * Register versions commands
  */
-export function registerVersionsCommands(program) {
+export function registerVersionsCommands(program: Command) {
   // versions
   program.command('versions')
     .description('Show component versions (from components.yaml)')

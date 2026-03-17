@@ -1,6 +1,7 @@
 /**
  * State commands - State management
  */
+import type { Command } from 'commander';
 import {
   jsonOut,
   getStateFile
@@ -11,7 +12,7 @@ import { loadState, saveState } from '../../managers/state-manager.js';
 /**
  * Register state commands
  */
-export function registerStateCommands(program) {
+export function registerStateCommands(program: Command) {
   const state = program.command('state')
     .description('State management (ID counters)');
 

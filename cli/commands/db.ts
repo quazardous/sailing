@@ -2,6 +2,7 @@
  * Database management commands for rudder CLI
  * CRUD operations on JSON collections (agents.json, runs.json)
  */
+import type { Command } from 'commander';
 import fs from 'fs';
 import path from 'path';
 import { jsonOut, resolvePlaceholders } from '../managers/core-manager.js';
@@ -19,7 +20,7 @@ import { parseTaskNum, formatTaskId } from '../lib/agent-paths.js';
 /**
  * Register database commands
  */
-export function registerDbCommands(program) {
+export function registerDbCommands(program: Command) {
   // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
   const db = program.command('db');
   db.description('Database management (NeDB JSON files)');

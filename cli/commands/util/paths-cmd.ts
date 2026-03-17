@@ -1,6 +1,7 @@
 /**
  * Paths commands - Path management
  */
+import type { Command } from 'commander';
 import fs from 'fs';
 import path from 'path';
 import os from 'os';
@@ -31,7 +32,7 @@ type PathSchemaEntry = (typeof PATHS_SCHEMA)[keyof typeof PATHS_SCHEMA];
 /**
  * Register paths commands
  */
-export function registerPathsCommands(program) {
+export function registerPathsCommands(program: Command) {
   const paths = program.command('paths')
     .description('Path management (show paths, placeholders, resolve)')
     .argument('[key]', 'Path key (roadmap, artefacts, haven, agents, runs, assignments, worktrees, ...)')

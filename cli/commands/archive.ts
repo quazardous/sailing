@@ -6,6 +6,7 @@
  *   rudder archive PRD-001 --force  # Archive even if not done
  *   rudder archive PRD-001 --dry-run # Show what would be archived
  */
+import type { Command } from 'commander';
 import path from 'path';
 import { archivePrd, getDonePrds, isPrdDone, getPrdStatus } from '../managers/archive-manager.js';
 import { getPrd } from '../managers/artefacts-manager.js';
@@ -105,7 +106,7 @@ async function archiveAllDone(dryRun = false) {
 /**
  * Register archive commands
  */
-export function registerArchiveCommands(program) {
+export function registerArchiveCommands(program: Command) {
   withModifies(program
     .command('archive [prd-id]'), ['prd', 'git'])
     .description('Archive a completed PRD (or list Done PRDs if no ID)')

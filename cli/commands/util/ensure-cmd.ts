@@ -1,6 +1,7 @@
 /**
  * Ensure command - Fix files with missing frontmatter
  */
+import type { Command } from 'commander';
 import fs from 'fs';
 import path from 'path';
 import {
@@ -13,7 +14,7 @@ import { getAllEpics, getAllTasks } from '../../managers/artefacts-manager.js';
 /**
  * Register ensure command
  */
-export function registerEnsureCommand(program) {
+export function registerEnsureCommand(program: Command) {
   program.command('ensure')
     .description('Fix files with missing frontmatter (id, parent)')
     .action(() => {

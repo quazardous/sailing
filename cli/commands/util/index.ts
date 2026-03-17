@@ -1,6 +1,7 @@
 /**
  * Utility commands index - aggregates all util subcommands
  */
+import type { Command } from 'commander';
 import { registerConfigCommands } from './config-cmd.js';
 import { registerPathsCommands } from './paths-cmd.js';
 import { registerVersionsCommands } from './versions-cmd.js';
@@ -14,7 +15,7 @@ import { registerFixCommands } from './fix-cmd.js';
 /**
  * Register all utility commands
  */
-export function registerUtilCommands(program) {
+export function registerUtilCommands(program: Command) {
   registerConfigCommands(program);
   registerPathsCommands(program);
   registerVersionsCommands(program);
