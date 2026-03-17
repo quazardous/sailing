@@ -19,7 +19,8 @@ import { getWorktreePath } from '../../managers/worktree-manager.js';
 import { diagnoseWorktreeState } from '../../lib/state-machine/index.js';
 import { getTaskEpic } from '../../managers/artefacts-manager.js';
 import {
-  getDiagnoseOps, matchesNoiseFilter, parseJsonLog
+  getDiagnoseOps, matchesNoiseFilter, parseJsonLog,
+  type NoiseFilter, type LogEvent
 } from '../../managers/diagnose-manager.js';
 import { summarizeEvent } from './diagnose.js';
 import { checkPosts, formatPostOutput } from '../../lib/guards.js';
@@ -41,10 +42,10 @@ import {
  * Create a JsonLogProcessor for agent logs with noise filtering.
  * Bridges lib/log-tail.ts with diagnose-manager's filtering logic.
  */
-function createAgentLogProcessor(noiseFilters: any[]): JsonLogProcessor {
+function createAgentLogProcessor(noiseFilters: NoiseFilter[]): JsonLogProcessor {
   return {
     parse: parseJsonLog,
-    isNoise: (line: string, event: any) => {
+    isNoise: (line: string, event: LogEvent) => {
       for (const filter of noiseFilters) {
         if (matchesNoiseFilter(line, event, filter)) {
           return true;
@@ -509,8 +510,8 @@ export function registerMonitorCommands(agent: Command) {
       };
       process.on('SIGINT', sigintHandler);
 
-      let heartbeatTimer = null;
-      let pollTimer = null;
+      let heartbeatTimer: ReturnType<typeof setInterval> | null = null;
+      let pollTimer: ReturnType<typeof setInterval> | null = null;
 
       const cleanup = () => {
         process.off('SIGHUP', sighupHandler);
@@ -526,7 +527,7 @@ export function registerMonitorCommands(agent: Command) {
         }, heartbeatInterval);
       }
 
-      let exitCode = null;
+      let exitCode: number | null = null;
 
       await new Promise<void>((resolve) => {
         pollTimer = setInterval(() => {
@@ -654,7 +655,7 @@ export function registerMonitorCommands(agent: Command) {
       }
 
       return new Promise<void>((resolve) => {
-        let watcher;
+        let watcher: fs.FSWatcher | undefined;
 
         const cleanup = () => {
           if (watcher) watcher.close();
@@ -782,7 +783,7 @@ export function registerMonitorCommands(agent: Command) {
         // Static events display
         const { events, lines } = parseJsonLog(jsonLogFile);
         const limit = options.lines ?? 50;
-        const output: any[] = [];
+        const output: Array<{ line: number; type?: string; event?: LogEvent; summary?: string }> = [];
         let filtered = 0;
 
         for (let i = 0; i < events.length; i++) {

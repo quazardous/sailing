@@ -38,27 +38,35 @@ setScriptDir(__dirname);
 
 // Parse args
 const args = process.argv.slice(2);
-let projectRootArg = null;
+let projectRootArg: string | null = null;
 let command = 'start';  // Default command
 let foreground = false;  // Default: daemon mode
-let customSocket = null;
+let customSocket: string | null = null;
 let usePort = false;
-const passArgs = [];
+const passArgs: string[] = [];
+
+const commands = new Set(['start', 'status', 'stop', 'restart', 'log']);
+let skipNext = false;
 
 for (let i = 0; i < args.length; i++) {
-  const arg = args[i];
-
-  // Commands
-  if (arg === 'start' || arg === 'status' || arg === 'stop' || arg === 'restart' || arg === 'log') {
-    command = arg;
+  if (skipNext) {
+    skipNext = false;
+    continue;
   }
-  // Options
-  else if (arg === '--root' && args[i + 1]) {
-    projectRootArg = args[++i];
+
+  const arg = args[i];
+  const next: string | undefined = args[i + 1];
+
+  if (commands.has(arg)) {
+    command = arg;
+  } else if (arg === '--root' && next) {
+    projectRootArg = next;
+    skipNext = true;
   } else if (arg === '-f' || arg === '--foreground') {
     foreground = true;
-  } else if (arg === '--socket' && args[i + 1]) {
-    customSocket = args[++i];
+  } else if (arg === '--socket' && next) {
+    customSocket = next;
+    skipNext = true;
     passArgs.push('--socket', customSocket);
   } else if (arg === '--port') {
     usePort = true;
@@ -121,18 +129,63 @@ if (!projectRoot) {
 import { getAgentConfig } from './managers/core-manager.js';
 
 const havenPath = getPath('haven');
+if (!havenPath) {
+  console.error('Error: Could not determine haven path');
+  process.exit(1);
+}
 const agentConfig = getAgentConfig();
 const mcpMode = usePort ? 'port' : (agentConfig.mcp_mode || 'socket');
 const defaultSocket = customSocket || path.join(havenPath, 'mcp.sock');
 const portFile = path.join(havenPath, 'mcp.port');
 const pidFile = path.join(havenPath, 'mcp.pid');
 
+interface ServerStatus {
+  running: boolean;
+  pid?: number;
+  mode?: string;
+  port?: number | null;
+  socket?: string | null;
+}
+
+/**
+ * Safely remove a file, ignoring errors if it doesn't exist.
+ */
+function safeUnlink(filePath: string): void {
+  try { fs.unlinkSync(filePath); } catch { /* ignore */ }
+}
+
+/**
+ * Clean up all MCP state files.
+ */
+function cleanupStateFiles(): void {
+  safeUnlink(pidFile);
+  safeUnlink(defaultSocket);
+  safeUnlink(portFile);
+}
+
+/**
+ * Verify that the given port is owned by the given PID.
+ * Returns true if ownership confirmed, false otherwise.
+ */
+function verifyPortOwnership(port: number, pid: number): boolean {
+  try {
+    const { stdout, exitCode } = execaSync('lsof', ['-i', `:${port}`, '-t'], { reject: false });
+    if (exitCode !== 0 || !stdout.trim()) {
+      return false;
+    }
+    const portPids = stdout.trim().split('\n').map(p => parseInt(p, 10));
+    return portPids.includes(pid);
+  } catch {
+    return false;
+  }
+}
+
 /**
  * Check if server is running
  * Checks both socket and port mode
  * Verifies port is actually our MCP by checking the process
  */
-function getServerStatus() {
+function getServerStatus(): ServerStatus {
   if (!fs.existsSync(pidFile)) {
     return { running: false };
   }
@@ -143,29 +196,16 @@ function getServerStatus() {
 
     // Determine mode from existing files
     let mode = 'socket';
-    let port = null;
-    let socket = null;
+    let port: number | null = null;
+    let socket: string | null = null;
 
     if (fs.existsSync(portFile)) {
       mode = 'port';
       port = parseInt(fs.readFileSync(portFile, 'utf8').trim(), 10);
 
-      // Verify the port is actually in use by our PID
-      // This prevents stale port files from misleading us
-      try {
-        const { stdout, exitCode } = execaSync('lsof', ['-i', `:${port}`, '-t'], { reject: false });
-        if (exitCode !== 0 || !stdout.trim()) {
-          throw new Error('Port not in use');
-        }
-        const portPids = stdout.trim().split('\n').map(p => parseInt(p, 10));
-        if (!portPids.includes(pid)) {
-          // Port is no longer used by our process, clean up
-          throw new Error('Port not owned by MCP');
-        }
-      } catch {
-        // lsof failed or port not owned - clean up and report not running
-        try { fs.unlinkSync(pidFile); } catch {}
-        try { fs.unlinkSync(portFile); } catch {}
+      if (!verifyPortOwnership(port, pid)) {
+        safeUnlink(pidFile);
+        safeUnlink(portFile);
         return { running: false };
       }
     } else if (fs.existsSync(defaultSocket)) {
@@ -175,9 +215,7 @@ function getServerStatus() {
     return { running: true, pid, mode, port, socket };
   } catch {
     // Process not running, clean up stale files
-    try { fs.unlinkSync(pidFile); } catch {}
-    try { fs.unlinkSync(defaultSocket); } catch {}
-    try { fs.unlinkSync(portFile); } catch {}
+    cleanupStateFiles();
     return { running: false };
   }
 }
@@ -231,48 +269,47 @@ function handleStatus() {
 }
 
 /**
+ * Wait for a process to terminate, using SIGKILL if needed.
+ */
+function waitForProcessExit(pid: number): void {
+  const start = Date.now();
+  while (Date.now() - start < 2000) {
+    try {
+      process.kill(pid, 0);
+      spawnSync('sleep', ['0.1'], { stdio: 'ignore' });
+    } catch {
+      return; // Process gone
+    }
+  }
+  // Still running after timeout, try SIGKILL
+  try {
+    process.kill(pid, 'SIGKILL');
+    spawnSync('sleep', ['0.5'], { stdio: 'ignore' });
+  } catch {
+    // Already dead
+  }
+}
+
+/**
  * Stop the server (internal, no exit)
  * @returns {boolean} true if stopped, false if not running
  */
 function stopServer(): boolean {
   const status = getServerStatus();
 
-  if (!status.running) {
+  if (!status.running || !status.pid) {
     return false;
   }
 
+  const pid = status.pid;
+
   try {
-    process.kill(status.pid, 'SIGTERM');
-    console.log(`Stopped MCP server (pid: ${status.pid})`);
-
-    // Clean up files synchronously
-    try { fs.unlinkSync(pidFile); } catch {}
-    try { fs.unlinkSync(defaultSocket); } catch {}
-    try { fs.unlinkSync(portFile); } catch {}
-
-    // Wait for process to fully terminate (up to 2s)
-    const start = Date.now();
-    while (Date.now() - start < 2000) {
-      try {
-        process.kill(status.pid, 0);
-        // Still running, wait
-        spawnSync('sleep', ['0.1'], { stdio: 'ignore' });
-      } catch {
-        // Process gone
-        return true;
-      }
-    }
-
-    // Still running after timeout, try SIGKILL
-    try {
-      process.kill(status.pid, 'SIGKILL');
-      spawnSync('sleep', ['0.5'], { stdio: 'ignore' });
-    } catch {
-      // Already dead
-    }
-
+    process.kill(pid, 'SIGTERM');
+    console.log(`Stopped MCP server (pid: ${pid})`);
+    cleanupStateFiles();
+    waitForProcessExit(pid);
     return true;
-  } catch (e) {
+  } catch (e: unknown) {
     console.error(`Failed to stop server: ${errorMessage(e)}`);
     return false;
   }
@@ -290,116 +327,126 @@ function handleStop() {
 }
 
 /**
+ * Start the MCP server in foreground mode.
+ */
+function startForeground(mcpServerPath: string, finalArgs: string[], usePortMode: boolean): void {
+  console.log(`Starting agent MCP server...`);
+  console.log(`  Mode: ${usePortMode ? 'port' : 'socket'}`);
+  if (!usePortMode) console.log(`  Socket: ${defaultSocket}`);
+  console.log(`  Project: ${projectRoot}`);
+  console.log('');
+
+  const child = spawn('node', [mcpServerPath, ...finalArgs], {
+    stdio: 'inherit',
+    cwd: projectRoot
+  });
+
+  child.on('error', (err: Error) => {
+    console.error(`Failed to start MCP server: ${err.message}`);
+    process.exit(1);
+  });
+
+  child.on('exit', (code: number | null) => {
+    process.exit(code || 0);
+  });
+
+  process.on('SIGINT', () => child.kill('SIGINT'));
+  process.on('SIGTERM', () => child.kill('SIGTERM'));
+}
+
+/**
+ * Start the MCP server in daemon (detached) mode.
+ */
+function startDaemon(
+  mcpServerPath: string, finalArgs: string[],
+  logFile: string, usePortMode: boolean, allocatedPort: number | null
+): void {
+  const out = fs.openSync(logFile, 'a');
+  const errFd = fs.openSync(logFile, 'a');
+
+  const child = spawn('node', [mcpServerPath, ...finalArgs], {
+    detached: true,
+    stdio: ['ignore', out, errFd],
+    cwd: projectRoot
+  });
+
+  setTimeout(() => {
+    fs.writeFileSync(pidFile, String(child.pid));
+
+    if (usePortMode) {
+      fs.writeFileSync(portFile, String(allocatedPort));
+      console.log(`Rudder MCP server started (pid: ${child.pid})`);
+      console.log(`  Port: ${allocatedPort}`);
+      console.log(`  Mode: port`);
+      console.log(`  Log: ${logFile}`);
+    } else if (fs.existsSync(defaultSocket)) {
+      console.log(`Rudder MCP server started (pid: ${child.pid})`);
+      console.log(`  Socket: ${defaultSocket}`);
+      console.log(`  Mode: socket`);
+      console.log(`  Log: ${logFile}`);
+    } else {
+      console.log(`Rudder MCP server starting (pid: ${child.pid})`);
+      console.log(`  Check log: ${logFile}`);
+    }
+
+    child.unref();
+    process.exit(0);
+  }, 500);
+}
+
+/**
+ * Log the status of an already-running server and exit.
+ */
+function reportAlreadyRunning(status: ServerStatus): void {
+  console.log(`MCP server already running (pid: ${status.pid})`);
+  if (status.mode === 'port') {
+    console.log(`  Port: ${status.port}`);
+  } else {
+    console.log(`  Socket: ${status.socket || defaultSocket}`);
+  }
+  process.exit(0);
+}
+
+/**
  * Handle start command
  */
 async function handleStart() {
   const status = getServerStatus();
 
   if (status.running) {
-    console.log(`MCP server already running (pid: ${status.pid})`);
-    if (status.mode === 'port') {
-      console.log(`  Port: ${status.port}`);
-    } else {
-      console.log(`  Socket: ${status.socket || defaultSocket}`);
-    }
-    process.exit(0);
+    reportAlreadyRunning(status);
   }
 
   // Build final args based on mode
-  const finalArgs = [];
+  const finalArgs: string[] = [];
   const usePortMode = mcpMode === 'port';
-  let allocatedPort = null;
+  let allocatedPort: number | null = null;
 
   if (usePortMode) {
-    // Port mode: find available port in range
     try {
       allocatedPort = await findAvailablePort();
       finalArgs.push('--port', String(allocatedPort));
-    } catch (e) {
-      console.error(`Failed to find available port: ${e.message}`);
+    } catch (e: unknown) {
+      console.error(`Failed to find available port: ${errorMessage(e)}`);
       process.exit(1);
     }
-  } else {
-    // Socket mode (default)
-    if (!passArgs.includes('--socket')) {
-      finalArgs.push('--socket', defaultSocket);
-    }
+  } else if (!passArgs.includes('--socket')) {
+    finalArgs.push('--socket', defaultSocket);
   }
 
-  // Add project root
   if (!passArgs.includes('--project-root')) {
     finalArgs.push('--project-root', projectRoot);
   }
 
   finalArgs.push(...passArgs);
 
-  // Find MCP server
   const mcpServerPath = path.resolve(__dirname, '../mcp/agent-server.js');
   const logFile = path.join(havenPath, 'mcp.log');
 
   if (foreground) {
-    // Foreground mode
-    console.log(`Starting agent MCP server...`);
-    console.log(`  Mode: ${usePortMode ? 'port' : 'socket'}`);
-    if (!usePortMode) console.log(`  Socket: ${defaultSocket}`);
-    console.log(`  Project: ${projectRoot}`);
-    console.log('');
-
-    const child = spawn('node', [mcpServerPath, ...finalArgs], {
-      stdio: 'inherit',
-      cwd: projectRoot
-    });
-
-    child.on('error', (err) => {
-      console.error(`Failed to start MCP server: ${err.message}`);
-      process.exit(1);
-    });
-
-    child.on('exit', (code) => {
-      process.exit(code || 0);
-    });
-
-    // Forward signals
-    process.on('SIGINT', () => child.kill('SIGINT'));
-    process.on('SIGTERM', () => child.kill('SIGTERM'));
+    startForeground(mcpServerPath, finalArgs, usePortMode);
   } else {
-    // Daemon mode (default): detach
-    const out = fs.openSync(logFile, 'a');
-    const err = fs.openSync(logFile, 'a');
-
-    const child = spawn('node', [mcpServerPath, ...finalArgs], {
-      detached: true,
-      stdio: ['ignore', out, err],
-      cwd: projectRoot
-    });
-
-    // Wait briefly for startup, then check and report
-    setTimeout(() => {
-      // Write PID file
-      fs.writeFileSync(pidFile, String(child.pid));
-
-      if (usePortMode) {
-        // Port mode: write port file
-        fs.writeFileSync(portFile, String(allocatedPort));
-        console.log(`Rudder MCP server started (pid: ${child.pid})`);
-        console.log(`  Port: ${allocatedPort}`);
-        console.log(`  Mode: port`);
-        console.log(`  Log: ${logFile}`);
-      } else {
-        // Socket mode
-        if (fs.existsSync(defaultSocket)) {
-          console.log(`Rudder MCP server started (pid: ${child.pid})`);
-          console.log(`  Socket: ${defaultSocket}`);
-          console.log(`  Mode: socket`);
-          console.log(`  Log: ${logFile}`);
-        } else {
-          console.log(`Rudder MCP server starting (pid: ${child.pid})`);
-          console.log(`  Check log: ${logFile}`);
-        }
-      }
-      child.unref();
-      process.exit(0);
-    }, 500);
+    startDaemon(mcpServerPath, finalArgs, logFile, usePortMode, allocatedPort);
   }
 }
 

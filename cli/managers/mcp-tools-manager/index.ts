@@ -87,7 +87,7 @@ export function getConductorTools(): Tool[] {
   return CONDUCTOR_TOOLS.map(t => t.tool);
 }
 
-export async function handleAgentTool(name: string, args: Record<string, any>): Promise<ToolResponse> {
+export async function handleAgentTool(name: string, args: Record<string, unknown>): Promise<ToolResponse> {
   const toolDef = agentToolMap.get(name);
   if (!toolDef) {
     return err(`Unknown agent tool: ${name}`);
@@ -101,7 +101,7 @@ export async function handleAgentTool(name: string, args: Record<string, any>): 
   }
 }
 
-export async function handleConductorTool(name: string, args: Record<string, any>): Promise<ToolResponse> {
+export async function handleConductorTool(name: string, args: Record<string, unknown>): Promise<ToolResponse> {
   const toolDef = conductorToolMap.get(name);
   if (!toolDef) {
     return err(`Unknown conductor tool: ${name}`);
@@ -135,9 +135,10 @@ export function formatToolHelp(tools: ToolDefinition[], verbose = false): string
   for (const [cat, catTools] of Object.entries(byCategory)) {
     lines.push(`\n${cat.toUpperCase()}`);
     for (const t of catTools) {
-      const schema = t.tool.inputSchema as any;
-      const props = schema?.properties || {};
-      const required = schema?.required || [];
+      const schema = t.tool.inputSchema;
+      const props: Record<string, { description?: string; type?: string }> =
+        (schema.properties as Record<string, { description?: string; type?: string }> | undefined) ?? {};
+      const required: string[] = schema.required ?? [];
 
       const argParts: string[] = [];
       for (const [name] of Object.entries(props)) {
@@ -151,7 +152,7 @@ export function formatToolHelp(tools: ToolDefinition[], verbose = false): string
       }
 
       if (verbose) {
-        for (const [name, prop] of Object.entries(props) as [string, { description?: string; type?: string }][]) {
+        for (const [name, prop] of Object.entries(props)) {
           const isRequired = required.includes(name);
           lines.push(`    --${name}${isRequired ? ' (required)' : ''}: ${prop.description || prop.type}`);
         }

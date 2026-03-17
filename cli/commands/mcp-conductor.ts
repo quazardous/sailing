@@ -29,41 +29,65 @@ function ensureMcpInit() {
 }
 
 // =============================================================================
+// Types
+// =============================================================================
+
+/** Shape of a JSON Schema property within a tool's inputSchema */
+interface SchemaProperty {
+  type?: string;
+  description?: string;
+  enum?: string[];
+}
+
+/** Subset of JSON Schema used by MCP tool inputSchema */
+interface ToolInputSchema {
+  type: 'object';
+  properties?: Record<string, SchemaProperty>;
+  required?: string[];
+}
+
+/** Primitive CLI argument value */
+type CliValue = string | number | boolean;
+
+// =============================================================================
 // Helpers
 // =============================================================================
+
+/**
+ * Parse a single --key or --key=value token, returning [key, value, skip]
+ * where skip indicates whether the next arg was consumed.
+ */
+function parseArg(withoutDashes: string, nextArg: string | undefined): { key: string; value: CliValue; skip: boolean } {
+  const eqIndex = withoutDashes.indexOf('=');
+  if (eqIndex !== -1) {
+    return {
+      key: withoutDashes.slice(0, eqIndex),
+      value: parseValue(withoutDashes.slice(eqIndex + 1)),
+      skip: false
+    };
+  }
+  if (nextArg && !nextArg.startsWith('--')) {
+    return { key: withoutDashes, value: parseValue(nextArg), skip: true };
+  }
+  return { key: withoutDashes, value: true, skip: false };
+}
 
 /**
  * Parse CLI args into tool arguments
  * Supports: --key=value, --key value, --flag (boolean true)
  */
-function parseToolArgs(args: string[]): Record<string, any> {
-  const result: Record<string, any> = {};
+function parseToolArgs(args: string[]): Record<string, CliValue> {
+  const result: Record<string, CliValue> = {};
+  let i = 0;
 
-  for (let i = 0; i < args.length; i++) {
+  while (i < args.length) {
     const arg = args[i];
-
     if (arg.startsWith('--')) {
-      const withoutDashes = arg.slice(2);
-
-      // Check for --key=value format
-      const eqIndex = withoutDashes.indexOf('=');
-      if (eqIndex !== -1) {
-        const key = withoutDashes.slice(0, eqIndex);
-        const value = withoutDashes.slice(eqIndex + 1);
-        result[key] = parseValue(value);
-      } else {
-        // Check if next arg is a value or another flag
-        const key = withoutDashes;
-        const nextArg = args[i + 1];
-
-        if (nextArg && !nextArg.startsWith('--')) {
-          result[key] = parseValue(nextArg);
-          i++; // Skip next arg
-        } else {
-          // Boolean flag
-          result[key] = true;
-        }
-      }
+      const parsed = parseArg(arg.slice(2), args[i + 1]);
+      result[parsed.key] = parsed.value;
+      i += parsed.skip ? 2 : 1;
+    } else {
+      i++;
     }
   }
 
@@ -71,24 +95,43 @@ function parseToolArgs(args: string[]): Record<string, any> {
 }
 
 /**
- * Parse a string value to appropriate type
+ * Strip surrounding quotes from a string value
  */
-function parseValue(value: string): any {
-  // Boolean
-  if (value === 'true') return true;
-  if (value === 'false') return false;
-
-  // Number
-  const num = Number(value);
-  if (!isNaN(num) && value.trim() !== '') return num;
-
-  // String (remove quotes if present)
+function stripQuotes(value: string): string {
   if ((value.startsWith('"') && value.endsWith('"')) ||
       (value.startsWith("'") && value.endsWith("'"))) {
     return value.slice(1, -1);
   }
-
   return value;
+}
+
+/** Boolean keyword lookup */
+const BOOL_MAP: Record<string, CliValue> = { 'true': true, 'false': false };
+
+/**
+ * Parse a string value to appropriate type.
+ * Returns boolean for "true"/"false", number for numeric strings, string otherwise.
+ */
+function parseValue(value: string): CliValue {
+  const asNum = Number(value);
+  const resolved: CliValue = BOOL_MAP[value]
+    ?? (!isNaN(asNum) && value.trim() !== '' ? asNum : undefined)
+    ?? stripQuotes(value);
+  return resolved;
+}
+
+/**
+ * Format a single schema property as display lines
+ */
+function formatPropertyLines(name: string, prop: SchemaProperty, required: string[]): string[] {
+  const isRequired = required.includes(name);
+  const reqStr = isRequired ? ' (required)' : '';
+  const typeStr = prop.enum ? prop.enum.join('|') : prop.type;
+  const lines = [`  --${name}${reqStr}`, `      Type: ${typeStr}`];
+  if (prop.description) {
+    lines.push(`      ${prop.description}`);
+  }
+  return lines;
 }
 
 /**
@@ -100,9 +143,9 @@ function formatSchema(toolName: string): string {
     return `Tool not found: ${toolName}`;
   }
 
-  const schema = toolDef.tool.inputSchema as any;
-  const props = schema?.properties || {};
-  const required = schema?.required || [];
+  const schema = toolDef.tool.inputSchema as ToolInputSchema;
+  const props: Record<string, SchemaProperty> = schema.properties ?? {};
+  const required: string[] = schema.required ?? [];
 
   const lines: string[] = [
     `Tool: ${toolDef.tool.name}`,
@@ -114,15 +157,8 @@ function formatSchema(toolName: string): string {
   if (Object.keys(props).length === 0) {
     lines.push('  (none)');
   } else {
-    for (const [name, prop] of Object.entries(props) as [string, { enum?: string[]; type?: string; description?: string }][]) {
-      const isRequired = required.includes(name);
-      const reqStr = isRequired ? ' (required)' : '';
-      const typeStr = prop.enum ? prop.enum.join('|') : prop.type;
-      lines.push(`  --${name}${reqStr}`);
-      lines.push(`      Type: ${typeStr}`);
-      if (prop.description) {
-        lines.push(`      ${prop.description}`);
-      }
+    for (const [name, prop] of Object.entries(props)) {
+      lines.push(...formatPropertyLines(name, prop, required));
     }
   }
 
@@ -130,7 +166,7 @@ function formatSchema(toolName: string): string {
   lines.push('Example:');
   const exampleArgs = Object.entries(props)
     .filter(([name]) => required.includes(name))
-    .map(([name, prop]: [string, any]) => {
+    .map(([name, prop]) => {
       const example = prop.type === 'string' ? 'value' : '123';
       return `--${name}=${example}`;
     })
@@ -207,7 +243,7 @@ export function registerMcpConductorCommands(program: Command) {
           // Try to pretty print JSON
           const text = result.content[0]?.text || '';
           try {
-            const parsed = JSON.parse(text);
+            const parsed: unknown = JSON.parse(text);
             console.log(JSON.stringify(parsed, null, 2));
           } catch {
             console.log(text);

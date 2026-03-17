@@ -36,8 +36,8 @@ function ensureMcpInit() {
  * Parse CLI args into tool arguments
  * Supports: --key=value, --key value, --flag (boolean true)
  */
-function parseToolArgs(args: string[]): Record<string, any> {
-  const result: Record<string, any> = {};
+function parseToolArgs(args: string[]): Record<string, unknown> {
+  const result: Record<string, unknown> = {};
 
   for (let i = 0; i < args.length; i++) {
     const arg = args[i];
@@ -73,7 +73,7 @@ function parseToolArgs(args: string[]): Record<string, any> {
 /**
  * Parse a string value to appropriate type
  */
-function parseValue(value: string): any {
+function parseValue(value: string): string | number | boolean {
   // Boolean
   if (value === 'true') return true;
   if (value === 'false') return false;
@@ -100,9 +100,9 @@ function formatSchema(toolName: string): string {
     return `Tool not found: ${toolName}`;
   }
 
-  const schema = toolDef.tool.inputSchema as any;
-  const props = schema?.properties || {};
-  const required = schema?.required || [];
+  const schema = toolDef.tool.inputSchema;
+  const props = schema.properties ?? {};
+  const required: string[] = schema.required ?? [];
 
   const lines: string[] = [
     `Tool: ${toolDef.tool.name}`,
@@ -130,7 +130,7 @@ function formatSchema(toolName: string): string {
   lines.push('Example:');
   const exampleArgs = Object.entries(props)
     .filter(([name]) => required.includes(name))
-    .map(([name, prop]: [string, any]) => {
+    .map(([name, prop]: [string, { type?: string }]) => {
       const example = prop.type === 'string' ? 'value' : '123';
       return `--${name}=${example}`;
     })
@@ -209,7 +209,7 @@ export function registerMcpAgentCommands(program: Command) {
           // Try to pretty print JSON
           const text = result.content[0]?.text || '';
           try {
-            const parsed = JSON.parse(text);
+            const parsed: unknown = JSON.parse(text);
             console.log(JSON.stringify(parsed, null, 2));
           } catch {
             console.log(text);

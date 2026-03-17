@@ -149,7 +149,7 @@ export function generateAgentSrtConfig(options: {
  * @param {string} agentDir - Agent directory path (.../havens/<hash>/agents/T042)
  * @returns {string} Haven directory path (.../havens/<hash>)
  */
-function getHavenDir(agentDir) {
+function getHavenDir(agentDir: string): string {
   // agentDir = .../havens/<hash>/agents/T042
   // havenDir = .../havens/<hash>
   return path.dirname(path.dirname(agentDir));
@@ -351,12 +351,29 @@ export function spawnClaude(options: SpawnClaudeOptions): SpawnClaudeResult {
   };
 }
 
+export interface Mission {
+  task_id: string;
+  epic_id: string;
+  prd_id: string;
+  instruction: string;
+  context?: {
+    task_file?: string;
+    epic_file?: string;
+    memory?: string;
+    dev_md?: string;
+    toolset?: string;
+  };
+  constraints?: {
+    no_git_commit?: boolean;
+  };
+}
+
 /**
  * Build prompt from mission file
- * @param {object} mission - Mission object from YAML
+ * @param {Mission} mission - Mission object from YAML
  * @returns {string} Formatted prompt
  */
-export function buildPromptFromMission(mission) {
+export function buildPromptFromMission(mission: Mission): string {
   const parts = [];
 
   // Task identity

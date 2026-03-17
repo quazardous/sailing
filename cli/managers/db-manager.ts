@@ -26,6 +26,24 @@ export { DbOps };
 export type { DbOptions } from '../lib/db.js';
 export { AgentRecord };
 
+/** Raw document shape returned by the agents database (AgentRecord + internal jsondb fields) */
+interface DbAgentDoc extends AgentRecord {
+  _id?: string;
+  _createdAt?: string;
+  _updatedAt?: string;
+  migratedAt?: string;
+}
+
+/** Strip internal db fields from a document, returning a clean AgentRecord */
+function stripDbFields(doc: DbAgentDoc): AgentRecord {
+  const clean = { ...doc };
+  delete clean._id;
+  delete clean._createdAt;
+  delete clean._updatedAt;
+  delete clean.migratedAt;
+  return clean;
+}
+
 // ============================================================================
 // DbOps Factory (lazy-initialized)
 // ============================================================================
@@ -100,12 +118,11 @@ export function getAgentFromDb(taskIdOrNum: string | number): AgentRecord | null
   const taskNum = resolveTaskNum(taskIdOrNum);
   if (taskNum === null) return null;
 
-  const doc = getDbOps().getAgent(taskNum);
+  const doc = getDbOps().getAgent(taskNum) as DbAgentDoc | null;
   if (!doc) return null;
 
   // Convert db doc to AgentRecord (remove internal fields)
-  const { _id, _createdAt, _updatedAt, migratedAt: _migratedAt, ...record } = doc;
-  return record as AgentRecord;
+  return stripDbFields(doc);
 }
 
 /**
@@ -127,12 +144,12 @@ export function getAllAgentsFromDb(options: { status?: string } = {}): Record<st
   const digits = getTaskDigits();
   const result: Record<string, AgentRecord> = {};
 
-  for (const doc of docs) {
-    const { _id, _createdAt, _updatedAt, migratedAt: _migratedAt, ...record } = doc;
+  for (const doc of (docs as DbAgentDoc[])) {
+    const record = stripDbFields(doc);
     // Skip records with invalid taskNum
     if (typeof record.taskNum !== 'number' || isNaN(record.taskNum)) continue;
     const taskId = formatTaskId(record.taskNum, digits);
-    result[taskId] = record as AgentRecord;
+    result[taskId] = record;
   }
   return result;
 }
@@ -146,10 +163,10 @@ export function getAgentsArray(options: { status?: string } = {}): Array<AgentRe
   const docs = getDbOps().getAllAgents(options);
   const digits = getTaskDigits();
 
-  return docs
+  return (docs as DbAgentDoc[])
     .filter(doc => typeof doc.taskNum === 'number' && !isNaN(doc.taskNum))
     .map(doc => {
-      const { _id, _createdAt, _updatedAt, migratedAt: _migratedAt, ...record } = doc;
+      const record = stripDbFields(doc);
       return {
         ...record,
         taskId: formatTaskId(record.taskNum, digits)

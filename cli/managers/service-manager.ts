@@ -98,13 +98,170 @@ export class ServiceManager {
   }
 
   // --------------------------------------------------------------------------
+  // Helpers
+  // --------------------------------------------------------------------------
+
+  /**
+   * Check if a process with the given PID is alive.
+   */
+  private isProcessAlive(pid?: number): boolean {
+    if (!pid) return false;
+    try {
+      process.kill(pid, 0);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  /**
+   * Format transport string for a service endpoint.
+   */
+  private formatTransport(endpoint: { socket?: string; port?: number }): string {
+    return endpoint.socket
+      ? `socket ${endpoint.socket}`
+      : `port ${endpoint.port}`;
+  }
+
+  /**
+   * Build a ServiceStatus from MCP state, cleaning up stale state if needed.
+   */
+  private buildServiceStatus(state: McpState, stateFile: string): ServiceStatus {
+    const conductorAlive = this.isProcessAlive(state.conductor?.pid);
+    const agentAlive = this.isProcessAlive(state.agent?.pid);
+
+    if (!conductorAlive && !agentAlive) {
+      fs.unlinkSync(stateFile);
+      return { running: false };
+    }
+
+    const result: ServiceStatus = {
+      running: true,
+      startedAt: state.startedAt
+    };
+
+    if (state.conductor) {
+      result.conductor = {
+        pid: state.conductor.pid,
+        alive: conductorAlive,
+        transport: this.formatTransport(state.conductor)
+      };
+    }
+
+    if (state.agent) {
+      result.agent = {
+        pid: state.agent.pid,
+        alive: agentAlive,
+        transport: this.formatTransport(state.agent)
+      };
+    } else {
+      result.agent = null;
+    }
+
+    return result;
+  }
+
+  // --------------------------------------------------------------------------
   // MCP Services
   // --------------------------------------------------------------------------
 
   /**
+   * Check if an existing MCP state represents a running process.
+   * Returns a StartMcpResult if already running, or null if the process is dead.
+   */
+  private checkExistingState(state: McpState, useSubprocess: boolean): StartMcpResult | null {
+    try {
+      process.kill(state.pid, 0);
+    } catch {
+      return null; // Process dead
+    }
+
+    const agentRunning = !!state.agent;
+    if (useSubprocess !== agentRunning) {
+      return {
+        success: false,
+        alreadyRunning: true,
+        configChanged: true,
+        error: `Config changed: use_subprocess=${useSubprocess} (config) vs ${agentRunning} (running)`
+      };
+    }
+
+    return {
+      success: false,
+      alreadyRunning: true,
+      error: `MCP servers already running (pid ${state.pid})`
+    };
+  }
+
+  /**
+   * Get transport args for a service (port or socket mode).
+   */
+  private getTransportArgs(
+    haven: string, mcpMode: string, service: 'conductor' | 'agent',
+    portStart: number, offset: number
+  ): string[] {
+    if (mcpMode === 'port') {
+      return ['--port', String(portStart + offset)];
+    }
+    const socketPath = path.join(haven, `mcp-${service}.sock`);
+    if (fs.existsSync(socketPath)) {
+      fs.unlinkSync(socketPath);
+    }
+    return ['--socket', socketPath];
+  }
+
+  /**
+   * Spawn a single MCP service process and record its state.
+   */
+  private spawnService(
+    haven: string, service: 'conductor' | 'agent', scriptBase: string,
+    transportArgs: string[], logFile: string, foreground: boolean,
+    mcpMode: string, portStart: number, offset: number
+  ): { pid?: number; stateEntry: McpState['conductor'] } {
+    const args = [...transportArgs, '--project-root', this.projectRoot];
+    const script = getScriptInfo(scriptBase);
+    const logFd = fs.openSync(logFile, 'a');
+
+    const child = spawn(script.cmd, [...script.args, ...args], {
+      stdio: ['ignore', logFd, logFd],
+      cwd: this.projectRoot,
+      detached: !foreground
+    });
+
+    if (child.pid && !foreground) {
+      child.unref();
+    }
+
+    const stateEntry: McpState['conductor'] = mcpMode === 'port'
+      ? { port: portStart + offset, pid: child.pid }
+      : { socket: path.join(haven, `mcp-${service}.sock`), pid: child.pid };
+
+    return { pid: child.pid, stateEntry };
+  }
+
+  /**
+   * Clean up an existing stale state file if present.
+   * Returns a StartMcpResult if the server is already running, or null to proceed.
+   */
+  private cleanupExistingState(stateFile: string, useSubprocess: boolean): StartMcpResult | null {
+    if (!fs.existsSync(stateFile)) return null;
+
+    try {
+      const state = JSON.parse(fs.readFileSync(stateFile, 'utf-8')) as McpState;
+      const result = this.checkExistingState(state, useSubprocess);
+      if (result) return result;
+      fs.unlinkSync(stateFile);
+    } catch {
+      fs.unlinkSync(stateFile);
+    }
+
+    return null;
+  }
+
+  /**
    * Start MCP services (conductor + optionally agent)
    */
-  async startMcp(options: StartMcpOptions = {}): Promise<StartMcpResult> {
+  startMcp(options: StartMcpOptions = {}): StartMcpResult {
     const config = getAgentConfig();
     const { foreground = false } = options;
 
@@ -112,145 +269,73 @@ export class ServiceManager {
       return { success: false, error: 'Cannot determine haven path' };
     }
 
-    const stateFile = path.join(this.haven, 'mcp-state.json');
+    const haven = this.haven;
+    const stateFile = path.join(haven, 'mcp-state.json');
 
-    // Check if already running
-    if (fs.existsSync(stateFile)) {
-      try {
-        const state: McpState = JSON.parse(fs.readFileSync(stateFile, 'utf-8'));
+    const existingResult = this.cleanupExistingState(stateFile, config.use_subprocess);
+    if (existingResult) return existingResult;
 
-        // Check if process is still alive
-        try {
-          process.kill(state.pid, 0);
+    fs.mkdirSync(haven, { recursive: true });
 
-          // Check if config has changed
-          const agentExpected = config.use_subprocess;
-          const agentRunning = !!state.agent;
-
-          if (agentExpected !== agentRunning) {
-            return {
-              success: false,
-              alreadyRunning: true,
-              configChanged: true,
-              error: `Config changed: use_subprocess=${agentExpected} (config) vs ${agentRunning} (running)`
-            };
-          }
-
-          return {
-            success: false,
-            alreadyRunning: true,
-            error: `MCP servers already running (pid ${state.pid})`
-          };
-        } catch {
-          // Process dead, clean up stale state
-          fs.unlinkSync(stateFile);
-        }
-      } catch {
-        // Corrupted state file, remove it
-        fs.unlinkSync(stateFile);
-      }
-    }
-
-    // Ensure haven directory exists
-    fs.mkdirSync(this.haven, { recursive: true });
-
-    // Determine transport mode
     const mcpMode = options.mcpMode || config.mcp_mode || 'socket';
     const portRange = config.mcp_port_range || '9100-9199';
     const [portStart] = portRange.split('-').map(Number);
 
-    // Helper to get transport args
-    const getTransportArgs = (service: 'conductor' | 'agent', offset: number): string[] => {
-      if (mcpMode === 'port') {
-        const port = portStart + offset;
-        return ['--port', String(port)];
-      } else {
-        const socketPath = path.join(this.haven, `mcp-${service}.sock`);
-        if (fs.existsSync(socketPath)) {
-          fs.unlinkSync(socketPath);
-        }
-        return ['--socket', socketPath];
-      }
-    };
+    const conductorLog = path.join(haven, 'mcp-conductor.log');
+    const conductorTransport = this.getTransportArgs(haven, mcpMode, 'conductor', portStart, 0);
+    const conductor = this.spawnService(
+      haven, 'conductor', path.join(this.cliDir, 'conductor', 'mcp-conductor'),
+      conductorTransport, conductorLog, foreground, mcpMode, portStart, 0
+    );
 
-    // Prepare log files
-    const conductorLog = path.join(this.haven, 'mcp-conductor.log');
-    const agentLog = path.join(this.haven, 'mcp-agent.log');
-
-    // Build state object
     const mcpState: McpState = {
-      pid: 0,
-      startedAt: new Date().toISOString()
+      pid: conductor.pid || 0,
+      startedAt: new Date().toISOString(),
+      conductor: conductor.stateEntry
     };
 
-    const pids: number[] = [];
-
-    // Start conductor MCP
-    const conductorArgs = getTransportArgs('conductor', 0);
-    conductorArgs.push('--project-root', this.projectRoot);
-
-    const conductorScript = getScriptInfo(path.join(this.cliDir, 'conductor', 'mcp-conductor'));
-    const conductorOut = fs.openSync(conductorLog, 'a');
-    const conductorChild = spawn(conductorScript.cmd, [...conductorScript.args, ...conductorArgs], {
-      stdio: ['ignore', conductorOut, conductorOut],
-      cwd: this.projectRoot,
-      detached: !foreground
-    });
-
-    if (conductorChild.pid) {
-      pids.push(conductorChild.pid);
-      if (!foreground) conductorChild.unref();
-    }
-
-    if (mcpMode === 'port') {
-      mcpState.conductor = { port: portStart, pid: conductorChild.pid };
-    } else {
-      mcpState.conductor = { socket: path.join(this.haven, 'mcp-conductor.sock'), pid: conductorChild.pid };
-    }
-
-    // Start agent MCP only if subprocess mode is enabled
     if (config.use_subprocess) {
-      const agentArgs = getTransportArgs('agent', 1);
-      agentArgs.push('--project-root', this.projectRoot);
-
-      const agentScript = getScriptInfo(path.join(this.cliDir, 'mcp-agent'));
-      const agentOut = fs.openSync(agentLog, 'a');
-      const agentChild = spawn(agentScript.cmd, [...agentScript.args, ...agentArgs], {
-        stdio: ['ignore', agentOut, agentOut],
-        cwd: this.projectRoot,
-        detached: !foreground
-      });
-
-      if (agentChild.pid) {
-        pids.push(agentChild.pid);
-        if (!foreground) agentChild.unref();
-      }
-
-      if (mcpMode === 'port') {
-        mcpState.agent = { port: portStart + 1, pid: agentChild.pid };
-      } else {
-        mcpState.agent = { socket: path.join(this.haven, 'mcp-agent.sock'), pid: agentChild.pid };
-      }
+      const agentLog = path.join(haven, 'mcp-agent.log');
+      const agentTransport = this.getTransportArgs(haven, mcpMode, 'agent', portStart, 1);
+      const agent = this.spawnService(
+        haven, 'agent', path.join(this.cliDir, 'mcp-agent'),
+        agentTransport, agentLog, foreground, mcpMode, portStart, 1
+      );
+      mcpState.agent = agent.stateEntry;
     }
 
-    // Use first PID as main state PID
-    mcpState.pid = pids[0] || 0;
-
-    // Write MCP state file
     fs.writeFileSync(stateFile, JSON.stringify(mcpState, null, 2));
-
-    // If foreground mode, wait for conductor to exit
-    if (foreground) {
-      await new Promise<void>((resolve) => {
-        conductorChild.on('exit', resolve);
-      });
-    }
 
     return {
       success: true,
       conductor: mcpState.conductor,
       agent: mcpState.agent
     };
+  }
+
+  /**
+   * Terminate a process by PID. Returns null on success, or an error string.
+   */
+  private terminateProcess(pid: number): string | null {
+    try {
+      process.kill(pid, 'SIGTERM');
+      return null;
+    } catch (e: unknown) {
+      if (errorCode(e) === 'ESRCH') return null; // Already dead
+      return `Failed to stop process ${pid}: ${errorMessage(e)}`;
+    }
+  }
+
+  /**
+   * Clean up socket files from MCP state.
+   */
+  private cleanupSockets(state: McpState): void {
+    if (state.conductor?.socket && fs.existsSync(state.conductor.socket)) {
+      fs.unlinkSync(state.conductor.socket);
+    }
+    if (state.agent?.socket && fs.existsSync(state.agent.socket)) {
+      fs.unlinkSync(state.agent.socket);
+    }
   }
 
   /**
@@ -268,41 +353,26 @@ export class ServiceManager {
     }
 
     try {
-      const state: McpState = JSON.parse(fs.readFileSync(stateFile, 'utf-8'));
+      const state = JSON.parse(fs.readFileSync(stateFile, 'utf-8')) as McpState;
       const pidsToKill: number[] = [];
       const stoppedPids: number[] = [];
 
-      // Collect PIDs
       if (state.conductor?.pid) pidsToKill.push(state.conductor.pid);
       if (state.agent?.pid) pidsToKill.push(state.agent.pid);
 
-      // Kill processes
       for (const pid of pidsToKill) {
-        try {
-          process.kill(pid, 'SIGTERM');
-          stoppedPids.push(pid);
-        } catch (e) {
-          if (errorCode(e) !== 'ESRCH') {
-            // Process exists but couldn't be killed
-            return { success: false, error: `Failed to stop process ${pid}: ${errorMessage(e)}` };
-          }
-          // ESRCH = process doesn't exist, which is fine
+        const error = this.terminateProcess(pid);
+        if (error) {
+          return { success: false, error };
         }
+        stoppedPids.push(pid);
       }
 
-      // Clean up state file
       fs.unlinkSync(stateFile);
-
-      // Clean up sockets
-      if (state.conductor?.socket && fs.existsSync(state.conductor.socket)) {
-        fs.unlinkSync(state.conductor.socket);
-      }
-      if (state.agent?.socket && fs.existsSync(state.agent.socket)) {
-        fs.unlinkSync(state.agent.socket);
-      }
+      this.cleanupSockets(state);
 
       return { success: true, stoppedPids };
-    } catch (e) {
+    } catch (e: unknown) {
       return { success: false, error: errorMessage(e) };
     }
   }
@@ -322,55 +392,8 @@ export class ServiceManager {
     }
 
     try {
-      const state: McpState = JSON.parse(fs.readFileSync(stateFile, 'utf-8'));
-
-      const isAlive = (pid?: number): boolean => {
-        if (!pid) return false;
-        try {
-          process.kill(pid, 0);
-          return true;
-        } catch {
-          return false;
-        }
-      };
-
-      const conductorAlive = isAlive(state.conductor?.pid);
-      const agentAlive = isAlive(state.agent?.pid);
-
-      // If neither is alive, clean up stale state
-      if (!conductorAlive && !agentAlive) {
-        fs.unlinkSync(stateFile);
-        return { running: false };
-      }
-
-      const result: ServiceStatus = {
-        running: true,
-        startedAt: state.startedAt
-      };
-
-      if (state.conductor) {
-        result.conductor = {
-          pid: state.conductor.pid,
-          alive: conductorAlive,
-          transport: state.conductor.socket
-            ? `socket ${state.conductor.socket}`
-            : `port ${state.conductor.port}`
-        };
-      }
-
-      if (state.agent) {
-        result.agent = {
-          pid: state.agent.pid,
-          alive: agentAlive,
-          transport: state.agent.socket
-            ? `socket ${state.agent.socket}`
-            : `port ${state.agent.port}`
-        };
-      } else {
-        result.agent = null; // Explicitly not configured
-      }
-
-      return result;
+      const state = JSON.parse(fs.readFileSync(stateFile, 'utf-8')) as McpState;
+      return this.buildServiceStatus(state, stateFile);
     } catch {
       return { running: false };
     }
@@ -382,33 +405,33 @@ export class ServiceManager {
   async getDashboardStatus(port: number): Promise<DashboardStatus> {
     try {
       const response = await fetch(`http://127.0.0.1:${port}/api/health`);
-      if (response.ok) {
-        const data = await response.json();
-        const result: DashboardStatus = {
-          running: true,
-          port,
-          status: data.status,
-          timestamp: data.timestamp
-        };
-
-        // Try to get agent stats
-        try {
-          const agentsResponse = await fetch(`http://127.0.0.1:${port}/api/system/status`);
-          if (agentsResponse.ok) {
-            const agentsData = await agentsResponse.json();
-            result.agents = {
-              running: agentsData.agents.running,
-              total: agentsData.agents.total
-            };
-          }
-        } catch {
-          // Ignore
-        }
-
-        return result;
-      } else {
+      if (!response.ok) {
         return { running: false };
       }
+
+      const data = await response.json() as { status?: string; timestamp?: string };
+      const result: DashboardStatus = {
+        running: true,
+        port,
+        status: data.status,
+        timestamp: data.timestamp
+      };
+
+      // Try to get agent stats
+      try {
+        const agentsResponse = await fetch(`http://127.0.0.1:${port}/api/system/status`);
+        if (agentsResponse.ok) {
+          const agentsData = await agentsResponse.json() as { agents: { running: number; total: number } };
+          result.agents = {
+            running: agentsData.agents.running,
+            total: agentsData.agents.total
+          };
+        }
+      } catch {
+        // Ignore
+      }
+
+      return result;
     } catch {
       return { running: false };
     }
