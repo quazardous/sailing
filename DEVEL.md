@@ -156,6 +156,14 @@ For testing sailing's own install on the sailing repo:
 
 ---
 
+## Scripts
+
+| Script | Usage |
+|--------|-------|
+| `scripts/lint-report.sh` | Lint error report by rule, by file, and explicit-any sources. `--top N` to limit, `--file FILE` to target one file. |
+
+---
+
 ## Pointers
 
 | Topic | Document |
