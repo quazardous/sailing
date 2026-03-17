@@ -4,7 +4,9 @@
 
 export function errorMessage(e: unknown): string {
   if (e instanceof Error) return e.message;
-  return String(e);
+  if (typeof e === 'string') return e;
+  if (typeof e === 'number' || typeof e === 'boolean') return String(e);
+  return JSON.stringify(e);
 }
 
 export function errorStack(e: unknown): string | undefined {

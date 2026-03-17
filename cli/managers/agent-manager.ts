@@ -234,7 +234,7 @@ export class AgentLifecycleManager {
       }
       return { success: true, strategy };
     } catch (e: unknown) {
-      const message = e instanceof Error ? e.message : String(e);
+      const message = e instanceof Error ? e.message : (typeof e === 'string' ? e : 'Unknown error');
       return { success: false, strategy, error: message };
     }
   }
@@ -402,7 +402,7 @@ export class AgentLifecycleManager {
 
       // Merge
       const strategy = config.merge_strategy || 'merge';
-      const mergeResult = await this.mergeWork(strategy as any);
+      const mergeResult = await this.mergeWork(strategy);
       if (!mergeResult.success) {
         return {
           success: false,
@@ -484,7 +484,7 @@ export class AgentLifecycleManager {
     } catch (e: unknown) {
       const error = e as { code?: string; message?: string };
       if (error.code !== 'ESRCH') {
-        const message = error.message || String(e);
+        const message = error.message || (e instanceof Error ? e.message : 'Unknown error');
         return { success: false, taskId: this.taskId, pid, error: message };
       }
       // ESRCH = process already gone, that's fine

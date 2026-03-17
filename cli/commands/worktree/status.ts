@@ -174,7 +174,7 @@ export function registerStatusCommands(worktree: Command): void {
 
         if (conflictMatrix.conflicts.length > 0) {
           console.log('\n⚠ Potential Conflicts:');
-          for (const conflict of conflictMatrix.conflicts) {
+          for (const conflict of conflictMatrix.conflicts as Array<{ agents: string[]; files: string[]; count: number }>) {
             console.log(`  ${conflict.agents[0]} ↔ ${conflict.agents[1]}: ${conflict.files.join(', ')}`);
           }
         }

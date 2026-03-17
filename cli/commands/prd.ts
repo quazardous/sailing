@@ -211,8 +211,8 @@ export function registerPrdCommands(program: Command): void {
       if (options.json) {
         jsonOut(output);
       } else {
-        console.log(`# ${file.data.id}: ${file.data.title}\n`);
-        console.log(`Status: ${file.data.status}`);
+        console.log(`# ${file.data.id as string}: ${file.data.title as string}\n`);
+        console.log(`Status: ${file.data.status as string}`);
         console.log(`\nEpics: ${epics.length}`);
         epics.forEach(e => {
           console.log(`  ${statusSymbol(e.status)} ${e.id}: ${e.title}`);

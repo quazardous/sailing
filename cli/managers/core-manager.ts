@@ -212,7 +212,7 @@ export function findProjectRoot(): string {
 // PATH RESOLUTION
 // ============================================================================
 
-function getPathString(value: any): string | null {
+function getPathString(value: string | { path: string; type: string } | null | undefined): string | null {
   if (!value) return null;
   if (typeof value === 'string') return value;
   if (typeof value === 'object' && value.path) return value.path;
@@ -404,7 +404,7 @@ export function resolvePlaceholders(str: string, depth = 0): string {
   // Keep resolving until no more placeholders
   while (hasPlaceholder) {
     hasPlaceholder = false;
-    result = result.replace(/\$\{([a-z_]+)\}/g, (match, name) => {
+    result = result.replace(/\$\{([a-z_]+)\}/g, (match, name: string) => {
       if (name in all) {
         hasPlaceholder = true;
         const value = all[name];

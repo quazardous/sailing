@@ -57,7 +57,7 @@ export function stripComments(content: string): string {
 /**
  * JSON output helper
  */
-export function jsonOut(data: any): void {
+export function jsonOut(data: unknown): void {
   console.log(JSON.stringify(data, null, 2));
 }
 

@@ -127,7 +127,7 @@ export function registerConductorCommands(program: Command) {
       try {
         const response = await fetch(`http://127.0.0.1:${port}/api/health`);
         if (response.ok) {
-          const data = await response.json();
+          const data = await response.json() as { status: string; timestamp: string };
           console.log(`Conductor is running on port ${port}`);
           console.log(`Status: ${data.status}`);
           console.log(`Timestamp: ${data.timestamp}`);
@@ -135,7 +135,7 @@ export function registerConductorCommands(program: Command) {
           // Get agent stats
           const agentsResponse = await fetch(`http://127.0.0.1:${port}/api/system/status`);
           if (agentsResponse.ok) {
-            const agentsData = await agentsResponse.json();
+            const agentsData = await agentsResponse.json() as { agents: { running: number; total: number } };
             console.log(`Agents: ${agentsData.agents.running} running / ${agentsData.agents.total} total`);
           }
         } else {

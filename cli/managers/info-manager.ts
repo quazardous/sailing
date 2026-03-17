@@ -49,10 +49,13 @@ const DEFAULT_PATHS: Record<string, { path: string; type: 'dir' | 'file' }> = {
 /**
  * Get path string from value
  */
-function getPathString(value: any): string | null {
+function getPathString(value: unknown): string | null {
   if (!value) return null;
   if (typeof value === 'string') return value;
-  if (typeof value === 'object' && value.path) return value.path;
+  if (typeof value === 'object' && value !== null && 'path' in value) {
+    const p = (value as { path: unknown }).path;
+    return typeof p === 'string' ? p : null;
+  }
   return null;
 }
 

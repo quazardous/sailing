@@ -55,7 +55,7 @@ export function setPrdIndex(index: Map<number, PrdIndexEntry>) { _prdIndex = ind
 export function setStoryIndex(index: Map<string, StoryIndexEntry>) { _storyIndex = index; }
 export function setPanicIndex(index: Map<string, PanicIndexEntry>) { _panicIndex = index; }
 export function setMemoryIndex(index: Map<string, { key: string; type: 'epic' | 'prd'; file: string }>) { _memoryIndex = index; }
-export function setLogIndex(index: Map<string, { key: string; type: 'epic' | 'task'; file: string }>) { _logIndex = index; }
+export function setLogIndex(index: Map<string, { key: string; type: 'epic' | 'task'; file: string }> | null) { _logIndex = index; }
 
 // ============================================================================
 // TIMESTAMP HELPERS

@@ -219,7 +219,9 @@ export class DbOps {
       }
 
       // Remove old taskId field, add taskNum
-      const { taskId: _oldTaskId, ...cleanData } = data as Record<string, unknown>;
+      const cleanData = Object.fromEntries(
+        Object.entries(data as Record<string, unknown>).filter(([k]) => k !== 'taskId')
+      );
       await db.update(
         { taskNum },
         { $set: { taskNum, ...cleanData, migratedAt: new Date().toISOString() } },
@@ -262,7 +264,9 @@ export class DbOps {
         await db.remove({ _id: doc._id });
       }
 
-      const { _id, taskId: _oldTaskId, ...cleanData } = doc;
+      const cleanData = Object.fromEntries(
+        Object.entries(doc).filter(([k]) => k !== '_id' && k !== 'taskId')
+      );
       await db.update(
         { taskNum },
         { $set: { taskNum, ...cleanData, migratedAt: new Date().toISOString() } },

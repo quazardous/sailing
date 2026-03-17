@@ -138,5 +138,5 @@ export function getLogFile(id: string | number): { key: string; type: 'epic' | '
  * Invalidate log index (call after log file changes)
  */
 export function invalidateLogIndex(): void {
-  setLogIndex(null as any);
+  setLogIndex(null);
 }

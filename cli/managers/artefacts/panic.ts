@@ -12,7 +12,7 @@ import { getPrd, prdIdFromDir } from './prd.js';
 import { getEpic } from './epic.js';
 import { getTask } from './task.js';
 import { getStory } from './story.js';
-import { getEntityType, extractPrdId } from '../../lib/normalize.js';
+import { getEntityType } from '../../lib/normalize.js';
 import type { Panic, PanicIndexEntry } from '../../lib/types/entities.js';
 
 // ============================================================================
@@ -45,7 +45,7 @@ export function buildPanicIndex(): Map<string, PanicIndexEntry> {
       const loaded = loadFile<Panic>(filePath);
 
       if (index.has(key)) {
-        duplicates.push({ key, existing: index.get(key)!.file, new: filePath });
+        duplicates.push({ key, existing: index.get(key)?.file ?? '', new: filePath });
       }
 
       const timestamps = getFileTimestamps(filePath);

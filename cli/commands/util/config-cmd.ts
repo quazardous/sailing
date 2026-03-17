@@ -32,6 +32,7 @@ import {
   getAgentConfig
 } from '../../managers/core-manager.js';
 import { addDynamicHelp } from '../../lib/help.js';
+import { errorMessage } from '../../lib/errors.js';
 import { ConfigDisplayItem, ConfigSchema, CheckResults, CheckEntry, CheckState, ConfigSchemaEntry } from '../../lib/types/config.js';
 
 /**
@@ -78,9 +79,9 @@ export function registerConfigCommands(program: Command) {
         for (const item of items) {
           const keyName = item.key.split('.').slice(1).join('.');
           const marker = item.isDefault ? '' : '  # (custom)';
-          const valuesHint = item.values ? ` [${item.values.join('|')}]` : '';
+          const valuesHint = item.values ? ` [${(item.values as string[]).join('|')}]` : '';
           console.log(`  # ${item.description}${valuesHint}`);
-          console.log(`  ${keyName}: ${item.value}${marker}`);
+          console.log(`  ${keyName}: ${item.value as string}${marker}`);
         }
       }
 
@@ -126,7 +127,7 @@ export function registerConfigCommands(program: Command) {
         for (const item of items) {
           lines.push(`  # ${item.description}`);
           if (item.values) {
-            lines.push(`  # Valid: ${item.values.join(', ')}`);
+            lines.push(`  # Valid: ${(item.values as string[]).join(', ')}`);
           }
           const value = typeof item.default === 'string' ? item.default : JSON.stringify(item.default);
           lines.push(`  ${item.key}: ${value}`);
@@ -191,7 +192,7 @@ export function registerConfigCommands(program: Command) {
       }
 
       const def = schema[key];
-      let parsedValue: unknown = value;
+      let parsedValue: string | boolean | number = value;
 
       if (def.type === 'boolean') {
         if (value === 'true' || value === '1') parsedValue = true;
@@ -202,14 +203,14 @@ export function registerConfigCommands(program: Command) {
         }
       } else if (def.type === 'number') {
         parsedValue = parseFloat(value);
-        if (isNaN(parsedValue as number)) {
+        if (isNaN(parsedValue)) {
           console.error(`Invalid number value: ${value}`);
           process.exit(1);
         }
       } else if (def.type === 'enum' && def.values) {
         if (!def.values.includes(value)) {
           console.error(`Invalid value: ${value}`);
-          console.error(`Valid values: ${def.values.join(', ')}`);
+          console.error(`Valid values: ${(def.values as string[]).join(', ')}`);
           process.exit(1);
         }
       }
@@ -380,7 +381,7 @@ export function registerConfigCommands(program: Command) {
               hasGitRepo = true;
               check('git', 'repository', 'ok', 'Initialized git repository');
             } catch (e: unknown) {
-              check('git', 'repository', 'error', `Failed to init: ${e instanceof Error ? e.message : String(e)}`);
+              check('git', 'repository', 'error', `Failed to init: ${errorMessage(e)}`);
             }
           } else if (agentConfig.use_worktrees) {
             check('git', 'repository', 'error', 'Not a git repository (required for worktrees)');
@@ -419,7 +420,7 @@ export function registerConfigCommands(program: Command) {
             fs.mkdirSync(dir.path, { recursive: true });
             check('directories', dir.name, 'ok', `${dir.path} (created)`);
           } catch (e: unknown) {
-            check('directories', dir.name, 'error', `Failed to create: ${e instanceof Error ? e.message : String(e)}`);
+            check('directories', dir.name, 'error', `Failed to create: ${errorMessage(e)}`);
           }
         } else {
           check('directories', dir.name, 'error', `Missing: ${dir.path}`);
@@ -435,7 +436,7 @@ export function registerConfigCommands(program: Command) {
               fs.mkdirSync(dir.path, { recursive: true });
               check('directories', dir.name, 'ok', `${dir.path} (created)`);
             } catch (e: unknown) {
-              check('directories', dir.name, 'error', `Failed to create: ${e instanceof Error ? e.message : String(e)}`);
+              check('directories', dir.name, 'error', `Failed to create: ${errorMessage(e)}`);
             }
           } else {
             check('directories', dir.name, 'error', `Missing: ${dir.path}`);
@@ -456,7 +457,7 @@ export function registerConfigCommands(program: Command) {
               fs.mkdirSync(dir.path, { recursive: true });
               check('directories', dir.name, 'ok', `${dir.path} (created)`);
             } catch (e: unknown) {
-              check('directories', dir.name, 'error', `Failed to create: ${e instanceof Error ? e.message : String(e)}`);
+              check('directories', dir.name, 'error', `Failed to create: ${errorMessage(e)}`);
             }
           } else {
             check('directories', dir.name, 'error', `Missing: ${dir.path}`);
@@ -484,7 +485,7 @@ export function registerConfigCommands(program: Command) {
           lines.push(`${section}:`);
           for (const item of items) {
             lines.push(`  # ${item.description}`);
-            if (item.values) lines.push(`  # Valid: ${item.values.join(', ')}`);
+            if (item.values) lines.push(`  # Valid: ${(item.values as string[]).join(', ')}`);
             const value = typeof item.default === 'string' ? item.default : JSON.stringify(item.default);
             lines.push(`  ${item.key}: ${value}`);
             lines.push('');
@@ -521,7 +522,7 @@ export function registerConfigCommands(program: Command) {
               check('files', file.name, 'ok', `${file.path} (created with defaults)`);
             }
           } catch (e: unknown) {
-            check('files', file.name, 'error', `Failed to create: ${e instanceof Error ? e.message : String(e)}`);
+            check('files', file.name, 'error', `Failed to create: ${errorMessage(e)}`);
           }
         } else if (file.required) {
           check('files', file.name, 'error', `Missing: ${file.path}`);
@@ -564,7 +565,7 @@ export function registerConfigCommands(program: Command) {
           yaml.load(content);
           check('yaml', file.name, 'ok', 'Valid YAML');
         } catch (e: unknown) {
-          check('yaml', file.name, 'error', `Invalid YAML: ${e instanceof Error ? e.message : String(e)}`);
+          check('yaml', file.name, 'error', `Invalid YAML: ${errorMessage(e)}`);
         }
       }
 
@@ -583,7 +584,7 @@ export function registerConfigCommands(program: Command) {
             results.summary.warn++;
           }
         } catch (e: unknown) {
-          results.state = { status: 'error', message: `Invalid JSON: ${e instanceof Error ? e.message : String(e)}` };
+          results.state = { status: 'error', message: `Invalid JSON: ${errorMessage(e)}` };
           results.summary.error++;
         }
       }
@@ -593,7 +594,7 @@ export function registerConfigCommands(program: Command) {
         loadAgentConfig();
         check('yaml', 'agent config', 'ok', 'Config loads successfully');
       } catch (e: unknown) {
-        check('yaml', 'agent config', 'error', `Failed to load: ${e instanceof Error ? e.message : String(e)}`);
+        check('yaml', 'agent config', 'error', `Failed to load: ${errorMessage(e)}`);
       }
 
       // Config hierarchy validation

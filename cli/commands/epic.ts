@@ -189,7 +189,8 @@ export function registerEpicCommands(program: Command) {
       }
 
       const file = loadFile(epicFile);
-      const epicIdNorm = normalizeId(String(file.data.id));
+      const dataId = typeof file.data.id === 'string' ? file.data.id : '';
+      const epicIdNorm = normalizeId(dataId);
 
       // Get task summary (artefacts.ts contract)
       const tasks = getTasksForEpic(epicIdNorm).map(t => ({
@@ -214,8 +215,11 @@ export function registerEpicCommands(program: Command) {
       if (options.json) {
         jsonOut(output);
       } else {
-        console.log(`# ${file.data.id}: ${file.data.title}\n`);
-        console.log(`Status: ${file.data.status}`);
+        const showId = typeof file.data.id === 'string' ? file.data.id : '';
+        const showTitle = typeof file.data.title === 'string' ? file.data.title : '';
+        const showStatus = typeof file.data.status === 'string' ? file.data.status : '';
+        console.log(`# ${showId}: ${showTitle}\n`);
+        console.log(`Status: ${showStatus}`);
         console.log(`PRD: ${prdId}`);
         console.log(`\nTasks: ${tasks.length}`);
         Object.entries(tasksByStatus).forEach(([status, count]) => {
