@@ -35,7 +35,10 @@ export const ARTEFACT_TOOLS: ToolDefinition[] = [
       }
     },
     handler: (args) => {
-      const { type, scope, status, milestone, tags, limit } = args;
+      const { type, scope, status, milestone, tags, limit } = args as {
+        type: string; scope?: string; status?: string; milestone?: string;
+        tags?: string[]; limit?: number;
+      };
       const store = getStore();
       const nextActions: NextAction[] = [];
 
@@ -149,7 +152,8 @@ export const ARTEFACT_TOOLS: ToolDefinition[] = [
       }
     },
     handler: (args) => {
-      const id = normalizeId(args.id);
+      const { id: rawId, raw, section } = args as { id: string; raw?: boolean; section?: string };
+      const id = normalizeId(rawId);
       const type = detectType(id);
       const nextActions: NextAction[] = [];
 
@@ -185,12 +189,12 @@ export const ARTEFACT_TOOLS: ToolDefinition[] = [
         }
 
         // Section filter mode — return only one section
-        if (args.section) {
+        if (section) {
           const body = file.body || '';
-          const sectionRegex = new RegExp(`^## ${args.section.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s*$`, 'im');
+          const sectionRegex = new RegExp(`^## ${section.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s*$`, 'im');
           const match = sectionRegex.exec(body);
           if (!match) {
-            return err(`Section not found: ${args.section}`);
+            return err(`Section not found: ${section}`);
           }
           const sectionStart = match.index + match[0].length;
           const nextSectionMatch = /^## /m.exec(body.slice(sectionStart));
@@ -199,14 +203,14 @@ export const ARTEFACT_TOOLS: ToolDefinition[] = [
 
           return ok({
             success: true,
-            data: { ...file.data, id: entryCanonicalId, section: args.section, body: sectionContent }
+            data: { ...file.data, id: entryCanonicalId, section, body: sectionContent }
           });
         }
 
         const data = {
           ...file.data,
           id: entryCanonicalId,
-          ...(args.raw ? { body: file.body } : {})
+          ...(raw ? { body: file.body } : {})
         };
 
         // Suggest editing empty sections
@@ -269,7 +273,10 @@ export const ARTEFACT_TOOLS: ToolDefinition[] = [
       }
     },
     handler: (args) => {
-      const { type, parent, title, tags, created_at } = args;
+      const { type, parent, title, tags, created_at, scope, source } = args as {
+        type: string; parent?: string; title: string; tags?: string[];
+        created_at?: string; scope?: string; source?: 'agent' | 'framework';
+      };
       const nextActions: NextAction[] = [];
 
       // Validate parent requirement
@@ -283,7 +290,7 @@ export const ARTEFACT_TOOLS: ToolDefinition[] = [
       }
 
       // Validate scope requirement for panic
-      if (type === 'panic' && !args.scope) {
+      if (type === 'panic' && !scope) {
         return err(`scope is required for panic creation (the artefact this panic is about, e.g. T001)`);
       }
 
@@ -300,7 +307,7 @@ export const ARTEFACT_TOOLS: ToolDefinition[] = [
         } else if (type === 'story') {
           result = store.createStory(parent, title, { tags, created_at });
         } else if (type === 'panic') {
-          result = store.createPanic(args.scope, title, { source: args.source, tags, created_at });
+          result = store.createPanic(scope, title, { source, tags, created_at });
         } else {
           return err(`Unknown artefact type: ${type}`);
         }
@@ -366,7 +373,12 @@ export const ARTEFACT_TOOLS: ToolDefinition[] = [
       }
     },
     handler: (args) => {
-      const id = normalizeId(args.id);
+      const { id: rawId, status, title, assignee, effort, priority, milestone, set } = args as {
+        id: string; status?: string; title?: string; assignee?: string;
+        effort?: string; priority?: string; milestone?: string;
+        set?: Record<string, unknown>;
+      };
+      const id = normalizeId(rawId);
       const type = detectType(id);
 
       if (type === 'unknown') {
@@ -376,13 +388,13 @@ export const ARTEFACT_TOOLS: ToolDefinition[] = [
       try {
         const store = getStore();
         const result = store.updateArtefact(id, {
-          status: args.status,
-          title: args.title,
-          assignee: args.assignee,
-          effort: args.effort,
-          priority: args.priority,
-          milestone: args.milestone,
-          set: args.set
+          status,
+          title,
+          assignee,
+          effort,
+          priority,
+          milestone,
+          set
         });
 
         return ok({ success: true, data: result });
@@ -404,7 +416,8 @@ export const ARTEFACT_TOOLS: ToolDefinition[] = [
       }
     },
     handler: (args) => {
-      const id = normalizeId(args.id);
+      const { id: rawId } = args as { id: string };
+      const id = normalizeId(rawId);
 
       try {
         const store = getStore();
@@ -434,14 +447,18 @@ export const ARTEFACT_TOOLS: ToolDefinition[] = [
       }
     },
     handler: (args) => {
-      const id = normalizeId(args.id);
+      const { id: rawId, section, mode, content, old_string, new_string, regexp } = args as {
+        id: string; section?: string; mode?: 'replace' | 'append' | 'prepend'; content?: string;
+        old_string?: string; new_string?: string; regexp?: boolean;
+      };
+      const id = normalizeId(rawId);
       const type = detectType(id);
 
       logDebug(`artefact_edit: id=${id}, type=${type}`, {
-        hasSection: !!args.section,
-        mode: args.mode || 'replace',
-        contentLength: args.content?.length || 0,
-        hasPatch: !!(args.old_string && args.new_string)
+        hasSection: !!section,
+        mode: mode || 'replace',
+        contentLength: content?.length || 0,
+        hasPatch: !!(old_string && new_string)
       });
 
       if (type === 'unknown') {
@@ -458,26 +475,26 @@ export const ARTEFACT_TOOLS: ToolDefinition[] = [
 
       try {
         // Patch mode: old_string + new_string
-        if (args.old_string !== undefined && args.new_string !== undefined) {
-          logDebug(`artefact_edit: patch mode`, { section: args.section, regexp: !!args.regexp });
-          const result = store.patchArtefact(id, args.old_string, args.new_string, {
-            section: args.section,
-            regexp: args.regexp
+        if (old_string !== undefined && new_string !== undefined) {
+          logDebug(`artefact_edit: patch mode`, { section, regexp: !!regexp });
+          const result = store.patchArtefact(id, old_string, new_string, {
+            section,
+            regexp
           });
           logDebug(`artefact_edit: patch result`, { result });
           return ok({ success: true, data: result });
         }
 
         // Content is required for non-patch modes
-        if (args.content === undefined) {
+        if (content === undefined) {
           return err('Either "content" or "old_string"+"new_string" must be provided');
         }
 
         // If section is provided, use single-section mode
-        if (args.section) {
-          logDebug(`artefact_edit: single-section mode`, { section: args.section });
-          const result = store.editArtefactSection(id, args.section, args.content, {
-            mode: args.mode || 'replace'
+        if (section) {
+          logDebug(`artefact_edit: single-section mode`, { section });
+          const result = store.editArtefactSection(id, section, content, {
+            mode: mode || 'replace'
           });
           logDebug(`artefact_edit: result`, { result });
           return ok({ success: true, data: result });
@@ -485,7 +502,7 @@ export const ARTEFACT_TOOLS: ToolDefinition[] = [
 
         // Otherwise, use multi-section mode (preferred)
         logDebug(`artefact_edit: multi-section mode`);
-        const result = store.editArtefactMultiSection(id, args.content, args.mode || 'replace');
+        const result = store.editArtefactMultiSection(id, content, mode || 'replace');
         logDebug(`artefact_edit: result`, { result });
         return ok({ success: true, data: result });
       } catch (error) {
@@ -509,25 +526,26 @@ export const ARTEFACT_TOOLS: ToolDefinition[] = [
       }
     },
     handler: (args) => {
+      const { id: rawId, raw, section } = args as { id: string; raw?: boolean; section?: string };
       try {
         const store = getStore();
-        const entry = store.getArchivedArtefact(args.id);
+        const entry = store.getArchivedArtefact(rawId);
         if (!entry) {
-          return err(`Archived artefact not found: ${args.id}`);
+          return err(`Archived artefact not found: ${rawId}`);
         }
 
         const file = store.loadFile(entry.file);
         if (!file) {
-          return err(`Could not load archive file for: ${args.id}`);
+          return err(`Could not load archive file for: ${rawId}`);
         }
 
         // Section filter mode
-        if (args.section) {
+        if (section) {
           const body = file.body || '';
-          const sectionRegex = new RegExp(`^## ${args.section.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s*$`, 'im');
+          const sectionRegex = new RegExp(`^## ${section.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s*$`, 'im');
           const match = sectionRegex.exec(body);
           if (!match) {
-            return err(`Section not found: ${args.section}`);
+            return err(`Section not found: ${section}`);
           }
           const sectionStart = match.index + match[0].length;
           const nextSectionMatch = /^## /m.exec(body.slice(sectionStart));
@@ -536,7 +554,7 @@ export const ARTEFACT_TOOLS: ToolDefinition[] = [
 
           return ok({
             success: true,
-            data: { id: canonicalId(entry.id), ...file.data, archived: true, prdId: entry.prdId, section: args.section, body: sectionContent }
+            data: { id: canonicalId(entry.id), ...file.data, archived: true, prdId: entry.prdId, section, body: sectionContent }
           });
         }
 
@@ -545,7 +563,7 @@ export const ARTEFACT_TOOLS: ToolDefinition[] = [
           ...file.data,
           archived: true,
           prdId: entry.prdId,
-          ...(args.raw ? { body: file.body } : {})
+          ...(raw ? { body: file.body } : {})
         };
 
         return ok({ success: true, data });
@@ -569,15 +587,18 @@ export const ARTEFACT_TOOLS: ToolDefinition[] = [
       }
     },
     handler: (args) => {
+      const { type, prd, status, limit: rawLimit } = args as {
+        type?: 'task' | 'epic' | 'prd'; prd?: string; status?: string; limit?: number;
+      };
       try {
         const store = getStore();
         let entries = store.getAllArchivedArtefacts({
-          type: args.type,
-          prd: args.prd,
-          status: args.status
+          type,
+          prd,
+          status
         });
 
-        const limit = args.limit || 50;
+        const limit = rawLimit || 50;
         if (entries.length > limit) {
           entries = entries.slice(0, limit);
         }
@@ -618,17 +639,22 @@ export const ARTEFACT_TOOLS: ToolDefinition[] = [
       }
     },
     handler: (args) => {
+      const { query, type, status, prd, archived, limit, fuzzy, accent_sensitive, snippet } = args as {
+        query: string; type?: 'task' | 'epic' | 'prd' | 'story'; status?: string; prd?: string;
+        archived?: boolean; limit?: number; fuzzy?: number;
+        accent_sensitive?: boolean; snippet?: boolean;
+      };
       try {
         const store = getStore();
-        const hits = store.search(args.query, {
-          type: args.type,
-          status: args.status,
-          prd: args.prd,
-          archived: args.archived,
-          limit: args.limit,
-          fuzzy: args.fuzzy,
-          accent_sensitive: args.accent_sensitive,
-          snippet: args.snippet
+        const hits = store.search(query, {
+          type,
+          status,
+          prd,
+          archived,
+          limit,
+          fuzzy,
+          accent_sensitive,
+          snippet
         });
 
         const items = hits.map(h => ({
@@ -678,7 +704,13 @@ export const ARTEFACT_TOOLS: ToolDefinition[] = [
       }
     },
     handler: (args) => {
-      const { type, parent, items } = args;
+      const { type, parent, items } = args as {
+        type: string; parent: string;
+        items: Array<{
+          title: string; effort?: string; priority?: string;
+          content?: string; blocked_by?: string[]; tags?: string[];
+        }>;
+      };
 
       if (!Array.isArray(items) || items.length === 0) {
         return err('items array is required and must not be empty');

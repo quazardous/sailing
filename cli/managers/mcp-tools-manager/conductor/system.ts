@@ -123,7 +123,8 @@ export const SYSTEM_TOOLS: ToolDefinition[] = [
       }
     },
     handler: (args) => {
-      const prdId = normalizeId(args.id as string);
+      const { id } = args as { id: string };
+      const prdId = normalizeId(id);
       const store = getStore();
       const prd = store.getPrd(prdId);
 

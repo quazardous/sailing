@@ -18,7 +18,8 @@ export const STORY_TOOLS: ToolDefinition[] = [
       }
     },
     handler: (args) => {
-      const result = getOrphanStories({ prd: args.scope as string | undefined });
+      const { scope } = args as { scope?: string };
+      const result = getOrphanStories({ prd: scope });
       const nextActions: NextAction[] = [];
 
       const orphans = result.orphans.map(o => ({ ...o, id: canonicalId(o.id) }));
@@ -51,7 +52,8 @@ export const STORY_TOOLS: ToolDefinition[] = [
       }
     },
     handler: (args) => {
-      const result = validateStories({ prd: args.scope as string | undefined });
+      const { scope } = args as { scope?: string };
+      const result = validateStories({ prd: scope });
       const nextActions: NextAction[] = [];
 
       const issues = result.issues.map(i => ({ ...i, storyId: canonicalId(i.storyId) }));
@@ -61,7 +63,7 @@ export const STORY_TOOLS: ToolDefinition[] = [
         if (orphanIssues.length > 0) {
           nextActions.push({
             tool: 'story_orphans',
-            args: { scope: args.scope },
+            args: { scope },
             reason: `${orphanIssues.length} orphan stories need linking`,
             priority: 'high'
           });

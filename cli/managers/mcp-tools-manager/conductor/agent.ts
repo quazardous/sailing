@@ -28,18 +28,19 @@ export const AGENT_CONDUCTOR_TOOLS: ToolDefinition[] = [
       }
     },
     handler: async (args) => {
+      const { task_id, timeout, resume, worktree } = args as { task_id: string; timeout?: number; resume?: boolean; worktree?: boolean };
       const conductor = getConductorManager();
-      const result = await conductor.spawn(args.task_id as string, {
-        timeout: args.timeout,
-        resume: args.resume,
-        worktree: args.worktree
+      const result = await conductor.spawn(task_id, {
+        timeout,
+        resume,
+        worktree
       });
 
       const nextActions: NextAction[] = [];
       if (result.success) {
         nextActions.push({
           tool: 'agent_status',
-          args: { task_id: args.task_id },
+          args: { task_id },
           reason: 'Monitor agent progress',
           priority: 'normal'
         });
@@ -68,10 +69,11 @@ export const AGENT_CONDUCTOR_TOOLS: ToolDefinition[] = [
       }
     },
     handler: async (args) => {
+      const { task_id, wait, timeout } = args as { task_id: string; wait?: boolean; timeout?: number };
       const conductor = getConductorManager();
-      const result = await conductor.reap(args.task_id as string, {
-        wait: args.wait,
-        timeout: args.timeout
+      const result = await conductor.reap(task_id, {
+        wait,
+        timeout
       });
 
       const nextActions: NextAction[] = [];
@@ -109,8 +111,9 @@ export const AGENT_CONDUCTOR_TOOLS: ToolDefinition[] = [
       }
     },
     handler: async (args) => {
+      const { task_id } = args as { task_id: string };
       const conductor = getConductorManager();
-      const result = await conductor.kill(args.task_id as string);
+      const result = await conductor.kill(task_id);
       return ok({ success: result.success, data: result, error: result.error });
     }
   },
@@ -125,8 +128,9 @@ export const AGENT_CONDUCTOR_TOOLS: ToolDefinition[] = [
       }
     },
     handler: (args) => {
+      const { task_id } = args as { task_id: string };
       const conductor = getConductorManager();
-      const status = conductor.getStatus(args.task_id as string);
+      const status = conductor.getStatus(task_id);
 
       if (!status) {
         return err('Agent not found');
@@ -136,7 +140,7 @@ export const AGENT_CONDUCTOR_TOOLS: ToolDefinition[] = [
       if (status.status === 'completed' || status.status === 'error') {
         nextActions.push({
           tool: 'agent_reap',
-          args: { task_id: args.task_id },
+          args: { task_id },
           reason: 'Agent finished - reap to merge work',
           priority: 'high'
         });
@@ -159,8 +163,9 @@ export const AGENT_CONDUCTOR_TOOLS: ToolDefinition[] = [
       }
     },
     handler: (args) => {
+      const { task_id, tail } = args as { task_id: string; tail?: number };
       const conductor = getConductorManager();
-      const lines = conductor.getLog(args.task_id as string, { tail: args.tail });
+      const lines = conductor.getLog(task_id, { tail });
       return ok({ success: true, data: { lines, count: lines.length } });
     }
   },
@@ -176,9 +181,10 @@ export const AGENT_CONDUCTOR_TOOLS: ToolDefinition[] = [
       }
     },
     handler: (args) => {
+      const { status } = args as { status?: string };
       const conductor = getConductorManager();
-      const agents = args.status
-        ? conductor.getAgentsByStatus(args.status)
+      const agents = status
+        ? conductor.getAgentsByStatus(status)
         : conductor.getAllAgents();
       return ok({ success: true, data: agents });
     }
@@ -197,8 +203,8 @@ export const AGENT_CONDUCTOR_TOOLS: ToolDefinition[] = [
       }
     },
     handler: async (args) => {
-      const taskId = normalizeId(args.task_id as string, undefined, 'task');
-      const reason = args.reason as string | undefined;
+      const { task_id, reason } = args as { task_id: string; reason?: string };
+      const taskId = normalizeId(task_id, undefined, 'task');
       const conductor = getConductorManager();
       const lifecycle = getAgentLifecycle(taskId);
 

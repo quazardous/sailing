@@ -27,10 +27,11 @@ export const DEPS_TOOLS: ToolDefinition[] = [
       }
     },
     handler: (args) => {
-      const result = showDeps(args.id as string);
+      const { id } = args as { id: string };
+      const result = showDeps(id);
 
       if (!result) {
-        return err(`Not found: ${args.id}`);
+        return err(`Not found: ${id}`);
       }
 
       return ok({
@@ -59,8 +60,9 @@ export const DEPS_TOOLS: ToolDefinition[] = [
       }
     },
     handler: (args) => {
-      const id = normalizeId(args.id as string);
-      const blockedBy = normalizeId(args.blocked_by as string);
+      const { id: rawId, blocked_by: rawBlockedBy } = args as { id: string; blocked_by: string };
+      const id = normalizeId(rawId);
+      const blockedBy = normalizeId(rawBlockedBy);
 
       // Validate IDs are tasks or epics, not PRDs or stories
       if (!id.startsWith('T') && !id.startsWith('E')) {
@@ -113,7 +115,7 @@ export const DEPS_TOOLS: ToolDefinition[] = [
       }
     },
     handler: (args) => {
-      const { deps } = args;
+      const { deps } = args as { deps: Array<{ id: string; blocked_by: string }> };
 
       if (!Array.isArray(deps) || deps.length === 0) {
         return err('deps array is required and must not be empty');
@@ -123,8 +125,8 @@ export const DEPS_TOOLS: ToolDefinition[] = [
       const errors: string[] = [];
 
       for (const dep of deps) {
-        const id = normalizeId(dep.id as string);
-        const blockedBy = normalizeId(dep.blocked_by as string);
+        const id = normalizeId(dep.id);
+        const blockedBy = normalizeId(dep.blocked_by);
 
         if (!id.startsWith('T') && !id.startsWith('E')) {
           errors.push(`${id}: must be Task (T001) or Epic (E001)`);
@@ -174,9 +176,10 @@ export const DEPS_TOOLS: ToolDefinition[] = [
       }
     },
     handler: (args) => {
+      const { scope, limit: rawLimit } = args as { scope?: string; limit?: number };
       const { tasks, blocks } = buildDependencyGraph();
-      const limit = (args.limit as number) || 5;
-      const prdFilter = args.scope ? normalizeId(args.scope as string) : null;
+      const limit = rawLimit || 5;
+      const prdFilter = scope ? normalizeId(scope) : null;
 
       const scores: Array<{
         id: string;

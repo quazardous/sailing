@@ -133,27 +133,28 @@ export const WORKFLOW_TOOLS: ToolDefinition[] = [
       }
     },
     handler: (args) => {
-      const type = args.scope ? detectType(args.scope as string) : null;
+      const { scope, limit: rawLimit, include_started } = args as { scope?: string; limit?: number; include_started?: boolean };
+      const type = scope ? detectType(scope) : null;
 
       const result = getReadyTasks({
-        prd: type === 'prd' ? args.scope as string : undefined,
-        epic: type === 'epic' ? args.scope as string : undefined,
-        limit: (args.limit as number) || 6,
-        includeStarted: args.include_started as boolean | undefined
+        prd: type === 'prd' ? scope : undefined,
+        epic: type === 'epic' ? scope : undefined,
+        limit: rawLimit || 6,
+        includeStarted: include_started
       });
 
       const nextActions: NextAction[] = [];
 
       // Check epic health warnings
       const epicWarnings = getEpicHealthWarnings({
-        prd: type === 'prd' ? args.scope as string : undefined,
-        epic: type === 'epic' ? args.scope as string : undefined
+        prd: type === 'prd' ? scope : undefined,
+        epic: type === 'epic' ? scope : undefined
       });
 
       // Check open panics
       const panicWarnings = getOpenPanicWarnings({
-        prd: type === 'prd' ? args.scope as string : undefined,
-        epic: type === 'epic' ? args.scope as string : undefined
+        prd: type === 'prd' ? scope : undefined,
+        epic: type === 'epic' ? scope : undefined
       });
 
       if (result.tasks.length > 0) {
@@ -197,21 +198,18 @@ export const WORKFLOW_TOOLS: ToolDefinition[] = [
       }
     },
     handler: (args) => {
-      const result = validateDeps({
-        prd: args.scope as string | undefined
-      });
+      const { scope } = args as { scope?: string };
+      const result = validateDeps({ prd: scope });
 
       // Check epic health warnings
-      const epicWarnings = getEpicHealthWarnings({
-        prd: args.scope as string | undefined
-      });
+      const epicWarnings = getEpicHealthWarnings({ prd: scope });
 
       const nextActions: NextAction[] = [];
 
       if (result.valid) {
         nextActions.push({
           tool: 'workflow_ready',
-          args: { scope: args.scope },
+          args: { scope },
           reason: 'Find tasks ready to start after validation',
           priority: 'normal'
         });
@@ -241,13 +239,14 @@ export const WORKFLOW_TOOLS: ToolDefinition[] = [
       }
     },
     handler: (args) => {
+      const { task_id, assignee } = args as { task_id: string; assignee?: string };
       try {
-        const result = startTask(args.task_id as string, {
-          assignee: (args.assignee as string) || 'agent'
+        const result = startTask(task_id, {
+          assignee: assignee || 'agent'
         });
 
         // Check for open panics in scope
-        const taskEntry = getTask(args.task_id as string);
+        const taskEntry = getTask(task_id);
         const taskEpicId = taskEntry?.data?.parent ? /E\d+/.exec(taskEntry.data.parent)?.[0] : undefined;
         const panicWarnings = getOpenPanicWarnings({
           epic: taskEpicId || undefined
@@ -296,11 +295,10 @@ export const WORKFLOW_TOOLS: ToolDefinition[] = [
       }
     },
     handler: (args) => {
+      const { task_id, message } = args as { task_id: string; message?: string };
       try {
-        const id = normalizeId(args.task_id as string, undefined, 'task');
-        const result = completeTask(id, {
-          message: args.message as string | undefined
-        });
+        const id = normalizeId(task_id, undefined, 'task');
+        const result = completeTask(id, { message });
 
         const nextActions: NextAction[] = [];
 

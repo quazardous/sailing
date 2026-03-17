@@ -43,15 +43,13 @@ export const AGENT_TOOLS: ToolDefinition[] = [
       }
     },
     handler: (args) => {
-      const level = (args.level?.toUpperCase() || 'INFO') as LogLevel;
+      const { task_id, message, level: rawLevel, file, command } = args as { task_id: string; message: string; level?: string; file?: string; command?: string };
+      const level = (rawLevel?.toUpperCase() || 'INFO') as LogLevel;
       const result = logTask(
-        args.task_id as string,
-        args.message as string,
+        task_id,
+        message,
         level,
-        {
-          file: args.file as string | undefined,
-          command: args.command as string | undefined
-        }
+        { file, command }
       );
 
       return ok({
@@ -74,10 +72,11 @@ export const AGENT_TOOLS: ToolDefinition[] = [
       }
     },
     handler: (args) => {
-      const result = showArtefact(args.id as string, { raw: args.raw as boolean | undefined });
+      const { id, raw } = args as { id: string; raw?: boolean };
+      const result = showArtefact(id, { raw });
 
       if (!result.exists) {
-        return err(`Artefact not found: ${args.id}`);
+        return err(`Artefact not found: ${id}`);
       }
 
       return ok({
@@ -99,10 +98,11 @@ export const AGENT_TOOLS: ToolDefinition[] = [
       }
     },
     handler: (args) => {
-      const result = showDeps(args.id as string);
+      const { id } = args as { id: string };
+      const result = showDeps(id);
 
       if (!result) {
-        return err(`Task not found: ${args.id}`);
+        return err(`Task not found: ${id}`);
       }
 
       return ok({
@@ -125,12 +125,11 @@ export const AGENT_TOOLS: ToolDefinition[] = [
       }
     },
     handler: (args) => {
-      const result = loadContext(args.operation as string, {
-        role: args.role as string | undefined
-      });
+      const { operation, role } = args as { operation: string; role?: string };
+      const result = loadContext(operation, { role });
 
       if (!result) {
-        return err(`No context defined for operation: ${args.operation}`);
+        return err(`No context defined for operation: ${operation}`);
       }
 
       return ok({
@@ -153,14 +152,13 @@ export const AGENT_TOOLS: ToolDefinition[] = [
       }
     },
     handler: (args) => {
-      const result = showMemory(args.scope as string, {
-        full: args.full as boolean | undefined
-      });
+      const { scope, full } = args as { scope: string; full?: boolean };
+      const result = showMemory(scope, { full });
 
       if (!result.exists) {
         return ok({
           success: true,
-          data: { exists: false, message: `No memory found for: ${args.scope}` }
+          data: { exists: false, message: `No memory found for: ${scope}` }
         });
       }
 
@@ -226,6 +224,7 @@ export const AGENT_TOOLS: ToolDefinition[] = [
       }
     },
     handler: (args) => {
+      const { status, domain, tags } = args as { status?: string; domain?: string; tags?: string[] };
       try {
         const allEntries = getAllAdrs();
 
@@ -239,17 +238,16 @@ export const AGENT_TOOLS: ToolDefinition[] = [
 
         let entries = allEntries;
 
-        if (args.status) {
-          entries = entries.filter(e => e.data.status === args.status);
+        if (status) {
+          entries = entries.filter(e => e.data.status === status);
         }
-        if (args.domain) {
-          entries = entries.filter(e => e.data.domain === args.domain);
+        if (domain) {
+          entries = entries.filter(e => e.data.domain === domain);
         }
-        if (args.tags && (args.tags as string[]).length > 0) {
-          const filterTags = args.tags as string[];
+        if (tags && tags.length > 0) {
           entries = entries.filter(e => {
             const adrTags = e.data.tags || [];
-            return filterTags.some(t => adrTags.includes(t));
+            return tags.some(t => adrTags.includes(t));
           });
         }
 
@@ -290,7 +288,8 @@ export const AGENT_TOOLS: ToolDefinition[] = [
       }
     },
     handler: (args) => {
-      const id = normalizeAdrId(args.id as string);
+      const { id: rawId } = args as { id: string };
+      const id = normalizeAdrId(rawId);
 
       try {
         const adr = getFullAdr(id);
@@ -335,14 +334,11 @@ export const AGENT_TOOLS: ToolDefinition[] = [
       }
     },
     handler: (args) => {
+      const { task_id: _taskId, domain, tags } = args as { task_id?: string; domain?: string; tags?: string[] };
       // TODO: Use task_id to infer domain/tags from task metadata
-      const _taskId = args.task_id as string | undefined;
 
       try {
-        const adrs = getRelevantAdrs({
-          domain: args.domain as string | undefined,
-          tags: args.tags as string[] | undefined
-        });
+        const adrs = getRelevantAdrs({ domain, tags });
 
         if (adrs.length === 0) {
           return ok({

@@ -38,6 +38,7 @@ export const ADR_TOOLS: ToolDefinition[] = [
       }
     },
     handler: (args) => {
+      const { status, domain, tags } = args as { status?: string; domain?: string; tags?: string[] };
       const nextActions: NextAction[] = [];
 
       try {
@@ -54,16 +55,16 @@ export const ADR_TOOLS: ToolDefinition[] = [
         let entries = allEntries;
 
         // Apply filters
-        if (args.status) {
-          entries = entries.filter(e => e.data.status === args.status);
+        if (status) {
+          entries = entries.filter(e => e.data.status === status);
         }
-        if (args.domain) {
-          entries = entries.filter(e => e.data.domain === args.domain);
+        if (domain) {
+          entries = entries.filter(e => e.data.domain === domain);
         }
-        if (args.tags && args.tags.length > 0) {
+        if (tags && tags.length > 0) {
           entries = entries.filter(e => {
             const adrTags = e.data.tags || [];
-            return args.tags.some((t: string) => adrTags.includes(t));
+            return tags.some((t: string) => adrTags.includes(t));
           });
         }
 
@@ -115,7 +116,8 @@ export const ADR_TOOLS: ToolDefinition[] = [
       }
     },
     handler: (args) => {
-      const id = normalizeAdrId(args.id);
+      const { id: rawId } = args as { id: string };
+      const id = normalizeAdrId(rawId);
       const nextActions: NextAction[] = [];
 
       try {
@@ -186,7 +188,7 @@ export const ADR_TOOLS: ToolDefinition[] = [
       }
     },
     handler: (args) => {
-      const { title, author, domain, tags, introduced_in } = args;
+      const { title, author, domain, tags, introduced_in } = args as { title: string; author?: string; domain?: string; tags?: string[]; introduced_in?: string };
       const nextActions: NextAction[] = [];
 
       try {
@@ -232,7 +234,8 @@ export const ADR_TOOLS: ToolDefinition[] = [
       }
     },
     handler: (args) => {
-      const id = normalizeAdrId(args.id);
+      const { id: rawId } = args as { id: string };
+      const id = normalizeAdrId(rawId);
 
       try {
         const success = updateAdrStatus(id, 'Accepted');
@@ -273,8 +276,9 @@ export const ADR_TOOLS: ToolDefinition[] = [
       }
     },
     handler: (args) => {
-      const id = normalizeAdrId(args.id);
-      const supersededBy = args.superseded_by ? normalizeAdrId(args.superseded_by) : undefined;
+      const { id: rawId, superseded_by } = args as { id: string; superseded_by?: string };
+      const id = normalizeAdrId(rawId);
+      const supersededBy = superseded_by ? normalizeAdrId(superseded_by) : undefined;
       const newStatus = supersededBy ? 'Superseded' : 'Deprecated';
 
       try {
@@ -323,13 +327,13 @@ export const ADR_TOOLS: ToolDefinition[] = [
       }
     },
     handler: (args) => {
+      const { task_id: _taskId, domain, tags } = args as { task_id?: string; domain?: string; tags?: string[] };
       // TODO: Use task_id to infer domain/tags from task metadata
-      const _taskId = args.task_id as string | undefined;
 
       try {
         const adrs = getRelevantAdrs({
-          domain: args.domain,
-          tags: args.tags
+          domain,
+          tags
         });
 
         if (adrs.length === 0) {

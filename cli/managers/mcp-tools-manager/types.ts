@@ -12,14 +12,16 @@ import { getDigitConfig } from '../config-manager.js';
 
 export interface NextAction {
   tool: string;
-  args: Record<string, any>;
+  // next_actions are suggestions for the AI orchestrator — args shape varies per tool and is not known at compile time
+  args: Record<string, any>; // eslint-disable-line @typescript-eslint/no-explicit-any
   reason: string;
   priority?: 'high' | 'normal' | 'low';
 }
 
 export interface McpResult {
   success: boolean;
-  data?: any;
+  // data is the tool output — varies per tool (object, array, string). Typed by each tool's response, not at protocol level.
+  data?: any; // eslint-disable-line @typescript-eslint/no-explicit-any
   error?: string;
   next_actions?: NextAction[];
 }
@@ -29,7 +31,9 @@ export interface ToolResponse {
   isError?: boolean;
 }
 
-export type ToolHandler = (args: Record<string, any>) => Promise<ToolResponse> | ToolResponse;
+/** MCP tool args — typed as Record<string, unknown> at protocol boundary.
+ *  Each handler should cast to a typed interface immediately. */
+export type ToolHandler = (args: Record<string, unknown>) => Promise<ToolResponse> | ToolResponse;
 
 export interface ToolDefinition {
   tool: Tool;
@@ -88,7 +92,8 @@ export function err(message: string, nextActions?: NextAction[]): ToolResponse {
 export function fromRunResult(result: RunResult, nextActions?: NextAction[]): ToolResponse {
   if (result.success) {
     // Try to parse JSON output
-    let data: any = result.output || '';
+    // JSON.parse returns any — we pass it through to McpResult.data which is also any (tool output varies)
+    let data: any = result.output || ''; // eslint-disable-line @typescript-eslint/no-explicit-any
     try {
       data = JSON.parse(result.output || '');
     } catch { /* keep as string */ }

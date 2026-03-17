@@ -29,14 +29,13 @@ export const MEMORY_TOOLS: ToolDefinition[] = [
       }
     },
     handler: (args) => {
-      const result = showMemory(args.scope as string, {
-        full: args.full as boolean | undefined
-      });
+      const { scope, full } = args as { scope: string; full?: boolean };
+      const result = showMemory(scope, { full });
 
       if (!result.exists) {
         return ok({
           success: true,
-          data: { exists: false, message: `No memory found for: ${args.scope}` }
+          data: { exists: false, message: `No memory found for: ${scope}` }
         });
       }
 
@@ -58,7 +57,7 @@ export const MEMORY_TOOLS: ToolDefinition[] = [
       }
     },
     handler: (args) => {
-      const scope = args.scope as string | undefined;
+      const { scope } = args as { scope?: string };
       const result = syncMemory({ scope });
       const hasScope = !!scope;
 
@@ -134,32 +133,42 @@ export const MEMORY_TOOLS: ToolDefinition[] = [
       }
     },
     handler: (args) => {
+      const { level, target_id, section, content, append, flush, operation: rawOperation } = args as {
+        level: MemoryLevel;
+        target_id: string;
+        section: MemorySectionName;
+        content: string;
+        append?: boolean;
+        flush?: boolean;
+        operation?: 'append' | 'prepend' | 'replace';
+      };
+
       // Priority: append param > operation param > default (replace)
       let operation: 'append' | 'prepend' | 'replace';
-      if (typeof args.append === 'boolean') {
-        operation = args.append ? 'append' : 'replace';
-      } else if (args.operation) {
-        operation = args.operation as 'append' | 'prepend' | 'replace';
+      if (typeof append === 'boolean') {
+        operation = append ? 'append' : 'replace';
+      } else if (rawOperation) {
+        operation = rawOperation;
       } else {
         operation = 'replace';
       }
 
       const result = consolidateMemory(
-        args.level as MemoryLevel,
-        args.target_id as string,
-        args.section as MemorySectionName,
-        args.content as string,
-        { operation, flush: args.flush as boolean | undefined }
+        level,
+        target_id,
+        section,
+        content,
+        { operation, flush }
       );
 
       const nextActions: NextAction[] = [];
 
       if (result.success) {
         // Suggest escalating to PRD if important patterns
-        if (args.level === 'epic' && (args.section === 'Escalation' || args.section === 'Cross-Epic Patterns')) {
+        if (level === 'epic' && (section === 'Escalation' || section === 'Cross-Epic Patterns')) {
           nextActions.push({
             tool: 'memory_consolidate',
-            args: { level: 'prd', section: args.section },
+            args: { level: 'prd', section },
             reason: 'Consider escalating important patterns to PRD level',
             priority: 'low'
           });
@@ -190,7 +199,8 @@ export const MEMORY_TOOLS: ToolDefinition[] = [
       }
     },
     handler: (args) => {
-      const result = flushEpicLogs(args.epic_id as string);
+      const { epic_id } = args as { epic_id: string };
+      const result = flushEpicLogs(epic_id);
 
       if (!result.flushed) {
         return ok({
