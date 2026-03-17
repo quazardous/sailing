@@ -31,13 +31,14 @@ export function summarizeEvent(event: LogEvent, line: string): string {
   if (type === 'assistant' && event.message?.content) {
     const content = event.message.content;
     if (Array.isArray(content)) {
-      const toolUses = content.filter((c: any) => c.type === 'tool_use');
+      const blocks = content as Array<{ type: string; name?: string; text?: string }>;
+      const toolUses = blocks.filter(c => c.type === 'tool_use');
       if (toolUses.length > 0) {
-        const tools = toolUses.map((t: any) => t.name).join(', ');
+        const tools = toolUses.map(t => t.name).join(', ');
         return `[assistant] tools: ${tools}`;
       }
-      const text = content.find((c: any) => c.type === 'text');
-      if (text) {
+      const text = blocks.find(c => c.type === 'text');
+      if (text?.text) {
         const truncated = text.text.length > 100 ? text.text.substring(0, 100) + '...' : text.text;
         return `[assistant] ${truncated.replace(/\n/g, ' ')}`;
       }
@@ -77,8 +78,8 @@ export function registerDiagnoseCommands(agent: Command) {
     .description('Analyze agent run log for errors and issues')
     .option('--json', 'JSON output')
     .option('--max-line-len <n>', 'Max error line length', '500')
-    .action((taskId: string, options: any) => {
-      const maxLineLen = parseInt(options.maxLineLen) || 500;
+    .action((taskId: string, options: { json?: boolean; maxLineLen?: string }) => {
+      const maxLineLen = parseInt(options.maxLineLen || '500') || 500;
       const normalized = normalizeId(taskId, undefined, 'task');
       const agentUtils = new AgentUtils(getAgentsDir());
       const agentDir = agentUtils.getAgentDir(normalized);
@@ -118,7 +119,7 @@ export function registerDiagnoseCommands(agent: Command) {
     .option('--type <type>', 'Event type to match')
     .option('--contains <text>', 'Text to match')
     .option('--pattern <regex>', 'Regex pattern to match')
-    .action((id: string, taskOrEpic: string | undefined, options: any) => {
+    .action((id: string, taskOrEpic: string | undefined, options: { description?: string; type?: string; contains?: string; pattern?: string }) => {
       const epicId = resolveEpicId(taskOrEpic);
 
       if (!options.contains && !options.pattern && !options.type) {
@@ -155,7 +156,7 @@ export function registerDiagnoseCommands(agent: Command) {
   agent.command('log-noise-list-filters [task-or-epic]')
     .description('List noise filters (accepts task ID, epic ID, or "global")')
     .option('--json', 'JSON output')
-    .action((taskOrEpic: string | undefined, options: any) => {
+    .action((taskOrEpic: string | undefined, options: { json?: boolean }) => {
       const epicId = resolveEpicId(taskOrEpic);
       const filters = getDiagnoseOps().loadNoiseFilters(epicId);
 

@@ -10,7 +10,7 @@ import { nextId } from '../managers/state-manager.js';
 import { parseUpdateOptions } from '../lib/update.js';
 import { addDynamicHelp, withModifies } from '../lib/help.js';
 import { formatId } from '../managers/core-manager.js';
-import { parseSearchReplace, editArtifact, parseMultiSectionContent, processMultiSectionOps } from '../lib/artifact.js';
+import { parseSearchReplace, editArtifact, parseMultiSectionContent, processMultiSectionOps, type EditOp } from '../lib/artifact.js';
 import { getEpic, getAllEpics, getTasksForEpic, prdIdFromDir, matchesPrd } from '../managers/artefacts-manager.js';
 import { Epic } from '../lib/types/entities.js';
 import { getEpicMemory } from '../managers/memory-manager.js';
@@ -61,7 +61,7 @@ interface EpicCreateOptions {
  * Find an epic file by ID (format-agnostic via index library)
  * Returns { file, prdDir, prdId } for compatibility with existing code
  */
-function findEpicFile(epicId) {
+function findEpicFile(epicId: string) {
   const epic = getEpic(epicId);
   if (!epic) return null;
   return { file: epic.file, prdDir: epic.prdDir, prdId: epic.prdId };
@@ -82,7 +82,7 @@ export function registerEpicCommands(program: Command) {
   epic.command('list [prd]')
     .description('List epics (filter by PRD, status, tag)')
     .option('-s, --status <status>', `Filter by status (${statusHelp})`)
-    .option('-t, --tag <tag>', 'Filter by tag (repeatable, AND logic)', (v, arr) => arr.concat(v), [])
+    .option('-t, --tag <tag>', 'Filter by tag (repeatable, AND logic)', (v: string, arr: string[]) => arr.concat(v), [] as string[])
     .option('-l, --limit <n>', 'Limit results', parseInt)
     .option('--prd <id>', 'Filter by PRD (alias for positional arg)')
     .option('--path', 'Include file path (discouraged)')
@@ -164,7 +164,7 @@ export function registerEpicCommands(program: Command) {
     .option('--strip-comments', 'Strip template comments from output')
     .option('--path', 'Include file path (discouraged)')
     .option('--json', 'JSON output')
-    .action((id, options) => {
+    .action((id: string, options: { role?: string; raw?: boolean; stripComments?: boolean; path?: boolean; json?: boolean }) => {
       // Role enforcement: agents don't access epics directly
       if (options.role === 'agent') {
         console.error('ERROR: epic:show cannot be called with --role agent');
@@ -178,7 +178,7 @@ export function registerEpicCommands(program: Command) {
         process.exit(1);
       }
 
-      const { file: epicFile, prdDir: _prdDir, prdId } = result;
+      const { file: epicFile, prdId } = result;
 
       // Raw mode: dump file content
       if (options.raw) {
@@ -189,7 +189,7 @@ export function registerEpicCommands(program: Command) {
       }
 
       const file = loadFile(epicFile);
-      const epicIdNorm = normalizeId(file.data.id);
+      const epicIdNorm = normalizeId(String(file.data.id));
 
       // Get task summary (artefacts.ts contract)
       const tasks = getTasksForEpic(epicIdNorm).map(t => ({
@@ -203,7 +203,7 @@ export function registerEpicCommands(program: Command) {
         tasksByStatus[status] = (tasksByStatus[status] || 0) + 1;
       });
 
-      const output: any = {
+      const output: Record<string, unknown> = {
         ...file.data,
         prd: prdId,
         taskCount: tasks.length,
@@ -228,9 +228,9 @@ export function registerEpicCommands(program: Command) {
   // epic:create
   withModifies(epic.command('create <prd> <title>'), ['epic'])
     .description('Create epic in PRD (e.g., PRD-001 "Title")')
-    .option('--story <id>', 'Link to story (repeatable)', (v, arr) => arr.concat(v), [])
-    .option('--tag <tag>', 'Add tag (repeatable, slugified to kebab-case)', (v, arr) => arr.concat(v), [])
-    .option('--target-version <comp:ver>', 'Target version (repeatable)', (v, arr) => arr.concat(v), [])
+    .option('--story <id>', 'Link to story (repeatable)', (v: string, arr: string[]) => arr.concat(v), [] as string[])
+    .option('--tag <tag>', 'Add tag (repeatable, slugified to kebab-case)', (v: string, arr: string[]) => arr.concat(v), [] as string[])
+    .option('--target-version <comp:ver>', 'Target version (repeatable)', (v: string, arr: string[]) => arr.concat(v), [] as string[])
     .option('--path', 'Show file path')
     .option('--json', 'JSON output')
     .action((prd: string, title: string, options: EpicCreateOptions) => {
@@ -341,15 +341,15 @@ updated: '${new Date().toISOString()}'
     .option('-s, --status <status>', `Set status (${statusHelp})`)
     .option('-a, --assignee <name>', 'Set assignee')
     .option('-t, --title <title>', 'Set title')
-    .option('--add-blocker <id>', 'Add blocker (repeatable)', (v, arr) => arr.concat(v), [])
-    .option('--remove-blocker <id>', 'Remove blocker (repeatable)', (v, arr) => arr.concat(v), [])
+    .option('--add-blocker <id>', 'Add blocker (repeatable)', (v: string, arr: string[]) => arr.concat(v), [] as string[])
+    .option('--remove-blocker <id>', 'Remove blocker (repeatable)', (v: string, arr: string[]) => arr.concat(v), [] as string[])
     .option('--clear-blockers', 'Clear all blockers')
-    .option('--story <id>', 'Link to story (repeatable, replaces existing)', (v, arr) => arr.concat(v), [])
-    .option('--add-story <id>', 'Add story link (repeatable)', (v, arr) => arr.concat(v), [])
-    .option('--remove-story <id>', 'Remove story link (repeatable)', (v, arr) => arr.concat(v), [])
-    .option('--target-version <comp:ver>', 'Set target version (repeatable)', (v, arr) => arr.concat(v), [])
-    .option('--remove-target-version <comp>', 'Remove target version', (v, arr) => arr.concat(v), [])
-    .option('--set <key=value>', 'Set any frontmatter field (repeatable)', (v, arr) => arr.concat(v), [])
+    .option('--story <id>', 'Link to story (repeatable, replaces existing)', (v: string, arr: string[]) => arr.concat(v), [] as string[])
+    .option('--add-story <id>', 'Add story link (repeatable)', (v: string, arr: string[]) => arr.concat(v), [] as string[])
+    .option('--remove-story <id>', 'Remove story link (repeatable)', (v: string, arr: string[]) => arr.concat(v), [] as string[])
+    .option('--target-version <comp:ver>', 'Set target version (repeatable)', (v: string, arr: string[]) => arr.concat(v), [] as string[])
+    .option('--remove-target-version <comp>', 'Remove target version', (v: string, arr: string[]) => arr.concat(v), [] as string[])
+    .option('--set <key=value>', 'Set any frontmatter field (repeatable)', (v: string, arr: string[]) => arr.concat(v), [] as string[])
     .option('--json', 'JSON output')
     .action((id: string, options: EpicUpdateOptions) => {
       const result = findEpicFile(id);
@@ -395,7 +395,7 @@ updated: '${new Date().toISOString()}'
   // epic:dump-logs
   epic.command('dump-logs <id>')
     .description('Show epic log content')
-    .action((id) => {
+    .action((id: string) => {
       const epicId = normalizeId(id);
       const content = getEpicMemory(epicId).getLogContent();
 
@@ -410,7 +410,7 @@ updated: '${new Date().toISOString()}'
   // epic:clean-logs
   withModifies(epic.command('clean-logs <id>'), ['epic'])
     .description('Delete epic log file')
-    .action((id) => {
+    .action((id: string) => {
       const epicId = normalizeId(id);
       const deleted = getEpicMemory(epicId).deleteLog();
 
@@ -446,7 +446,7 @@ updated: '${new Date().toISOString()}'
   withModifies(epic.command('ensure-memory <id>'), ['epic'])
     .description('Create memory file from template if missing')
     .option('--path', 'Show file path (discouraged)')
-    .action((id, options) => {
+    .action((id: string, options: { path?: boolean }) => {
       const epicId = normalizeId(id);
       const memoryFile = path.join(getMemoryDir(), `${epicId}.md`);
 
@@ -497,7 +497,7 @@ updated: '${new Date().toISOString()}'
     .option('--cmd', 'Add as command (useful commands)')
     .option('--issue', 'Add as issue (known problems)')
     .option('--solution', 'Add as solution (how to fix)')
-    .action((id, message, options) => {
+    .action((id: string, message: string, options: { tip?: boolean; cmd?: boolean; issue?: boolean; solution?: boolean }) => {
       const epicId = normalizeId(id);
 
       // Determine section
@@ -688,7 +688,7 @@ Note: Sections are auto-created if they don't exist (replace/append/prepend).
         process.exit(1);
       }
 
-      const editResult = editArtifact(epicPath, expandedOps as any);
+      const editResult = editArtifact(epicPath, expandedOps as EditOp[]);
 
       if (options.json) {
         jsonOut({ id: normalizeId(id), ...editResult });

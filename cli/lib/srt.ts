@@ -148,6 +148,17 @@ export interface McpServerStatus {
   pid?: number;
 }
 
+interface McpServerEntry {
+  pid?: number;
+  socket?: string;
+  port?: number;
+}
+
+interface McpStateFile {
+  conductor?: McpServerEntry;
+  agent?: McpServerEntry;
+}
+
 /**
  * Check if MCP server is already running for a haven
  * Reads state from mcp-state.json (created by rdrctl)
@@ -163,7 +174,7 @@ export function checkMcpServer(havenDir: string): McpServerStatus {
   }
 
   try {
-    const state = JSON.parse(fs.readFileSync(stateFile, 'utf8'));
+    const state = JSON.parse(fs.readFileSync(stateFile, 'utf8')) as McpStateFile;
 
     // Check conductor (primary MCP for orchestrator)
     if (state.conductor?.pid) {
@@ -213,7 +224,7 @@ export function checkMcpAgentServer(havenDir: string): McpServerStatus {
   }
 
   try {
-    const state = JSON.parse(fs.readFileSync(stateFile, 'utf8'));
+    const state = JSON.parse(fs.readFileSync(stateFile, 'utf8')) as McpStateFile;
 
     // Check agent MCP (for sandbox agents)
     if (state.agent?.pid) {
@@ -893,10 +904,10 @@ export function spawnClaudeWithSrt(options: SpawnClaudeWithSrtOptions): SpawnCla
   };
 
   // Handle stdout
-  child.stdout.on('data', (data) => processData(data));
+  child.stdout.on('data', (data: Buffer) => processData(data));
 
   // Handle stderr (pass through, usually errors)
-  child.stderr.on('data', (data) => {
+  child.stderr.on('data', (data: Buffer) => {
     resetWatchdog();
     // Stderr goes to both log files
     if (jsonLogStream) jsonLogStream.write(data);
