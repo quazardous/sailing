@@ -32,7 +32,7 @@ import {
   getAgentConfig
 } from '../../managers/core-manager.js';
 import { addDynamicHelp } from '../../lib/help.js';
-import { ConfigDisplayItem, ConfigSchema, CheckResults, CheckEntry, ConfigSchemaEntry } from '../../lib/types/config.js';
+import { ConfigDisplayItem, ConfigSchema, CheckResults, CheckEntry, CheckState, ConfigSchemaEntry } from '../../lib/types/config.js';
 
 /**
  * Register config commands
@@ -41,7 +41,7 @@ export function registerConfigCommands(program: Command) {
   const config = program.command('config')
     .description('Configuration management (show, check)')
     .option('--json', 'JSON output')
-    .action((options) => {
+    .action((options: { json?: boolean }) => {
       // Default: show config
       const info = getConfigInfo();
       const configDisplay = getConfigDisplay();
@@ -102,7 +102,7 @@ export function registerConfigCommands(program: Command) {
   config.command('init')
     .description('Generate config.yaml from schema with defaults')
     .option('--force', 'Overwrite existing config.yaml')
-    .action((options) => {
+    .action((options: { force?: boolean }) => {
       const configPath = getConfigPath();
 
       if (fs.existsSync(configPath) && !options.force) {
@@ -274,7 +274,7 @@ export function registerConfigCommands(program: Command) {
     .description('Validate project setup (files, folders, YAML syntax)')
     .option('--json', 'JSON output')
     .option('--fix', 'Create missing directories and files')
-    .action((options) => {
+    .action((options: { json?: boolean; fix?: boolean }) => {
       const results: CheckResults = {
         git: [],
         directories: [],
@@ -379,8 +379,8 @@ export function registerConfigCommands(program: Command) {
               });
               hasGitRepo = true;
               check('git', 'repository', 'ok', 'Initialized git repository');
-            } catch (e) {
-              check('git', 'repository', 'error', `Failed to init: ${e.message}`);
+            } catch (e: unknown) {
+              check('git', 'repository', 'error', `Failed to init: ${e instanceof Error ? e.message : String(e)}`);
             }
           } else if (agentConfig.use_worktrees) {
             check('git', 'repository', 'error', 'Not a git repository (required for worktrees)');
@@ -418,8 +418,8 @@ export function registerConfigCommands(program: Command) {
           try {
             fs.mkdirSync(dir.path, { recursive: true });
             check('directories', dir.name, 'ok', `${dir.path} (created)`);
-          } catch (e) {
-            check('directories', dir.name, 'error', `Failed to create: ${e.message}`);
+          } catch (e: unknown) {
+            check('directories', dir.name, 'error', `Failed to create: ${e instanceof Error ? e.message : String(e)}`);
           }
         } else {
           check('directories', dir.name, 'error', `Missing: ${dir.path}`);
@@ -434,8 +434,8 @@ export function registerConfigCommands(program: Command) {
             try {
               fs.mkdirSync(dir.path, { recursive: true });
               check('directories', dir.name, 'ok', `${dir.path} (created)`);
-            } catch (e) {
-              check('directories', dir.name, 'error', `Failed to create: ${e.message}`);
+            } catch (e: unknown) {
+              check('directories', dir.name, 'error', `Failed to create: ${e instanceof Error ? e.message : String(e)}`);
             }
           } else {
             check('directories', dir.name, 'error', `Missing: ${dir.path}`);
@@ -455,8 +455,8 @@ export function registerConfigCommands(program: Command) {
             try {
               fs.mkdirSync(dir.path, { recursive: true });
               check('directories', dir.name, 'ok', `${dir.path} (created)`);
-            } catch (e) {
-              check('directories', dir.name, 'error', `Failed to create: ${e.message}`);
+            } catch (e: unknown) {
+              check('directories', dir.name, 'error', `Failed to create: ${e instanceof Error ? e.message : String(e)}`);
             }
           } else {
             check('directories', dir.name, 'error', `Missing: ${dir.path}`);
@@ -520,8 +520,8 @@ export function registerConfigCommands(program: Command) {
               fs.writeFileSync(file.path, file.defaultContent);
               check('files', file.name, 'ok', `${file.path} (created with defaults)`);
             }
-          } catch (e) {
-            check('files', file.name, 'error', `Failed to create: ${e.message}`);
+          } catch (e: unknown) {
+            check('files', file.name, 'error', `Failed to create: ${e instanceof Error ? e.message : String(e)}`);
           }
         } else if (file.required) {
           check('files', file.name, 'error', `Missing: ${file.path}`);
@@ -563,8 +563,8 @@ export function registerConfigCommands(program: Command) {
           const content = fs.readFileSync(file.path, 'utf8');
           yaml.load(content);
           check('yaml', file.name, 'ok', 'Valid YAML');
-        } catch (e) {
-          check('yaml', file.name, 'error', `Invalid YAML: ${e.message}`);
+        } catch (e: unknown) {
+          check('yaml', file.name, 'error', `Invalid YAML: ${e instanceof Error ? e.message : String(e)}`);
         }
       }
 
@@ -573,16 +573,17 @@ export function registerConfigCommands(program: Command) {
       if (fs.existsSync(stateFile)) {
         try {
           const content = fs.readFileSync(stateFile, 'utf8');
-          const state = JSON.parse(content);
-          if (state.counters && typeof state.counters.prd === 'number') {
-            results.state = { status: 'ok', counters: state.counters };
+          const state = JSON.parse(content) as Record<string, unknown>;
+          const counters = state.counters as Record<string, unknown> | undefined;
+          if (counters && typeof counters.prd === 'number') {
+            results.state = { status: 'ok', counters: counters as CheckState['counters'] };
             results.summary.ok++;
           } else {
             results.state = { status: 'warn', message: 'Missing or invalid counters' };
             results.summary.warn++;
           }
-        } catch (e) {
-          results.state = { status: 'error', message: `Invalid JSON: ${e.message}` };
+        } catch (e: unknown) {
+          results.state = { status: 'error', message: `Invalid JSON: ${e instanceof Error ? e.message : String(e)}` };
           results.summary.error++;
         }
       }
@@ -591,13 +592,13 @@ export function registerConfigCommands(program: Command) {
       try {
         loadAgentConfig();
         check('yaml', 'agent config', 'ok', 'Config loads successfully');
-      } catch (e) {
-        check('yaml', 'agent config', 'error', `Failed to load: ${e.message}`);
+      } catch (e: unknown) {
+        check('yaml', 'agent config', 'error', `Failed to load: ${e instanceof Error ? e.message : String(e)}`);
       }
 
       // Config hierarchy validation
       results.config = [];
-      const configCheck = (name, status, message) => {
+      const configCheck = (name: string, status: CheckEntry['status'], message: string) => {
         results.config.push({ name, status, message });
         if (status === 'ok') results.summary.ok++;
         else if (status === 'warn') results.summary.warn++;
@@ -659,7 +660,10 @@ export function registerConfigCommands(program: Command) {
         return;
       }
 
-      const symbol = (s) => s === 'ok' ? '✓' : s === 'warn' ? '⚠' : '✗';
+      const symbol = (s: string) => {
+        if (s === 'ok') return '✓';
+        return s === 'warn' ? '⚠' : '✗';
+      };
 
       console.log('Project Check\n');
 

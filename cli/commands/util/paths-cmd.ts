@@ -41,7 +41,7 @@ export function registerPathsCommands(program: Command) {
     .option('-n, --no-resolve', 'Show paths with placeholders (unresolved)')
     .option('-r, --realpath', 'Show fully resolved absolute paths')
     .option('-d, --show-defaults', 'Show defaults alongside effective paths')
-    .action((key, options) => {
+    .action((key: string | undefined, options: { json?: boolean; placeholders?: boolean; resolve?: boolean; realpath?: boolean; showDefaults?: boolean }) => {
       const pathsInfo = getPathsInfo();
       const devInfo = getDevInfo();
 
@@ -131,7 +131,7 @@ export function registerPathsCommands(program: Command) {
   paths.command('placeholders')
     .description('Show available placeholders and their values')
     .option('--json', 'JSON output')
-    .action((options) => {
+    .action((options: { json?: boolean }) => {
       const ph = getPlaceholders();
 
       if (options.json) {
@@ -155,7 +155,7 @@ export function registerPathsCommands(program: Command) {
   // paths:resolve
   paths.command('resolve <path>')
     .description('Resolve placeholders in a path string')
-    .action((pathStr) => {
+    .action((pathStr: string) => {
       const resolved = resolvePlaceholders(pathStr);
       console.log(resolved);
     });
@@ -172,7 +172,7 @@ export function registerPathsCommands(program: Command) {
   paths.command('raw')
     .description('Show raw paths.yaml content (unresolved)')
     .option('--json', 'JSON output')
-    .action((options) => {
+    .action((options: { json?: boolean }) => {
       const projectRoot = findProjectRoot();
       const pathsFile = path.join(projectRoot, '.sailing', 'paths.yaml');
 
@@ -236,7 +236,7 @@ export function registerPathsCommands(program: Command) {
     .option('--profile <name>', 'Use profile defaults (haven, sibling, project)')
     .option('--force', 'Overwrite existing paths.yaml')
     .option('--dry-run', 'Show what would be generated')
-    .action((options) => {
+    .action((options: { profile?: string; force?: boolean; dryRun?: boolean }) => {
       const sailingDir = getSailingDir();
       const pathsFile = path.join(sailingDir, 'paths.yaml');
 
@@ -268,7 +268,7 @@ export function registerPathsCommands(program: Command) {
   // paths:set
   paths.command('set <key> <value>')
     .description('Set a path value in paths.yaml')
-    .action((key, value) => {
+    .action((key: string, value: string) => {
       if (!PATHS_SCHEMA[key]) {
         console.error(`Unknown path key: ${key}`);
         console.error(`Available: ${getPathKeys().join(', ')}`);
@@ -278,16 +278,15 @@ export function registerPathsCommands(program: Command) {
       const sailingDir = getSailingDir();
       const pathsFile = path.join(sailingDir, 'paths.yaml');
 
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      let config: { paths: Record<string, any> } = { paths: {} };
+      let config: { paths: Record<string, string> } = { paths: {} };
 
       if (fs.existsSync(pathsFile)) {
         try {
           const content = fs.readFileSync(pathsFile, 'utf8');
           config = (yaml.load(content) as typeof config) || { paths: {} };
           if (!config.paths) config.paths = {};
-        } catch (e) {
-          console.error(`Error reading paths.yaml: ${e.message}`);
+        } catch (e: unknown) {
+          console.error(`Error reading paths.yaml: ${e instanceof Error ? e.message : String(e)}`);
           process.exit(1);
         }
       } else {
@@ -313,7 +312,7 @@ export function registerPathsCommands(program: Command) {
   paths.command('get <key>')
     .description('Get a path value')
     .option('-r, --raw', 'Show raw value (unresolved)')
-    .action((key, options) => {
+    .action((key: string, options: { raw?: boolean }) => {
       const pathsInfo = getPathsInfo();
 
       if (!pathsInfo[key]) {
@@ -334,7 +333,7 @@ export function registerPathsCommands(program: Command) {
   paths.command('schema')
     .description('Show paths schema with defaults and profiles')
     .option('--json', 'JSON output')
-    .action((options) => {
+    .action((options: { json?: boolean }) => {
       if (options.json) {
         jsonOut({ schema: PATHS_SCHEMA, categories: CATEGORIES });
         return;

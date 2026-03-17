@@ -17,11 +17,26 @@ import { addDynamicHelp, withModifies } from '../lib/help.js';
 import type { AgentRecord } from '../lib/types/agent.js';
 import { parseTaskNum, formatTaskId } from '../lib/agent-paths.js';
 
+/** Shape of a run record from the runs collection */
+interface RunRecord {
+  _id: string;
+  taskNum: number;
+  startedAt?: string;
+  endedAt?: string;
+  exitCode?: number;
+  logFile?: string;
+}
+
+/** Shape of a legacy state.json file */
+interface LegacyState {
+  agents?: Record<string, AgentRecord>;
+  [key: string]: unknown;
+}
+
 /**
  * Register database commands
  */
 export function registerDbCommands(program: Command) {
-  // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
   const db = program.command('db');
   db.description('Database management (NeDB JSON files)');
 
@@ -33,7 +48,7 @@ export function registerDbCommands(program: Command) {
     .option('--json', 'JSON output')
     .action((options: { json?: boolean }) => {
       const db = getDbOps();
-      const agents = db.getAllAgents();
+      const agents = db.getAllAgents() as AgentRecord[];
       const runs = db.getRunsDb().find({});
 
       const statusCounts: Record<string, number> = {};
@@ -157,7 +172,7 @@ export function registerDbCommands(program: Command) {
         process.exit(1);
       }
 
-      const runs = getDbOps().getRunsForTask(taskNum);
+      const runs = getDbOps().getRunsForTask(taskNum) as RunRecord[];
 
       if (options.json) {
         jsonOut(runs);
@@ -168,7 +183,8 @@ export function registerDbCommands(program: Command) {
         }
         console.log(`Runs for ${taskId}:\n`);
         runs.forEach((r) => {
-          const status = r.exitCode === 0 ? '✓' : r.exitCode === undefined ? '…' : '✗';
+          const exitCode = r.exitCode;
+          const status = exitCode === 0 ? '✓' : exitCode === undefined ? '…' : '✗';
           console.log(`  ${status} Run ${r._id}: ${r.startedAt}`);
           if (r.endedAt) console.log(`    Ended: ${r.endedAt}, exit: ${r.exitCode}`);
         });
@@ -184,11 +200,12 @@ export function registerDbCommands(program: Command) {
       if (options.convert) {
         // Convert existing agents.json from taskId to taskNum format
         if (options.dryRun) {
-          const agents = getDbOps().getAllAgents();
+          const agents = getDbOps().getAllAgents() as AgentRecord[];
           const toConvert = agents.filter(a => a.taskId !== undefined && a.taskNum === undefined);
           console.log(`Would convert ${toConvert.length} agent(s) to taskNum format:`);
           toConvert.forEach(a => {
-            console.log(`  ${a.taskId}: ${a.status}`);
+            const legacyId = typeof a.taskId === 'string' ? a.taskId : 'unknown';
+            console.log(`  ${legacyId}: ${a.status}`);
           });
           return;
         }
@@ -207,15 +224,14 @@ export function registerDbCommands(program: Command) {
         return;
       }
 
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
-      const state = JSON.parse(fs.readFileSync(stateFile, 'utf8'));
+      const state = JSON.parse(fs.readFileSync(stateFile, 'utf8')) as LegacyState;
 
       if (!state.agents || Object.keys(state.agents).length === 0) {
         console.log('No agents in state.json to migrate');
         return;
       }
 
-      const stateAgents = state.agents as Record<string, AgentRecord>;
+      const stateAgents = state.agents;
       const count = Object.keys(stateAgents).length;
 
       if (options.dryRun) {
@@ -226,7 +242,7 @@ export function registerDbCommands(program: Command) {
         return;
       }
 
-      const migrated = await getDbOps().migrateToTaskNum(state.agents);
+      const migrated = await getDbOps().migrateToTaskNum(stateAgents);
       console.log(`Migrated ${migrated} agent(s) to jsondb with taskNum format`);
 
       // Remove agents from state.json (keep counters)
@@ -240,13 +256,11 @@ export function registerDbCommands(program: Command) {
     .description('Compact database files (remove deleted entries)')
     .action(async () => {
       const db = getDbOps();
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-assignment
-      const agentsDb = db.getAgentsDb() as any;
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-assignment
-      const runsDb = db.getRunsDb() as any;
+      const agentsDb = db.getAgentsDb();
+      const runsDb = db.getRunsDb();
 
-      await agentsDb.compactDatafile?.();
-      await runsDb.compactDatafile?.();
+      await agentsDb.compact();
+      await runsDb.compact();
 
       console.log('Compacted: agents.json, runs.json');
     });

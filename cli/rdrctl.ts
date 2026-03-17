@@ -53,7 +53,7 @@ type ServiceName = 'mcp' | 'agents' | 'conductor' | 'dashboard' | 'serve';
 interface ServiceDefinition {
   name: string;
   description: string;
-  start: (options: Record<string, unknown>) => Promise<void>;
+  start: (options?: Record<string, unknown>) => Promise<void>;
 }
 
 const SERVICES: Record<ServiceName, ServiceDefinition> = {
@@ -150,7 +150,7 @@ async function startMcpService(options: Record<string, unknown>) {
 /**
  * Start agents stdio service - forks mcp-server.ts
  */
-async function startAgentsService(_options: Record<string, unknown>) {
+async function startAgentsService() {
   console.error('[rdrctl] Starting MCP agents server (stdio)...');
 
   const mcpServerPath = path.join(__dirname, 'mcp-server.ts');
@@ -166,7 +166,7 @@ async function startAgentsService(_options: Record<string, unknown>) {
 /**
  * Start conductor stdio service - forks mcp-conductor.ts
  */
-async function startConductorMcpService(_options: Record<string, unknown>) {
+async function startConductorMcpService() {
   console.error('[rdrctl] Starting MCP conductor server (stdio)...');
 
   const mcpConductorPath = path.join(__dirname, 'conductor', 'mcp-conductor.ts');
@@ -293,7 +293,7 @@ program
   .option('--no-open', 'Do not open browser')
   .option('--mcp-mode <mode>', 'MCP transport mode: socket or port (default: from config)')
   .option('-f, --foreground', 'Run in foreground (do not daemonize)')
-  .action(async (service: string | undefined, options) => {
+  .action(async (service: string | undefined, options: { port: string; timeout: string; cache: string; open: boolean; mcpMode?: string; foreground?: boolean }) => {
     const serviceName = (service || 'mcp') as ServiceName;
     const serviceDef = SERVICES[serviceName];
 
@@ -354,7 +354,7 @@ program
   .command('status [service]')
   .description('Show service status')
   .option('-p, --port <port>', 'Port to check', String(DEFAULT_PORT))
-  .action(async (service: string | undefined, options) => {
+  .action(async (service: string | undefined, options: { port: string }) => {
     const port = parseInt(options.port, 10);
     const manager = getServiceManager();
 
@@ -410,7 +410,7 @@ program
   .command('restart [service]')
   .description('Restart a service (default: mcp)')
   .option('--mcp-mode <mode>', 'MCP transport mode: socket or port')
-  .action(async (service: string | undefined, options) => {
+  .action(async (service: string | undefined, options: { mcpMode?: string }) => {
     const serviceName = service || 'mcp';
 
     if (serviceName === 'mcp') {
@@ -442,7 +442,7 @@ program
   .description('Show MCP server logs (conductor or agent)')
   .option('-f, --follow', 'Follow log output (like tail -f)')
   .option('-n, --lines <n>', 'Number of lines to show', '50')
-  .action(async (service: string, options) => {
+  .action(async (service: string, options: { follow?: boolean; lines: string }) => {
     if (service !== 'conductor' && service !== 'agent') {
       console.error(`[rdrctl] Unknown service: ${service}`);
       console.error('Available: conductor, agent');
@@ -479,7 +479,7 @@ program
   .option('-t, --timeout <seconds>', 'Idle timeout (-1 for infinite)', String(DEFAULT_TIMEOUT))
   .option('-c, --cache <seconds>', 'Cache TTL (0 to disable)', String(DEFAULT_CACHE))
   .option('--no-open', 'Do not open browser')
-  .action(async (options) => {
+  .action(async (options: { port: string; timeout: string; cache: string; open: boolean }) => {
     await startDashboardService({
       port: parseInt(options.port, 10),
       timeout: parseInt(options.timeout, 10),

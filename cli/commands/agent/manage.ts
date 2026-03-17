@@ -22,7 +22,11 @@ export function registerManageCommands(agent: Command) {
       const agentsDir = path.join(havenPath, 'agents');
 
       const agents = getAllAgentsFromDb();
-      const changes = { added: [], updated: [], orphaned: [] };
+      const changes: {
+        added: Array<{ taskId: string; status: string }>;
+        updated: Array<{ taskId: string; from: string; to: string }>;
+        orphaned: Array<{ taskId: string; status: string }>;
+      } = { added: [], updated: [], orphaned: [] };
 
       if (fs.existsSync(worktreesDir)) {
         const worktrees = fs.readdirSync(worktreesDir).filter(d =>
@@ -36,7 +40,15 @@ export function registerManageCommands(agent: Command) {
           const logFile = path.join(agentDir, 'run.log');
 
           if (!agents[taskId]) {
-            const entry: any = {
+            const entry: {
+              status: string;
+              recovered_at: string;
+              worktree: { path: string; branch: string };
+              mission_file?: string;
+              log_file?: string;
+              dirty_worktree?: boolean;
+              uncommitted_files?: number;
+            } = {
               status: 'orphaned',
               recovered_at: new Date().toISOString(),
               worktree: {
@@ -128,7 +140,7 @@ export function registerManageCommands(agent: Command) {
   withModifies(agent.command('clear [task-id]'), ['db'])
     .description('Clear agent tracking (all or specific task)')
     .option('--force', 'Clear without confirmation')
-    .action(async (taskId: string | undefined, _options: { force?: boolean }) => {
+    .action(async (taskId: string | undefined) => {
       const agents = getAllAgentsFromDb();
       const agentCount = Object.keys(agents).length;
 
@@ -190,11 +202,11 @@ export function registerManageCommands(agent: Command) {
           }
         }, 5000);
 
-      } catch (e) {
-        if (e.code === 'ESRCH') {
+      } catch (e: unknown) {
+        if (e instanceof Error && 'code' in e && (e as NodeJS.ErrnoException).code === 'ESRCH') {
           console.log(`Process ${pid} already terminated`);
         } else {
-          console.error(`Error killing process: ${e.message}`);
+          console.error(`Error killing process: ${e instanceof Error ? e.message : String(e)}`);
         }
       }
 
@@ -225,7 +237,13 @@ export function registerManageCommands(agent: Command) {
     .description('Show potential file conflicts between parallel agents')
     .option('--json', 'JSON output')
     .action(async (options: { json?: boolean }) => {
-      const conflictData = await buildConflictMatrix();
+      const conflictData = await buildConflictMatrix() as {
+        agents: string[];
+        filesByAgent: Record<string, string[]>;
+        matrix: Record<string, Record<string, number>>;
+        conflicts: Array<{ agents: string[]; files: string[]; count: number }>;
+        hasConflicts: boolean;
+      };
 
       if (options.json) {
         jsonOut(conflictData);

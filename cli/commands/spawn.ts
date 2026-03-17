@@ -20,6 +20,7 @@ import {
 } from '../managers/reconciliation-manager.js';
 import { getGit } from '../lib/git.js';
 import { buildConflictMatrix } from '../managers/conflict-manager.js';
+import type { WorktreeContext } from '../lib/worktree.js';
 
 interface CheckBranchStateOptions {
   forMerge?: boolean;
@@ -28,9 +29,9 @@ interface CheckBranchStateOptions {
 /**
  * Check if git repo is ready for spawn
  */
-async function checkGitState(projectRoot) {
-  const issues = [];
-  const actions = [];
+async function checkGitState(projectRoot: string) {
+  const issues: string[] = [];
+  const actions: Array<{ type: string; cmd?: string; msg: string }> = [];
   const git = getGit(projectRoot);
 
   // Check if git repo
@@ -69,16 +70,16 @@ async function checkGitState(projectRoot) {
  * @param {object} options - Options
  * @param {boolean} options.forMerge - If true, conflicts are warnings not blockers
  */
-function checkBranchState(context: any, projectRoot: string, options: CheckBranchStateOptions = {}) {
-  const { prdId, branching } = context as { prdId: string | null; epicId: string | null; branching: string };
+function checkBranchState(context: WorktreeContext, projectRoot: string, options: CheckBranchStateOptions = {}) {
+  const { prdId, branching } = context;
   const { forMerge = false } = options;
-  const issues = [];
-  const warnings = [];
-  const actions = [];
+  const issues: string[] = [];
+  const warnings: string[] = [];
+  const actions: Array<{ type: string; cmd: string; msg: string }> = [];
   const mainBranch = getMainBranch();
 
   if (branching === 'flat') {
-    return { ready: true, issues: [], warnings: [], actions: [], hierarchy: [mainBranch] };
+    return { ready: true, issues: [] as string[], warnings: [] as string[], actions: [] as Array<{ type: string; cmd: string; msg: string }>, hierarchy: [mainBranch] };
   }
 
   const diag = diagnoseReconciliation(context);
@@ -149,7 +150,7 @@ function checkBranchState(context: any, projectRoot: string, options: CheckBranc
 /**
  * Check task dependencies
  */
-function checkDependencies(taskId) {
+function checkDependencies(taskId: string) {
   try {
     const output = execSync(`${findProjectRoot()}/bin/rudder deps:show ${taskId} --json`, {
       cwd: findProjectRoot(),
@@ -178,21 +179,21 @@ function checkDependencies(taskId) {
 /**
  * Check for potential conflicts with running agents
  */
-async function checkConflicts(taskId) {
+async function checkConflicts(taskId: string) {
   const matrix = await buildConflictMatrix();
 
   if (!matrix.hasConflicts) {
-    return { ready: true, issues: [], conflicts: [] };
+    return { ready: true, issues: [] as string[], conflicts: [] as Array<{ with: string; files: string[] }>, warning: false };
   }
 
   // Check if any conflict involves this task's files
   const potentialConflicts: Array<{ with: string, files: string[] }> = [];
 
-  for (const conflict of matrix.conflicts) {
+  for (const conflict of matrix.conflicts as Array<{ agents: string[]; files: string[]; count: number }>) {
     if (conflict.agents.includes(taskId)) {
       potentialConflicts.push({
-        with: conflict.agents.filter(a => a !== taskId)[0] as string,
-        files: conflict.files as string[]
+        with: conflict.agents.filter(a => a !== taskId)[0],
+        files: conflict.files
       });
     }
   }
@@ -206,7 +207,7 @@ async function checkConflicts(taskId) {
     };
   }
 
-  return { ready: true, issues: [], conflicts: [] };
+  return { ready: true, issues: [] as string[], conflicts: [] as Array<{ with: string; files: string[] }>, warning: false };
 }
 
 /**
@@ -214,9 +215,9 @@ async function checkConflicts(taskId) {
  */
 export function registerSpawnCommands(program: Command) {
   const spawn = program.command('spawn')
-    .description('Spawn preflight and postflight checks') as Command;
+    .description('Spawn preflight and postflight checks');
 
-  addDynamicHelp(spawn as any, { entityType: 'spawn' });
+  addDynamicHelp(spawn, { entityType: 'spawn' });
 
   // spawn:preflight (DEPRECATED - agent:spawn is now optimistic)
   spawn.command('preflight')
@@ -224,7 +225,7 @@ export function registerSpawnCommands(program: Command) {
     .argument('<task-id>', 'Task ID to check')
     .option('--json', 'JSON output')
     .option('--for-merge', 'Allow spawn for merge/conflict resolution (conflicts become warnings)')
-    .action(async (taskId: string, options: any) => {
+    .action(async (taskId: string, options: { json?: boolean; forMerge?: boolean }) => {
       if (!options.json) {
         console.error('⚠️  DEPRECATED: spawn:preflight is deprecated.');
         console.error('   agent:spawn now handles pre-flight checks automatically.\n');
@@ -247,13 +248,14 @@ export function registerSpawnCommands(program: Command) {
         process.exit(1);
       }
 
-      const task = loadFile(taskFile);
-      const prdId = extractPrdId(task.data.parent);
-      const epicId = extractEpicId(task.data.parent);
+      const task = loadFile<{ parent?: string }>(taskFile);
+      const parent = task?.data.parent ?? null;
+      const prdId = extractPrdId(parent);
+      const epicId = extractEpicId(parent);
       const branching = prdId ? getPrdBranching(prdId) : 'flat';
 
-      const context = { prdId, epicId, branching };
-      const forMerge = (options.forMerge || false) as boolean;
+      const context: WorktreeContext = { prdId: prdId ?? undefined, epicId: epicId ?? undefined, branching };
+      const forMerge = options.forMerge || false;
 
       // Run all checks
       const gitCheck = await checkGitState(projectRoot);
@@ -263,21 +265,21 @@ export function registerSpawnCommands(program: Command) {
 
       // Aggregate results
       const allIssues = [
-        ...(gitCheck.issues as string[]),
-        ...(branchCheck.issues as string[]),
-        ...(depsCheck.issues),
-        ...(conflictCheck.issues as string[])
+        ...gitCheck.issues,
+        ...branchCheck.issues,
+        ...depsCheck.issues,
+        ...conflictCheck.issues
       ];
 
       const allActions = [
-        ...(gitCheck.actions as Array<{ type: string; cmd?: string; msg: string }>),
-        ...(branchCheck.actions as Array<{ type: string; cmd?: string; msg: string }>)
+        ...gitCheck.actions,
+        ...branchCheck.actions
       ];
 
       // Aggregate warnings (branch warnings for merge agents, conflict warnings)
       const allWarnings = [
-        ...((branchCheck.warnings || []) as string[]),
-        ...((conflictCheck.warning ? conflictCheck.issues : []) as string[])
+        ...(branchCheck.warnings || []),
+        ...(conflictCheck.warning ? conflictCheck.issues : [])
       ];
 
       const ready = gitCheck.ready && branchCheck.ready && depsCheck.ready && !gitCheck.fatal;
@@ -297,8 +299,8 @@ export function registerSpawnCommands(program: Command) {
         issues: allIssues,
         actions: allActions,
         warnings: allWarnings,
-        conflicts: conflictCheck.conflicts as Array<{ with: string; files: string[] }>,
-        blocking: depsCheck.blocking as Array<{ id: string; status: string }>
+        conflicts: conflictCheck.conflicts,
+        blocking: depsCheck.blocking
       };
 
       if (options.json) {
@@ -356,7 +358,7 @@ export function registerSpawnCommands(program: Command) {
     .description('[DEPRECATED] Post-spawn check → use agent:reap instead')
     .argument('<task-id>', 'Task ID to check')
     .option('--json', 'JSON output')
-    .action(async (taskId: string, options: any) => {
+    .action(async (taskId: string, options: { json?: boolean }) => {
       if (!options.json) {
         console.error('⚠️  DEPRECATED: spawn:postflight is deprecated. Use agent:reap instead.');
         console.error('   agent:reap handles wait, merge, cleanup, and status update.\n');
@@ -379,14 +381,15 @@ export function registerSpawnCommands(program: Command) {
 
       // Get task context
       const taskFile = getTask(taskId)?.file;
-      const task = taskFile ? loadFile(taskFile) : null;
-      const prdId = task ? extractPrdId(task.data.parent) : null;
-      const epicId = task ? extractEpicId(task.data.parent) : null;
+      const task = taskFile ? loadFile<{ parent?: string }>(taskFile) : null;
+      const parent = task?.data.parent ?? null;
+      const prdId = task ? extractPrdId(parent) : null;
+      const epicId = task ? extractEpicId(parent) : null;
       const branching = prdId ? getPrdBranching(prdId) : 'flat';
 
       // Check worktree state
       const branch = getBranchName(taskId);
-      const parentBranch = getParentBranch(taskId, { prdId, epicId, branching });
+      const parentBranch = getParentBranch(taskId, { prdId: prdId ?? undefined, epicId: epicId ?? undefined, branching });
 
       let hasChanges = false;
       let commitCount = 0;
@@ -422,8 +425,8 @@ export function registerSpawnCommands(program: Command) {
       }
 
       // Determine recommended action
-      let nextAction = null;
-      const actions = [];
+      let nextAction: string | null = null;
+      const actions: Array<{ type: string; cmd: string; msg: string }> = [];
 
       if (agentInfo.status === 'completed' || agentInfo.status === 'running') {
         if (hasChanges) {
@@ -460,7 +463,7 @@ export function registerSpawnCommands(program: Command) {
       }
 
       // Check for cascade (epic/prd completion)
-      let cascade = null;
+      let cascade: { level: string; id: string | null; prdId: string | null } | null = null;
       if (nextAction === 'merge_ready' || nextAction === 'merge_with_conflicts') {
         try {
           // Check if this is the last task in epic
@@ -469,8 +472,8 @@ export function registerSpawnCommands(program: Command) {
             { cwd: projectRoot, encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'] }
           );
           const epicTasks = JSON.parse(epicTasksOutput) as Array<{ id: string; status: string }>;
-          const doneTasks = epicTasks.filter(t => t.status === 'Done') as Array<{ id: string; status: string }>;
-          const inProgressTasks = epicTasks.filter(t => t.status === 'In Progress' && t.id !== taskId) as Array<{ id: string; status: string }>;
+          const doneTasks = epicTasks.filter(t => t.status === 'Done');
+          const inProgressTasks = epicTasks.filter(t => t.status === 'In Progress' && t.id !== taskId);
 
           if (inProgressTasks.length === 0 && doneTasks.length === epicTasks.length - 1) {
             cascade = { level: 'epic', id: epicId, prdId };
@@ -491,9 +494,9 @@ export function registerSpawnCommands(program: Command) {
         hasChanges,
         commitCount,
         conflictDetected,
-        nextAction: nextAction as string | null,
-        actions: actions as Array<{ type: string; cmd: string; msg: string }>,
-        cascade: cascade as { level: string; id: string; prdId: string | null } | null,
+        nextAction,
+        actions,
+        cascade,
         context: {
           prdId,
           epicId,
@@ -513,7 +516,8 @@ export function registerSpawnCommands(program: Command) {
       console.log('─'.repeat(50));
 
       console.log(`\nAgent Status: ${agentInfo.status}`);
-      console.log(`Changes: ${hasChanges ? `${commitCount} commit(s)` : 'none'}`);
+      const changesDisplay = hasChanges ? commitCount + ' commit(s)' : 'none';
+      console.log(`Changes: ${changesDisplay}`);
       console.log(`Conflicts: ${conflictDetected ? 'detected' : 'none'}`);
 
       console.log(`\nContext:`);

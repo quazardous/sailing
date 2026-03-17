@@ -13,7 +13,7 @@
 import http from 'http';
 import { Socket } from 'net';
 import crypto from 'crypto';
-import { getConductorManager } from '../managers/conductor-manager.js';
+import { getConductorManager, type SpawnOptions } from '../managers/conductor-manager.js';
 import { normalizeId } from '../lib/normalize.js';
 
 // ============================================================================
@@ -29,7 +29,7 @@ export interface WebSocketClient {
 
 export interface WebSocketMessage {
   type: string;
-  [key: string]: any;
+  [key: string]: unknown;
 }
 
 // ============================================================================
@@ -39,7 +39,7 @@ export interface WebSocketMessage {
 export class WebSocketHandler {
   private clients: Map<string, WebSocketClient> = new Map();
   private pingInterval: NodeJS.Timeout | null = null;
-  private messageHandlers: Map<string, (client: WebSocketClient, payload: any) => void> = new Map();
+  private messageHandlers: Map<string, (client: WebSocketClient, payload: WebSocketMessage) => void> = new Map();
 
   constructor() {
     // Setup ping interval
@@ -161,8 +161,8 @@ export class WebSocketHandler {
 
     // Subscribe to channel
     this.messageHandlers.set('subscribe', (client, msg) => {
-      const channel = msg.channel as string;
-      const filter = msg.filter as string | undefined;
+      const channel = typeof msg.channel === 'string' ? msg.channel : '';
+      const filter = typeof msg.filter === 'string' ? msg.filter : undefined;
 
       if (channel) {
         const sub = filter ? `${channel}:${filter}` : channel;
@@ -177,8 +177,8 @@ export class WebSocketHandler {
 
     // Unsubscribe from channel
     this.messageHandlers.set('unsubscribe', (client, msg) => {
-      const channel = msg.channel as string;
-      const filter = msg.filter as string | undefined;
+      const channel = typeof msg.channel === 'string' ? msg.channel : '';
+      const filter = typeof msg.filter === 'string' ? msg.filter : undefined;
 
       if (channel) {
         const sub = filter ? `${channel}:${filter}` : channel;
@@ -193,8 +193,9 @@ export class WebSocketHandler {
 
     // Spawn agent
     this.messageHandlers.set('spawn', (client, msg) => void (async () => {
-      const taskId = normalizeId(msg.taskId);
-      const result = await conductor.spawn(taskId, msg.options || {});
+      const taskId = normalizeId(typeof msg.taskId === 'string' ? msg.taskId : '');
+      const options = (msg.options ?? {}) as SpawnOptions;
+      const result = await conductor.spawn(taskId, options);
       this.send(client, {
         type: 'spawn:result',
         taskId,
@@ -204,8 +205,9 @@ export class WebSocketHandler {
 
     // Reap agent
     this.messageHandlers.set('reap', (client, msg) => void (async () => {
-      const taskId = normalizeId(msg.taskId);
-      const result = await conductor.reap(taskId, msg.options || {});
+      const taskId = normalizeId(typeof msg.taskId === 'string' ? msg.taskId : '');
+      const options = (msg.options ?? {}) as { wait?: boolean; timeout?: number };
+      const result = await conductor.reap(taskId, options);
       this.send(client, {
         type: 'reap:result',
         taskId,
@@ -215,7 +217,7 @@ export class WebSocketHandler {
 
     // Kill agent
     this.messageHandlers.set('kill', (client, msg) => void (async () => {
-      const taskId = normalizeId(msg.taskId);
+      const taskId = normalizeId(typeof msg.taskId === 'string' ? msg.taskId : '');
       const result = await conductor.kill(taskId);
       this.send(client, {
         type: 'kill:result',
@@ -226,7 +228,7 @@ export class WebSocketHandler {
 
     // Get agent status
     this.messageHandlers.set('status', (client, msg) => {
-      const taskId = normalizeId(msg.taskId);
+      const taskId = normalizeId(typeof msg.taskId === 'string' ? msg.taskId : '');
       const status = conductor.getStatus(taskId);
       this.send(client, {
         type: 'status:result',
@@ -237,8 +239,9 @@ export class WebSocketHandler {
 
     // Get agent log
     this.messageHandlers.set('log', (client, msg) => {
-      const taskId = normalizeId(msg.taskId);
-      const lines = conductor.getLog(taskId, { tail: msg.tail || 100 });
+      const taskId = normalizeId(typeof msg.taskId === 'string' ? msg.taskId : '');
+      const tail = typeof msg.tail === 'number' ? msg.tail : 100;
+      const lines = conductor.getLog(taskId, { tail });
       this.send(client, {
         type: 'log:result',
         taskId,
@@ -275,7 +278,7 @@ export class WebSocketHandler {
   /**
    * Send message to client
    */
-  send(client: WebSocketClient, message: Record<string, any>) {
+  send(client: WebSocketClient, message: Record<string, unknown>) {
     if (client.socket.destroyed) return;
 
     try {
@@ -292,7 +295,7 @@ export class WebSocketHandler {
    */
   broadcast(message: WebSocketMessage) {
     const type = message.type;
-    const taskId = message.taskId;
+    const taskId = typeof message.taskId === 'string' ? message.taskId : undefined;
 
     for (const client of this.clients.values()) {
       // Check if client is subscribed to this type

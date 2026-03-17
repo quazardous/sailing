@@ -52,7 +52,7 @@ export function registerHarvestCommands(agent: Command) {
       const agentsDir = getAgentsDir();
       const agentUtils = new AgentUtils(agentsDir);
 
-      const escalate = (reason, nextSteps) => {
+      const escalate = (reason: string, nextSteps: string[]) => {
         if (options.json) {
           jsonOut({ task_id: taskId, status: 'blocked', reason, next_steps: nextSteps });
         } else {
@@ -138,7 +138,7 @@ export function registerHarvestCommands(agent: Command) {
           const mergeTree = await mainGit.raw(['merge-tree', mergeBase.trim(), 'HEAD', branch]);
 
           if (mergeTree.includes('<<<<<<<') || mergeTree.includes('>>>>>>>')) {
-            const conflictFiles = [];
+            const conflictFiles: string[] = [];
             for (const line of mergeTree.split('\n')) {
               if (line.startsWith('changed in both')) {
                 const match = /changed in both\s+(.+)/.exec(line);
@@ -157,8 +157,8 @@ export function registerHarvestCommands(agent: Command) {
               ...(conflictFiles.length > 0 ? [``, `Conflicting files:`, ...conflictFiles.map(f => `  ${f}`)] : [])
             ]);
           }
-        } catch (e) {
-          escalate(`Cannot check merge status: ${e.message}`, [`git fetch origin`, `agent:reap ${taskId}    # Retry`]);
+        } catch (e: unknown) {
+          escalate(`Cannot check merge status: ${e instanceof Error ? e.message : String(e)}`, [`git fetch origin`, `agent:reap ${taskId}    # Retry`]);
         }
 
         const strategy = config.merge_strategy || 'merge';
@@ -172,8 +172,8 @@ export function registerHarvestCommands(agent: Command) {
           } else {
             await mainGit.merge([branch, '--no-edit']);
           }
-        } catch (e) {
-          escalate(`Merge failed: ${e.message}`, [`/dev:merge ${taskId}    # Manual resolution`]);
+        } catch (e: unknown) {
+          escalate(`Merge failed: ${e instanceof Error ? e.message : String(e)}`, [`/dev:merge ${taskId}    # Manual resolution`]);
         }
 
         if (options.cleanupWorktreeAfter) {
@@ -191,7 +191,7 @@ export function registerHarvestCommands(agent: Command) {
       const taskFile = getTask(taskId)?.file;
       if (taskFile) {
         const file = loadFile(taskFile);
-        const { updated, data } = parseUpdateOptions({ status: taskStatus }, file.data, 'task');
+        const { updated, data } = parseUpdateOptions({ status: taskStatus }, file.data, 'task') as { updated: boolean; data: Record<string, unknown> };
         if (updated) {
           saveFile(taskFile, data, file.body);
           if (!options.json) console.log(`✓ Task ${taskId} → ${taskStatus}`);
@@ -283,8 +283,8 @@ export function registerHarvestCommands(agent: Command) {
           console.error(`Merge conflicts detected. Please resolve manually.`);
           process.exit(1);
         }
-      } catch (e) {
-        console.error(`Error checking for conflicts: ${e.message}`);
+      } catch (e: unknown) {
+        console.error(`Error checking for conflicts: ${e instanceof Error ? e.message : String(e)}`);
         process.exit(1);
       }
 
@@ -297,8 +297,8 @@ export function registerHarvestCommands(agent: Command) {
         } else if (strategy === 'rebase') {
           execSync(`git rebase ${branch}`, { cwd: projectRoot, stdio: 'inherit' });
         }
-      } catch (e) {
-        console.error(`Merge failed: ${e.message}`);
+      } catch (e: unknown) {
+        console.error(`Merge failed: ${e instanceof Error ? e.message : String(e)}`);
         process.exit(1);
       }
 
@@ -337,7 +337,7 @@ export function registerHarvestCommands(agent: Command) {
         if (!removeResult.success) console.error(`Warning: Failed to remove worktree: ${removeResult.error}`);
       }
 
-      const statusMap = { 'blocked': 'Blocked', 'not-started': 'Not Started' };
+      const statusMap: Record<string, string> = { 'blocked': 'Blocked', 'not-started': 'Not Started' };
       const taskStatus = statusMap[options.status] || 'Blocked';
 
       await saveAgentToDb(taskId, { ...agentInfo, status: 'rejected', reject_reason: options.reason, rejected_at: new Date().toISOString() });
@@ -377,23 +377,23 @@ export function registerHarvestCommands(agent: Command) {
         process.exit(1);
       }
 
-      let result;
+      let result: { status?: string; completed_at?: string };
       try {
-        result = yaml.load(fs.readFileSync(resultFile, 'utf8'));
-      } catch (e) {
-        console.error(`Error reading result file: ${e.message}`);
+        result = yaml.load(fs.readFileSync(resultFile, 'utf8')) as { status?: string; completed_at?: string };
+      } catch (e: unknown) {
+        console.error(`Error reading result file: ${e instanceof Error ? e.message : String(e)}`);
         process.exit(1);
       }
 
       const errors = validateResult(result);
       if (errors.length > 0) {
         console.error('Invalid result:');
-        errors.forEach(e => console.error(`  - ${e}`));
+        errors.forEach(err => console.error(`  - ${err}`));
         process.exit(1);
       }
 
-      const statusMap = { completed: 'Done', failed: 'Blocked', blocked: 'Blocked' };
-      const taskStatus = statusMap[result.status] || 'Blocked';
+      const statusMap: Record<string, string> = { completed: 'Done', failed: 'Blocked', blocked: 'Blocked' };
+      const taskStatus = statusMap[result.status || ''] || 'Blocked';
 
       await saveAgentToDb(taskId, {
         ...agentInfo,
@@ -405,7 +405,14 @@ export function registerHarvestCommands(agent: Command) {
       if (options.json) {
         jsonOut({ task_id: taskId, result_status: result.status, task_status: taskStatus });
       } else {
-        const statusSymbol = result.status === 'completed' ? '✓' : result.status === 'failed' ? '✗' : '⚠';
+        let statusSymbol: string;
+        if (result.status === 'completed') {
+          statusSymbol = '✓';
+        } else if (result.status === 'failed') {
+          statusSymbol = '✗';
+        } else {
+          statusSymbol = '⚠';
+        }
         console.log(`${statusSymbol} Collected: ${taskId}`);
         console.log(`  Result: ${result.status} → Task: ${taskStatus}`);
       }
@@ -437,7 +444,7 @@ export function registerHarvestCommands(agent: Command) {
 
       if (!options.json) console.log(`Reaping ${completed.length} agent(s)...`);
 
-      const results = [];
+      const results: Array<{ task_id: string; status: string; task_status?: string; error?: string }> = [];
       for (const taskId of completed) {
         const reapResult = await getAgentLifecycle(taskId).reap();
         if (reapResult.success) {
