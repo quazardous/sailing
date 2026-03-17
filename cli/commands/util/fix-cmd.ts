@@ -16,12 +16,12 @@ export function registerFixCommands(program: Command) {
   fix.command('chmod')
     .description('Fix file permissions (600 → 640) caused by Claude Code Write tool')
     .option('--dry-run', 'Show what would be done')
-    .action((options) => {
+    .action((options: { dryRun?: boolean }) => {
       const projectRoot = findProjectRoot();
       const extensions = ['js', 'md', 'yaml', 'yml', 'json', 'sh', 'txt'];
       let fixed = 0;
 
-      const fixPerms = (filePath) => {
+      const fixPerms = (filePath: string) => {
         try {
           const stats = fs.statSync(filePath);
           const mode = stats.mode & 0o777;
@@ -40,7 +40,7 @@ export function registerFixCommands(program: Command) {
         }
       };
 
-      const walkDir = (dir) => {
+      const walkDir = (dir: string) => {
         if (!fs.existsSync(dir)) return;
         try {
           const entries = fs.readdirSync(dir, { withFileTypes: true });

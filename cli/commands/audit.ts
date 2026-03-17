@@ -298,12 +298,12 @@ export function registerAuditCommands(program: Command) {
     .option('--fix-optimistic', 'Auto-fix: mark epics/PRDs as Auto-Done when all children done')
     .option('--fix-pessimistic', 'Auto-fix: reopen epics/PRDs if children are still open')
     .option('--json', 'JSON output')
-    .action((options: any) => {
+    .action((options: { prd?: string; fixOptimistic?: boolean; fixPessimistic?: boolean; json?: boolean }) => {
       let issues = auditStatusConsistency();
 
       // Filter by PRD if specified
       if (options.prd) {
-        const prdId = (options.prd as string).toUpperCase();
+        const prdId = options.prd.toUpperCase();
         issues = issues.filter(i => i.prd.toUpperCase().includes(prdId));
       }
 
@@ -376,7 +376,7 @@ export function registerAuditCommands(program: Command) {
   audit.command('summary')
     .description('Quick status summary of all PRDs')
     .option('--json', 'JSON output')
-    .action((options: any) => {
+    .action((options: { json?: boolean }) => {
       const prds = buildProjectStructure();
 
       const summary = prds.map(prd => {

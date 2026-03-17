@@ -24,7 +24,7 @@ interface UpdateOptions {
   targetVersion?: string | string[];
   removeTargetVersion?: string | string[];
   set?: string | string[];
-  [key: string]: any; // Allow other commander options
+  [key: string]: unknown; // Allow other commander options
 }
 
 /**
@@ -37,10 +37,10 @@ interface UpdateOptions {
  */
 export function parseUpdateOptions(
   options: UpdateOptions,
-  data: Partial<Task & Epic & Prd & Record<string, any>>,
+  data: Partial<Task & Epic & Prd & Record<string, unknown>>,
   entityType: 'task' | 'epic' | 'prd',
   digitConfig: DigitConfig = DEFAULT_DIGITS
-): { updated: boolean; data: any } {
+): { updated: boolean; data: Partial<Task & Epic & Prd & Record<string, unknown>> } {
   let updated = false;
 
   // Status (all entity types)
@@ -221,7 +221,7 @@ export function parseUpdateOptions(
         return;
       }
       const key = kv.slice(0, eqIndex);
-      let value: string | number | boolean | null | string[] | unknown = kv.slice(eqIndex + 1);
+      let value: unknown = kv.slice(eqIndex + 1);
 
       // Parse value types
       if (value === 'true') value = true;

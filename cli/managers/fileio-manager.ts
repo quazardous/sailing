@@ -10,7 +10,7 @@ import { parseMarkdown, stringifyMarkdown } from '../lib/markdown.js';
 import { getTemplates, getComponentsFile } from './core-manager.js';
 import { validateHtmlComments } from '../lib/strings.js';
 
-export interface LoadedDoc<T = Record<string, any>> {
+export interface LoadedDoc<T = Record<string, unknown>> {
   data: T;
   body: string;
   filepath: string;
@@ -40,7 +40,7 @@ export function getFileTimestamps(filepath: string): FileTimestamps {
 /**
  * Load a markdown file with frontmatter
  */
-export function loadFile<T = Record<string, any>>(filepath: string): LoadedDoc<T> | null {
+export function loadFile<T = Record<string, unknown>>(filepath: string): LoadedDoc<T> | null {
   if (!fs.existsSync(filepath)) return null;
   const content = fs.readFileSync(filepath, 'utf8');
   const { data, body } = parseMarkdown<T>(content);
@@ -51,7 +51,7 @@ export function loadFile<T = Record<string, any>>(filepath: string): LoadedDoc<T
  * Save a markdown file with frontmatter
  * Validates HTML comments are properly closed before writing
  */
-export function saveFile(filepath: string, data: any, body: string): void {
+export function saveFile(filepath: string, data: object, body: string): void {
   const content = stringifyMarkdown(data, body);
 
   // Validate HTML comments before writing
@@ -79,15 +79,15 @@ export function loadTemplate(type: string): string | null {
 /**
  * Load components configuration
  */
-export function loadComponents(): any {
+export function loadComponents(): Record<string, unknown> | null {
   const componentsFile = getComponentsFile();
   if (!fs.existsSync(componentsFile)) return null;
   try {
     const content = fs.readFileSync(componentsFile, 'utf8');
     if (componentsFile.endsWith('.json')) {
-      return JSON.parse(content);
+      return JSON.parse(content) as Record<string, unknown>;
     }
-    return yaml.load(content);
+    return yaml.load(content) as Record<string, unknown>;
   } catch (e) {
     console.error(`Error loading ${componentsFile}: ${errorMessage(e)}`);
     return null;
@@ -97,13 +97,13 @@ export function loadComponents(): any {
 /**
  * Save components configuration
  */
-export function saveComponents(data: any): void {
+export function saveComponents(data: Record<string, unknown>): void {
   const componentsFile = getComponentsFile();
   let content: string;
   if (componentsFile.endsWith('.json')) {
     content = JSON.stringify(data, null, 2);
   } else {
-    content = yaml.dump(data, { lineWidth: -1 }) as string;
+    content = yaml.dump(data, { lineWidth: -1 });
   }
   fs.writeFileSync(componentsFile, content);
 }

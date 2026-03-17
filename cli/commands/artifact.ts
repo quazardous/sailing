@@ -16,7 +16,9 @@ import {
   parseMultiSectionContent,
   applySedCommands,
   parseCheckboxItems,
-  mergeDuplicateSectionsInFile
+  mergeDuplicateSectionsInFile,
+  type EditOp,
+  type SedCommand
 } from '../lib/artifact.js';
 import { getTask, getEpic, getPrd } from '../managers/artefacts-manager.js';
 import type { Command } from 'commander';
@@ -28,14 +30,6 @@ import type { Command } from 'commander';
 interface ArtifactInfo {
   path: string;
   type: 'task' | 'epic' | 'prd';
-}
-
-interface SectionOp {
-  op: string;
-  section: string;
-  content?: string;
-  sedCommands?: string[];
-  item?: string;
 }
 
 interface OriginalOp {
@@ -282,7 +276,7 @@ Examples:
       if (options.append) opType = 'append';
       if (options.prepend) opType = 'prepend';
 
-      let ops;
+      let ops: EditOp[];
 
       if (options.section) {
         // Single section mode
@@ -301,11 +295,12 @@ Examples:
       }
 
       // Track original ops for output (before transformation)
-      const originalOps: OriginalOp[] = (ops as SectionOp[]).map((o: SectionOp) => ({ op: o.op, section: o.section }));
+      const originalOps: OriginalOp[] = ops.map((o) => ({ op: o.op, section: 'section' in o ? o.section : '' }));
 
       // Process special operations: sed, check, uncheck, toggle, patch
-      const expandedOps: SectionOp[] = [];
-      for (const op of ops as SectionOp[]) {
+      const expandedOps: EditOp[] = [];
+      for (const op of ops) {
+        if (!('section' in op)) { expandedOps.push(op); continue; }
         if (op.op === 'sed' && op.sedCommands && op.sedCommands.length > 0) {
           // Get current section content and apply sed commands
           const sectionContent: string | null = getSection(resolved.path, op.section);
@@ -316,7 +311,7 @@ Examples:
           expandedOps.push({
             op: 'replace',
             section: op.section,
-            content: applySedCommands(sectionContent, op.sedCommands as any)
+            content: applySedCommands(sectionContent, op.sedCommands as SedCommand[])
           });
         } else if (op.op === 'patch') {
           // Parse SEARCH/REPLACE blocks and apply to section
@@ -450,7 +445,7 @@ Examples:
       }
 
       // Read patch content
-      let patchContent;
+      let patchContent: string;
       if (options.file) {
         if (!fs.existsSync(options.file)) {
           console.error(`Patch file not found: ${options.file}`);
@@ -523,7 +518,7 @@ Examples:
       }
 
       // Read ops
-      let opsContent;
+      let opsContent: string;
       if (options.file) {
         if (!fs.existsSync(options.file)) {
           console.error(`Ops file not found: ${options.file}`);
@@ -534,9 +529,9 @@ Examples:
         opsContent = await readStdin();
       }
 
-      let ops: SectionOp[];
+      let ops: EditOp[];
       try {
-        const parsed = JSON.parse(opsContent) as SectionOp | SectionOp[];
+        const parsed = JSON.parse(opsContent) as EditOp | EditOp[];
         if (!Array.isArray(parsed)) {
           ops = [parsed]; // Allow single op
         } else {
@@ -548,7 +543,7 @@ Examples:
         process.exit(1);
       }
 
-      const result = editArtifact(resolved.path, ops as any);
+      const result = editArtifact(resolved.path, ops);
 
       if (options.json) {
         jsonOut({ id, ...result });

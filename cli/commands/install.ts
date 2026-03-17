@@ -173,7 +173,7 @@ function fixMcp(options: { dryRun?: boolean; force?: boolean }): {
 // Register Commands
 // =============================================================================
 
-async function doInstall(options: { dryRun?: boolean; force?: boolean; json?: boolean; check?: boolean }) {
+function doInstall(options: { dryRun?: boolean; force?: boolean; json?: boolean; check?: boolean }) {
   // If --check, just show status
   if (options.check) {
     const mcpStatus = checkMcp();
@@ -275,8 +275,8 @@ export function registerInstallCommands(program: Command) {
     .option('--dry-run', 'Show what would be done')
     .option('--force', 'Force update even if already configured')
     .option('--json', 'JSON output')
-    .action(async (options: { check?: boolean; dryRun?: boolean; force?: boolean; json?: boolean }) => {
-      await doInstall(options);
+    .action((options: { check?: boolean; dryRun?: boolean; force?: boolean; json?: boolean }) => {
+      doInstall(options);
     });
 
   // install:fix - Alias for install (for explicit fix)
@@ -285,16 +285,16 @@ export function registerInstallCommands(program: Command) {
     .option('--dry-run', 'Show what would be done')
     .option('--force', 'Force update even if already configured')
     .option('--json', 'JSON output')
-    .action(async (options: { dryRun?: boolean; force?: boolean; json?: boolean }) => {
-      await doInstall(options);
+    .action((options: { dryRun?: boolean; force?: boolean; json?: boolean }) => {
+      doInstall(options);
     });
 
   // install:check - Check status (alias for install --check)
   install.command('check')
     .description('Check installation status')
     .option('--json', 'JSON output')
-    .action(async (options: { json?: boolean }) => {
-      await doInstall({ check: true, json: options.json });
+    .action((options: { json?: boolean }) => {
+      doInstall({ check: true, json: options.json });
     });
 
   // install:mcp - MCP-specific commands
@@ -421,7 +421,7 @@ function checkPermissions(): { ok: boolean; required: number; present: number; m
   let existing: string[] = [];
   if (fs.existsSync(settingsPath)) {
     try {
-      const settings = JSON.parse(fs.readFileSync(settingsPath, 'utf8'));
+      const settings = JSON.parse(fs.readFileSync(settingsPath, 'utf8')) as { permissions?: { allow?: string[] } };
       existing = settings.permissions?.allow || [];
     } catch {}
   }
@@ -519,7 +519,7 @@ function fixPermissions(options: { dryRun?: boolean }): { added: number; path: s
 
   if (fs.existsSync(settingsPath)) {
     try {
-      settings = JSON.parse(fs.readFileSync(settingsPath, 'utf8'));
+      settings = JSON.parse(fs.readFileSync(settingsPath, 'utf8')) as typeof settings;
     } catch {}
   }
 

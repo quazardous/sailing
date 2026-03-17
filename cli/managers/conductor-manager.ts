@@ -135,13 +135,14 @@ export class ConductorManager {
     }
 
     // Extract IDs
-    const prdId = extractPrdId(task.data.parent);
-    const epicId = extractEpicId(task.data.parent);
+    const parent = task.data.parent as string | undefined;
+    const prdId = extractPrdId(parent);
+    const epicId = extractEpicId(parent);
     if (!prdId || !epicId) {
       return {
         success: false,
         taskId,
-        error: `Could not extract PRD/Epic IDs from parent: ${task.data.parent}`
+        error: `Could not extract PRD/Epic IDs from parent: ${parent ?? '(none)'}`
       };
     }
 
@@ -396,7 +397,7 @@ export class ConductorManager {
     // Spawn Claude
     const paths = getPathsInfo();
     try {
-      const spawnResult = await spawnClaude({
+      const spawnResult = spawnClaude({
         prompt: promptResult.prompt,
         cwd,
         logFile,
@@ -626,7 +627,7 @@ export class ConductorManager {
     const { follow = true, tail = 100 } = options;
     const logFile = getLogFilePath(this.agentsDir, taskId);
 
-    const self = this;
+    const logStreams = this.logStreams;
 
     return {
       [Symbol.asyncIterator](): AsyncIterator<LogLine> {
@@ -703,7 +704,7 @@ export class ConductorManager {
               }
             });
 
-            self.logStreams.set(taskId, watcher);
+            logStreams.set(taskId, watcher);
           }
         };
 
@@ -729,16 +730,16 @@ export class ConductorManager {
             });
           },
 
-          async return(): Promise<IteratorResult<LogLine>> {
+          return(): Promise<IteratorResult<LogLine>> {
             closed = true;
             if (watcher) {
               watcher.close();
-              self.logStreams.delete(taskId);
+              logStreams.delete(taskId);
             }
             if (readStream) {
               readStream.destroy();
             }
-            return { done: true, value: undefined };
+            return Promise.resolve({ done: true, value: undefined });
           }
         };
       }
@@ -774,7 +775,7 @@ export class ConductorManager {
    * Stop all log streams
    */
   stopAllLogStreams(): void {
-    for (const [_taskId, watcher] of this.logStreams) {
+    for (const [, watcher] of this.logStreams) {
       watcher.close();
     }
     this.logStreams.clear();

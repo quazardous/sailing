@@ -232,7 +232,7 @@ function renameEpic(epicFile: string, newId: string, scope: string, prdDir: stri
 
     // Update parent field
     if (taskData.data.parent) {
-      const newParent = updateEpicRef(taskData.data.parent, oldId, newId);
+      const newParent = updateEpicRef(taskData.data.parent as string, oldId, newId);
       if (newParent !== taskData.data.parent) {
         taskData.data.parent = newParent;
         modified = true;
@@ -592,11 +592,11 @@ export function registerRenumberCommands(program: Command): void {
         const type = getEntityType(item.id);
         const normalizedNewId = normalizeId(newId);
 
-        let results;
+        let results: RenameResult;
         if (type === 'epic') {
-          results = renameEpic(item.file, normalizedNewId, options.scope, item.prdDir);
+          results = renameEpic(item.file, normalizedNewId, options.scope ?? 'prd', item.prdDir);
         } else {
-          results = renameTask(item.file, normalizedNewId, options.scope, item.prdDir, (item as TaskEntry).epicId);
+          results = renameTask(item.file, normalizedNewId, options.scope ?? 'prd', item.prdDir, (item as TaskEntry).epicId);
         }
 
         if (options.json) {

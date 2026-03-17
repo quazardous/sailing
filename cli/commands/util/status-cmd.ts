@@ -44,9 +44,9 @@ export function registerStatusCommand(program: Command) {
         const prdFile = path.join(d, 'prd.md');
         const file = loadFile(prdFile);
         return {
-          id: file?.data?.id || /PRD-\d+/.exec(path.basename(d))?.[0],
-          title: file?.data?.title || '',
-          status: file?.data?.status || 'Unknown'
+          id: (file?.data?.id as string) || /PRD-\d+/.exec(path.basename(d))?.[0],
+          title: (file?.data?.title as string) || '',
+          status: (file?.data?.status as string) || 'Unknown'
         };
       });
 

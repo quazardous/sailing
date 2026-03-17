@@ -93,7 +93,7 @@ export function escalateEpicToInProgress(epicId: string): StatusTransitionResult
     return { updated: false, entityId: epicId, message: 'Could not load epic' };
   }
 
-  if (!isPreProgressStatus(epicData.data.status)) {
+  if (!isPreProgressStatus(epicData.data.status as string)) {
     return { updated: false, entityId: epicId, message: 'Epic already started' };
   }
 
@@ -184,7 +184,7 @@ export function escalateEpicToBreakdown(epicId: string): StatusTransitionResult 
     return { updated: false, entityId: epicId, message: 'Could not load epic' };
   }
 
-  if (!isPreBreakdownStatus(epicData.data.status)) {
+  if (!isPreBreakdownStatus(epicData.data.status as string)) {
     return { updated: false, entityId: epicId, message: 'Epic already at or past Breakdown' };
   }
 
@@ -315,7 +315,7 @@ export function checkAndUpdateEpicAutoDone(epicId: string, currentTaskId?: strin
     return { updated: false, entityId: epicId, message: 'Could not load epic' };
   }
 
-  if (isStatusDone(epicData.data.status) || isStatusAutoDone(epicData.data.status)) {
+  if (isStatusDone(epicData.data.status as string) || isStatusAutoDone(epicData.data.status as string)) {
     return { updated: false, entityId: epicId, message: 'Epic already done' };
   }
 
@@ -353,7 +353,7 @@ export function checkAndUpdatePrdAutoDone(parent: string): StatusTransitionResul
     return { updated: false, entityId: prdId, message: 'Could not load PRD' };
   }
 
-  if (isStatusDone(prdData.data.status) || isStatusAutoDone(prdData.data.status)) {
+  if (isStatusDone(prdData.data.status as string) || isStatusAutoDone(prdData.data.status as string)) {
     return { updated: false, entityId: prdId, message: 'PRD already done' };
   }
 

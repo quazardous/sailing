@@ -605,7 +605,7 @@ export function registerMonitorCommands(agent: Command) {
       const waitFor = taskIds.length > 0
         ? taskIds.map(id => normalizeId(id))
         : Object.entries(agents)
-            .filter(([_, info]) => ['spawned', 'dispatched', 'running'].includes((info).status))
+            .filter(([, info]) => ['spawned', 'dispatched', 'running'].includes((info).status))
             .map(([id]) => id);
 
       if (waitFor.length === 0) {

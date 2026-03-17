@@ -8,8 +8,8 @@ import { Command } from 'commander';
 import { CommandWithInternals, CommandArg, OptionWithMeta, ModificationType } from './types/commander-ext.js';
 
 // Extend Command prototype with chainable .modifies() method
-(Command.prototype as any).modifies = function(types: ModificationType[]): Command {
-  (this as CommandWithInternals)._modifies = types;
+(Command.prototype as unknown as CommandWithInternals).modifies = function(this: CommandWithInternals, types: ModificationType[]): Command {
+  this._modifies = types;
   return this;
 };
 
@@ -83,7 +83,7 @@ export function generateGroupHelp(group: Command, entityType?: string): string {
   
   // Validate and use entityType for status values
   let statusValues: string | null = null;
-  if (entityType && ENTITY_TYPES.includes(entityType as any)) {
+  if (entityType && (ENTITY_TYPES as readonly string[]).includes(entityType)) {
     statusValues = STATUS[entityType as keyof typeof STATUS].join(', ');
   }
 

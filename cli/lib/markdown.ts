@@ -5,7 +5,7 @@
  */
 import matter from 'gray-matter';
 
-export interface ParsedDoc<T = Record<string, any>> {
+export interface ParsedDoc<T = Record<string, unknown>> {
   data: T;
   body: string;
 }
@@ -21,7 +21,7 @@ export interface ParsedDoc<T = Record<string, any>> {
  * - Assignee from ## Assignee section
  * - blocked_by from ## Blocked By section
  */
-export function parseMarkdown<T = Record<string, any>>(content: string): ParsedDoc<T> {
+export function parseMarkdown<T = Record<string, unknown>>(content: string): ParsedDoc<T> {
   const { data, content: body } = matter(content);
 
   // Fallback: parse markdown headers if no frontmatter
@@ -80,7 +80,7 @@ export function parseMarkdown<T = Record<string, any>>(content: string): ParsedD
 /**
  * Stringify data and body back to markdown with frontmatter
  */
-export function stringifyMarkdown(data: any, body: string): string {
+export function stringifyMarkdown(data: object, body: string): string {
   // Ensure body starts with blank line for readability
   const cleanBody = body.startsWith('\n') ? body : '\n' + body;
   return matter.stringify(cleanBody, data);

@@ -10,7 +10,7 @@ import type { LogLevelCounts } from './types/memory.js';
 
 type Section = { name: string; content: string };
 type FoundSection = { header: string; content: string; match: RegExpMatchArray };
-type EditOperation = 'replace' | 'append' | 'prepend';
+export type EditOperation = 'replace' | 'append' | 'prepend';
 type EditResult =
   | { success: true; content: string }
   | { warning: string }

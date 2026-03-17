@@ -159,7 +159,7 @@ export function registerShowCommands(task: Command): void {
       if (epicParent) {
         const epicFileData = loadFile(epicParent.epicFile);
         if (epicFileData) {
-          const hierarchy = getHierarchicalMemory(epicFileData.data.id);
+          const hierarchy = getHierarchicalMemory(epicFileData.data.id as string);
           const memoryParts: Array<{ level: string; name: string; content: string }> = [];
 
           // Extract agent-relevant sections

@@ -21,7 +21,7 @@ export function registerInitCommand(program: Command) {
     .description('Initialize sailing project structure')
     .option('-y, --yes', 'Overwrite existing files without prompting')
     .option('--dry-run', 'Show what would be done without making changes')
-    .action((options) => {
+    .action((options: { yes?: boolean; dryRun?: boolean }) => {
       const sailingDir = getSailingDir();
       const artefactsDir = getArtefactsDir();
       const distDir = path.join(path.dirname(path.dirname(import.meta.dirname)), 'disttpl');
@@ -29,7 +29,7 @@ export function registerInitCommand(program: Command) {
       let created = 0;
       let skipped = 0;
 
-      const createFile = (destPath, content, label) => {
+      const createFile = (destPath: string, content: string, label: string) => {
         const exists = fs.existsSync(destPath);
         if (exists && !options.yes) {
           console.log(`⚠ Exists (skipped): ${label} — use -y to overwrite`);
@@ -46,7 +46,7 @@ export function registerInitCommand(program: Command) {
         created++;
       };
 
-      const copyDist = (src, destPath, label) => {
+      const copyDist = (src: string, destPath: string, label: string) => {
         const srcPath = path.join(distDir, src);
         if (!fs.existsSync(srcPath)) {
           console.log(`⚠ Template not found: ${src}`);

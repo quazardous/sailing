@@ -31,6 +31,7 @@ import {
   extractAllSections as extractAllSectionsLib,
   editSection
 } from '../managers/memory-manager.js';
+import type { EditOperation } from '../lib/memory-section.js';
 import { getMemoryFile, getTask, getEpic } from '../managers/artefacts-manager.js';
 import { getGit } from '../lib/git.js';
 
@@ -233,7 +234,7 @@ export function registerMemoryCommands(program: Command): void {
       const memoryDir = getMemoryDirPath();
 
       // Helper to archive a file
-      const archiveFile = async (filePath) => {
+      const archiveFile = async (filePath: string) => {
         if (!fs.existsSync(archiveMemDir)) {
           fs.mkdirSync(archiveMemDir, { recursive: true });
         }
@@ -654,7 +655,7 @@ export function registerMemoryCommands(program: Command): void {
     }
 
     const fileContent = fs.readFileSync(filePath, 'utf8');
-    const result = editSection(fileContent, section, content, operation as any) as EditResult;
+    const result = editSection(fileContent, section, content, operation as EditOperation) as EditResult;
 
     if (result.warning) {
       return { warning: result.warning, id: memoryId, section };

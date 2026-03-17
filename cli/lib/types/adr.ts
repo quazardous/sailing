@@ -8,6 +8,7 @@ export type AdrStatus = 'Proposed' | 'Accepted' | 'Deprecated' | 'Superseded';
  * ADR frontmatter data
  */
 export interface Adr {
+  [key: string]: unknown;  // Allow index access for frontmatter operations
   id: string;           // ADR-001
   title: string;
   status: AdrStatus;

@@ -81,7 +81,7 @@ export function registerPrdCommands(program: Command): void {
   prd.command('list')
     .description('List PRDs with epic/task counts')
     .option('-s, --status <status>', `Filter by status (${statusHelp})`)
-    .option('-t, --tag <tag>', 'Filter by tag (repeatable, AND logic)', (v, arr) => arr.concat(v), [])
+    .option('-t, --tag <tag>', 'Filter by tag (repeatable, AND logic)', (v: string, arr: string[]) => arr.concat(v), [] as string[])
     .option('-l, --limit <n>', 'Limit results', parseInt)
     .option('--path', 'Include directory path (discouraged)')
     .option('--json', 'JSON output')
@@ -228,7 +228,7 @@ export function registerPrdCommands(program: Command): void {
   // prd:create
   withModifies(prd.command('create <title>'), ['prd'])
     .description('Create PRD directory + prd.md (status: Draft)')
-    .option('--tag <tag>', 'Add tag (repeatable, slugified to kebab-case)', (v, arr) => arr.concat(v), [])
+    .option('--tag <tag>', 'Add tag (repeatable, slugified to kebab-case)', (v: string, arr: string[]) => arr.concat(v), [] as string[])
     .option('--path', 'Show file path')
     .option('--json', 'JSON output')
     .action((title: string, options: CreateOptions) => {
@@ -301,7 +301,7 @@ export function registerPrdCommands(program: Command): void {
     .description('Update PRD (status, title)')
     .option('-s, --status <status>', `Set status (${statusHelp})`)
     .option('-t, --title <title>', 'Set title')
-    .option('--set <key=value>', 'Set any frontmatter field (repeatable)', (v, arr) => arr.concat(v), [])
+    .option('--set <key=value>', 'Set any frontmatter field (repeatable)', (v: string, arr: string[]) => arr.concat(v), [] as string[])
     .option('--json', 'JSON output')
     .action((id: string, options: UpdateOptions) => {
       const prdDir = findPrdDirs().find(d => matchesPrdDir(d, id));
@@ -340,8 +340,8 @@ export function registerPrdCommands(program: Command): void {
   // prd:milestone
   withModifies(prd.command('milestone <prd-id> <milestone-id>'), ['prd'])
     .description('Manage PRD milestone (add/remove epics)')
-    .option('--add-epic <epic>', 'Add epic to milestone (repeatable)', (v, arr) => arr.concat(v), [])
-    .option('--remove-epic <epic>', 'Remove epic from milestone (repeatable)', (v, arr) => arr.concat(v), [])
+    .option('--add-epic <epic>', 'Add epic to milestone (repeatable)', (v: string, arr: string[]) => arr.concat(v), [] as string[])
+    .option('--remove-epic <epic>', 'Remove epic from milestone (repeatable)', (v: string, arr: string[]) => arr.concat(v), [] as string[])
     .option('--json', 'JSON output')
     .action((prdId: string, milestoneId: string, options: MilestoneOptions) => {
       const prdDir = findPrdDirs().find(d => matchesPrdDir(d, prdId));
@@ -358,15 +358,15 @@ export function registerPrdCommands(program: Command): void {
       }
 
       // Ensure milestones array exists
-      if (!file.data.milestones) {
-        file.data.milestones = [];
-      }
+      type Milestone = { id: string; epics: string[] };
+      const milestones: Milestone[] = (file.data.milestones as Milestone[] | undefined) || [];
+      file.data.milestones = milestones;
 
       // Find or create milestone
-      let milestone: { id: string; epics: string[] } | undefined = (file.data.milestones as { id: string; epics: string[] }[]).find((m: { id: string; epics: string[] }) => m.id === milestoneId);
+      let milestone: Milestone | undefined = milestones.find((m: Milestone) => m.id === milestoneId);
       if (!milestone) {
         milestone = { id: milestoneId, epics: [] };
-        file.data.milestones.push(milestone);
+        milestones.push(milestone);
       }
 
       // Ensure epics array exists

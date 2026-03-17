@@ -78,7 +78,7 @@ export function registerSpawnCommand(agent: Command) {
       }
 
       // Load task data
-      const task = loadFile(taskFile);
+      const task = loadFile<{ parent: string }>(taskFile);
       if (!task) {
         console.error(`Could not load task file: ${taskFile}`);
         process.exit(1);

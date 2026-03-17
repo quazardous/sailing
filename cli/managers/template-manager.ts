@@ -181,7 +181,7 @@ export function listTemplates(): TemplateInfo[] {
 /**
  * Render a template with variables
  */
-export function renderTemplate(templateName: string, variables: Record<string, any>): string | null {
+export function renderTemplate(templateName: string, variables: Record<string, unknown>): string | null {
   const templateFile = `${templateName}.md.njk`;
   const templatePath = path.join(getTemplatesDir(), templateFile);
 
@@ -196,7 +196,7 @@ export function renderTemplate(templateName: string, variables: Record<string, a
     // Remove the header comment from output
     return rendered.replace(/^\{#[\s\S]*?#\}\s*\n?/, '').trim();
   } catch (error) {
-    console.error(`Template render error (${templateName}):`, error.message);
+    console.error(`Template render error (${templateName}):`, error instanceof Error ? error.message : String(error));
     return null;
   }
 }
@@ -206,7 +206,7 @@ export function renderTemplate(templateName: string, variables: Record<string, a
  */
 export function validateVariables(
   templateName: string,
-  variables: Record<string, any>
+  variables: Record<string, unknown>
 ): { valid: boolean; missing: string[]; extra: string[] } {
   const info = getTemplateInfo(templateName);
   if (!info) {
@@ -231,7 +231,7 @@ export function validateVariables(
  * Render an arbitrary .njk file (not limited to prompting/templates/).
  * Creates an isolated Nunjucks env rooted at the template's parent dir (for {% include %}).
  */
-export function renderFile(absolutePath: string, variables: Record<string, any>): string | null {
+export function renderFile(absolutePath: string, variables: Record<string, unknown>): string | null {
   if (!fs.existsSync(absolutePath)) {
     return null;
   }
@@ -252,7 +252,7 @@ export function renderFile(absolutePath: string, variables: Record<string, any>)
     // Strip header comment from output (same as renderTemplate)
     return rendered.replace(/^\{#[\s\S]*?#\}\s*\n?/, '').trim();
   } catch (error) {
-    console.error(`Template render error (${absolutePath}):`, error.message);
+    console.error(`Template render error (${absolutePath}):`, error instanceof Error ? error.message : String(error));
     return null;
   }
 }

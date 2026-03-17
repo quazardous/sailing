@@ -3,6 +3,7 @@
  */
 
 export interface BaseEntity {
+  [key: string]: unknown;  // Allow index access for frontmatter operations
   id: string;
   title: string;
   status: string;
