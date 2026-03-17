@@ -107,8 +107,8 @@ export function registerHarvestCommands(agent) {
       const resultFile = path.join(agentDir, 'result.yaml');
       if (fs.existsSync(resultFile)) {
         try {
-          const result = yaml.load(fs.readFileSync(resultFile, 'utf8'));
-          resultStatus = result.status || 'completed';
+          const result = yaml.load(fs.readFileSync(resultFile, 'utf8')) as { status?: string };
+          resultStatus = result?.status || 'completed';
         } catch { /* ignore */ }
       }
 

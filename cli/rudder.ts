@@ -58,7 +58,7 @@ if (rootPath) {
 
 // Extract --with-config flags manually (before commander parses)
 // Can be specified multiple times: --with-config key=value --with-config key2=value2
-const configOverrides: Record<string, any> = {};
+const configOverrides: Record<string, string | number | boolean> = {};
 let configIdx = args.indexOf('--with-config');
 while (configIdx !== -1) {
   if (args[configIdx + 1]) {

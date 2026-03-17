@@ -78,12 +78,13 @@ export interface Placeholders {
   [key: string]: string; // Allow custom placeholders
 }
 
-type MergeStrategy = 'squash' | 'merge' | 'rebase';
-type SquashLevel = 'task' | 'epic' | 'prd';
-type ClaudeModel = 'sonnet' | 'opus' | 'haiku';
-type PRProvider = 'auto' | 'github' | 'gitlab';
-type MCPMode = 'socket' | 'port';
-type LogLevel = 'debug' | 'info' | 'warn' | 'error';
+export type ConfigValue = string | number | boolean;
+export type MergeStrategy = 'squash' | 'merge' | 'rebase';
+export type SquashLevel = 'task' | 'epic' | 'prd';
+export type ClaudeModel = 'sonnet' | 'opus' | 'haiku';
+export type PRProvider = 'auto' | 'github' | 'gitlab';
+export type MCPMode = 'socket' | 'port';
+export type LogLevel = 'debug' | 'info' | 'warn' | 'error';
 
 export interface SailingConfig {
   git: {
@@ -126,5 +127,9 @@ export interface SailingConfig {
     task_digits: number;
     story_digits: number;
     panic_digits: number;
+  };
+  task: {
+    default_duration: string;
+    effort_map: string;
   };
 }

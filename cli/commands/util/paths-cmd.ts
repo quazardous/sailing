@@ -277,12 +277,13 @@ export function registerPathsCommands(program) {
       const sailingDir = getSailingDir();
       const pathsFile = path.join(sailingDir, 'paths.yaml');
 
-      let config = { paths: {} };
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      let config: { paths: Record<string, any> } = { paths: {} };
 
       if (fs.existsSync(pathsFile)) {
         try {
           const content = fs.readFileSync(pathsFile, 'utf8');
-          config = yaml.load(content) || { paths: {} };
+          config = (yaml.load(content) as typeof config) || { paths: {} };
           if (!config.paths) config.paths = {};
         } catch (e) {
           console.error(`Error reading paths.yaml: ${e.message}`);

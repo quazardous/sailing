@@ -13,7 +13,7 @@
 import fs from 'fs';
 import yaml from 'js-yaml';
 import { formatIdFrom } from '../lib/normalize.js';
-import type { SailingConfig, ConfigSchemaEntry, ConfigDisplayItem, ConfigSchema } from '../lib/types/config.js';
+import type { SailingConfig, ConfigSchemaEntry, ConfigDisplayItem, ConfigSchema, ConfigValue } from '../lib/types/config.js';
 
 // Import path resolution from core-manager
 import { getPath } from './core-manager.js';
@@ -210,6 +210,7 @@ export const CONFIG_SCHEMA: Record<string, ConfigSchemaEntry> = {
 /**
  * Build DEFAULTS object from schema
  */
+/* eslint-disable @typescript-eslint/no-explicit-any -- internal plumbing: dynamic object building */
 function buildConfigDefaults(): SailingConfig {
   const defaults: Record<string, any> = {};
   for (const [key, schema] of Object.entries(CONFIG_SCHEMA)) {
@@ -223,6 +224,7 @@ function buildConfigDefaults(): SailingConfig {
   }
   return defaults as SailingConfig;
 }
+/* eslint-enable @typescript-eslint/no-explicit-any */
 
 const CONFIG_DEFAULTS = buildConfigDefaults();
 
@@ -231,7 +233,7 @@ const CONFIG_DEFAULTS = buildConfigDefaults();
 // ============================================================================
 
 let _sailingConfig: SailingConfig | null = null;
-let _configOverrides: Record<string, any> = {};
+let _configOverrides: Record<string, any> = {}; // eslint-disable-line @typescript-eslint/no-explicit-any
 
 // ============================================================================
 // CONFIG OVERRIDES
@@ -242,7 +244,7 @@ let _configOverrides: Record<string, any> = {};
  * Called very early in rudder.ts before any config is loaded
  * @experimental This is an experimental feature
  */
-export function setConfigOverrides(overrides: Record<string, any>): void {
+export function setConfigOverrides(overrides: Record<string, ConfigValue>): void {
   _configOverrides = { ..._configOverrides, ...overrides };
   _sailingConfig = null;
 }
@@ -251,7 +253,7 @@ export function setConfigOverrides(overrides: Record<string, any>): void {
  * Parse a config override string: "key=value"
  * Handles type coercion based on schema
  */
-export function parseConfigOverride(override: string): { key: string; value: any } | null {
+export function parseConfigOverride(override: string): { key: string; value: ConfigValue } | null {
   const match = /^([^=]+)=(.*)$/.exec(override);
   if (!match) {
     console.error(`Invalid config override format: ${override}`);
@@ -299,6 +301,7 @@ export function parseConfigOverride(override: string): { key: string; value: any
 // CONFIG NESTED ACCESS
 // ============================================================================
 
+/* eslint-disable @typescript-eslint/no-explicit-any -- internal plumbing: dynamic nested access */
 /**
  * Get nested value from object using dot notation
  */
@@ -344,6 +347,7 @@ function deepMerge(target: any, source: any): Record<string, any> {
 
   return result;
 }
+/* eslint-enable @typescript-eslint/no-explicit-any */
 
 // ============================================================================
 // CONFIG LOADING & VALIDATION
@@ -356,6 +360,7 @@ export function getConfigPath(): string {
   return getPath('config');
 }
 
+/* eslint-disable @typescript-eslint/no-explicit-any -- internal plumbing: config loading/validation */
 /**
  * Load configuration from file
  * Merges with defaults, validates values, applies CLI overrides
@@ -434,6 +439,7 @@ function validateConfig(config: any): void {
     }
   }
 }
+/* eslint-enable @typescript-eslint/no-explicit-any */
 
 /**
  * Clear config cache (for testing or after config changes)
@@ -453,7 +459,7 @@ export function configExists(): boolean {
  * Get default configuration
  */
 export function getConfigDefaults(): SailingConfig {
-  return JSON.parse(JSON.stringify(CONFIG_DEFAULTS));
+  return JSON.parse(JSON.stringify(CONFIG_DEFAULTS)) as SailingConfig;
 }
 
 /**
@@ -507,6 +513,7 @@ export function getIdsConfig(): SailingConfig['ids'] {
  * Get a specific config value by dot-notation key
  * @param key - Dot-notation key (e.g., 'agent.timeout')
  */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- generic accessor, caller provides T
 export function getConfigValue<T = any>(key: string): T {
   const config = loadConfig();
   return getNestedValue(config, key) as T;
