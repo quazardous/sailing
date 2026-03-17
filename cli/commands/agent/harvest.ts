@@ -1,6 +1,7 @@
 /**
  * Agent harvest commands: reap, reject, collect, merge, reap-all
  */
+import type { Command } from 'commander';
 import fs from 'fs';
 import path from 'path';
 import yaml from 'js-yaml';
@@ -19,7 +20,7 @@ import { normalizeId } from '../../lib/normalize.js';
 import { AgentUtils, type AgentCompletionInfo } from '../../lib/agent-utils.js';
 import { getDiagnoseOps, printDiagnoseResult } from '../../managers/diagnose-manager.js';
 
-export function registerHarvestCommands(agent) {
+export function registerHarvestCommands(agent: Command) {
   // agent:reap
   withModifies(agent.command('reap <task-id>'), ['task', 'git', 'db'])
     .description('Harvest agent work: wait, merge, cleanup, update status (or escalate)')

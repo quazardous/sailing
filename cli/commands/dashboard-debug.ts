@@ -2,6 +2,7 @@
  * Dashboard Debug commands - Inspect scheduling data for a project
  * Commands: debug-prd, debug-epic, debug-task, debug-gantt
  */
+import type { Command } from 'commander';
 import { getFullPrd, getEpic, getTask } from '../managers/artefacts-manager.js';
 import { loadFile } from '../managers/core-manager.js';
 import { getConfigValue } from '../managers/core-manager.js';
@@ -23,7 +24,7 @@ interface DebugOptions {
 /**
  * Register debug commands
  */
-export function registerDashboardDebugCommands(program: any) {
+export function registerDashboardDebugCommands(program: Command) {
   program.command('debug-prd <id>')
     .description('Debug PRD scheduling data')
     .option('--json', 'Output raw JSON')

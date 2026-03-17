@@ -1,6 +1,7 @@
 /**
  * Dashboard command - Web UI for sailing project overview
  */
+import type { Command } from 'commander';
 import { createServer } from '../dashboard/server.js';
 import { createRoutes } from '../dashboard/routes.js';
 
@@ -11,7 +12,7 @@ const DEFAULT_CACHE = 300; // 5 minutes
 /**
  * Register dashboard commands
  */
-export function registerDashboardCommands(program: any) {
+export function registerDashboardCommands(program: Command) {
   program.command('dashboard')
     .description('Start web dashboard for project overview')
     .option('-p, --port <port>', 'Port number', String(DEFAULT_PORT))

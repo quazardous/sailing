@@ -1,6 +1,7 @@
 /**
  * Agent check command: diagnose MCP connectivity
  */
+import type { Command } from 'commander';
 import fs from 'fs';
 import path from 'path';
 import { execSync } from 'child_process';
@@ -15,7 +16,7 @@ interface McpConfigOptions {
   taskId?: string;
 }
 
-export function registerCheckCommand(agent) {
+export function registerCheckCommand(agent: Command) {
   // agent:check - Diagnose MCP connectivity
   withModifies(agent.command('check'), ['task'])
     .description('Diagnose MCP server connectivity (spawn quick test agent)')

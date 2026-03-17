@@ -1,6 +1,7 @@
 /**
  * Agent manage commands: sync, clear, kill, conflicts
  */
+import type { Command } from 'commander';
 import fs from 'fs';
 import path from 'path';
 import { jsonOut, resolvePlaceholders } from '../../managers/core-manager.js';
@@ -11,7 +12,7 @@ import { buildConflictMatrix, suggestMergeOrder } from '../../managers/conflict-
 import { normalizeId } from '../../lib/normalize.js';
 import { gcAgentsAction } from '../gc.js';
 
-export function registerManageCommands(agent) {
+export function registerManageCommands(agent: Command) {
   // agent:sync
   withModifies(agent.command('sync'), ['db'])
     .description('Sync db with actual worktrees/agents (recover from ghosts)')

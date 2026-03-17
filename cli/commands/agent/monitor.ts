@@ -1,6 +1,7 @@
 /**
  * Agent monitor commands: status, list, wait, wait-all, log
  */
+import type { Command } from 'commander';
 import fs from 'fs';
 import path from 'path';
 import { execSync } from 'child_process';
@@ -160,7 +161,7 @@ function checkWorktreeMerged(agentData: AgentRecord, ops: WorktreeOps): boolean 
   return ops.isAncestor(branch, 'HEAD');
 }
 
-export function registerMonitorCommands(agent) {
+export function registerMonitorCommands(agent: Command) {
   // agent:status (alias: agent:list)
   agent.command('status [task-id]')
     .alias('list')

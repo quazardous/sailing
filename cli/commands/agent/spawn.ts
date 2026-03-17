@@ -1,6 +1,7 @@
 /**
  * Agent spawn command
  */
+import type { Command } from 'commander';
 import fs from 'fs';
 import path from 'path';
 import yaml from 'js-yaml';
@@ -29,7 +30,7 @@ import { AgentUtils, getProcessStats, formatDuration } from '../../lib/agent-uti
 import type { AgentRecord } from '../../lib/types/agent.js';
 import { getDiagnoseOps, printDiagnoseResult } from '../../managers/diagnose-manager.js';
 
-export function registerSpawnCommand(agent) {
+export function registerSpawnCommand(agent: Command) {
   withModifies(agent.command('spawn <task-id>'), ['task', 'git', 'state'])
     .description('Spawn agent to execute task (creates worktree, spawns Claude)')
     .option('--role <role>', 'Role context (skill, coordinator) - agent role blocked')

@@ -7,6 +7,7 @@
  * - WebSocket for real-time events
  * - MCP server for orchestrator agents
  */
+import type { Command } from 'commander';
 import { createConductorServer } from '../conductor/server.js';
 
 const DEFAULT_PORT = 3456;
@@ -16,7 +17,7 @@ const DEFAULT_CACHE = 300; // 5 minutes
 /**
  * Register conductor commands
  */
-export function registerConductorCommands(program: any) {
+export function registerConductorCommands(program: Command) {
   const conductor = program.command('conductor')
     .description('Browser-controlled development server with real-time agent control');
 

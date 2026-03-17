@@ -1,6 +1,7 @@
 /**
  * Agent diagnose commands: analyze-log, log-noise-* management
  */
+import type { Command } from 'commander';
 import fs from 'fs';
 import path from 'path';
 import { jsonOut, getAgentsDir } from '../../managers/core-manager.js';
@@ -70,7 +71,7 @@ function resolveEpicId(taskOrEpic: string | undefined): string | null {
   return null;
 }
 
-export function registerDiagnoseCommands(agent) {
+export function registerDiagnoseCommands(agent: Command) {
   // agent:analyze-log - Analyze agent run for errors/issues
   agent.command('analyze-log <task-id>')
     .description('Analyze agent run log for errors and issues')

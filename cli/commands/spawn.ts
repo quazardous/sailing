@@ -212,7 +212,7 @@ async function checkConflicts(taskId) {
 /**
  * Register spawn commands
  */
-export function registerSpawnCommands(program: any) {
+export function registerSpawnCommands(program: Command) {
   const spawn = program.command('spawn')
     .description('Spawn preflight and postflight checks') as Command;
 
