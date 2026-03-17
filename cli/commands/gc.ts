@@ -7,6 +7,7 @@ import path from 'path';
 import os from 'os';
 import { jsonOut, computeProjectHash, getAgentsDir, getWorktreesDir } from '../managers/core-manager.js';
 import { getAllAgentsFromDb, deleteAgentFromDb, getAgentsArray } from '../managers/db-manager.js';
+import type { AgentRecord } from '../lib/types/agent.js';
 import { listAgentWorktrees, pruneWorktrees } from '../managers/worktree-manager.js';
 import { getTask } from '../managers/artefacts-manager.js';
 import { normalizeId } from '../lib/normalize.js';
@@ -24,14 +25,23 @@ function getHavensBaseDir() {
  * Get list of all havens
  * @returns {Array<{ hash: string, path: string }>}
  */
-function listHavens() {
+interface HavenInfo {
+  hash: string;
+  path: string;
+  worktreesPath: string;
+  agentsPath: string;
+  runsPath: string;
+  assignmentsPath: string;
+}
+
+function listHavens(): HavenInfo[] {
   const havensDir = getHavensBaseDir();
 
   if (!fs.existsSync(havensDir)) {
     return [];
   }
 
-  const havens = [];
+  const havens: HavenInfo[] = [];
 
   // Each directory in havens/ is a project hash
   for (const hash of fs.readdirSync(havensDir)) {
@@ -136,7 +146,7 @@ export async function gcAgentsAction(options: { dryRun?: boolean; worktree?: boo
   }
 
   // Helper to get most recent date from agent metadata
-  function getLastDate(agent: any): string | undefined {
+  function getLastDate(agent: AgentRecord): string | undefined {
     const dates = [
       agent.merged_at,
       agent.completed_at,
@@ -354,7 +364,7 @@ export function registerGcCommands(program: Command) {
     .option('--dry-run', 'Show what would be cleaned without doing it')
     .option('--force', 'Skip confirmation')
     .option('--json', 'JSON output')
-    .action((options) => {
+    .action((options: { dryRun?: boolean; force?: boolean; json?: boolean }) => {
       const havens = listHavens();
 
       if (havens.length === 0) {
@@ -411,7 +421,7 @@ export function registerGcCommands(program: Command) {
             cleaned++;
           }
         } catch (e) {
-          console.error(`Failed to remove ${haven.hash}: ${e.message}`);
+          console.error(`Failed to remove ${haven.hash}: ${(e as Error).message}`);
         }
       }
 
@@ -424,7 +434,7 @@ export function registerGcCommands(program: Command) {
     .option('--dirs', 'Also clean orphaned worktree directories (not in state)')
     .option('--force', 'Actually delete orphaned directories (requires --dirs)')
     .option('--json', 'JSON output')
-    .action((options) => {
+    .action((options: { dirs?: boolean; force?: boolean; json?: boolean }) => {
       // Always prune git worktrees first
       pruneWorktrees();
 
@@ -575,12 +585,12 @@ export function registerGcCommands(program: Command) {
     .option('--dry-run', 'Show what would be cleaned without doing it')
     .option('--force', 'Skip confirmation for destructive operations')
     .option('--json', 'JSON output')
-    .action(async (options) => {
+    .action(async (options: { dryRun?: boolean; force?: boolean; json?: boolean }) => {
       if (!options.json) {
         console.log('Running garbage collection...\n');
       }
 
-      const results: any = {};
+      const results: { worktrees?: string; stale_agents?: number; orphaned_havens?: number } = {};
 
       // 1. Prune worktrees
       if (!options.json) console.log('=== Worktrees ===');

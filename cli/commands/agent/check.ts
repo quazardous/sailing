@@ -16,6 +16,32 @@ interface McpConfigOptions {
   taskId?: string;
 }
 
+interface TestResult {
+  success: boolean;
+  response_length?: number;
+  error?: string;
+  stderr?: string;
+}
+
+interface SpawnTestResult {
+  success: boolean;
+  env_ok?: boolean;
+  mcp_ok?: boolean;
+  duration_ms?: number;
+  output_preview?: string;
+  error?: string;
+}
+
+interface CheckResult {
+  haven: string;
+  project: string;
+  mcp: { running: boolean; socket?: string; pid?: number };
+  connection_test?: TestResult;
+  sandbox_connection_test?: TestResult;
+  spawn_test?: SpawnTestResult | null;
+  status: string;
+}
+
 export function registerCheckCommand(agent: Command) {
   // agent:check - Diagnose MCP connectivity
   withModifies(agent.command('check'), ['task'])
@@ -34,23 +60,22 @@ export function registerCheckCommand(agent: Command) {
       const havenDir = resolvePlaceholders('${haven}');
       const projectRoot = findProjectRoot();
 
-      const result: any = {
+      const result: CheckResult = {
         haven: havenDir,
         project: projectRoot,
         mcp: { running: false },
-        socat_test: null,
         spawn_test: null,
         status: 'unknown'
       };
 
-      const debug = (msg) => {
+      const debug = (msg: string) => {
         if (options.debug && !options.json) console.log(`  [debug] ${msg}`);
       };
 
       // Step 1: Check MCP agent server process
       if (!options.json) console.log('Checking MCP agent server...');
 
-      const mcpStatus: any = checkMcpAgentServer(havenDir);
+      const mcpStatus = checkMcpAgentServer(havenDir);
       result.mcp = {
         running: mcpStatus.running,
         socket: mcpStatus.socket,
@@ -83,7 +108,7 @@ export function registerCheckCommand(agent: Command) {
 
       try {
         const testRequest = JSON.stringify({ jsonrpc: '2.0', method: 'tools/list', id: 1 }) + '\n';
-        let connectResult;
+        let connectResult: string;
 
         if (mcpStatus.mode === 'port') {
           debug(`Testing: echo | nc 127.0.0.1 ${mcpStatus.port}`);
@@ -105,8 +130,9 @@ export function registerCheckCommand(agent: Command) {
           console.log(`  ✓ Server responds (${connectResult.length} chars)`);
         }
         debug(`Response: ${connectResult.slice(0, 100)}...`);
-      } catch (err) {
-        result.connection_test = { success: false, error: err.message };
+      } catch (err: unknown) {
+        const errMsg = err instanceof Error ? err.message : String(err);
+        result.connection_test = { success: false, error: errMsg };
         result.status = 'connection_failed';
 
         if (options.json) {
@@ -154,9 +180,9 @@ export function registerCheckCommand(agent: Command) {
           if (!options.json) {
             console.log(`  ✓ Bridge started (pid: ${bridge.pid})`);
           }
-        } catch (err) {
+        } catch (err: unknown) {
           if (!options.json) {
-            console.error(`  ✗ Failed to start socat bridge: ${err.message}`);
+            console.error(`  ✗ Failed to start socat bridge: ${err instanceof Error ? err.message : String(err)}`);
           }
           fs.rmSync(agentDir, { recursive: true, force: true });
           result.status = 'bridge_failed';
@@ -197,16 +223,18 @@ export function registerCheckCommand(agent: Command) {
           console.log(`  ✓ Connection from sandbox OK (${sandboxTestResult.length} chars, ${modeDesc})`);
         }
         debug(`Sandbox test response: ${sandboxTestResult.slice(0, 100)}...`);
-      } catch (err) {
-        result.sandbox_connection_test = { success: false, error: err.message, stderr: err.stderr?.slice(0, 500) };
+      } catch (err: unknown) {
+        const errMsg = err instanceof Error ? err.message : String(err);
+        const errStderr = (err as { stderr?: string }).stderr?.slice(0, 500);
+        result.sandbox_connection_test = { success: false, error: errMsg, stderr: errStderr };
 
         if (options.json) {
           console.log(JSON.stringify(result, null, 2));
         } else {
           console.error(`  ✗ Connection from sandbox failed`);
           if (options.debug) {
-            console.error(`\nError: ${err.message}`);
-            if (err.stderr) console.error(`Stderr: ${err.stderr.slice(0, 500)}`);
+            console.error(`\nError: ${errMsg}`);
+            if (errStderr) console.error(`Stderr: ${errStderr}`);
           }
           console.error(`\n❌ Cannot connect to MCP from inside sandbox\n`);
           console.error('Possible causes:');
@@ -401,14 +429,15 @@ Exit immediately after outputting the result.`;
 
         process.exit(success ? 0 : 1);
 
-      } catch (err) {
-        result.spawn_test = { success: false, error: err.message };
+      } catch (err: unknown) {
+        const errMsg = err instanceof Error ? err.message : String(err);
+        result.spawn_test = { success: false, error: errMsg };
         result.status = 'spawn_failed';
 
         if (options.json) {
           console.log(JSON.stringify(result, null, 2));
         } else {
-          console.error(`  ✗ Spawn failed: ${err.message}`);
+          console.error(`  ✗ Spawn failed: ${errMsg}`);
           console.error('\n❌ Cannot spawn test agent\n');
         }
 

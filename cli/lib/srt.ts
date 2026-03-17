@@ -140,7 +140,7 @@ export function getAvailablePort(): Promise<number> {
 }
 
 /** Result of checking MCP server status */
-interface McpServerStatus {
+export interface McpServerStatus {
   running: boolean;
   mode?: string;
   socket?: string;
