@@ -27,11 +27,11 @@ export interface LogTailerResult {
  */
 export interface JsonLogProcessor {
   /** Parse JSON log file into events and raw lines */
-  parse: (file: string) => { events: any[]; lines: string[] };
+  parse: (file: string) => { events: Record<string, unknown>[]; lines: string[] };
   /** Check if an event should be filtered out */
-  isNoise: (line: string, event: any) => boolean;
+  isNoise: (line: string, event: Record<string, unknown>) => boolean;
   /** Summarize an event for display */
-  summarize: (event: any, line: string) => string;
+  summarize: (event: Record<string, unknown>, line: string) => string;
 }
 
 // =============================================================================
@@ -152,7 +152,7 @@ export function createJsonLogTailer(
           lastSize = newSize;
 
           // Process complete lines
-          let newlineIndex;
+          let newlineIndex: number;
           while ((newlineIndex = buffer.indexOf('\n')) !== -1) {
             const line = buffer.slice(0, newlineIndex);
             buffer = buffer.slice(newlineIndex + 1);
@@ -162,7 +162,7 @@ export function createJsonLogTailer(
                 console.log(line);
               } else {
                 try {
-                  const event = JSON.parse(line);
+                  const event = JSON.parse(line) as Record<string, unknown>;
                   if (!processor.isNoise(line, event)) {
                     console.log(processor.summarize(event, line));
                   }
@@ -194,9 +194,9 @@ export function createBasicProcessor(): JsonLogProcessor {
     parse: (file: string) => {
       const content = fs.readFileSync(file, 'utf8');
       const lines = content.split('\n').filter(l => l.trim());
-      const events = lines.map(line => {
+      const events: Record<string, unknown>[] = lines.map(line => {
         try {
-          return JSON.parse(line);
+          return JSON.parse(line) as Record<string, unknown>;
         } catch {
           return { raw: line };
         }
@@ -205,8 +205,9 @@ export function createBasicProcessor(): JsonLogProcessor {
     },
     isNoise: () => false,
     summarize: (event, line) => {
-      if (event.type) {
-        return `[${event.type}] ${event.message || JSON.stringify(event).slice(0, 100)}`;
+      if (typeof event.type === 'string') {
+        const msg = typeof event.message === 'string' ? event.message : JSON.stringify(event).slice(0, 100);
+        return `[${event.type}] ${msg}`;
       }
       return line.slice(0, 120);
     }

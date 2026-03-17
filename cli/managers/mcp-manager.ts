@@ -46,7 +46,7 @@ export function setLogFile(logPath: string | null) {
   _logFile = logPath;
 }
 
-export function log(level: string, message: string, context?: Record<string, any>) {
+export function log(level: string, message: string, context?: Record<string, unknown>) {
   const timestamp = new Date().toISOString();
   const ctx = context ? ` ${JSON.stringify(context)}` : '';
   const line = `[${timestamp}] [${level}] ${message}${ctx}\n`;
@@ -109,7 +109,7 @@ export function runRudder(command: string, options: { json?: boolean } = {}): Ru
 /**
  * Format success response (JSON)
  */
-export function okResponse(data: any): McpToolResponse {
+export function okResponse(data: unknown): McpToolResponse {
   return {
     content: [{
       type: 'text',
@@ -144,7 +144,7 @@ export function runResultToResponse(result: RunResult): McpToolResponse {
 
 export class SocketTransport {
   socket: net.Socket;
-  private _onMessage: ((message: any) => void) | null = null;
+  private _onMessage: ((message: unknown) => void) | null = null;
   private _onClose: (() => void) | null = null;
   private _onError: ((err: Error) => void) | null = null;
   private _buffer = '';
@@ -160,22 +160,22 @@ export class SocketTransport {
   }
 
   private _processBuffer() {
-    let newlineIndex;
+    let newlineIndex: number;
     while ((newlineIndex = this._buffer.indexOf('\n')) !== -1) {
       const line = this._buffer.slice(0, newlineIndex);
       this._buffer = this._buffer.slice(newlineIndex + 1);
       if (line.trim() && this._onMessage) {
-        try { this._onMessage(JSON.parse(line)); } catch {}
+        try { this._onMessage(JSON.parse(line) as unknown); } catch {}
       }
     }
   }
 
-  set onmessage(handler: (message: any) => void) { this._onMessage = handler; }
+  set onmessage(handler: (message: unknown) => void) { this._onMessage = handler; }
   set onclose(handler: () => void) { this._onClose = handler; }
   set onerror(handler: (err: Error) => void) { this._onError = handler; }
   async start() {}
-  async send(message: any) { this.socket.write(JSON.stringify(message) + '\n'); }
-  async close() { this.socket.end(); }
+  send(message: unknown) { this.socket.write(JSON.stringify(message) + '\n'); }
+  close() { this.socket.end(); }
 }
 
 // =============================================================================
@@ -208,36 +208,37 @@ export function logDebug(context: string, data?: Record<string, unknown>): void 
 
 export function parseMcpCliArgs(defaultProjectRoot: string): McpCliArgs {
   const args = process.argv.slice(2);
-  let projectRoot = defaultProjectRoot;
-  let port: number | null = null;
-  let socketPath: string | null = null;
-  let taskId: string | null = null;
-  let debug = false;
+  const parsed = parseArgPairs(args);
 
-  for (let i = 0; i < args.length; i++) {
-    switch (args[i]) {
-      case '--project-root':
-        if (args[i + 1]) projectRoot = args[++i];
-        break;
-      case '--port':
-        if (args[i + 1]) port = parseInt(args[++i], 10);
-        break;
-      case '--socket':
-        if (args[i + 1]) socketPath = args[++i];
-        break;
-      case '--task-id':
-        if (args[i + 1]) taskId = args[++i];
-        break;
-      case '--debug':
-        debug = true;
-        break;
-    }
-  }
+  const projectRoot = parsed['--project-root'] ?? defaultProjectRoot;
+  const port = parsed['--port'] ? parseInt(parsed['--port'], 10) : null;
+  const socketPath = parsed['--socket'] ?? null;
+  const taskId = parsed['--task-id'] ?? null;
+  const debug = '--debug' in parsed;
 
   // Enable debug mode globally
   setDebugEnabled(debug);
 
   return { projectRoot, port, socketPath, taskId, debug };
+}
+
+/** Parse CLI args into flag-value map. Flags without values get empty string. */
+function parseArgPairs(args: string[]): Record<string, string> {
+  const result: Record<string, string> = {};
+  const valueFlags = new Set(['--project-root', '--port', '--socket', '--task-id']);
+
+  let i = 0;
+  while (i < args.length) {
+    const flag = args[i];
+    if (valueFlags.has(flag) && i + 1 < args.length) {
+      result[flag] = args[i + 1];
+      i += 2;
+    } else {
+      result[flag] = '';
+      i += 1;
+    }
+  }
+  return result;
 }
 
 // =============================================================================

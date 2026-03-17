@@ -77,13 +77,13 @@ type EventHandler<T extends EventType> = (payload: EventPayload[T]) => void;
 
 interface Subscription {
   event: EventType;
-  handler: EventHandler<any>;
+  handler: EventHandler<EventType>;
   filter?: string; // Optional filter (e.g., taskId)
 }
 
 class EventBus {
   private subscriptions: Subscription[] = [];
-  private history: Map<EventType, Array<{ payload: any; timestamp: number }>> = new Map();
+  private history: Map<EventType, Array<{ payload: EventPayload[EventType]; timestamp: number }>> = new Map();
   private historyLimit = 100;
 
   /**
@@ -98,7 +98,7 @@ class EventBus {
     handler: EventHandler<T>,
     filter?: string
   ): () => void {
-    const subscription: Subscription = { event, handler, filter };
+    const subscription: Subscription = { event, handler: handler as EventHandler<EventType>, filter };
     this.subscriptions.push(subscription);
 
     return () => {
@@ -133,8 +133,8 @@ class EventBus {
       this.history.set(event, []);
     }
     const eventHistory = this.history.get(event);
-    eventHistory.push({ payload, timestamp: Date.now() });
-    if (eventHistory.length > this.historyLimit) {
+    eventHistory?.push({ payload, timestamp: Date.now() });
+    if (eventHistory && eventHistory.length > this.historyLimit) {
       eventHistory.shift();
     }
 
@@ -144,14 +144,14 @@ class EventBus {
 
       // Check filter if present
       if (sub.filter) {
-        const taskId = (payload as any).taskId;
+        const taskId = payload.taskId;
         if (taskId && taskId !== sub.filter) continue;
       }
 
       try {
-        sub.handler(payload);
-      } catch (e) {
-        console.error(`EventBus handler error for ${event}:`, e);
+        (sub.handler as EventHandler<T>)(payload);
+      } catch (e: unknown) {
+        console.error(`EventBus handler error for ${event}:`, e instanceof Error ? e.message : String(e));
       }
     }
   }
@@ -165,9 +165,9 @@ class EventBus {
   ): Array<{ payload: EventPayload[T]; timestamp: number }> {
     const eventHistory = this.history.get(event) || [];
     if (limit) {
-      return eventHistory.slice(-limit) as any;
+      return eventHistory.slice(-limit) as Array<{ payload: EventPayload[T]; timestamp: number }>;
     }
-    return eventHistory as any;
+    return eventHistory as Array<{ payload: EventPayload[T]; timestamp: number }>;
   }
 
   /**
@@ -193,6 +193,12 @@ class EventBus {
 export const eventBus = new EventBus();
 
 // Convenience functions
-export const emit = eventBus.emit.bind(eventBus);
-export const on = eventBus.on.bind(eventBus);
-export const once = eventBus.once.bind(eventBus);
+export function emit<T extends EventType>(event: T, payload: EventPayload[T]): void {
+  eventBus.emit(event, payload);
+}
+export function on<T extends EventType>(event: T, handler: EventHandler<T>, filter?: string): () => void {
+  return eventBus.on(event, handler, filter);
+}
+export function once<T extends EventType>(event: T, handler: EventHandler<T>, filter?: string): () => void {
+  return eventBus.once(event, handler, filter);
+}

@@ -16,7 +16,9 @@ import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import {
   CallToolRequestSchema,
   ListToolsRequestSchema,
+  type CallToolResult,
 } from '@modelcontextprotocol/sdk/types.js';
+import type { Transport } from '@modelcontextprotocol/sdk/shared/transport.js';
 import net from 'net';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -72,12 +74,14 @@ function createConnectionHandler(mode: 'tcp' | 'unix') {
 
     clientServer.setRequestHandler(CallToolRequestSchema, async (request) => {
       const { name, arguments: callArgs } = request.params;
-      const args = callArgs as Record<string, any>;
+      const args = callArgs ?? {};
 
       // Track task ID from first call
-      if (!clientTaskId && args.task_id) clientTaskId = args.task_id;
-      if (!clientTaskId && name === 'context_load' && args.operation?.match(/^T\d+$/)) {
-        clientTaskId = args.operation;
+      const taskIdArg = typeof args.task_id === 'string' ? args.task_id : null;
+      const operationArg = typeof args.operation === 'string' ? args.operation : null;
+      if (!clientTaskId && taskIdArg) clientTaskId = taskIdArg;
+      if (!clientTaskId && name === 'context_load' && operationArg?.match(/^T\d+$/)) {
+        clientTaskId = operationArg;
       }
 
       log('INFO', `Tool: ${name}`, { connId, taskId: clientTaskId, args });
@@ -85,12 +89,12 @@ function createConnectionHandler(mode: 'tcp' | 'unix') {
       const result = await handleAgentTool(name, args);
       if (result.isError) log('WARN', `Error: ${name}`, { connId, taskId: clientTaskId });
 
-      return result as any;
+      return result as CallToolResult;
     });
 
     socket.on('close', () => log('INFO', `Client #${connId} disconnected`, { taskId: clientTaskId }));
 
-    const transport = new SocketTransport(socket) as any;
+    const transport = new SocketTransport(socket) as unknown as Transport;
     await clientServer.connect(transport);
   };
 }
@@ -114,8 +118,8 @@ async function main() {
     server.setRequestHandler(ListToolsRequestSchema, () => ({ tools: TOOLS }));
     server.setRequestHandler(CallToolRequestSchema, async (request) => {
       const { name, arguments: callArgs } = request.params;
-      const result = await handleAgentTool(name, callArgs as Record<string, any>);
-      return result as any;
+      const result = await handleAgentTool(name, callArgs ?? {});
+      return result as CallToolResult;
     });
     await server.connect(new StdioServerTransport());
   }

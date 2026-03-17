@@ -39,12 +39,71 @@ export interface ConductorServer {
   stop: () => void;
   port: number;
   resetTimeout: () => void;
-  broadcast: (type: string, payload: any) => void;
+  broadcast: (type: string, payload: Record<string, unknown>) => void;
 }
 
 type RouteHandler = (req: http.IncomingMessage, res: http.ServerResponse) => void | Promise<void>;
 
 const DEFAULT_TIMEOUT = 300; // 5 minutes
+
+// ============================================================================
+// Request Handling
+// ============================================================================
+
+function findRouteHandler(pathname: string, routes: Record<string, RouteHandler>): RouteHandler | undefined {
+  const exact = routes[pathname];
+  if (exact) return exact;
+
+  for (const [pattern, h] of Object.entries(routes)) {
+    if (pattern.includes(':')) {
+      const regex = new RegExp('^' + pattern.replace(/:(\w+)/g, '([^/]+)') + '$');
+      if (regex.test(pathname)) return h;
+    }
+  }
+  return undefined;
+}
+
+async function handleRequest(
+  req: http.IncomingMessage,
+  res: http.ServerResponse,
+  routes: Record<string, RouteHandler>,
+  port: number,
+  resetTimeout: () => void
+): Promise<void> {
+  resetTimeout();
+  const url = new URL(req.url || '/', `http://localhost:${port}`);
+  const pathname = url.pathname;
+
+  // CORS for local dev
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+
+  if (req.method === 'OPTIONS') {
+    res.writeHead(204);
+    res.end();
+    return;
+  }
+
+  if (pathname.startsWith('/static/')) {
+    serveStatic(pathname.replace('/static/', ''), res);
+    return;
+  }
+
+  const handler = findRouteHandler(pathname, routes);
+  if (handler) {
+    try {
+      await handler(req, res);
+    } catch (err: unknown) {
+      console.error('Route error:', err instanceof Error ? err.message : String(err));
+      res.writeHead(500, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'Internal Server Error' }));
+    }
+  } else {
+    res.writeHead(404, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ error: 'Not Found' }));
+  }
+}
 
 // ============================================================================
 // Server Factory
@@ -87,58 +146,7 @@ export function createConductorServer(
   };
 
   const server = http.createServer((req, res) => {
-    void (async () => {
-      // Reset timeout on each request
-      resetTimeout();
-      const url = new URL(req.url || '/', `http://localhost:${port}`);
-      const pathname = url.pathname;
-
-      // CORS for local dev
-      res.setHeader('Access-Control-Allow-Origin', '*');
-      res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
-      res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
-
-      // Handle preflight
-      if (req.method === 'OPTIONS') {
-        res.writeHead(204);
-        res.end();
-        return;
-      }
-
-      // Static files
-      if (pathname.startsWith('/static/')) {
-        return serveStatic(pathname.replace('/static/', ''), res);
-      }
-
-      // Route matching (exact match first, then pattern match)
-      let handler = routes[pathname];
-
-      // Try pattern matching for dynamic routes
-      if (!handler) {
-        for (const [pattern, h] of Object.entries(routes)) {
-          if (pattern.includes(':')) {
-            const regex = new RegExp('^' + pattern.replace(/:(\w+)/g, '([^/]+)') + '$');
-            if (regex.test(pathname)) {
-              handler = h;
-              break;
-            }
-          }
-        }
-      }
-
-      if (handler) {
-        try {
-          await handler(req, res);
-        } catch (err) {
-          console.error('Route error:', err);
-          res.writeHead(500, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({ error: 'Internal Server Error' }));
-        }
-      } else {
-        res.writeHead(404, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ error: 'Not Found' }));
-      }
-    })();
+    void handleRequest(req, res, routes, port, resetTimeout);
   });
 
   // Setup WebSocket on upgrade
@@ -195,7 +203,7 @@ export function createConductorServer(
       server.close();
     },
     resetTimeout,
-    broadcast: (type: string, payload: any) => {
+    broadcast: (type: string, payload: Record<string, unknown>) => {
       if (wsHandler) {
         wsHandler.broadcast({ type, ...payload });
       }
@@ -221,14 +229,14 @@ function createAgentRoutes(): Record<string, RouteHandler> {
         return;
       }
 
-      const taskId = extractParam(req.url, 'taskId');
+      const taskId = extractParam(req.url);
       const body = await parseBody(req);
 
       const result = await conductor.spawn(taskId, {
-        timeout: body.timeout,
-        worktree: body.worktree,
-        resume: body.resume,
-        verbose: body.verbose
+        timeout: body.timeout as number | undefined,
+        worktree: body.worktree as boolean | undefined,
+        resume: body.resume as boolean | undefined,
+        verbose: body.verbose as boolean | undefined
       });
 
       json(res, result, result.success ? 200 : 400);
@@ -241,12 +249,12 @@ function createAgentRoutes(): Record<string, RouteHandler> {
         return;
       }
 
-      const taskId = extractParam(req.url, 'taskId');
+      const taskId = extractParam(req.url);
       const body = await parseBody(req);
 
       const result = await conductor.reap(taskId, {
-        wait: body.wait,
-        timeout: body.timeout
+        wait: body.wait as boolean | undefined,
+        timeout: body.timeout as number | undefined
       });
 
       json(res, result, result.success ? 200 : 400);
@@ -259,7 +267,7 @@ function createAgentRoutes(): Record<string, RouteHandler> {
         return;
       }
 
-      const taskId = extractParam(req.url, 'taskId');
+      const taskId = extractParam(req.url);
       const result = await conductor.kill(taskId);
 
       json(res, result, result.success ? 200 : 400);
@@ -267,7 +275,7 @@ function createAgentRoutes(): Record<string, RouteHandler> {
 
     // Get agent status
     '/api/agents/:taskId': (req, res) => {
-      const taskId = extractParam(req.url, 'taskId');
+      const taskId = extractParam(req.url);
       const status = conductor.getStatus(taskId);
 
       if (status) {
@@ -279,8 +287,8 @@ function createAgentRoutes(): Record<string, RouteHandler> {
 
     // Get agent log
     '/api/agents/:taskId/log': (req, res) => {
-      const taskId = extractParam(req.url, 'taskId');
-      const url = new URL(req.url, 'http://localhost');
+      const taskId = extractParam(req.url);
+      const url = new URL(req.url || '/', 'http://localhost');
       const tail = parseInt(url.searchParams.get('tail') || '100', 10);
 
       const lines = conductor.getLog(taskId, { tail });
@@ -289,7 +297,7 @@ function createAgentRoutes(): Record<string, RouteHandler> {
 
     // Stream agent log (SSE)
     '/api/agents/:taskId/log/stream': (req, res) => {
-      const taskId = extractParam(req.url, 'taskId');
+      const taskId = extractParam(req.url);
 
       // SSE headers
       res.writeHead(200, {
@@ -307,7 +315,8 @@ function createAgentRoutes(): Record<string, RouteHandler> {
 
       const sendNext = async () => {
         try {
-          const { value, done } = await iterator.next();
+          const iterResult: IteratorResult<unknown, undefined> = await iterator.next();
+          const { value, done } = iterResult;
           if (done) {
             res.write('event: close\ndata: stream ended\n\n');
             res.end();
@@ -393,9 +402,9 @@ function setupEventBroadcast(wsHandler: WebSocketHandler) {
 // Helpers
 // ============================================================================
 
-function extractParam(url: string, _param: string): string {
+function extractParam(url: string | undefined): string {
   // Simple extraction for /api/agents/:taskId pattern
-  const parts = url.split('/');
+  const parts = (url ?? '').split('/');
   // Find 'agents' and get next segment
   const agentsIdx = parts.findIndex(p => p === 'agents');
   if (agentsIdx >= 0 && parts[agentsIdx + 1]) {
@@ -405,13 +414,13 @@ function extractParam(url: string, _param: string): string {
   return '';
 }
 
-async function parseBody(req: http.IncomingMessage): Promise<Record<string, any>> {
+async function parseBody(req: http.IncomingMessage): Promise<Record<string, unknown>> {
   return new Promise((resolve) => {
     let body = '';
     req.on('data', chunk => body += chunk);
     req.on('end', () => {
       try {
-        resolve(body ? JSON.parse(body) : {});
+        resolve(body ? JSON.parse(body) as Record<string, unknown> : {});
       } catch {
         resolve({});
       }

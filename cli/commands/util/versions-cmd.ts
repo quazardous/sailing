@@ -19,7 +19,7 @@ export function registerVersionsCommands(program: Command) {
     .description('Show component versions (from components.yaml)')
     .option('--json', 'JSON output')
     .option('--components', 'Show components definition with file path')
-    .action((options) => {
+    .action((options: { json?: boolean; components?: boolean }) => {
       if (options.components) {
         const componentsFile = getComponentsFile();
         const exists = fs.existsSync(componentsFile);
@@ -72,7 +72,7 @@ export function registerVersionsCommands(program: Command) {
     .description('Bump component version (type: major, minor, patch)')
     .option('--dry-run', 'Check if bump is possible without making changes')
     .option('--json', 'JSON output')
-    .action((componentKey, bumpType, options) => {
+    .action((componentKey: string, bumpType: string, options: { dryRun?: boolean; json?: boolean }) => {
       if (!['major', 'minor', 'patch'].includes(bumpType)) {
         console.error(`Invalid bump type: ${bumpType}`);
         console.error('Use: major, minor, or patch');
@@ -88,7 +88,7 @@ export function registerVersionsCommands(program: Command) {
         process.exit(1);
       }
 
-      const result = bumpComponentVersion(componentKey, bumpType, { dryRun: options.dryRun });
+      const result = bumpComponentVersion(componentKey, bumpType as 'major' | 'minor' | 'patch', { dryRun: options.dryRun });
 
       if (options.json) {
         jsonOut(result);

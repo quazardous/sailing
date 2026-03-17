@@ -19,16 +19,18 @@ export function registerTagCommands(program: Command): void {
   tag.command('list')
     .description('List all tags with counts by artefact type')
     .option('--json', 'JSON output')
-    .action((options) => {
+    .action((options: { json?: boolean }) => {
       // Map<tag, {prd: N, epic: N, task: N}>
-      const tagCounts = new Map();
+      interface TagCount { prd: number; epic: number; task: number; total: number }
+      const tagCounts = new Map<string, TagCount>();
 
       const addTags = (tags: string[] | undefined, type: 'prd' | 'epic' | 'task') => {
         for (const t of (tags || [])) {
           if (!tagCounts.has(t)) {
             tagCounts.set(t, { prd: 0, epic: 0, task: 0, total: 0 });
           }
-          const counts = tagCounts.get(t) as { prd: number; epic: number; task: number; total: number };
+          const counts = tagCounts.get(t);
+          if (!counts) continue;
           counts[type]++;
           counts.total++;
         }
@@ -37,7 +39,7 @@ export function registerTagCommands(program: Command): void {
       // Scan all PRDs (use artefacts.ts contract)
       for (const prdDir of findPrdDirs()) {
         const prdFile = `${prdDir}/prd.md`;
-        const prd = loadFile(prdFile);
+        const prd = loadFile<{ tags?: string[] }>(prdFile);
         if (prd?.data?.tags) {
           addTags(prd.data.tags, 'prd');
         }
@@ -61,7 +63,7 @@ export function registerTagCommands(program: Command): void {
       const sorted = [...tagCounts.entries()].sort((a, b) => b[1].total - a[1].total);
 
       if (options.json) {
-        const result = sorted.map(([tag, counts]: [string, { prd: number; epic: number; task: number; total: number }]) => ({ tag, ...counts }));
+        const result = sorted.map(([tag, counts]) => ({ tag, ...counts }));
         jsonOut(result);
       } else {
         if (sorted.length === 0) {
@@ -69,7 +71,7 @@ export function registerTagCommands(program: Command): void {
         } else {
           console.log('Tags:\n');
           for (const [tag, counts] of sorted) {
-            const parts = [];
+            const parts: string[] = [];
             if (counts.prd > 0) parts.push(`${counts.prd} PRD`);
             if (counts.epic > 0) parts.push(`${counts.epic} epic`);
             if (counts.task > 0) parts.push(`${counts.task} task`);

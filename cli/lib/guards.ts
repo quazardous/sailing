@@ -99,8 +99,8 @@ export class GuardChecker {
       const content = fs.readFileSync(guardsFile, 'utf8');
       this.guardsCache = yaml.load(content) as GuardsConfig;
       return this.guardsCache;
-    } catch (err) {
-      console.error(`Error loading guards.yaml: ${err}`);
+    } catch (err: unknown) {
+      console.error(`Error loading guards.yaml: ${err instanceof Error ? err.message : String(err)}`);
       return null;
     }
   }
@@ -198,17 +198,17 @@ export class GuardChecker {
    */
   checkSync(command: string, context: GuardContext): GuardResult {
     let result: GuardResult | null = null;
-    let error: Error | null = null;
+    let error: unknown = null;
 
     const promise = this.check(command, context);
-    promise.then(r => { result = r; }).catch(e => { error = e; });
+    promise.then(r => { result = r; }).catch((e: unknown) => { error = e; });
 
     const start = Date.now();
     while (result === null && error === null && Date.now() - start < 5000) {
       // Busy wait
     }
 
-    if (error) throw error;
+    if (error) throw (error instanceof Error ? error : new Error(String(error)));
     if (!result) {
       return {
         ok: true,
@@ -305,10 +305,10 @@ async function evaluateCondition(condition: string, context: GuardContext): Prom
   const template = `{% if ${expr} %}true{% else %}false{% endif %}`;
 
   try {
-    const result = await liquid.parseAndRender(template, context);
+    const result = String(await liquid.parseAndRender(template, context));
     return result.trim() === 'true';
-  } catch (err) {
-    console.error(`Error evaluating condition '${expr}': ${err}`);
+  } catch (err: unknown) {
+    console.error(`Error evaluating condition '${expr}': ${err instanceof Error ? err.message : String(err)}`);
     return false;
   }
 }
@@ -320,10 +320,10 @@ async function renderTemplate(template: string, context: GuardContext): Promise<
   const liquid = getLiquid();
 
   try {
-    const result = await liquid.parseAndRender(template, context);
+    const result = String(await liquid.parseAndRender(template, context));
     return result.trim();
-  } catch (err) {
-    console.error(`Error rendering template: ${err}`);
+  } catch (err: unknown) {
+    console.error(`Error rendering template: ${err instanceof Error ? err.message : String(err)}`);
     return template;  // Return raw template on error
   }
 }

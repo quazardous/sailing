@@ -21,13 +21,13 @@ import fs from 'fs';
 import path from 'path';
 import crypto from 'crypto';
 
-export type Query<T> = Partial<T> & Record<string, any>;
+export type Query<T> = Partial<T> & Record<string, unknown>;
 export type UpdateOps<T> = {
   $set?: Partial<T>;
-  $unset?: Partial<Record<keyof T, any>>;
+  $unset?: Partial<Record<keyof T, true>>;
   $inc?: Partial<Record<keyof T, number>>;
-  $push?: Partial<Record<keyof T, any>>;
-  [key: string]: any;
+  $push?: Partial<Record<keyof T, unknown>>;
+  [key: string]: unknown;
 };
 export type UpdateOptions = { upsert?: boolean; multi?: boolean };
 export type RemoveOptions = { multi?: boolean };
@@ -51,6 +51,16 @@ function generateId(): string {
 }
 
 /**
+ * Match a single query entry (value vs condition)
+ */
+function matchQueryEntry(value: unknown, condition: unknown): boolean {
+  if (condition && typeof condition === 'object' && !Array.isArray(condition)) {
+    return matchOperators(value, condition as Record<string, unknown>);
+  }
+  return value === condition;
+}
+
+/**
  * Match document against query
  * Supports: exact match, $gt, $gte, $lt, $lte, $ne, $in, $exists
  */
@@ -59,33 +69,65 @@ function matchQuery<T>(doc: T, query: Query<T>): boolean {
 
   for (const [key, condition] of Object.entries(query)) {
     const value: unknown = (doc as Record<string, unknown>)[key];
-
-    // Operator query: { age: { $gt: 18 } }
-    if (condition && typeof condition === 'object' && !Array.isArray(condition)) {
-      for (const [op, opValue] of Object.entries(condition)) {
-        switch (op) {
-          case '$gt': if ((value as number) <= (opValue as number)) return false; break;
-          case '$gte': if ((value as number) < (opValue as number)) return false; break;
-          case '$lt': if ((value as number) >= (opValue as number)) return false; break;
-          case '$lte': if ((value as number) > (opValue as number)) return false; break;
-          case '$ne': if (value === opValue) return false; break;
-          case '$in': if (!Array.isArray(opValue) || !opValue.includes(value)) return false; break;
-          case '$nin': if (Array.isArray(opValue) && opValue.includes(value)) return false; break;
-          case '$exists':
-            if (opValue && value === undefined) return false;
-            if (!opValue && value !== undefined) return false;
-            break;
-          default:
-            // Nested object match
-            if (value?.[op] !== opValue) return false;
-        }
-      }
-    } else {
-      // Exact match
-      if (value !== condition) return false;
-    }
+    if (!matchQueryEntry(value, condition)) return false;
   }
   return true;
+}
+
+/** Evaluate operator conditions ($gt, $gte, $lt, $lte, $ne, $in, $nin, $exists) */
+function matchOperators(value: unknown, operators: Record<string, unknown>): boolean {
+  for (const [op, opValue] of Object.entries(operators)) {
+    if (!matchSingleOperator(value, op, opValue)) return false;
+  }
+  return true;
+}
+
+function matchSingleOperator(value: unknown, op: string, opValue: unknown): boolean {
+  switch (op) {
+    case '$gt': return (value as number) > (opValue as number);
+    case '$gte': return (value as number) >= (opValue as number);
+    case '$lt': return (value as number) < (opValue as number);
+    case '$lte': return (value as number) <= (opValue as number);
+    case '$ne': return value !== opValue;
+    case '$in': return Array.isArray(opValue) && (opValue as unknown[]).includes(value);
+    case '$nin': return !Array.isArray(opValue) || !(opValue as unknown[]).includes(value);
+    case '$exists':
+      if (opValue && value === undefined) return false;
+      if (!opValue && value !== undefined) return false;
+      return true;
+    default:
+      // Nested object match
+      return (value as Record<string, unknown>)?.[op] === opValue;
+  }
+}
+
+/** Apply $set operation */
+function applySet(result: Record<string, unknown>, fields: unknown): void {
+  Object.assign(result, fields as Record<string, unknown>);
+}
+
+/** Apply $unset operation */
+function applyUnset(result: Record<string, unknown>, fields: unknown): void {
+  for (const key of Object.keys(fields as Record<string, unknown>)) {
+    delete result[key];
+  }
+}
+
+/** Apply $inc operation */
+function applyInc(result: Record<string, unknown>, fields: unknown): void {
+  for (const [key, amount] of Object.entries(fields as Record<string, number>)) {
+    const existing = result[key];
+    const currentValue = typeof existing === 'number' ? existing : 0;
+    result[key] = currentValue + amount;
+  }
+}
+
+/** Apply $push operation */
+function applyPush(result: Record<string, unknown>, fields: unknown): void {
+  for (const [key, value] of Object.entries(fields as Record<string, unknown>)) {
+    if (!Array.isArray(result[key])) result[key] = [];
+    (result[key] as unknown[]).push(value);
+  }
 }
 
 /**
@@ -97,31 +139,12 @@ function applyUpdate<T>(doc: T, update: UpdateOps<T>): T {
 
   for (const [op, fields] of Object.entries(update)) {
     switch (op) {
-      case '$set':
-        Object.assign(result, fields);
-        break;
-      case '$unset':
-        for (const key of Object.keys(fields as object)) {
-          delete result[key];
-        }
-        break;
-      case '$inc':
-        for (const [key, amount] of Object.entries(fields as object)) {
-          const currentValue = typeof result[key] === 'number' ? result[key] : 0;
-          result[key] = currentValue + (amount as number);
-        }
-        break;
-      case '$push':
-        for (const [key, value] of Object.entries(fields as object)) {
-          if (!Array.isArray(result[key])) result[key] = [];
-          (result[key] as unknown[]).push(value);
-        }
-        break;
+      case '$set': applySet(result, fields); break;
+      case '$unset': applyUnset(result, fields); break;
+      case '$inc': applyInc(result, fields); break;
+      case '$push': applyPush(result, fields); break;
       default:
-        // Direct field update (no operator)
-        if (!op.startsWith('$')) {
-          result[op] = fields as unknown;
-        }
+        if (!op.startsWith('$')) result[op] = fields;
     }
   }
 
@@ -132,7 +155,7 @@ function applyUpdate<T>(doc: T, update: UpdateOps<T>): T {
 /**
  * JSON Collection - one file, multiple documents
  */
-export class Collection<T = Record<string, any>> {
+export class Collection<T = Record<string, unknown>> {
   filepath: string;
   lockfile: string;
   private readonly hostname: string;
@@ -149,6 +172,21 @@ export class Collection<T = Record<string, any>> {
     }
   }
 
+  /** Check if an existing lock is stale and try to remove it. Returns true if removed. */
+  private tryRemoveStaleLock(): boolean {
+    try {
+      const lockData = JSON.parse(fs.readFileSync(this.lockfile, 'utf8')) as { pid: number; time: number; host: string };
+      if (Date.now() - lockData.time > LOCK_STALE_MS) {
+        fs.unlinkSync(this.lockfile);
+        return true;
+      }
+    } catch {
+      try { fs.unlinkSync(this.lockfile); } catch { /* ignore */ }
+      return true;
+    }
+    return false;
+  }
+
   /**
    * Acquire file lock
    */
@@ -158,34 +196,14 @@ export class Collection<T = Record<string, any>> {
 
     while (Date.now() - startTime < timeout) {
       try {
-        // Try to create lock file exclusively
         fs.writeFileSync(this.lockfile, JSON.stringify({
-          pid,
-          time: Date.now(),
-          host: this.hostname
+          pid, time: Date.now(), host: this.hostname
         }), { flag: 'wx' });
         return true;
       } catch (err) {
-        const anyErr = err as NodeJS.ErrnoException;
-        if (anyErr.code === 'EEXIST') {
-          // Lock exists - check if stale
-          try {
-            const lockData = JSON.parse(fs.readFileSync(this.lockfile, 'utf8')) as { pid: number; time: number; host: string };
-            if (Date.now() - lockData.time > LOCK_STALE_MS) {
-              // Stale lock - remove it
-              fs.unlinkSync(this.lockfile);
-              continue;
-            }
-          } catch {
-            // Can't read lock - try to remove
-            try { fs.unlinkSync(this.lockfile); } catch { /* ignore */ }
-            continue;
-          }
-          // Wait and retry
-          await new Promise(r => setTimeout(r, LOCK_RETRY_MS + Math.random() * LOCK_RETRY_MS));
-        } else {
-          throw err;
-        }
+        if ((err as NodeJS.ErrnoException).code !== 'EEXIST') throw err;
+        if (this.tryRemoveStaleLock()) continue;
+        await new Promise(r => setTimeout(r, LOCK_RETRY_MS + Math.random() * LOCK_RETRY_MS));
       }
     }
     throw new Error(`Failed to acquire lock on ${this.filepath} after ${timeout}ms`);
@@ -211,7 +229,7 @@ export class Collection<T = Record<string, any>> {
     }
     try {
       const content = fs.readFileSync(this.filepath, 'utf8');
-      return JSON.parse(content);
+      return JSON.parse(content) as T[];
     } catch {
       return [];
     }
@@ -276,7 +294,7 @@ export class Collection<T = Record<string, any>> {
 
     const now = new Date().toISOString();
     const toInsert = docs.map(d => ({
-      _id: (d as any)._id || generateId(),
+      _id: (d as Record<string, unknown>)._id as string || generateId(),
       ...d,
       _createdAt: now,
       _updatedAt: now
@@ -410,7 +428,7 @@ export class Collection<T = Record<string, any>> {
 /**
  * Create collection instance (factory function)
  */
-export function createCollection<T = Record<string, any>>(
+export function createCollection<T = Record<string, unknown>>(
   filepath: string,
   options: CollectionOptions = {}
 ): Collection<T> {

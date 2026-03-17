@@ -19,6 +19,30 @@ export interface DbOptions {
   status?: string;
 }
 
+/** Document shape for agent entries in the database */
+export interface AgentDoc {
+  _id?: string;
+  taskNum: number;
+  taskId?: string;
+  status?: string;
+  spawned_at?: string;
+  _createdAt?: string;
+  migratedAt?: string;
+  [key: string]: unknown;
+}
+
+/** Document shape for run entries in the database */
+export interface RunDoc {
+  _id?: string;
+  taskNum: number;
+  taskId?: string;
+  startedAt?: string;
+  endedAt?: string;
+  logFile?: string;
+  exitCode?: number;
+  [key: string]: unknown;
+}
+
 // ============================================================================
 // DbOps Class - POO Encapsulation
 // ============================================================================
@@ -28,8 +52,8 @@ export interface DbOptions {
  * Manages agents and runs collections.
  */
 export class DbOps {
-  private agentsDb: Collection | null = null;
-  private runsDb: Collection | null = null;
+  private agentsDb: Collection<AgentDoc> | null = null;
+  private runsDb: Collection<RunDoc> | null = null;
 
   constructor(private dbDir: string) {}
 
@@ -41,9 +65,9 @@ export class DbOps {
    * Get agents collection
    * Index: taskNum (number) - survives nomenclature changes
    */
-  getAgentsDb(): Collection {
+  getAgentsDb(): Collection<AgentDoc> {
     if (!this.agentsDb) {
-      this.agentsDb = new Collection(path.join(this.dbDir, 'agents.json'));
+      this.agentsDb = new Collection<AgentDoc>(path.join(this.dbDir, 'agents.json'));
       void this.agentsDb.ensureIndex({ fieldName: 'taskNum', unique: true });
     }
     return this.agentsDb;
@@ -52,9 +76,9 @@ export class DbOps {
   /**
    * Get runs collection
    */
-  getRunsDb(): Collection {
+  getRunsDb(): Collection<RunDoc> {
     if (!this.runsDb) {
-      this.runsDb = new Collection(path.join(this.dbDir, 'runs.json'));
+      this.runsDb = new Collection<RunDoc>(path.join(this.dbDir, 'runs.json'));
       void this.runsDb.ensureIndex({ fieldName: 'taskId' });
     }
     return this.runsDb;
@@ -79,8 +103,7 @@ export class DbOps {
   /**
    * Get agent by taskNum
    */
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  getAgent(taskNum: number): any {
+  getAgent(taskNum: number): AgentDoc | null {
     const db = this.getAgentsDb();
     return db.findOne({ taskNum });
   }
@@ -88,11 +111,9 @@ export class DbOps {
   /**
    * Get all agents
    */
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  getAllAgents(options: DbOptions = {}): any[] {
+  getAllAgents(options: DbOptions = {}): AgentDoc[] {
     const db = this.getAgentsDb();
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const query: any = {};
+    const query: Partial<AgentDoc> = {};
 
     if (options.status) {
       query.status = options.status;
@@ -100,10 +121,9 @@ export class DbOps {
 
     const agents = db.find(query);
     // Sort by spawned_at descending
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    return agents.sort((a: any, b: any) => {
-      const dateA: string = (a.spawned_at || a._createdAt || '') as string;
-      const dateB: string = (b.spawned_at || b._createdAt || '') as string;
+    return agents.sort((a: AgentDoc, b: AgentDoc) => {
+      const dateA = a.spawned_at || a._createdAt || '';
+      const dateB = b.spawned_at || b._createdAt || '';
       return dateB.localeCompare(dateA);
     });
   }
@@ -168,15 +188,13 @@ export class DbOps {
   /**
    * Get runs for a task
    */
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  getRunsForTask(taskNum: number): any[] {
+  getRunsForTask(taskNum: number): RunDoc[] {
     const db = this.getRunsDb();
     const runs = db.find({ taskNum });
     // Sort by startedAt descending
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    return runs.sort((a: any, b: any) => {
-      const dateA: string = (a.startedAt || '') as string;
-      const dateB: string = (b.startedAt || '') as string;
+    return runs.sort((a: RunDoc, b: RunDoc) => {
+      const dateA = a.startedAt || '';
+      const dateB = b.startedAt || '';
       return dateB.localeCompare(dateA);
     });
   }

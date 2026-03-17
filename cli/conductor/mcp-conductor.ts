@@ -13,6 +13,8 @@ import {
   CallToolRequestSchema,
   ListToolsRequestSchema,
 } from '@modelcontextprotocol/sdk/types.js';
+import type { Transport } from '@modelcontextprotocol/sdk/shared/transport.js';
+import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 import net from 'net';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -62,13 +64,13 @@ function createConnectionHandler(mode: 'tcp' | 'unix') {
     clientServer.setRequestHandler(ListToolsRequestSchema, () => ({ tools: TOOLS }));
     clientServer.setRequestHandler(CallToolRequestSchema, async (request) => {
       const { name, arguments: callArgs } = request.params;
-      const result = await handleConductorTool(name, callArgs as Record<string, any>);
-      return result as any;
+      const result = await handleConductorTool(name, callArgs ?? {});
+      return result as CallToolResult;
     });
 
     socket.on('close', () => log('INFO', `Client #${connId} disconnected`));
 
-    const transport = new SocketTransport(socket) as any;
+    const transport = new SocketTransport(socket) as unknown as Transport;
     await clientServer.connect(transport);
   };
 }
@@ -91,8 +93,8 @@ async function main() {
     server.setRequestHandler(ListToolsRequestSchema, () => ({ tools: TOOLS }));
     server.setRequestHandler(CallToolRequestSchema, async (request) => {
       const { name, arguments: callArgs } = request.params;
-      const result = await handleConductorTool(name, callArgs as Record<string, any>);
-      return result as any;
+      const result = await handleConductorTool(name, callArgs ?? {});
+      return result as CallToolResult;
     });
     await server.connect(new StdioServerTransport());
   }
