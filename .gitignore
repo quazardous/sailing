@@ -4,6 +4,7 @@ node_modules/
 # Local settings (not distributed)
 .claude/
 .sailing/
+.mcp.json
 
 # OS files
 .DS_Store
@@ -33,3 +34,4 @@ commands/dev/*.worktree.md
 
 # Built files (live on dist branch)
 dist/
+TODO.md

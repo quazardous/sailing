@@ -160,7 +160,8 @@ For testing sailing's own install on the sailing repo:
 
 | Script | Usage |
 |--------|-------|
-| `scripts/lint-report.sh` | Lint error report by rule, by file, and explicit-any sources. `--top N` to limit, `--file FILE` to target one file. |
+| `dev/lint-report.sh` | Lint error report by rule, by file, and explicit-any sources. `--top N` to limit, `--file FILE` to target one file. |
+| `dev/mcp-dev.mjs` | MCP stdio server exposing dev tools (tsc_check, lint_report, lint_file, lint_count). Configure in `.mcp.json`. |
 
 ---
 
