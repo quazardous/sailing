@@ -7,6 +7,7 @@
  * PURE LIB: No config access, no manager imports.
  * WorktreeOps class encapsulates operations needing projectRoot/worktreesDir.
  */
+import { errorMessage } from './errors.js';
 import fs from 'fs';
 import path from 'path';
 import { execSync } from 'child_process';
@@ -317,7 +318,7 @@ export class WorktreeOps {
         });
 
         return { success: true, synced: true, behind: div.behind };
-      } catch (e: any) {
+      } catch (e) {
         // Abort and return to original
         try {
           if (strategy === 'rebase') {
@@ -331,7 +332,7 @@ export class WorktreeOps {
           cwd: this.projectRoot, encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe']
         });
 
-        return { success: false, synced: false, error: `Conflict during ${strategy}: ${e.message}` };
+        return { success: false, synced: false, error: `Conflict during ${strategy}: ${errorMessage(e)}` };
       }
     } catch (e) {
       return { success: false, synced: false, error: e instanceof Error ? e.message : String(e) };

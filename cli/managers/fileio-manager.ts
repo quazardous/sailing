@@ -3,6 +3,7 @@
  *
  * MANAGER: Orchestrates file operations with config/path access.
  */
+import { errorMessage } from '../lib/errors.js';
 import fs from 'fs';
 import yaml from 'js-yaml';
 import { parseMarkdown, stringifyMarkdown } from '../lib/markdown.js';
@@ -87,8 +88,8 @@ export function loadComponents(): any {
       return JSON.parse(content);
     }
     return yaml.load(content);
-  } catch (e: any) {
-    console.error(`Error loading ${componentsFile}: ${e.message}`);
+  } catch (e) {
+    console.error(`Error loading ${componentsFile}: ${errorMessage(e)}`);
     return null;
   }
 }

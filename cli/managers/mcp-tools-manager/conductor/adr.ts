@@ -1,6 +1,7 @@
 /**
  * MCP Conductor Tools - ADR (Architecture Decision Records) operations
  */
+import { errorMessage } from '../../../lib/errors.js';
 import {
   getAllAdrs,
   getFullAdr,
@@ -96,8 +97,8 @@ export const ADR_TOOLS: ToolDefinition[] = [
           },
           next_actions: nextActions
         });
-      } catch (error: any) {
-        return err(error.message);
+      } catch (error) {
+        return err(errorMessage(error));
       }
     }
   },
@@ -159,8 +160,8 @@ export const ADR_TOOLS: ToolDefinition[] = [
           },
           next_actions: nextActions
         });
-      } catch (error: any) {
-        return err(error.message);
+      } catch (error) {
+        return err(errorMessage(error));
       }
     }
   },
@@ -213,8 +214,8 @@ export const ADR_TOOLS: ToolDefinition[] = [
           },
           next_actions: nextActions
         });
-      } catch (error: any) {
-        return err(error.message);
+      } catch (error) {
+        return err(errorMessage(error));
       }
     }
   },
@@ -253,8 +254,8 @@ export const ADR_TOOLS: ToolDefinition[] = [
             message: 'ADR marked as Accepted - it is now an active architectural decision'
           }
         });
-      } catch (error: any) {
-        return err(error.message);
+      } catch (error) {
+        return err(errorMessage(error));
       }
     }
   },
@@ -299,8 +300,8 @@ export const ADR_TOOLS: ToolDefinition[] = [
               : 'ADR marked as Deprecated'
           }
         });
-      } catch (error: any) {
-        return err(error.message);
+      } catch (error) {
+        return err(errorMessage(error));
       }
     }
   },
@@ -373,8 +374,8 @@ export const ADR_TOOLS: ToolDefinition[] = [
             context: lines.join('\n')
           }
         });
-      } catch (error: any) {
-        return err(error.message);
+      } catch (error) {
+        return err(errorMessage(error));
       }
     }
   }

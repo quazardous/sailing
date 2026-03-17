@@ -11,6 +11,7 @@
  * - AGENT_TOOLS: Limited tools for sandbox agents
  * - CONDUCTOR_TOOLS: Full tools for orchestrator
  */
+import { errorMessage } from '../../lib/errors.js';
 import type { Tool } from '@modelcontextprotocol/sdk/types.js';
 import { log, logDebug } from '../mcp-manager.js';
 
@@ -94,9 +95,9 @@ export async function handleAgentTool(name: string, args: Record<string, any>): 
   try {
     log('INFO', `Agent tool: ${name}`, args);
     return await toolDef.handler(args);
-  } catch (error: any) {
-    log('ERROR', `Agent tool failed: ${name}`, { error: error.message });
-    return err(error.message);
+  } catch (error) {
+    log('ERROR', `Agent tool failed: ${name}`, { error: errorMessage(error) });
+    return err(errorMessage(error));
   }
 }
 
@@ -111,9 +112,9 @@ export async function handleConductorTool(name: string, args: Record<string, any
     const result = await toolDef.handler(args);
     logDebug(`Handler result for: ${name}`, { result: JSON.stringify(result).substring(0, 500) });
     return result;
-  } catch (error: any) {
-    log('ERROR', `Conductor tool failed: ${name}`, { error: error.message });
-    return err(error.message);
+  } catch (error) {
+    log('ERROR', `Conductor tool failed: ${name}`, { error: errorMessage(error) });
+    return err(errorMessage(error));
   }
 }
 

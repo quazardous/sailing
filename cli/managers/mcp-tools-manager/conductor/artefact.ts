@@ -1,6 +1,7 @@
 /**
  * MCP Conductor Tools - Artefact operations
  */
+import { errorMessage, errorStack } from '../../../lib/errors.js';
 import { logDebug } from '../../mcp-manager.js';
 import { getStore } from '../../artefacts-manager.js';
 import {
@@ -128,8 +129,8 @@ export const ARTEFACT_TOOLS: ToolDefinition[] = [
         }
 
         return ok({ success: true, data: { items, count: items.length }, next_actions: nextActions });
-      } catch (error: any) {
-        return err(error.message);
+      } catch (error) {
+        return err(errorMessage(error));
       }
     }
   },
@@ -244,8 +245,8 @@ export const ARTEFACT_TOOLS: ToolDefinition[] = [
           data: { ...data, ...(warnings.length > 0 ? { warnings } : {}) },
           next_actions: nextActions
         });
-      } catch (error: any) {
-        return err(error.message);
+      } catch (error) {
+        return err(errorMessage(error));
       }
     }
   },
@@ -340,8 +341,8 @@ export const ARTEFACT_TOOLS: ToolDefinition[] = [
         }
 
         return ok({ success: true, data: result, next_actions: nextActions });
-      } catch (error: any) {
-        return err(error.message);
+      } catch (error) {
+        return err(errorMessage(error));
       }
     }
   },
@@ -385,8 +386,8 @@ export const ARTEFACT_TOOLS: ToolDefinition[] = [
         });
 
         return ok({ success: true, data: result });
-      } catch (error: any) {
-        return err(error.message);
+      } catch (error) {
+        return err(errorMessage(error));
       }
     }
   },
@@ -409,8 +410,8 @@ export const ARTEFACT_TOOLS: ToolDefinition[] = [
         const store = getStore();
         const result = store.touchArtefact(id);
         return ok({ success: true, data: result });
-      } catch (error: any) {
-        return err(error.message);
+      } catch (error) {
+        return err(errorMessage(error));
       }
     }
   },
@@ -487,9 +488,9 @@ export const ARTEFACT_TOOLS: ToolDefinition[] = [
         const result = store.editArtefactMultiSection(id, args.content, args.mode || 'replace');
         logDebug(`artefact_edit: result`, { result });
         return ok({ success: true, data: result });
-      } catch (error: any) {
-        logDebug(`artefact_edit: error`, { error: error.message, stack: error.stack });
-        return err(error.message);
+      } catch (error) {
+        logDebug(`artefact_edit: error`, { error: errorMessage(error), stack: errorStack(error) });
+        return err(errorMessage(error));
       }
     }
   },
@@ -548,8 +549,8 @@ export const ARTEFACT_TOOLS: ToolDefinition[] = [
         };
 
         return ok({ success: true, data });
-      } catch (error: any) {
-        return err(error.message);
+      } catch (error) {
+        return err(errorMessage(error));
       }
     }
   },
@@ -591,8 +592,8 @@ export const ARTEFACT_TOOLS: ToolDefinition[] = [
         }));
 
         return ok({ success: true, data: { items, count: items.length } });
-      } catch (error: any) {
-        return err(error.message);
+      } catch (error) {
+        return err(errorMessage(error));
       }
     }
   },
@@ -642,8 +643,8 @@ export const ARTEFACT_TOOLS: ToolDefinition[] = [
         }));
 
         return ok({ success: true, data: { items, count: items.length } });
-      } catch (error: any) {
-        return err(error.message);
+      } catch (error) {
+        return err(errorMessage(error));
       }
     }
   },
@@ -716,8 +717,8 @@ export const ARTEFACT_TOOLS: ToolDefinition[] = [
             if (item.content) {
               store.editArtefactMultiSection(result.id, item.content, 'replace');
             }
-          } catch (e: any) {
-            errors.push(`Item ${i + 1} "${item.title}": ${e.message}`);
+          } catch (e) {
+            errors.push(`Item ${i + 1} "${item.title}": ${errorMessage(e)}`);
           }
         }
 
@@ -775,8 +776,8 @@ export const ARTEFACT_TOOLS: ToolDefinition[] = [
             ...(errors.length > 0 ? { errors } : {})
           }
         });
-      } catch (error: any) {
-        return err(error.message);
+      } catch (error) {
+        return err(errorMessage(error));
       }
     }
   }

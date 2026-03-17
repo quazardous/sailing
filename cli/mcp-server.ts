@@ -22,6 +22,7 @@
  *   4. Walk up from current directory
  */
 
+import { errorMessage } from './lib/errors.js';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -271,8 +272,8 @@ function stopServer(): boolean {
     }
 
     return true;
-  } catch (e: any) {
-    console.error(`Failed to stop server: ${e.message}`);
+  } catch (e) {
+    console.error(`Failed to stop server: ${errorMessage(e)}`);
     return false;
   }
 }

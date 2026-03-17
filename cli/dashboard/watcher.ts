@@ -4,6 +4,7 @@
  * Watches configured directories and broadcasts changes via WebSocket.
  * Uses fs.watch (inotify on Linux) with debouncing.
  */
+import { errorMessage } from '../lib/errors.js';
 import fs from 'fs';
 import path from 'path';
 import { getPath } from '../managers/core-manager.js';
@@ -193,8 +194,8 @@ function watchDirectory(dirPath: string, config: WatchConfig): fs.FSWatcher | nu
     });
 
     return watcher;
-  } catch (err: any) {
-    console.error(`[watcher] Cannot watch ${dirPath}:`, err.message);
+  } catch (err) {
+    console.error(`[watcher] Cannot watch ${dirPath}:`, errorMessage(err));
     return null;
   }
 }

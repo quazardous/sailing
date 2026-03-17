@@ -4,6 +4,7 @@
  * MANAGER: Has config access, encapsulates service start/stop/status logic.
  * Extracted from rdrctl.ts to follow Commands → Managers → Libs architecture.
  */
+import { errorMessage, errorCode } from '../lib/errors.js';
 import { spawn } from 'child_process';
 import path from 'path';
 import fs from 'fs';
@@ -280,10 +281,10 @@ export class ServiceManager {
         try {
           process.kill(pid, 'SIGTERM');
           stoppedPids.push(pid);
-        } catch (e: any) {
-          if (e.code !== 'ESRCH') {
+        } catch (e) {
+          if (errorCode(e) !== 'ESRCH') {
             // Process exists but couldn't be killed
-            return { success: false, error: `Failed to stop process ${pid}: ${e.message}` };
+            return { success: false, error: `Failed to stop process ${pid}: ${errorMessage(e)}` };
           }
           // ESRCH = process doesn't exist, which is fine
         }
@@ -301,8 +302,8 @@ export class ServiceManager {
       }
 
       return { success: true, stoppedPids };
-    } catch (e: any) {
-      return { success: false, error: e.message };
+    } catch (e) {
+      return { success: false, error: errorMessage(e) };
     }
   }
 

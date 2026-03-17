@@ -5,6 +5,7 @@
  * Provides reconciliation strategies for branch hierarchies.
  * Manager layer: has access to config and state.
  */
+import { errorMessage } from '../lib/errors.js';
 import { execSync } from 'child_process';
 import { findProjectRoot, getMainBranch } from './core-manager.js';
 import { getAllAgentsFromDb } from './db-manager.js';
@@ -420,12 +421,12 @@ export function pruneOrphans(options: { dryRun?: boolean; force?: boolean } = {}
         stdio: ['pipe', 'pipe', 'pipe']
       });
       pruned.push(branch);
-    } catch (e: any) {
-      if (e.message.includes('not fully merged')) {
+    } catch (e) {
+      if (errorMessage(e).includes('not fully merged')) {
         kept.push(branch);
         errors.push(`${branch}: not fully merged (use --force)`);
       } else {
-        errors.push(`${branch}: ${e.message}`);
+        errors.push(`${branch}: ${errorMessage(e)}`);
       }
     }
   }

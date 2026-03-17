@@ -7,6 +7,7 @@
  * - Logging utilities
  * - Common tool response formatting
  */
+import { errorMessage } from '../lib/errors.js';
 import { execaSync } from 'execa';
 import fs from 'fs';
 import path from 'path';
@@ -92,11 +93,11 @@ export function runRudder(command: string, options: { json?: boolean } = {}): Ru
       }
     });
     return { success: true, output: stdout.trim(), stderr };
-  } catch (error: any) {
+  } catch (error) {
     return {
       success: false,
-      error: error.message,
-      stderr: error.stderr?.toString() || ''
+      error: errorMessage(error),
+      stderr: (error as { stderr?: Buffer })?.stderr?.toString() || ''
     };
   }
 }

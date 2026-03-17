@@ -1,6 +1,7 @@
 /**
  * MCP Agent Tools - Limited tools for sandbox agents
  */
+import { errorMessage } from '../../lib/errors.js';
 import { getConductorManager } from '../conductor-manager.js';
 import { getStore } from '../artefacts-manager.js';
 import {
@@ -271,8 +272,8 @@ export const AGENT_TOOLS: ToolDefinition[] = [
             adr_dir: getAdrDir()
           }
         });
-      } catch (error: any) {
-        return err(error.message);
+      } catch (error) {
+        return err(errorMessage(error));
       }
     }
   },
@@ -311,8 +312,8 @@ export const AGENT_TOOLS: ToolDefinition[] = [
             body: adr.body
           }
         });
-      } catch (error: any) {
-        return err(error.message);
+      } catch (error) {
+        return err(errorMessage(error));
       }
     }
   },
@@ -367,8 +368,8 @@ export const AGENT_TOOLS: ToolDefinition[] = [
             context: lines.join('\n')
           }
         });
-      } catch (error: any) {
-        return err(error.message);
+      } catch (error) {
+        return err(errorMessage(error));
       }
     }
   }

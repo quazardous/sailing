@@ -5,6 +5,7 @@
  * Handles GitHub and GitLab PR/MR operations with config integration.
  * Merged from lib/git-forge.ts (technical ops) + pr-manager.ts (config logic)
  */
+import { errorMessage } from '../lib/errors.js';
 import { execa, execaSync } from 'execa';
 import { findProjectRoot, getAgentConfig } from './core-manager.js';
 import { getGit } from '../lib/git.js';
@@ -158,8 +159,8 @@ async function createCore(taskId: string, options: PrOptions = {}) {
   const git = getGit(cwd);
   try {
     await git.push('origin', branch, ['--set-upstream']);
-  } catch (e: any) {
-    return { error: `Failed to push branch: ${e.message}` };
+  } catch (e) {
+    return { error: `Failed to push branch: ${errorMessage(e)}` };
   }
 
   // Create PR
@@ -176,8 +177,8 @@ async function createCore(taskId: string, options: PrOptions = {}) {
       const urlMatch = /https:\/\/[^\s]+/.exec(stdout);
       return { url: urlMatch ? urlMatch[0] : stdout.trim(), provider: 'gitlab' };
     }
-  } catch (e: any) {
-    return { error: `Failed to create PR: ${e.message}` };
+  } catch (e) {
+    return { error: `Failed to create PR: ${errorMessage(e)}` };
   }
 
   return { error: 'Unknown provider' };
