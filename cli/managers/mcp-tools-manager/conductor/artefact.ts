@@ -54,7 +54,7 @@ export const ARTEFACT_TOOLS: ToolDefinition[] = [
               const prdTasks = store.getTasksForPrd(scope);
               items = prdTasks
                 .filter(t => !status || t.data?.status === status)
-                .filter(t => !tags?.length || tags.some((tag: string) => (t.data?.tags as string[] || []).includes(tag)))
+                .filter(t => !tags?.length || tags.some((tag: string) => (t.data?.tags || []).includes(tag)))
                 .map(t => ({
                   id: canonicalId(t.id),
                   title: t.data?.title,

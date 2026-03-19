@@ -60,7 +60,7 @@ export default tseslint.config(
       // Code quality - unused imports (auto-fixable)
       'unused-imports/no-unused-imports': 'error',
       'unused-imports/no-unused-vars': ['warn', { argsIgnorePattern: '^_', varsIgnorePattern: '^_' }],
-      '@typescript-eslint/no-unused-vars': 'error', // handled by unused-imports
+      '@typescript-eslint/no-unused-vars': ['error', { argsIgnorePattern: '^_', varsIgnorePattern: '^_', destructuredArrayIgnorePattern: '^_' }],
       '@typescript-eslint/require-await': 'error',
       '@typescript-eslint/no-unnecessary-type-assertion': 'error',
       '@typescript-eslint/no-base-to-string': 'warn',

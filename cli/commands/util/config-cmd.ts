@@ -79,7 +79,7 @@ export function registerConfigCommands(program: Command) {
         for (const item of items) {
           const keyName = item.key.split('.').slice(1).join('.');
           const marker = item.isDefault ? '' : '  # (custom)';
-          const valuesHint = item.values ? ` [${(item.values as string[]).join('|')}]` : '';
+          const valuesHint = item.values ? ` [${item.values.join('|')}]` : '';
           console.log(`  # ${item.description}${valuesHint}`);
           console.log(`  ${keyName}: ${item.value as string}${marker}`);
         }
@@ -127,7 +127,7 @@ export function registerConfigCommands(program: Command) {
         for (const item of items) {
           lines.push(`  # ${item.description}`);
           if (item.values) {
-            lines.push(`  # Valid: ${(item.values as string[]).join(', ')}`);
+            lines.push(`  # Valid: ${item.values.join(', ')}`);
           }
           const value = typeof item.default === 'string' ? item.default : JSON.stringify(item.default);
           lines.push(`  ${item.key}: ${value}`);
@@ -210,7 +210,7 @@ export function registerConfigCommands(program: Command) {
       } else if (def.type === 'enum' && def.values) {
         if (!def.values.includes(value)) {
           console.error(`Invalid value: ${value}`);
-          console.error(`Valid values: ${(def.values as string[]).join(', ')}`);
+          console.error(`Valid values: ${def.values.join(', ')}`);
           process.exit(1);
         }
       }
@@ -485,7 +485,7 @@ export function registerConfigCommands(program: Command) {
           lines.push(`${section}:`);
           for (const item of items) {
             lines.push(`  # ${item.description}`);
-            if (item.values) lines.push(`  # Valid: ${(item.values as string[]).join(', ')}`);
+            if (item.values) lines.push(`  # Valid: ${item.values.join(', ')}`);
             const value = typeof item.default === 'string' ? item.default : JSON.stringify(item.default);
             lines.push(`  ${item.key}: ${value}`);
             lines.push('');

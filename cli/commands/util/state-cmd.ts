@@ -22,7 +22,7 @@ export function registerStateCommands(program: Command) {
   state.command('show')
     .description('Show ID counters (PRD, Epic, Task)')
     .option('--json', 'JSON output')
-    .action((options) => {
+    .action((options: { json?: boolean }) => {
       const stateData = loadState();
 
       if (options.json) {
@@ -39,7 +39,7 @@ export function registerStateCommands(program: Command) {
   // state:set
   state.command('set <type> <value>')
     .description('Set a state counter (type: prd, epic, task)')
-    .action((type, value) => {
+    .action((type: string, value: string) => {
       const num = parseInt(value, 10);
       if (isNaN(num)) {
         console.error('Value must be a number');
@@ -52,7 +52,7 @@ export function registerStateCommands(program: Command) {
       }
 
       const stateData = loadState();
-      stateData.counters[type] = num;
+      stateData.counters[type as keyof typeof stateData.counters] = num;
       saveState(stateData);
       console.log(`Set ${type} counter to ${num}`);
     });

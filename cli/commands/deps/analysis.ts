@@ -98,7 +98,7 @@ export function registerAnalysisCommands(deps: Command): void {
     .option('--role <role>', 'Role context: agent blocked, skill/coordinator allowed')
     .option('--prd <id>', 'Filter by PRD')
     .option('--epic <id>', 'Filter by epic')
-    .option('-t, --tag <tag>', 'Filter by tag (repeatable, AND logic)', (v, arr) => arr.concat(v), [])
+    .option('-t, --tag <tag>', 'Filter by tag (repeatable, AND logic)', (v: string, arr: string[]) => arr.concat(v), [] as string[])
     .option('-l, --limit <n>', 'Limit results', parseInt)
     .option('--include-started', 'Include "In Progress" tasks (for resume)')
     .option('--json', 'JSON output')

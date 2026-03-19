@@ -158,9 +158,9 @@ export function registerWorkflowCommands(task: Command): void {
         if (options.path) output.file = taskFile;
         jsonOut(output);
       } else {
-        console.log(`Started: ${data.id} - ${data.title}`);
-        console.log(`Status: ${data.status}`);
-        console.log(`Assignee: ${data.assignee}`);
+        console.log(`Started: ${data.id as string} - ${data.title as string}`);
+        console.log(`Status: ${data.status as string}`);
+        console.log(`Assignee: ${data.assignee as string}`);
         if (options.path) console.log(`\nFile: ${taskFile}`);
       }
     });
@@ -200,7 +200,7 @@ export function registerWorkflowCommands(task: Command): void {
       if (options.json) {
         jsonOut(data);
       } else {
-        console.log(`Completed: ${data.id} - ${data.title}`);
+        console.log(`Completed: ${data.id as string} - ${data.title as string}`);
       }
     });
 }

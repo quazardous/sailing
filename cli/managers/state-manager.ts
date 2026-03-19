@@ -27,7 +27,7 @@ function acquireLock(timeout = 5000) {
       fs.writeFileSync(lockFile, JSON.stringify({ pid, time: Date.now() }), { flag: 'wx' });
       return lockFile;
     } catch (err) {
-      if (err.code === 'EEXIST') {
+      if ((err as NodeJS.ErrnoException).code === 'EEXIST') {
         // Lock exists - check if stale (> 30s old)
         try {
           const lockData = JSON.parse(fs.readFileSync(lockFile, 'utf8')) as { pid: number; time: number };
@@ -75,7 +75,7 @@ export function loadState(): State {
     fs.mkdirSync(sailingDir, { recursive: true });
   }
   if (fs.existsSync(stateFile)) {
-    return JSON.parse(fs.readFileSync(stateFile, 'utf8'));
+    return JSON.parse(fs.readFileSync(stateFile, 'utf8')) as State;
   }
   // Auto-init: scan existing artefacts to find max IDs
   const store = getStore();

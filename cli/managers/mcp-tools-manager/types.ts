@@ -92,10 +92,9 @@ export function err(message: string, nextActions?: NextAction[]): ToolResponse {
 export function fromRunResult(result: RunResult, nextActions?: NextAction[]): ToolResponse {
   if (result.success) {
     // Try to parse JSON output
-    // JSON.parse returns any — we pass it through to McpResult.data which is also any (tool output varies)
-    let data: any = result.output || ''; // eslint-disable-line @typescript-eslint/no-explicit-any
+    let data: unknown = result.output || '';
     try {
-      data = JSON.parse(result.output || '');
+      data = JSON.parse(result.output || '') as unknown;
     } catch { /* keep as string */ }
 
     return ok({

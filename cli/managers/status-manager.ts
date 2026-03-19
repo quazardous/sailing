@@ -405,7 +405,7 @@ export function cascadeTaskCompletion(taskId: string, taskData: { parent?: strin
             result.prd = {
               updated: true,
               entityId: prdInfo.prdId,
-              previousStatus: status as string,
+              previousStatus: status,
               newStatus: 'In Progress',
               message: `PRD ${prdInfo.prdId} → In Progress`
             };

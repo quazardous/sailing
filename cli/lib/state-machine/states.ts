@@ -53,15 +53,15 @@ export const AgentEvent = {
 /**
  * Check if state is terminal
  */
-export function isTerminalState(state) {
+export function isTerminalState(state: string) {
   return [AgentState.MERGED, AgentState.REJECTED, AgentState.ERROR].includes(state);
 }
 
 /**
  * Get human-readable state label
  */
-export function stateLabel(state) {
-  const labels = {
+export function stateLabel(state: string): string {
+  const labels: Record<string, string> = {
     [AgentState.IDLE]: 'Idle',
     [AgentState.DISPATCHED]: 'Dispatched',
     [AgentState.RUNNING]: 'Running',
@@ -80,8 +80,8 @@ export function stateLabel(state) {
 /**
  * Get state symbol for display
  */
-export function stateSymbol(state) {
-  const symbols = {
+export function stateSymbol(state: string): string {
+  const symbols: Record<string, string> = {
     [AgentState.IDLE]: '○',
     [AgentState.DISPATCHED]: '◐',
     [AgentState.RUNNING]: '●',

@@ -7,6 +7,7 @@ import path from 'path';
 import { execSync } from 'child_process';
 import { findProjectRoot, resolvePlaceholders, ensureDir, getAgentsDir } from '../../managers/core-manager.js';
 import { withModifies } from '../../lib/help.js';
+import { errorMessage } from '../../lib/errors.js';
 
 interface McpConfigOptions {
   outputPath: string;
@@ -131,7 +132,7 @@ export function registerCheckCommand(agent: Command) {
         }
         debug(`Response: ${connectResult.slice(0, 100)}...`);
       } catch (err: unknown) {
-        const errMsg = err instanceof Error ? err.message : String(err);
+        const errMsg = errorMessage(err);
         result.connection_test = { success: false, error: errMsg };
         result.status = 'connection_failed';
 
@@ -182,7 +183,7 @@ export function registerCheckCommand(agent: Command) {
           }
         } catch (err: unknown) {
           if (!options.json) {
-            console.error(`  ✗ Failed to start socat bridge: ${err instanceof Error ? err.message : String(err)}`);
+            console.error(`  ✗ Failed to start socat bridge: ${errorMessage(err)}`);
           }
           fs.rmSync(agentDir, { recursive: true, force: true });
           result.status = 'bridge_failed';
@@ -224,7 +225,7 @@ export function registerCheckCommand(agent: Command) {
         }
         debug(`Sandbox test response: ${sandboxTestResult.slice(0, 100)}...`);
       } catch (err: unknown) {
-        const errMsg = err instanceof Error ? err.message : String(err);
+        const errMsg = errorMessage(err);
         const errStderr = (err as { stderr?: string }).stderr?.slice(0, 500);
         result.sandbox_connection_test = { success: false, error: errMsg, stderr: errStderr };
 
@@ -430,7 +431,7 @@ Exit immediately after outputting the result.`;
         process.exit(success ? 0 : 1);
 
       } catch (err: unknown) {
-        const errMsg = err instanceof Error ? err.message : String(err);
+        const errMsg = errorMessage(err);
         result.spawn_test = { success: false, error: errMsg };
         result.status = 'spawn_failed';
 

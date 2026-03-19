@@ -144,7 +144,7 @@ export function getEpicPendingLogs(epicId: string): EpicPendingLogsResult {
       if (metaMatch) {
         message = metaMatch[1].trim();
         try {
-          meta = JSON.parse(metaMatch[2]);
+          meta = JSON.parse(metaMatch[2]) as Record<string, unknown>;
         } catch { /* ignore */ }
       }
 

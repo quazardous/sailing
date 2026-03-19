@@ -85,17 +85,17 @@ export function checkCli(provider: string): { available: boolean; cmd: string } 
 /**
  * Get PR status for a branch (core implementation)
  */
-async function getStatusCore(branch: string, cwd: string, provider?: string) {
+async function getStatusCore(branch: string, cwd: string, provider?: string): Promise<Record<string, unknown> | null> {
   const resolvedProvider = provider || await detectProvider(cwd) || undefined;
   if (!resolvedProvider) return null;
 
   try {
     if (resolvedProvider === 'github') {
       const { stdout } = await execa('gh', ['pr', 'view', branch, '--json', 'state,url,number,mergeable'], { cwd });
-      return JSON.parse(stdout);
+      return JSON.parse(stdout) as Record<string, unknown>;
     } else if (resolvedProvider === 'gitlab') {
       const { stdout } = await execa('glab', ['mr', 'view', branch, '-F', 'json'], { cwd });
-      return JSON.parse(stdout);
+      return JSON.parse(stdout) as Record<string, unknown>;
     }
   } catch {
     return null;
@@ -106,7 +106,7 @@ async function getStatusCore(branch: string, cwd: string, provider?: string) {
  * Get PR status for a branch
  * Uses config-aware provider resolution
  */
-export async function getStatus(branch: string, cwd: string, provider?: string) {
+export async function getStatus(branch: string, cwd: string, provider?: string): Promise<Record<string, unknown> | null> {
   const resolvedProvider = provider || await getProvider(cwd) || undefined;
   return getStatusCore(branch, cwd, resolvedProvider);
 }

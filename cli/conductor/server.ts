@@ -20,6 +20,7 @@ import { json } from '../dashboard/server.js';
 import { getConductorManager } from '../managers/conductor-manager.js';
 import { eventBus, type EventType } from '../lib/event-bus.js';
 import { WebSocketHandler } from './websocket-handler.js';
+import { errorMessage } from '../lib/errors.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -95,7 +96,7 @@ async function handleRequest(
     try {
       await handler(req, res);
     } catch (err: unknown) {
-      console.error('Route error:', err instanceof Error ? err.message : String(err));
+      console.error('Route error:', errorMessage(err));
       res.writeHead(500, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ error: 'Internal Server Error' }));
     }

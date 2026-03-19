@@ -224,7 +224,7 @@ export function createAdr(title: string, options: {
   // Load template
   const templateContent = loadTemplate('adr');
   const parsed = templateContent ? parseMarkdown(templateContent) : null;
-  const templateData = (parsed?.data || {}) as Record<string, unknown>;
+  const templateData = parsed?.data || {};
   const templateBody = parsed?.body || '';
 
   // Prepare frontmatter

@@ -148,7 +148,7 @@ const bumpers: Record<string, (filePath: string, pathExpr: string, newVersion: s
     const data = JSON.parse(content) as Record<string, unknown>;
     const keys = pathExpr.split('.');
     const lastKey = keys.pop();
-    const parent = keys.reduce<Record<string, unknown> | unknown>((o, k) => {
+    const parent = keys.reduce<unknown>((o, k) => {
       if (o && typeof o === 'object') {
         return (o as Record<string, unknown>)[k];
       }

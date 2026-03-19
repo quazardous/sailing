@@ -14,6 +14,7 @@
  * which does cleanup, state updates, and git operations atomically).
  */
 import { execaSync, type SyncOptions } from 'execa';
+import { toStr } from './errors.js';
 
 /**
  * Detect if running in dev mode (TypeScript via tsx)
@@ -48,8 +49,8 @@ export function getRudderCommand(): { cmd: string; baseArgs: string[] } {
 export function execRudder(args: string, options?: SyncOptions): string {
   const { cmd, baseArgs } = getRudderCommand();
   const allArgs = [...baseArgs, ...args.split(/\s+/)];
-  const { stdout } = execaSync(cmd, allArgs, options);
-  return String(stdout);
+  const result = execaSync(cmd, allArgs, options);
+  return toStr(result.stdout);
 }
 
 /**
@@ -70,5 +71,5 @@ export function execRudderSafe(args: string, options?: SyncOptions): {
   const { cmd, baseArgs } = getRudderCommand();
   const allArgs = [...baseArgs, ...args.split(/\s+/)];
   const result = execaSync(cmd, allArgs, { reject: false, ...options });
-  return { stdout: String(result.stdout), stderr: String(result.stderr), exitCode: result.exitCode ?? 0 };
+  return { stdout: toStr(result.stdout), stderr: toStr(result.stderr), exitCode: result.exitCode ?? 0 };
 }

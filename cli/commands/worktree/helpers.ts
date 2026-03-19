@@ -116,7 +116,7 @@ export async function getMainBranchStatus(projectRoot: string) {
 /**
  * Get PR status for a branch (wrapper for pr.js)
  */
-export async function getPrStatus(taskId: string, projectRoot: string, provider: string) {
+export async function getPrStatus(taskId: string, projectRoot: string, provider: string): Promise<Record<string, unknown> | null> {
   const branch = getBranchName(taskId);
   return getPrStatusFromLib(branch, projectRoot, provider);
 }

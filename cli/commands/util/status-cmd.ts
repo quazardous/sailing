@@ -19,7 +19,7 @@ export function registerStatusCommand(program: Command) {
   program.command('status')
     .description('Project overview (tasks by status, PRDs)')
     .option('--json', 'JSON output')
-    .action((options) => {
+    .action((options: { json?: boolean }) => {
       const { tasks } = buildDependencyGraph();
 
       const byStatus = { done: 0, inProgress: 0, notStarted: 0, blocked: 0, cancelled: 0 };

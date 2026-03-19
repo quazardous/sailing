@@ -17,16 +17,6 @@ interface HistoryItem {
   timestamp: string;
 }
 
-interface TransitionDefinition {
-  next: string;
-  guards?: string[];
-  actions?: string[];
-  worktree?: {
-    from: string;
-    to: string;
-  };
-}
-
 interface StateMachineData {
   taskId: string;
   state: string;
@@ -94,7 +84,7 @@ export class AgentStateMachine {
       return { success: false, state: this.state, errors: check.errors };
     }
 
-    const transition = getTransition(this.state, event) as TransitionDefinition;
+    const transition = getTransition(this.state, event);
     const previousState = this.state;
 
     // Record history

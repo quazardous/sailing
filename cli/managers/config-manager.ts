@@ -13,6 +13,7 @@
 import fs from 'fs';
 import yaml from 'js-yaml';
 import { formatIdFrom } from '../lib/normalize.js';
+import { toStr } from '../lib/errors.js';
 import type { SailingConfig, ConfigSchemaEntry, ConfigDisplayItem, ConfigSchema, ConfigValue } from '../lib/types/config.js';
 
 // Import path resolution from core-manager
@@ -414,13 +415,13 @@ function validateConfig(config: any): void {
         break;
       case 'number':
         if (typeof value !== 'number' || value < 0) {
-          console.error(`Warning: ${key} should be positive number, got ${value}`);
+          console.error(`Warning: ${key} should be positive number, got ${toStr(value)}`);
           setNestedValue(config, key, schema.default);
         }
         break;
       case 'relative-integer':
         if (typeof value !== 'number' || !Number.isInteger(value)) {
-          console.error(`Warning: ${key} should be integer, got ${value}`);
+          console.error(`Warning: ${key} should be integer, got ${toStr(value)}`);
           setNestedValue(config, key, schema.default);
         }
         break;
@@ -431,8 +432,8 @@ function validateConfig(config: any): void {
         }
         break;
       case 'enum':
-        if (schema.values && !schema.values.includes(value)) {
-          console.error(`Warning: Invalid ${key} '${value}'. Valid: ${schema.values.join(', ')}`);
+        if (schema.values && !schema.values.includes(value as string)) {
+          console.error(`Warning: Invalid ${key} '${toStr(value)}'. Valid: ${schema.values.join(', ')}`);
           setNestedValue(config, key, schema.default);
         }
         break;

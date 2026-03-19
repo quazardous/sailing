@@ -17,6 +17,7 @@ import { getAgentConfig } from '../../managers/core-manager.js';
 import { removeWorktree } from '../../managers/worktree-manager.js';
 import { getTask, getTaskEpic } from '../../managers/artefacts-manager.js';
 import { normalizeId } from '../../lib/normalize.js';
+import { errorMessage } from '../../lib/errors.js';
 import { AgentUtils, type AgentCompletionInfo } from '../../lib/agent-utils.js';
 import { getDiagnoseOps, printDiagnoseResult } from '../../managers/diagnose-manager.js';
 
@@ -158,7 +159,7 @@ export function registerHarvestCommands(agent: Command) {
             ]);
           }
         } catch (e: unknown) {
-          escalate(`Cannot check merge status: ${e instanceof Error ? e.message : String(e)}`, [`git fetch origin`, `agent:reap ${taskId}    # Retry`]);
+          escalate(`Cannot check merge status: ${errorMessage(e)}`, [`git fetch origin`, `agent:reap ${taskId}    # Retry`]);
         }
 
         const strategy = config.merge_strategy || 'merge';
@@ -173,7 +174,7 @@ export function registerHarvestCommands(agent: Command) {
             await mainGit.merge([branch, '--no-edit']);
           }
         } catch (e: unknown) {
-          escalate(`Merge failed: ${e instanceof Error ? e.message : String(e)}`, [`/dev:merge ${taskId}    # Manual resolution`]);
+          escalate(`Merge failed: ${errorMessage(e)}`, [`/dev:merge ${taskId}    # Manual resolution`]);
         }
 
         if (options.cleanupWorktreeAfter) {
@@ -284,7 +285,7 @@ export function registerHarvestCommands(agent: Command) {
           process.exit(1);
         }
       } catch (e: unknown) {
-        console.error(`Error checking for conflicts: ${e instanceof Error ? e.message : String(e)}`);
+        console.error(`Error checking for conflicts: ${errorMessage(e)}`);
         process.exit(1);
       }
 
@@ -298,7 +299,7 @@ export function registerHarvestCommands(agent: Command) {
           execSync(`git rebase ${branch}`, { cwd: projectRoot, stdio: 'inherit' });
         }
       } catch (e: unknown) {
-        console.error(`Merge failed: ${e instanceof Error ? e.message : String(e)}`);
+        console.error(`Merge failed: ${errorMessage(e)}`);
         process.exit(1);
       }
 
@@ -381,7 +382,7 @@ export function registerHarvestCommands(agent: Command) {
       try {
         result = yaml.load(fs.readFileSync(resultFile, 'utf8')) as { status?: string; completed_at?: string };
       } catch (e: unknown) {
-        console.error(`Error reading result file: ${e instanceof Error ? e.message : String(e)}`);
+        console.error(`Error reading result file: ${errorMessage(e)}`);
         process.exit(1);
       }
 

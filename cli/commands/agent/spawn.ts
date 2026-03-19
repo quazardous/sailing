@@ -499,7 +499,7 @@ export function registerSpawnCommand(agent: Command) {
       const shouldLog = options.log !== false && !isQuiet;
 
       const paths = getPathsInfo();
-      const spawnResult = await spawnClaude({
+      const spawnResult = spawnClaude({
         prompt: bootstrapPrompt,
         cwd,
         logFile,

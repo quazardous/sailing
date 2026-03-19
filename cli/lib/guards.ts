@@ -32,6 +32,7 @@ import type {
   CheckResult,
   PostResult
 } from './types/guards.js';
+import { errorMessage } from './errors.js';
 
 // Singleton Liquid engine
 let liquidEngine: Liquid | null = null;
@@ -100,7 +101,8 @@ export class GuardChecker {
       this.guardsCache = yaml.load(content) as GuardsConfig;
       return this.guardsCache;
     } catch (err: unknown) {
-      console.error(`Error loading guards.yaml: ${err instanceof Error ? err.message : String(err)}`);
+      const errMsg = errorMessage(err);
+      console.error(`Error loading guards.yaml: ${errMsg}`);
       return null;
     }
   }
@@ -208,7 +210,9 @@ export class GuardChecker {
       // Busy wait
     }
 
-    if (error) throw (error instanceof Error ? error : new Error(String(error)));
+    if (error) {
+      throw error instanceof Error ? error : new Error(errorMessage(error));
+    }
     if (!result) {
       return {
         ok: true,
@@ -308,7 +312,8 @@ async function evaluateCondition(condition: string, context: GuardContext): Prom
     const result = String(await liquid.parseAndRender(template, context));
     return result.trim() === 'true';
   } catch (err: unknown) {
-    console.error(`Error evaluating condition '${expr}': ${err instanceof Error ? err.message : String(err)}`);
+    const errMsg = errorMessage(err);
+    console.error(`Error evaluating condition '${expr}': ${errMsg}`);
     return false;
   }
 }
@@ -323,7 +328,8 @@ async function renderTemplate(template: string, context: GuardContext): Promise<
     const result = String(await liquid.parseAndRender(template, context));
     return result.trim();
   } catch (err: unknown) {
-    console.error(`Error rendering template: ${err instanceof Error ? err.message : String(err)}`);
+    const errMsg = errorMessage(err);
+    console.error(`Error rendering template: ${errMsg}`);
     return template;  // Return raw template on error
   }
 }

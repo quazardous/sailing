@@ -166,7 +166,7 @@ export function registerCrudCommands(task: Command): void {
       }
 
       const file = loadFile(taskFile);
-      const fileData = file?.data as Record<string, unknown>;
+      const fileData = file?.data;
 
       // Convert Commander options format
       // Merge --blocked-by (comma-separated) with --add-blocker (repeatable)
@@ -200,7 +200,7 @@ export function registerCrudCommands(task: Command): void {
         if (options.json) {
           jsonOut(data);
         } else {
-          console.log(`Updated: ${data.id}`);
+          console.log(`Updated: ${data.id as string}`);
         }
       } else {
         console.log('No changes made.');

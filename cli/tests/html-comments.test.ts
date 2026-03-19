@@ -36,7 +36,7 @@ function assert(condition: boolean, message: string) {
 
 function assertEqual<T>(actual: T, expected: T, message?: string) {
   if (actual !== expected) {
-    throw new Error(message || `Expected ${expected}, got ${actual}`);
+    throw new Error(message || `Expected ${String(expected)}, got ${String(actual)}`);
   }
 }
 
@@ -145,7 +145,7 @@ Content
   const serialized = serializeSections(parsed);
 
   const validation = validateHtmlComments(serialized);
-  assert(validation.valid === true, `Serialized content should have valid comments, got unclosed at: ${validation.unclosedAt}`);
+  assert(validation.valid === true, `Serialized content should have valid comments, got unclosed at: ${String(validation.unclosedAt)}`);
 });
 
 // =============================================================================

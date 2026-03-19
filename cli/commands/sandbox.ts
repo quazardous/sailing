@@ -10,10 +10,19 @@ import type { Command } from 'commander';
 import { getPathsInfo } from '../managers/core-manager.js';
 import { spawnClaudeWithSrt, generateSrtConfig, loadBaseSrtConfig } from '../lib/srt.js';
 
+interface PlatformDep { name: string; cmd: string; pkg: string }
+
+interface PlatformInfo {
+  platform: string;
+  deps: PlatformDep[];
+  installCmd: string | null;
+  unsupported?: boolean;
+}
+
 /**
  * Detect OS and required dependencies
  */
-function detectPlatform() {
+function detectPlatform(): PlatformInfo {
   const platform = os.platform();
 
   if (platform === 'linux') {
@@ -47,7 +56,7 @@ function detectPlatform() {
 /**
  * Check if a command exists
  */
-function commandExists(cmd) {
+function commandExists(cmd: string) {
   try {
     execaSync('which', [cmd], { stdio: 'ignore' });
     return true;
@@ -60,7 +69,15 @@ function commandExists(cmd) {
  * Check srt installation and dependencies
  */
 function checkSrt() {
-  const results = {
+  const results: {
+    srtInstalled: boolean;
+    srtVersion: string | null;
+    platform: string | null;
+    deps: (PlatformDep & { installed: boolean })[];
+    missing: PlatformDep[];
+    configPath: string | null;
+    configExists: boolean;
+  } = {
     srtInstalled: false,
     srtVersion: null,
     platform: null,

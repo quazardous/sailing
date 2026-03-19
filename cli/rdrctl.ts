@@ -53,7 +53,7 @@ type ServiceName = 'mcp' | 'agents' | 'conductor' | 'dashboard' | 'serve';
 interface ServiceDefinition {
   name: string;
   description: string;
-  start: (options?: Record<string, unknown>) => Promise<void>;
+  start: (options?: Record<string, unknown>) => void | Promise<void>;
 }
 
 const SERVICES: Record<ServiceName, ServiceDefinition> = {
@@ -91,11 +91,11 @@ const SERVICES: Record<ServiceName, ServiceDefinition> = {
 /**
  * Start MCP services - delegates to ServiceManager
  */
-async function startMcpService(options: Record<string, unknown>) {
+function startMcpService(options: Record<string, unknown>) {
   const manager = getServiceManager();
   const foreground = options.foreground as boolean;
 
-  const result = await manager.startMcp({
+  const result = manager.startMcp({
     mcpMode: options.mcpMode as string,
     foreground
   });
@@ -182,7 +182,7 @@ async function startConductorMcpService() {
 /**
  * Start dashboard HTTP service
  */
-async function startDashboardService(options: Record<string, unknown>) {
+function startDashboardService(options: Record<string, unknown>) {
   const port = (options.port as number) || DEFAULT_PORT;
   const timeout = (options.timeout as number) ?? DEFAULT_TIMEOUT;
   const cacheTTL = (options.cache as number) ?? DEFAULT_CACHE;
@@ -206,7 +206,7 @@ async function startDashboardService(options: Record<string, unknown>) {
 /**
  * Start full conductor server
  */
-async function startServeService(options: Record<string, unknown>) {
+function startServeService(options: Record<string, unknown>) {
   const port = (options.port as number) || DEFAULT_PORT;
   const timeout = (options.timeout as number) ?? DEFAULT_TIMEOUT;
   const cacheTTL = (options.cache as number) ?? DEFAULT_CACHE;
@@ -410,7 +410,7 @@ program
   .command('restart [service]')
   .description('Restart a service (default: mcp)')
   .option('--mcp-mode <mode>', 'MCP transport mode: socket or port')
-  .action(async (service: string | undefined, options: { mcpMode?: string }) => {
+  .action((service: string | undefined, options: { mcpMode?: string }) => {
     const serviceName = service || 'mcp';
 
     if (serviceName === 'mcp') {
@@ -429,7 +429,7 @@ program
 
       // Then start
       console.log('[rdrctl] Starting MCP servers...');
-      await startMcpService({ mcpMode: options.mcpMode });
+      startMcpService({ mcpMode: options.mcpMode });
     } else {
       console.error(`[rdrctl] Restart not implemented for: ${serviceName}`);
       process.exit(1);
@@ -479,8 +479,8 @@ program
   .option('-t, --timeout <seconds>', 'Idle timeout (-1 for infinite)', String(DEFAULT_TIMEOUT))
   .option('-c, --cache <seconds>', 'Cache TTL (0 to disable)', String(DEFAULT_CACHE))
   .option('--no-open', 'Do not open browser')
-  .action(async (options: { port: string; timeout: string; cache: string; open: boolean }) => {
-    await startDashboardService({
+  .action((options: { port: string; timeout: string; cache: string; open: boolean }) => {
+    startDashboardService({
       port: parseInt(options.port, 10),
       timeout: parseInt(options.timeout, 10),
       cache: parseInt(options.cache, 10),

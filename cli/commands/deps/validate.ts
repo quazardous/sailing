@@ -81,12 +81,13 @@ export function registerValidateCommand(deps: Command): void {
 
         // 4. Format inconsistencies — resolve to canonical entry ID
         for (const raw of task.blockedByRaw) {
-          const canonical = resolveTask(String(raw));
-          if (canonical && raw !== canonical) {
+          const rawStr = String(raw as string | number);
+          const canonical = resolveTask(rawStr);
+          if (canonical && rawStr !== canonical) {
             warnings.push({
               type: 'format',
               task: id,
-              message: `${id}: blocked_by "${raw}" should be "${canonical}"`
+              message: `${id}: blocked_by "${rawStr}" should be "${canonical}"`
             });
             if (options.fix) {
               fixes.push({ task: id, file: task.file, action: 'normalize', raw: raw as string, normalized: canonical });

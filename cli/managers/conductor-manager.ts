@@ -28,6 +28,7 @@ import { getGit } from '../lib/git.js';
 import { checkMcpAgentServer } from '../lib/srt.js';
 import type { AgentRecord } from '../lib/types/agent.js';
 import type { ChildProcess } from 'child_process';
+import { errorMessage } from '../lib/errors.js';
 
 // ============================================================================
 // Types
@@ -505,7 +506,7 @@ export class ConductorManager {
         logFile
       };
     } catch (e: unknown) {
-      const error = e instanceof Error ? e.message : String(e);
+      const error = errorMessage(e);
       return {
         success: false,
         taskId,

@@ -6,7 +6,7 @@ export interface ConfigSchemaEntry {
   type: string;
   default: unknown;
   description: string;
-  values?: unknown[];
+  values?: string[];
 }
 
 export type ConfigSchema = Record<string, ConfigSchemaEntry>;
@@ -17,7 +17,7 @@ export interface ConfigDisplayItem {
   default: unknown;
   description: string;
   type: string;
-  values?: unknown[];
+  values?: string[];
   isDefault: boolean;
 }
 

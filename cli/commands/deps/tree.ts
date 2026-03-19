@@ -17,7 +17,7 @@ export function registerTreeCommand(deps: Command): void {
     .option('--ancestors', 'Show ancestors (blockers)')
     .option('--descendants', 'Show descendants (blocked by this)')
     .option('-d, --depth <n>', 'Max depth', parseInt)
-    .option('-t, --tag <tag>', 'Filter by tag (repeatable, AND logic)', (v, arr) => arr.concat(v), [])
+    .option('-t, --tag <tag>', 'Filter by tag (repeatable, AND logic)', (v: string, arr: string[]) => arr.concat(v), [] as string[])
     .option('--ready', 'Only show ready tasks')
     .option('--json', 'JSON output')
     .action((taskId: string | undefined, options: TreeOptions) => {

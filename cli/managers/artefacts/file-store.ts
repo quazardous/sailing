@@ -86,7 +86,7 @@ export class FileArtefactStore implements ArtefactStore {
   loadFile(filePath: string): { data: Record<string, unknown>; body: string } | null {
     const loaded = coreLoadFile(filePath);
     if (!loaded) return null;
-    return { data: loaded.data as Record<string, unknown>, body: loaded.body };
+    return { data: loaded.data, body: loaded.body };
   }
 
   // -- Relationship queries --

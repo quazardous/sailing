@@ -28,12 +28,12 @@ export interface ToolUseResult {
 
 export interface MessageContent {
   is_error?: boolean;
-  content?: string | unknown;
+  content?: unknown;
   [key: string]: unknown;
 }
 
 export interface LogEventMessage {
-  content?: MessageContent[] | unknown;
+  content?: unknown;
   [key: string]: unknown;
 }
 
@@ -240,9 +240,10 @@ export class DiagnoseOps {
       if (event.type === 'user' && event.message?.content) {
         const content = event.message.content;
         if (Array.isArray(content)) {
-          for (const c of content) {
+          for (const item of content) {
+            const c = item as MessageContent;
             if (c.is_error === true) {
-              const msg = typeof c.content === 'string' ? c.content as string : JSON.stringify(c.content);
+              const msg = typeof c.content === 'string' ? c.content : JSON.stringify(c.content);
               errors.push(`L${i + 1}: ${truncateError(msg, maxLineLen)}`);
             }
           }

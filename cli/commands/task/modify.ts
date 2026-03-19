@@ -114,8 +114,8 @@ export function registerModifyCommands(task: Command): void {
           results.forEach(r => {
             const sym = statusSymbol(r.status as string);
             const type = r.type === 'epic' ? ' (epic)' : '';
-            console.log(`${sym} ${r.id}: ${r.title}${type}`);
-            console.log(`   target: ${r.target_version} | status: ${r.status}`);
+            console.log(`${sym} ${r.id as string}: ${r.title as string}${type}`);
+            console.log(`   target: ${r.target_version as string} | status: ${r.status as string}`);
           });
         }
       }

@@ -20,7 +20,7 @@ export function registerFeedbackCommands(program: Command) {
   feedback.command('add <message>')
     .description('Log agent feedback (systemic issues, not task-specific)')
     .option('-t, --task <id>', 'Related task')
-    .action((message, options) => {
+    .action((message: string, options: { task?: string }) => {
       const feedbackFile = path.join(getSailingDir(), 'feedback.log');
       const date = new Date().toISOString();
       const taskRef = options.task ? ` [${options.task}]` : '';
@@ -34,7 +34,7 @@ export function registerFeedbackCommands(program: Command) {
   feedback.command('list')
     .description('Show feedback log')
     .option('-l, --limit <n>', 'Limit entries', parseInt, 20)
-    .action((options) => {
+    .action((options: { limit: number }) => {
       const feedbackFile = path.join(getSailingDir(), 'feedback.log');
 
       if (!fs.existsSync(feedbackFile)) {

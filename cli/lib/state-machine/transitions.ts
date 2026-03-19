@@ -6,6 +6,16 @@
  */
 import { AgentState, AgentEvent, WorktreeState } from './states.js';
 
+export interface TransitionDefinition {
+  next: string;
+  guards?: string[];
+  actions?: string[];
+  worktree?: {
+    from: string;
+    to: string;
+  };
+}
+
 /**
  * Transition definitions
  */
@@ -126,20 +136,20 @@ export const transitions = {
 /**
  * Get valid events for a state
  */
-export function getValidEvents(state) {
-  return Object.keys(transitions[state] || {});
+export function getValidEvents(state: string) {
+  return Object.keys((transitions as Record<string, Record<string, unknown>>)[state] || {});
 }
 
 /**
  * Get transition definition
  */
-export function getTransition(state, event) {
-  return transitions[state]?.[event] || null;
+export function getTransition(state: string, event: string): TransitionDefinition | null {
+  return ((transitions as Record<string, Record<string, TransitionDefinition>>)[state]?.[event]) || null;
 }
 
 /**
  * Check if transition exists
  */
-export function hasTransition(state, event) {
+export function hasTransition(state: string, event: string) {
   return !!getTransition(state, event);
 }

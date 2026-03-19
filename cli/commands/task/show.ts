@@ -44,7 +44,7 @@ export function registerShowCommands(task: Command): void {
       }
 
       const file = loadFile(taskFile);
-      const fileData = file?.data as Record<string, unknown> | undefined;
+      const fileData = file?.data;
       const isAgentRole = options.role === 'agent';
 
       // Agent role: minimal output (just what's needed to execute)
@@ -92,8 +92,8 @@ export function registerShowCommands(task: Command): void {
       if (options.json) {
         jsonOut(result);
       } else {
-        console.log(`# ${fileData?.id}: ${fileData?.title}\n`);
-        console.log(`Status: ${fileData?.status}`);
+        console.log(`# ${(fileData?.id as string) ?? ''}: ${(fileData?.title as string) ?? ''}\n`);
+        console.log(`Status: ${(fileData?.status as string) ?? ''}`);
         console.log(`Assignee: ${(fileData?.assignee as string) || 'unassigned'}`);
         console.log(`Effort: ${(fileData?.effort as string) || '-'}`);
         console.log(`Priority: ${(fileData?.priority as string) || 'normal'}`);
@@ -221,13 +221,13 @@ export function registerShowCommands(task: Command): void {
       console.log(`# Agent Context: ${taskId}\n`);
 
       if (context.epicId) {
-        console.log(`Epic: ${context.epicId}`);
+        console.log(`Epic: ${context.epicId as string}`);
       }
 
       // Technical Notes (most actionable for implementation)
       if (context.technicalNotes) {
         console.log(`\n${sep}`);
-        console.log(`## Technical Notes (from ${context.epicId})\n`);
+        console.log(`## Technical Notes (from ${context.epicId as string})\n`);
         console.log(context.technicalNotes);
       }
 

@@ -19,6 +19,7 @@ import {
 } from '../../managers/core-manager.js';
 import { PATHS_SCHEMA, CATEGORIES, getPathKeys, generatePathsYaml } from '../../lib/paths-schema.js';
 import { addDynamicHelp } from '../../lib/help.js';
+import { errorMessage } from '../../lib/errors.js';
 
 const home = os.homedir();
 const toHomeRelative = (p: string) => p.startsWith(home) ? '~' + p.slice(home.length) : p;
@@ -286,7 +287,7 @@ export function registerPathsCommands(program: Command) {
           config = (yaml.load(content) as typeof config) || { paths: {} };
           if (!config.paths) config.paths = {};
         } catch (e: unknown) {
-          console.error(`Error reading paths.yaml: ${e instanceof Error ? e.message : String(e)}`);
+          console.error(`Error reading paths.yaml: ${errorMessage(e)}`);
           process.exit(1);
         }
       } else {

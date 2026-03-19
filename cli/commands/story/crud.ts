@@ -114,11 +114,11 @@ export function registerCrudCommands(story: Command): void {
         jsonOut(output);
       } else {
         const typeIcon = file.data.type === 'user' ? '👤' : file.data.type === 'technical' ? '⚙️' : '🔌';
-        console.log(`# ${typeIcon} ${file.data.id}: ${file.data.title}\n`);
-        console.log(`Type: ${file.data.type || 'user'}`);
+        console.log(`# ${typeIcon} ${file.data.id as string}: ${file.data.title as string}\n`);
+        console.log(`Type: ${(file.data.type as string) || 'user'}`);
         console.log(`PRD: ${result.prdId}`);
         if (file.data.parent_story) {
-          console.log(`Parent Story: ${file.data.parent_story}`);
+          console.log(`Parent Story: ${file.data.parent_story as string}`);
         }
 
         if (childrenList.length > 0) {
@@ -254,7 +254,7 @@ export function registerCrudCommands(story: Command): void {
           else if (value === 'false') value = false;
           else if (/^\d+$/.test(value)) value = parseInt(value);
 
-          (file.data as Record<string, unknown>)[key] = value;
+          file.data[key] = value;
           updated = true;
         });
       }
@@ -264,7 +264,7 @@ export function registerCrudCommands(story: Command): void {
         if (options.json) {
           jsonOut(file.data);
         } else {
-          console.log(`Updated: ${file.data.id}`);
+          console.log(`Updated: ${file.data.id as string}`);
         }
       } else {
         console.log('No changes made.');

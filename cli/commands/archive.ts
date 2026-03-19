@@ -114,7 +114,7 @@ export function registerArchiveCommands(program: Command) {
     .option('--all', 'Archive all Done PRDs')
     .option('--force', 'Archive even if PRD is not done')
     .option('--dry-run', 'Show what would be archived without doing it')
-    .action(async (prdId, options: ArchiveCommandOptions) => {
+    .action(async (prdId: string | undefined, options: ArchiveCommandOptions) => {
       if (options.all) {
         if (options.force) {
           console.error('\u2717 --all and --force are incompatible');

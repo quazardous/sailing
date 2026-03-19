@@ -13,7 +13,7 @@ type ProfileOverrides = Partial<Record<'haven' | 'sibling' | 'project', string>>
 type PathEntry = {
   default: string;
   description: string;
-  category: 'data' | 'state' | 'project' | 'isolation' | string;
+  category: string;
   profiles?: ProfileOverrides;
 };
 

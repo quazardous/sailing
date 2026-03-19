@@ -5,6 +5,8 @@
  * according to the protocol defined in docs/agent-protocol.md
  */
 
+import { toStr } from './errors.js';
+
 const PROTOCOL_VERSION = '1';
 
 const VALID_STATUSES = ['completed', 'failed', 'blocked'] as const;
@@ -110,25 +112,25 @@ export function validateMission(mission: unknown): string[] {
   if (!m.version) {
     errors.push('Missing required field: version');
   } else if (m.version !== PROTOCOL_VERSION) {
-    errors.push(`Unsupported version: ${String(m.version)} (expected ${PROTOCOL_VERSION})`);
+    errors.push(`Unsupported version: ${toStr(m.version)} (expected ${PROTOCOL_VERSION})`);
   }
 
   if (!m.task_id) {
     errors.push('Missing required field: task_id');
   } else if (typeof m.task_id !== 'string' || !/^T\d+$/.test(m.task_id)) {
-    errors.push(`Invalid task_id format: ${String(m.task_id)} (expected TNNN)`);
+    errors.push(`Invalid task_id format: ${toStr(m.task_id)} (expected TNNN)`);
   }
 
   if (!m.epic_id) {
     errors.push('Missing required field: epic_id');
   } else if (typeof m.epic_id !== 'string' || !/^E\d+$/.test(m.epic_id)) {
-    errors.push(`Invalid epic_id format: ${String(m.epic_id)} (expected ENNN)`);
+    errors.push(`Invalid epic_id format: ${toStr(m.epic_id)} (expected ENNN)`);
   }
 
   if (!m.prd_id) {
     errors.push('Missing required field: prd_id');
   } else if (typeof m.prd_id !== 'string' || !/^PRD-\d+$/.test(m.prd_id)) {
-    errors.push(`Invalid prd_id format: ${String(m.prd_id)} (expected PRD-NNN)`);
+    errors.push(`Invalid prd_id format: ${toStr(m.prd_id)} (expected PRD-NNN)`);
   }
 
   if (!m.instruction) {
@@ -199,19 +201,19 @@ export function validateResult(result: unknown): string[] {
   if (!r.version) {
     errors.push('Missing required field: version');
   } else if (r.version !== PROTOCOL_VERSION) {
-    errors.push(`Unsupported version: ${String(r.version)} (expected ${PROTOCOL_VERSION})`);
+    errors.push(`Unsupported version: ${toStr(r.version)} (expected ${PROTOCOL_VERSION})`);
   }
 
   if (!r.task_id) {
     errors.push('Missing required field: task_id');
   } else if (typeof r.task_id !== 'string' || !/^T\d+$/.test(r.task_id)) {
-    errors.push(`Invalid task_id format: ${String(r.task_id)} (expected TNNN)`);
+    errors.push(`Invalid task_id format: ${toStr(r.task_id)} (expected TNNN)`);
   }
 
   if (!r.status) {
     errors.push('Missing required field: status');
   } else if (!VALID_STATUSES.includes(r.status as Status)) {
-    errors.push(`Invalid status: ${String(r.status)} (expected: ${VALID_STATUSES.join(', ')})`);
+    errors.push(`Invalid status: ${toStr(r.status)} (expected: ${VALID_STATUSES.join(', ')})`);
   }
 
   // files_modified validation
@@ -227,7 +229,7 @@ export function validateResult(result: unknown): string[] {
       if (!file.action) {
         errors.push(`files_modified[${i}]: missing action`);
       } else if (!(VALID_FILE_ACTIONS as readonly string[]).includes(file.action as string)) {
-        errors.push(`files_modified[${i}]: invalid action '${String(file.action)}'`);
+        errors.push(`files_modified[${i}]: invalid action '${toStr(file.action)}'`);
       }
     });
   }
@@ -245,7 +247,7 @@ export function validateResult(result: unknown): string[] {
       if (!entry.level) {
         errors.push(`log[${i}]: missing level`);
       } else if (!VALID_LOG_LEVELS.includes(entry.level as typeof VALID_LOG_LEVELS[number])) {
-        errors.push(`log[${i}]: invalid level '${String(entry.level)}'`);
+        errors.push(`log[${i}]: invalid level '${toStr(entry.level)}'`);
       }
       if (!entry.message) {
         errors.push(`log[${i}]: missing message`);
@@ -265,7 +267,7 @@ export function validateResult(result: unknown): string[] {
         if (!issue.type) {
           errors.push(`issues[${i}]: missing type`);
         } else if (!(VALID_ISSUE_TYPES as readonly string[]).includes(issue.type as string)) {
-          errors.push(`issues[${i}]: invalid type '${String(issue.type)}'`);
+          errors.push(`issues[${i}]: invalid type '${toStr(issue.type)}'`);
         }
         if (!issue.description) {
           errors.push(`issues[${i}]: missing description`);

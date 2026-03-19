@@ -11,6 +11,7 @@ import { withModifies } from '../../lib/help.js';
 import { buildConflictMatrix, suggestMergeOrder } from '../../managers/conflict-manager.js';
 import { normalizeId } from '../../lib/normalize.js';
 import { gcAgentsAction } from '../gc.js';
+import { errorMessage } from '../../lib/errors.js';
 
 export function registerManageCommands(agent: Command) {
   // agent:sync
@@ -206,7 +207,7 @@ export function registerManageCommands(agent: Command) {
         if (e instanceof Error && 'code' in e && (e as NodeJS.ErrnoException).code === 'ESRCH') {
           console.log(`Process ${pid} already terminated`);
         } else {
-          console.error(`Error killing process: ${e instanceof Error ? e.message : String(e)}`);
+          console.error(`Error killing process: ${errorMessage(e)}`);
         }
       }
 

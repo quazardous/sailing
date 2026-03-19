@@ -245,7 +245,7 @@ function findStories(filters: FindFilters): StoryResult[] {
 function matchesFilters(data: Record<string, unknown>, filters: FindFilters): boolean {
   // Status filter
   if (filters.status) {
-    const status = String(data.status || '').toLowerCase();
+    const status = String((data.status as string | undefined) || '').toLowerCase();
     const target = filters.status.toLowerCase();
     if (!status.includes(target)) return false;
   }
@@ -258,7 +258,7 @@ function matchesFilters(data: Record<string, unknown>, filters: FindFilters): bo
 
   // Assignee filter
   if (filters.assignee) {
-    const assignee = String(data.assignee || '').toLowerCase();
+    const assignee = String((data.assignee as string | undefined) || '').toLowerCase();
     if (!assignee.includes(filters.assignee.toLowerCase())) return false;
   }
 
@@ -288,13 +288,13 @@ function matchesFilters(data: Record<string, unknown>, filters: FindFilters): bo
 
   // Type filter (for stories)
   if (filters.type) {
-    const type = String(data.type || '').toLowerCase();
+    const type = String((data.type as string | undefined) || '').toLowerCase();
     if (type !== filters.type.toLowerCase()) return false;
   }
 
   // Milestone filter
   if (filters.milestone) {
-    const milestone = String(data.milestone || '');
+    const milestone = String((data.milestone as string | undefined) || '');
     if (!milestone.includes(filters.milestone)) return false;
   }
 

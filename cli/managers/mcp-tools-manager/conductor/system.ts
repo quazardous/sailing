@@ -163,7 +163,7 @@ export const SYSTEM_TOOLS: ToolDefinition[] = [
       // Compute blockers (epics not in Breakdown+ with 0 tasks)
       const warnings: string[] = [];
       for (const es of epicSummaries) {
-        const status = es.status as string;
+        const status = es.status || '';
         if (isStatusDone(status) || isStatusAutoDone(status) || isStatusCancelled(status)) continue;
         if (es.taskCount === 0 && (status === 'Breakdown' || status === 'In Progress')) {
           warnings.push(`${es.id} is "${status}" but has 0 tasks`);

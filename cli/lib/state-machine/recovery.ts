@@ -141,8 +141,8 @@ export const errorRecovery = {
  * @param {string} errorType - Error type key
  * @returns {object|null} Recovery configuration
  */
-export function getRecoveryStrategy(errorType) {
-  return errorRecovery[errorType] || null;
+export function getRecoveryStrategy(errorType: string) {
+  return (errorRecovery as Record<string, unknown>)[errorType] || null;
 }
 
 /**
@@ -150,8 +150,8 @@ export function getRecoveryStrategy(errorType) {
  * @param {string} strategy - Strategy name (merge, squash, rebase)
  * @returns {object|null} Strategy configuration
  */
-export function getMergeStrategy(strategy) {
-  return mergeStrategies[strategy] || null;
+export function getMergeStrategy(strategy: string) {
+  return (mergeStrategies as Record<string, unknown>)[strategy] || null;
 }
 
 /**

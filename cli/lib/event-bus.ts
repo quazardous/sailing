@@ -10,6 +10,8 @@
  * - task:updated    - Task status changed
  */
 
+import { errorMessage } from './errors.js';
+
 export type EventType =
   | 'agent:spawned'
   | 'agent:log'
@@ -151,7 +153,7 @@ class EventBus {
       try {
         (sub.handler as EventHandler<T>)(payload);
       } catch (e: unknown) {
-        console.error(`EventBus handler error for ${event}:`, e instanceof Error ? e.message : String(e));
+        console.error(`EventBus handler error for ${event}:`, errorMessage(e));
       }
     }
   }
