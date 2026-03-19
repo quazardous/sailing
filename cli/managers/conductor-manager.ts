@@ -226,7 +226,7 @@ export class ConductorManager {
             reason: 'Working directory has uncommitted changes',
             nextSteps: [
               'Commit or stash changes before spawning agents',
-              `Files: ${allFiles.slice(0, 5).join(', ')}${allFiles.length > 5 ? ` (+${allFiles.length - 5} more)` : ''}`
+              `Files: ${allFiles.slice(0, 5).join(', ')}${allFiles.length > 5 ? ' (+' + String(allFiles.length - 5) + ' more)' : ''}`
             ]
           }
         };

@@ -148,7 +148,7 @@ export function registerConfigCommands(program: Command) {
       if (!schema[key]) {
         console.error(`Unknown config key: ${key}`);
         console.error('\nAvailable keys:');
-        Object.keys(schema).sort().forEach(k => console.error(`  ${k}`));
+        Object.keys(schema).sort((a, b) => a.localeCompare(b)).forEach(k => console.error(`  ${k}`));
         process.exit(1);
       }
 
@@ -187,7 +187,7 @@ export function registerConfigCommands(program: Command) {
       if (!schema[key]) {
         console.error(`Unknown config key: ${key}`);
         console.error('\nAvailable keys:');
-        Object.keys(schema).sort().forEach(k => console.error(`  ${k}`));
+        Object.keys(schema).sort((a, b) => a.localeCompare(b)).forEach(k => console.error(`  ${k}`));
         process.exit(1);
       }
 

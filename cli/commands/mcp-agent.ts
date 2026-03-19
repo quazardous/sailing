@@ -38,8 +38,10 @@ function ensureMcpInit() {
  */
 function parseToolArgs(args: string[]): Record<string, unknown> {
   const result: Record<string, unknown> = {};
+  const skip = new Set<number>();
 
   for (let i = 0; i < args.length; i++) {
+    if (skip.has(i)) continue;
     const arg = args[i];
 
     if (arg.startsWith('--')) {
@@ -58,7 +60,7 @@ function parseToolArgs(args: string[]): Record<string, unknown> {
 
         if (nextArg && !nextArg.startsWith('--')) {
           result[key] = parseValue(nextArg);
-          i++; // Skip next arg
+          skip.add(i + 1);
         } else {
           // Boolean flag
           result[key] = true;

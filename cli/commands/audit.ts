@@ -413,7 +413,7 @@ export function registerAuditCommands(program: Command) {
       for (const prd of summary) {
         const epicDoneCount = prd.epics.done + prd.epics.autoDone;
         const epicProgress = prd.epics.total > 0
-          ? `${epicDoneCount}/${prd.epics.total} epics done${prd.epics.autoDone > 0 ? ` (${prd.epics.autoDone} auto)` : ''}`
+          ? `${epicDoneCount}/${prd.epics.total} epics done${prd.epics.autoDone > 0 ? ' (' + String(prd.epics.autoDone) + ' auto)' : ''}`
           : 'no epics';
         const taskProgress = prd.tasks.total > 0
           ? `${prd.tasks.done}/${prd.tasks.total} tasks done`

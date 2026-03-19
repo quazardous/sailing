@@ -138,6 +138,39 @@ function depsReport(top) {
   };
 }
 
+function lintErrors(exclude, include) {
+  let raw;
+  try {
+    raw = execSync('npx eslint cli/ -f json', { cwd: PROJECT_ROOT, encoding: 'utf8', timeout: 120000, maxBuffer: 10 * 1024 * 1024, stdio: ['pipe', 'pipe', 'pipe'] });
+  } catch (e) {
+    raw = e.stdout || '';
+  }
+  let data;
+  try { data = JSON.parse(raw); } catch { return { error: 'eslint json parse failed', raw: raw.slice(0, 200) }; }
+  const excludeRules = exclude ? exclude.split(',').map(s => s.trim()) : [];
+  const includeRules = include ? include.split(',').map(s => s.trim()) : [];
+  const results = [];
+  for (const f of data) {
+    for (const m of f.messages) {
+      if (!m.ruleId) continue;
+      if (excludeRules.length && excludeRules.some(r => m.ruleId.includes(r))) continue;
+      if (includeRules.length && !includeRules.some(r => m.ruleId.includes(r))) continue;
+      results.push({
+        file: f.filePath.replace(PROJECT_ROOT + '/', ''),
+        line: m.line,
+        rule: m.ruleId,
+        severity: m.severity === 2 ? 'error' : 'warn',
+        message: m.message
+      });
+    }
+  }
+  // Summary by rule
+  const byRule = {};
+  for (const r of results) byRule[r.rule] = (byRule[r.rule] || 0) + 1;
+  const summary = Object.entries(byRule).sort((a, b) => b[1] - a[1]);
+  return { total: results.length, summary, errors: results };
+}
+
 // -- MCP stdio protocol --
 
 const TOOLS = {
@@ -163,6 +196,13 @@ const TOOLS = {
   lint_rule_breakdown: {
     description: 'Show error count per rule for a specific file',
     inputSchema: { type: 'object', properties: { file: { type: 'string', description: 'File to analyze' } }, required: ['file'] }
+  },
+  lint_errors: {
+    description: 'List all lint errors with file:line, rule, message. Filter by include/exclude rule patterns.',
+    inputSchema: { type: 'object', properties: {
+      exclude: { type: 'string', description: 'Comma-separated rules to exclude (e.g. "cognitive-complexity,slow-regex")' },
+      include: { type: 'string', description: 'Comma-separated rules to include (e.g. "no-alphabetical-sort,deprecation")' }
+    } }
   },
   deps_report: {
     description: 'Dependency analysis: most imported files, cross-referenced with lint errors. Prioritizes high-impact refactor targets.',
@@ -197,6 +237,7 @@ function handleRequest(req) {
       case 'lint_file': result = lintFile(args?.file, args?.rule); break;
       case 'lint_report': result = lintReport(args?.top); break;
       case 'lint_rule_breakdown': result = lintRuleBreakdown(args?.file); break;
+      case 'lint_errors': result = lintErrors(args?.exclude, args?.include); break;
       case 'deps_report': result = depsReport(args?.top); break;
       default: return { jsonrpc: '2.0', id, result: { content: [{ type: 'text', text: `Unknown tool: ${name}` }], isError: true } };
     }

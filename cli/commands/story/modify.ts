@@ -9,6 +9,8 @@ import { parseSearchReplace, editArtifact, parseMultiSectionContent, processMult
 import { findStoryFile } from './helpers.js';
 import type { StoryPatchOptions, StoryEditOptions } from './helpers.js';
 
+type ReadChunk = Buffer | string | null;
+
 /**
  * Register story modification commands
  */
@@ -42,10 +44,10 @@ export function registerModifyCommands(story: Command): void {
           if (process.stdin.isTTY) { resolve(''); return; }
           process.stdin.setEncoding('utf8');
           process.stdin.on('readable', () => {
-            let chunk: Buffer | string | null = process.stdin.read() as Buffer | string | null;
+            let chunk = process.stdin.read() as ReadChunk;
             while (chunk !== null) {
               data += chunk.toString();
-              chunk = process.stdin.read() as Buffer | string | null;
+              chunk = process.stdin.read() as ReadChunk;
             }
           });
           process.stdin.on('end', () => resolve(data));
@@ -139,10 +141,10 @@ Note: Sections are auto-created if they don't exist (replace/append/prepend).
           if (process.stdin.isTTY) { resolve(''); return; }
           process.stdin.setEncoding('utf8');
           process.stdin.on('readable', () => {
-            let chunk: Buffer | string | null = process.stdin.read() as Buffer | string | null;
+            let chunk = process.stdin.read() as ReadChunk;
             while (chunk !== null) {
               data += chunk.toString();
-              chunk = process.stdin.read() as Buffer | string | null;
+              chunk = process.stdin.read() as ReadChunk;
             }
           });
           process.stdin.on('end', () => resolve(data));

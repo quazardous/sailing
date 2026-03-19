@@ -62,8 +62,9 @@ export class WebSocketHandler {
     }
 
     // Generate accept key
+    // SHA1 is required by RFC 6455 WebSocket protocol — not a security hash
     const acceptKey = crypto
-      .createHash('sha1')
+      .createHash('sha1') // NOSONAR
       .update(key + '258EAFA5-E914-47DA-95CA-C5AB0DC85B11')
       .digest('base64');
 

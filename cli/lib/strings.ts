@@ -97,6 +97,7 @@ export function assertValidHtmlComments(content: string, context?: string): void
       const preview = content.slice(pos, pos + 50).replace(/\n/g, '\\n');
       return `line ${lineNum}: "${preview}..."`;
     }).join(', ');
-    throw new Error(`Unclosed HTML comment${context ? ` in ${context}` : ''}: ${positions}`);
+    const ctx = context ? ` in ${context}` : '';
+    throw new Error(`Unclosed HTML comment${ctx}: ${positions}`);
   }
 }

@@ -92,8 +92,8 @@ export const ADR_TOOLS: ToolDefinition[] = [
           data: {
             items,
             count: items.length,
-            available_domains: [...domainsSet].sort(),
-            available_tags: [...tagsSet].sort(),
+            available_domains: [...domainsSet].sort((a, b) => a.localeCompare(b)),
+            available_tags: [...tagsSet].sort((a, b) => a.localeCompare(b)),
             adr_dir: getAdrDir()
           },
           next_actions: nextActions

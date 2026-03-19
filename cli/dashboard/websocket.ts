@@ -58,7 +58,8 @@ export function handleWebSocketUpgrade(
 
   // Generate accept key
   const GUID = '258EAFA5-E914-47DA-95CA-C5AB0DC85B11';
-  const acceptKey = createHash('sha1')
+  // SHA1 is required by RFC 6455 WebSocket protocol — not a security hash
+  const acceptKey = createHash('sha1') // NOSONAR
     .update(key + GUID)
     .digest('base64');
 

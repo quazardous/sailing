@@ -68,7 +68,7 @@ export class DbOps {
   getAgentsDb(): Collection<AgentDoc> {
     if (!this.agentsDb) {
       this.agentsDb = new Collection<AgentDoc>(path.join(this.dbDir, 'agents.json'));
-      void this.agentsDb.ensureIndex({ fieldName: 'taskNum', unique: true });
+      void this.agentsDb.ensureIndex({ fieldName: 'taskNum', unique: true }); // NOSONAR — fire-and-forget index creation
     }
     return this.agentsDb;
   }
@@ -79,7 +79,7 @@ export class DbOps {
   getRunsDb(): Collection<RunDoc> {
     if (!this.runsDb) {
       this.runsDb = new Collection<RunDoc>(path.join(this.dbDir, 'runs.json'));
-      void this.runsDb.ensureIndex({ fieldName: 'taskId' });
+      void this.runsDb.ensureIndex({ fieldName: 'taskId' }); // NOSONAR — fire-and-forget index creation
     }
     return this.runsDb;
   }

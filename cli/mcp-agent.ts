@@ -80,7 +80,7 @@ function createConnectionHandler(mode: 'tcp' | 'unix') {
       const taskIdArg = typeof args.task_id === 'string' ? args.task_id : null;
       const operationArg = typeof args.operation === 'string' ? args.operation : null;
       if (!clientTaskId && taskIdArg) clientTaskId = taskIdArg;
-      if (!clientTaskId && name === 'context_load' && operationArg?.match(/^T\d+$/)) {
+      if (!clientTaskId && name === 'context_load' && operationArg && /^T\d+$/.exec(operationArg)) {
         clientTaskId = operationArg;
       }
 

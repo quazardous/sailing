@@ -111,7 +111,7 @@ export function setupAgentLogTail(
  * Parse duration string (e.g., "1h", "24h", "1d", "2d") to milliseconds
  */
 function parseDuration(duration: string): number {
-  const match = /^(\d+)(h|d)$/.exec(duration);
+  const match = /^(\d+)[hd]$/.exec(duration);
   if (!match) {
     throw new Error(`Invalid duration format: ${duration}. Use format like "1h", "24h", "1d"`);
   }
@@ -475,7 +475,8 @@ export function registerMonitorCommands(agent: Command) {
       const rawJsonMode = options.events && options.raw;
       if (!rawJsonMode) {
         const logMode = options.events ? 'jsonlog' : 'log';
-        console.log(`Attaching to ${taskId}${pid ? ` (PID ${pid})` : ''} [${logMode}]`);
+        const pidInfo = pid ? ` (PID ${pid})` : '';
+        console.log(`Attaching to ${taskId}${pidInfo} [${logMode}]`);
         console.log('─'.repeat(60));
       }
 
@@ -888,7 +889,7 @@ export function registerMonitorCommands(agent: Command) {
       if (fs.existsSync(agentsDir)) {
         rawAgentDirs = fs.readdirSync(agentsDir)
           .filter(d => fs.statSync(path.join(agentsDir, d)).isDirectory())
-          .sort();
+          .sort((a, b) => a.localeCompare(b));
       }
 
       // 2. Raw filesystem: worktree directories
@@ -896,7 +897,7 @@ export function registerMonitorCommands(agent: Command) {
       if (fs.existsSync(worktreesDir)) {
         rawWorktreeDirs = fs.readdirSync(worktreesDir)
           .filter(d => fs.statSync(path.join(worktreesDir, d)).isDirectory())
-          .sort();
+          .sort((a, b) => a.localeCompare(b));
       }
 
       // 3. Git worktree list (raw)
@@ -1002,7 +1003,7 @@ export function registerMonitorCommands(agent: Command) {
         byStatus[a.status] = byStatus[a.status] || [];
         byStatus[a.status].push(a.id);
       }
-      for (const [status, ids] of Object.entries(byStatus).sort()) {
+      for (const [status, ids] of Object.entries(byStatus).sort(([a], [b]) => a.localeCompare(b))) {
         console.log(`  ${status} (${ids.length}): ${ids.join(', ')}`);
       }
 

@@ -405,7 +405,7 @@ export function registerPrdCommands(program: Command): void {
       }
 
       // Sort epics for consistency
-      milestone.epics.sort();
+      milestone.epics.sort((a: string, b: string) => a.localeCompare(b));
 
       if (updated) {
         saveFile(prdFile, file.data, file.body);

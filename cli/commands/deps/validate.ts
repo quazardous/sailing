@@ -344,14 +344,7 @@ export function registerValidateCommand(deps: Command): void {
                 }
                 break;
               }
-              case 'normalize_status': {
-                if (file.data.status !== fix.newStatus) {
-                  file.data.status = fix.newStatus;
-                  updated = true;
-                  fixedCount++;
-                }
-                break;
-              }
+              case 'normalize_status':
               case 'update_epic_status': {
                 if (file.data.status !== fix.newStatus) {
                   file.data.status = fix.newStatus;

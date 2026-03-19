@@ -154,7 +154,7 @@ export function findRoots(tasks: TasksMap): string[] {
       roots.push(id);
     }
   }
-  return roots.sort();
+  return roots.sort((a, b) => a.localeCompare(b));
 }
 
 /**
