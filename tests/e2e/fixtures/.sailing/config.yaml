@@ -1,0 +1,13 @@
+agent:
+  use_subprocess: true
+  use_worktrees: true
+  sandbox: false
+  timeout: 30
+  risky_mode: true
+  auto_merge: false
+  auto_pr: false
+  auto_diagnose: false
+  watchdog_timeout: 0
+git:
+  main_branch: main
+  sync_before_spawn: false

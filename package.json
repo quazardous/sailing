@@ -20,6 +20,7 @@
     "lint": "npm run --workspace cli lint",
     "build:skill": "./skill/build.sh",
     "test": "npm run build && node --test test/*.test.js",
+    "test:e2e": "npm run build && node --test tests/e2e/*.test.mjs",
     "test:watch": "npm run build && node --test --watch test/*.test.js"
   },
   "repository": {
