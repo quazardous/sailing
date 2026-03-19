@@ -429,6 +429,430 @@ function findByPath(
   );
 }
 
+// ============================================================================
+// Action handler helpers (extracted for cognitive complexity)
+// ============================================================================
+
+/**
+ * Resolve which item to keep in a duplicate group.
+ * If keepOption matches this group, use that; otherwise oldest (first).
+ */
+function resolveKeepItem<T extends { prdId: string }>(
+  dupe: DuplicateGroup<T>,
+  keepOption: string | undefined,
+  matchKey?: boolean
+): T {
+  let keepItem = dupe.items[0]; // oldest by default
+  if (keepOption) {
+    const keepParsed = parsePath(keepOption);
+    if (keepParsed) {
+      if (!matchKey || extractNumericKey(keepParsed.id) === dupe.key) {
+        const found = dupe.items.find(i => normalizeId(i.prdId) === keepParsed.prdId);
+        if (found) keepItem = found;
+      }
+    }
+  }
+  return keepItem;
+}
+
+/**
+ * Validate --keep option format and existence in duplicates.
+ * Exits process if invalid.
+ */
+function validateKeepOption(
+  options: RenumberOptions,
+  epicDupes: DuplicateGroup<EpicEntry>[],
+  taskDupes: DuplicateGroup<TaskEntry>[]
+): void {
+  if (!options.keep) return;
+
+  const keepParsedGlobal = parsePath(options.keep);
+  if (!keepParsedGlobal) {
+    console.error(`✗ --keep invalide: "${options.keep}"`);
+    console.error(`  Format attendu: PRD-NNN/ENNN ou PRD-NNN/TNNN`);
+    console.error(`  Exemple: --keep PRD-001/E001`);
+    process.exit(1);
+  }
+
+  // Check if --keep matches any duplicate
+  const keepType = keepParsedGlobal.type === 'E' ? 'epic' : 'task';
+  const keepKey = extractNumericKey(keepParsedGlobal.id);
+  const relevantDupes = keepType === 'epic' ? epicDupes : taskDupes;
+  const matchingDupe = relevantDupes.find(d => d.key === keepKey);
+
+  if (!matchingDupe) {
+    console.error(`✗ --keep "${options.keep}" ne correspond à aucun doublon`);
+    console.error(`  Vérifiez que l'ID existe et a des doublons`);
+    process.exit(1);
+  }
+
+  const matchingItem = matchingDupe.items.find(i => normalizeId(i.prdId) === keepParsedGlobal.prdId);
+  if (!matchingItem) {
+    console.error(`✗ --keep "${options.keep}" : PRD non trouvé dans les doublons`);
+    console.error(`  PRDs disponibles pour ${keepParsedGlobal.id}:`);
+    matchingDupe.items.forEach(i => console.error(`    - ${i.prdId}/${i.id}`));
+    process.exit(1);
+  }
+}
+
+/**
+ * Format one duplicate group for display (check mode).
+ * Returns the number of items that would be renamed.
+ */
+function formatDupeReport<T extends EpicEntry | TaskEntry>(
+  dupe: DuplicateGroup<T>,
+  keepItem: T,
+  type: string,
+  renameOffset: number
+): number {
+  const prefix = type === 'epic' ? 'E' : 'T';
+  let localOffset = 0;
+
+  console.log(`  Key "${dupe.key}":`);
+  for (const item of dupe.items) {
+    const isKeep = item === keepItem;
+    if (isKeep) {
+      console.log(`    ${item.prdId}/${item.id} (${item.created.toISOString().split('T')[0]}) → keep`);
+    } else {
+      const futureId = previewNextId(prefix, renameOffset + localOffset);
+      console.log(`    ${item.prdId}/${item.id} (${item.created.toISOString().split('T')[0]}) → rename to ${futureId}*`);
+      localOffset++;
+    }
+  }
+  return localOffset;
+}
+
+/**
+ * Handle global check mode (no target ID specified).
+ */
+function handleGlobalCheck(
+  epicDupes: DuplicateGroup<EpicEntry>[],
+  taskDupes: DuplicateGroup<TaskEntry>[],
+  options: RenumberOptions
+): void {
+  if (options.json) {
+    jsonOut({
+      epics: epicDupes.map(d => ({
+        key: d.key,
+        items: d.items.map(i => ({
+          id: i.id,
+          prd: i.prdId,
+          file: i.file,
+          created: i.created.toISOString()
+        }))
+      })),
+      tasks: taskDupes.map(d => ({
+        key: d.key,
+        items: d.items.map(i => ({
+          id: i.id,
+          prd: i.prdId,
+          file: i.file,
+          created: i.created.toISOString()
+        }))
+      }))
+    });
+    return;
+  }
+
+  if (epicDupes.length === 0 && taskDupes.length === 0) {
+    console.log('✓ No duplicates found');
+    return;
+  }
+
+  let epicRenameOffset = 0;
+  let taskRenameOffset = 0;
+
+  if (epicDupes.length > 0) {
+    console.log(`\n⚠ ${epicDupes.length} duplicate epic ID(s):\n`);
+    for (const dupe of epicDupes) {
+      const keepItem = resolveKeepItem(dupe, options.keep, true);
+      epicRenameOffset += formatDupeReport(dupe, keepItem, 'epic', epicRenameOffset);
+    }
+  }
+
+  if (taskDupes.length > 0) {
+    console.log(`\n⚠ ${taskDupes.length} duplicate task ID(s):\n`);
+    for (const dupe of taskDupes) {
+      const keepItem = resolveKeepItem(dupe, options.keep, true);
+      taskRenameOffset += formatDupeReport(dupe, keepItem, 'task', taskRenameOffset);
+    }
+  }
+
+  if (epicRenameOffset > 0 || taskRenameOffset > 0) {
+    console.log(`\n* ID provisoire, l'ID définitif sera attribué au moment du --fix`);
+  }
+  console.log('\nRun with --fix to auto-renumber duplicates');
+}
+
+/**
+ * Handle manual rename mode (path + newId provided).
+ */
+function handleManualRename(
+  target: string,
+  newIdArg: string,
+  epicIndex: Map<string, EpicEntry[]>,
+  taskIndex: Map<string, TaskEntry[]>,
+  options: RenumberOptions
+): void {
+  const item = findByPath(target, epicIndex, taskIndex);
+  if (!item) {
+    console.error(`Not found: ${target}`);
+    process.exit(1);
+  }
+
+  const type = getEntityType(item.id);
+  const normalizedNewId = normalizeId(newIdArg);
+
+  let results: RenameResult;
+  if (type === 'epic') {
+    results = renameEpic(item.file, normalizedNewId, options.scope ?? 'prd', item.prdDir);
+  } else {
+    results = renameTask(item.file, normalizedNewId, options.scope ?? 'prd', item.prdDir, (item as TaskEntry).epicId);
+  }
+
+  if (options.json) {
+    jsonOut(results);
+  } else {
+    console.log(`✓ Renamed ${item.id} → ${normalizedNewId}`);
+    if (options.path) console.log(`  File: ${results.renamed.to}`);
+    if (results.refsUpdated.length > 0) {
+      console.log(`  Updated ${results.refsUpdated.length} reference(s)`);
+    }
+    if (options.path && results.memoryRenamed) {
+      console.log(`  Memory: ${results.memoryRenamed.to}`);
+    }
+  }
+}
+
+/**
+ * Handle targeted check or fix mode (specific ID provided).
+ */
+function handleTargetedCheckOrFix(
+  target: string,
+  epicDupes: DuplicateGroup<EpicEntry>[],
+  taskDupes: DuplicateGroup<TaskEntry>[],
+  epicIndex: Map<string, EpicEntry[]>,
+  taskIndex: Map<string, TaskEntry[]>,
+  options: RenumberOptions
+): void {
+  const targetKey = extractNumericKey(target);
+  const type = getEntityType(target);
+
+  // Filter duplicates to only this ID
+  const filteredEpicDupes = type === 'epic'
+    ? epicDupes.filter(d => d.key === targetKey)
+    : [];
+  const filteredTaskDupes = type === 'task'
+    ? taskDupes.filter(d => d.key === targetKey)
+    : [];
+
+  if (options.check) {
+    handleTargetedCheck(target, type, filteredEpicDupes, filteredTaskDupes, options);
+    return;
+  }
+
+  if (options.fix) {
+    handleTargetedFix(target, type, filteredEpicDupes, filteredTaskDupes, epicIndex, taskIndex, options);
+  }
+}
+
+/**
+ * Handle targeted check (ID + --check).
+ */
+function handleTargetedCheck(
+  target: string,
+  type: string,
+  filteredEpicDupes: DuplicateGroup<EpicEntry>[],
+  filteredTaskDupes: DuplicateGroup<TaskEntry>[],
+  options: RenumberOptions
+): void {
+  if (filteredEpicDupes.length === 0 && filteredTaskDupes.length === 0) {
+    console.log(`✓ No duplicates for ${target}`);
+    return;
+  }
+
+  const dupes = type === 'epic' ? filteredEpicDupes : filteredTaskDupes;
+  let renameOffset = 0;
+
+  for (const dupe of dupes) {
+    const keepItem = resolveKeepItem(dupe, options.keep, false);
+
+    console.log(`\n⚠ Duplicate ${type} ID "${dupe.key}":\n`);
+    for (const item of dupe.items) {
+      const isKeep = item === keepItem;
+      if (isKeep) {
+        console.log(`  ${item.prdId}/${item.id} (${item.created.toISOString().split('T')[0]}) → keep`);
+      } else {
+        const prefix = type === 'epic' ? 'E' : 'T';
+        const futureId = previewNextId(prefix, renameOffset);
+        console.log(`  ${item.prdId}/${item.id} (${item.created.toISOString().split('T')[0]}) → rename to ${futureId}*`);
+        renameOffset++;
+      }
+    }
+  }
+  console.log(`\n* ID provisoire, l'ID définitif sera attribué au moment du --fix`);
+  console.log(`\nRun with --fix to renumber: rudder renumber ${target} --fix`);
+}
+
+/**
+ * Handle targeted fix (ID + --fix).
+ */
+function handleTargetedFix(
+  target: string,
+  type: string,
+  filteredEpicDupes: DuplicateGroup<EpicEntry>[],
+  filteredTaskDupes: DuplicateGroup<TaskEntry>[],
+  epicIndex: Map<string, EpicEntry[]>,
+  taskIndex: Map<string, TaskEntry[]>,
+  options: RenumberOptions
+): void {
+  const dupes = type === 'epic' ? filteredEpicDupes : filteredTaskDupes;
+
+  if (dupes.length === 0) {
+    console.log(`✓ No duplicates for ${target}`);
+    return;
+  }
+
+  const allResults: Array<{ type: string; oldId: string; newId: string; prd: string } & RenameResult> = [];
+
+  for (const dupe of dupes) {
+    const keepItem = resolveKeepItem(dupe, options.keep, false);
+
+    for (const item of dupe.items) {
+      if (item === keepItem) continue;
+
+      const prefix = type === 'epic' ? 'E' : 'T';
+      const assignedNewId = getNextAvailableId(prefix);
+
+      let results: RenameResult;
+      if (type === 'epic') {
+        results = renameEpic(item.file, assignedNewId, options.scope ?? 'prd', item.prdDir);
+      } else {
+        results = renameTask(item.file, assignedNewId, options.scope ?? 'prd', item.prdDir, (item as TaskEntry).epicId);
+      }
+
+      // Update index - use type-specific handling
+      if (type === 'epic') {
+        epicIndex.set(extractNumericKey(assignedNewId), [{
+          ...item,
+          id: assignedNewId,
+          file: results.renamed?.to ?? item.file
+        }]);
+      } else {
+        taskIndex.set(extractNumericKey(assignedNewId), [{
+          ...item as TaskEntry,
+          id: assignedNewId,
+          file: results.renamed?.to ?? item.file
+        }]);
+      }
+
+      allResults.push({
+        type,
+        oldId: item.id,
+        newId: assignedNewId,
+        prd: item.prdId,
+        ...results
+      });
+
+      if (!options.json) {
+        console.log(`✓ ${item.prdId}/${item.id} → ${assignedNewId}`);
+      }
+    }
+  }
+
+  if (options.json) {
+    jsonOut({ fixed: allResults });
+  } else if (allResults.length > 0) {
+    console.log(`\n✓ Fixed ${allResults.length} duplicate(s) for ${target}`);
+  }
+}
+
+/**
+ * Handle global fix mode (--fix without target ID).
+ */
+function handleGlobalFix(
+  epicDupes: DuplicateGroup<EpicEntry>[],
+  taskDupes: DuplicateGroup<TaskEntry>[],
+  epicIndex: Map<string, EpicEntry[]>,
+  taskIndex: Map<string, TaskEntry[]>,
+  options: RenumberOptions
+): void {
+  if (epicDupes.length === 0 && taskDupes.length === 0) {
+    console.log('✓ No duplicates to fix');
+    return;
+  }
+
+  const allResults = [];
+
+  // Fix epic duplicates
+  for (const dupe of epicDupes) {
+    const keepItem = resolveKeepItem(dupe, options.keep, true);
+
+    // Rename all others
+    for (const item of dupe.items) {
+      if (item === keepItem) continue;
+
+      const newId = getNextAvailableId('E');
+      const results = renameEpic(item.file, newId, options.scope, item.prdDir);
+
+      // Update index to reflect new ID
+      epicIndex.set(extractNumericKey(newId), [{
+        ...item,
+        id: newId,
+        file: results.renamed.to
+      }]);
+
+      allResults.push({
+        type: 'epic',
+        oldId: item.id,
+        newId,
+        prd: item.prdId,
+        ...results
+      });
+
+      if (!options.json) {
+        console.log(`✓ ${item.prdId}/${item.id} → ${newId}`);
+      }
+    }
+  }
+
+  // Fix task duplicates
+  for (const dupe of taskDupes) {
+    const keepItem = resolveKeepItem(dupe, options.keep, true);
+
+    for (const item of dupe.items) {
+      if (item === keepItem) continue;
+
+      const newId = getNextAvailableId('T');
+      const results = renameTask(item.file, newId, options.scope, item.prdDir, item.epicId);
+
+      taskIndex.set(extractNumericKey(newId), [{
+        ...item,
+        id: newId,
+        file: results.renamed.to
+      }]);
+
+      allResults.push({
+        type: 'task',
+        oldId: item.id,
+        newId,
+        prd: item.prdId,
+        ...results
+      });
+
+      if (!options.json) {
+        console.log(`✓ ${item.prdId}/${item.id} → ${newId}`);
+      }
+    }
+  }
+
+  if (options.json) {
+    jsonOut({ fixed: allResults });
+  } else if (allResults.length > 0) {
+    console.log(`\n✓ Fixed ${allResults.length} duplicate(s)`);
+  }
+}
+
 /**
  * Register renumber commands
  */
@@ -447,391 +871,18 @@ export function registerRenumberCommands(program: Command): void {
     .action((target: string | undefined, newId: string | undefined, options: RenumberOptions) => {
       const epicIndex = buildEpicIndexForDuplicates();
       const taskIndex = buildTaskIndexForDuplicates();
-
       const epicDupes = findDuplicates(epicIndex);
       const taskDupes = findDuplicates(taskIndex);
 
-      // Detect target type early
       const isPath = target && target.includes('/');
       const isId = target && !isPath && getEntityType(target);
 
-      // Validate --keep format early - stop if invalid
-      let keepParsedGlobal: ParsedPath | null = null;
-      if (options.keep) {
-        keepParsedGlobal = parsePath(options.keep);
-        if (!keepParsedGlobal) {
-          console.error(`✗ --keep invalide: "${options.keep}"`);
-          console.error(`  Format attendu: PRD-NNN/ENNN ou PRD-NNN/TNNN`);
-          console.error(`  Exemple: --keep PRD-001/E001`);
-          process.exit(1);
-        }
+      validateKeepOption(options, epicDupes, taskDupes);
 
-        // Check if --keep matches any duplicate
-        const keepType = keepParsedGlobal.type === 'E' ? 'epic' : 'task';
-        const keepKey = extractNumericKey(keepParsedGlobal.id);
-        const relevantDupes = keepType === 'epic' ? epicDupes : taskDupes;
-        const matchingDupe = relevantDupes.find(d => d.key === keepKey);
-
-        if (!matchingDupe) {
-          console.error(`✗ --keep "${options.keep}" ne correspond à aucun doublon`);
-          console.error(`  Vérifiez que l'ID existe et a des doublons`);
-          process.exit(1);
-        }
-
-        const matchingItem = matchingDupe.items.find(i => normalizeId(i.prdId) === keepParsedGlobal.prdId);
-        if (!matchingItem) {
-          console.error(`✗ --keep "${options.keep}" : PRD non trouvé dans les doublons`);
-          console.error(`  PRDs disponibles pour ${keepParsedGlobal.id}:`);
-          matchingDupe.items.forEach(i => console.error(`    - ${i.prdId}/${i.id}`));
-          process.exit(1);
-        }
-      }
-
-      // --check: just report duplicates (global if no target)
-      if (options.check && !isId) {
-        if (options.json) {
-          jsonOut({
-            epics: epicDupes.map(d => ({
-              key: d.key,
-              items: d.items.map(i => ({
-                id: i.id,
-                prd: i.prdId,
-                file: i.file,
-                created: i.created.toISOString()
-              }))
-            })),
-            tasks: taskDupes.map(d => ({
-              key: d.key,
-              items: d.items.map(i => ({
-                id: i.id,
-                prd: i.prdId,
-                file: i.file,
-                created: i.created.toISOString()
-              }))
-            }))
-          });
-        } else {
-          if (epicDupes.length === 0 && taskDupes.length === 0) {
-            console.log('✓ No duplicates found');
-            return;
-          }
-
-          let epicRenameOffset = 0;
-          let taskRenameOffset = 0;
-
-          if (epicDupes.length > 0) {
-            console.log(`\n⚠ ${epicDupes.length} duplicate epic ID(s):\n`);
-            for (const dupe of epicDupes) {
-              // Determine which to keep (same logic as --fix)
-              let keepItem = dupe.items[0]; // oldest by default
-              if (options.keep) {
-                const keepParsed = parsePath(options.keep);
-                if (keepParsed && extractNumericKey(keepParsed.id) === dupe.key) {
-                  const found = dupe.items.find(i => normalizeId(i.prdId) === keepParsed.prdId);
-                  if (found) keepItem = found;
-                }
-              }
-
-              console.log(`  Key "${dupe.key}":`);
-              for (const item of dupe.items) {
-                const isKeep = item === keepItem;
-                if (isKeep) {
-                  console.log(`    ${item.prdId}/${item.id} (${item.created.toISOString().split('T')[0]}) → keep`);
-                } else {
-                  const futureId = previewNextId('E', epicRenameOffset);
-                  console.log(`    ${item.prdId}/${item.id} (${item.created.toISOString().split('T')[0]}) → rename to ${futureId}*`);
-                  epicRenameOffset++;
-                }
-              }
-            }
-          }
-
-          if (taskDupes.length > 0) {
-            console.log(`\n⚠ ${taskDupes.length} duplicate task ID(s):\n`);
-            for (const dupe of taskDupes) {
-              // Determine which to keep (same logic as --fix)
-              let keepItem = dupe.items[0]; // oldest by default
-              if (options.keep) {
-                const keepParsed = parsePath(options.keep);
-                if (keepParsed && extractNumericKey(keepParsed.id) === dupe.key) {
-                  const found = dupe.items.find(i => normalizeId(i.prdId) === keepParsed.prdId);
-                  if (found) keepItem = found;
-                }
-              }
-
-              console.log(`  Key "${dupe.key}":`);
-              for (const item of dupe.items) {
-                const isKeep = item === keepItem;
-                if (isKeep) {
-                  console.log(`    ${item.prdId}/${item.id} (${item.created.toISOString().split('T')[0]}) → keep`);
-                } else {
-                  const futureId = previewNextId('T', taskRenameOffset);
-                  console.log(`    ${item.prdId}/${item.id} (${item.created.toISOString().split('T')[0]}) → rename to ${futureId}*`);
-                  taskRenameOffset++;
-                }
-              }
-            }
-          }
-
-          if (epicRenameOffset > 0 || taskRenameOffset > 0) {
-            console.log(`\n* ID provisoire, l'ID définitif sera attribué au moment du --fix`);
-          }
-          console.log('\nRun with --fix to auto-renumber duplicates');
-        }
-        return;
-      }
-
-      // Manual rename: path and newId provided (e.g., rudder renumber PRD-002/E001 E042)
-      if (isPath && newId) {
-        const item = findByPath(target, epicIndex, taskIndex);
-        if (!item) {
-          console.error(`Not found: ${target}`);
-          process.exit(1);
-        }
-
-        const type = getEntityType(item.id);
-        const normalizedNewId = normalizeId(newId);
-
-        let results: RenameResult;
-        if (type === 'epic') {
-          results = renameEpic(item.file, normalizedNewId, options.scope ?? 'prd', item.prdDir);
-        } else {
-          results = renameTask(item.file, normalizedNewId, options.scope ?? 'prd', item.prdDir, (item as TaskEntry).epicId);
-        }
-
-        if (options.json) {
-          jsonOut(results);
-        } else {
-          console.log(`✓ Renamed ${item.id} → ${normalizedNewId}`);
-          if (options.path) console.log(`  File: ${results.renamed.to}`);
-          if (results.refsUpdated.length > 0) {
-            console.log(`  Updated ${results.refsUpdated.length} reference(s)`);
-          }
-          if (options.path && results.memoryRenamed) {
-            console.log(`  Memory: ${results.memoryRenamed.to}`);
-          }
-        }
-        return;
-      }
-
-      // Targeted check/fix: ID provided (e.g., rudder renumber E001 --check)
-      if (isId) {
-        const targetKey = extractNumericKey(target);
-        const type = getEntityType(target);
-
-        // Filter duplicates to only this ID
-        const filteredEpicDupes = type === 'epic'
-          ? epicDupes.filter(d => d.key === targetKey)
-          : [];
-        const filteredTaskDupes = type === 'task'
-          ? taskDupes.filter(d => d.key === targetKey)
-          : [];
-
-        if (options.check) {
-          if (filteredEpicDupes.length === 0 && filteredTaskDupes.length === 0) {
-            console.log(`✓ No duplicates for ${target}`);
-            return;
-          }
-
-          const dupes = type === 'epic' ? filteredEpicDupes : filteredTaskDupes;
-          const prefix = type === 'epic' ? 'E' : 'T';
-          let renameOffset = 0;
-
-          for (const dupe of dupes) {
-            // Determine which to keep (same logic as --fix)
-            let keepItem = dupe.items[0]; // oldest by default
-            if (options.keep) {
-              const keepParsed = parsePath(options.keep);
-              if (keepParsed) {
-                const found = dupe.items.find(i => normalizeId(i.prdId) === keepParsed.prdId);
-                if (found) keepItem = found;
-              }
-            }
-
-            console.log(`\n⚠ Duplicate ${type} ID "${dupe.key}":\n`);
-            for (const item of dupe.items) {
-              const isKeep = item === keepItem;
-              if (isKeep) {
-                console.log(`  ${item.prdId}/${item.id} (${item.created.toISOString().split('T')[0]}) → keep`);
-              } else {
-                const futureId = previewNextId(prefix, renameOffset);
-                console.log(`  ${item.prdId}/${item.id} (${item.created.toISOString().split('T')[0]}) → rename to ${futureId}*`);
-                renameOffset++;
-              }
-            }
-          }
-          console.log(`\n* ID provisoire, l'ID définitif sera attribué au moment du --fix`);
-          console.log(`\nRun with --fix to renumber: rudder renumber ${target} --fix`);
-          return;
-        }
-
-        if (options.fix) {
-          const dupes = type === 'epic' ? filteredEpicDupes : filteredTaskDupes;
-
-          if (dupes.length === 0) {
-            console.log(`✓ No duplicates for ${target}`);
-            return;
-          }
-
-          const allResults: Array<{ type: string; oldId: string; newId: string; prd: string } & RenameResult> = [];
-
-          for (const dupe of dupes) {
-            let keepItem = dupe.items[0]; // oldest by default
-
-            if (options.keep) {
-              const keepParsed = parsePath(options.keep);
-              if (keepParsed) {
-                const found = dupe.items.find(i => normalizeId(i.prdId) === keepParsed.prdId);
-                if (found) keepItem = found;
-              }
-            }
-
-            for (const item of dupe.items) {
-              if (item === keepItem) continue;
-
-              const prefix = type === 'epic' ? 'E' : 'T';
-              const assignedNewId = getNextAvailableId(prefix);
-
-              let results: RenameResult;
-              if (type === 'epic') {
-                results = renameEpic(item.file, assignedNewId, options.scope ?? 'prd', item.prdDir);
-              } else {
-                results = renameTask(item.file, assignedNewId, options.scope ?? 'prd', item.prdDir, (item as TaskEntry).epicId);
-              }
-
-              // Update index - use type-specific handling
-              if (type === 'epic') {
-                epicIndex.set(extractNumericKey(assignedNewId), [{
-                  ...item,
-                  id: assignedNewId,
-                  file: results.renamed?.to ?? item.file
-                }]);
-              } else {
-                taskIndex.set(extractNumericKey(assignedNewId), [{
-                  ...item as TaskEntry,
-                  id: assignedNewId,
-                  file: results.renamed?.to ?? item.file
-                }]);
-              }
-
-              allResults.push({
-                type,
-                oldId: item.id,
-                newId: assignedNewId,
-                prd: item.prdId,
-                ...results
-              });
-
-              if (!options.json) {
-                console.log(`✓ ${item.prdId}/${item.id} → ${assignedNewId}`);
-              }
-            }
-          }
-
-          if (options.json) {
-            jsonOut({ fixed: allResults });
-          } else if (allResults.length > 0) {
-            console.log(`\n✓ Fixed ${allResults.length} duplicate(s) for ${target}`);
-          }
-          return;
-        }
-      }
-
-      // --fix: auto-fix all duplicates (global if no target ID)
-      if (options.fix && !isId) {
-        if (epicDupes.length === 0 && taskDupes.length === 0) {
-          console.log('✓ No duplicates to fix');
-          return;
-        }
-
-        const allResults = [];
-
-        // Fix epic duplicates
-        for (const dupe of epicDupes) {
-          // Determine which to keep
-          let keepItem = dupe.items[0]; // oldest by default
-
-          if (options.keep) {
-            const keepParsed = parsePath(options.keep);
-            if (keepParsed && extractNumericKey(keepParsed.id) === dupe.key) {
-              const found = dupe.items.find(i => normalizeId(i.prdId) === keepParsed.prdId);
-              if (found) keepItem = found;
-            }
-          }
-
-          // Rename all others
-          for (const item of dupe.items) {
-            if (item === keepItem) continue;
-
-            const newId = getNextAvailableId('E');
-            const results = renameEpic(item.file, newId, options.scope, item.prdDir);
-
-            // Update index to reflect new ID
-            epicIndex.set(extractNumericKey(newId), [{
-              ...item,
-              id: newId,
-              file: results.renamed.to
-            }]);
-
-            allResults.push({
-              type: 'epic',
-              oldId: item.id,
-              newId,
-              prd: item.prdId,
-              ...results
-            });
-
-            if (!options.json) {
-              console.log(`✓ ${item.prdId}/${item.id} → ${newId}`);
-            }
-          }
-        }
-
-        // Fix task duplicates
-        for (const dupe of taskDupes) {
-          let keepItem = dupe.items[0];
-
-          if (options.keep) {
-            const keepParsed = parsePath(options.keep);
-            if (keepParsed && extractNumericKey(keepParsed.id) === dupe.key) {
-              const found = dupe.items.find(i => normalizeId(i.prdId) === keepParsed.prdId);
-              if (found) keepItem = found;
-            }
-          }
-
-          for (const item of dupe.items) {
-            if (item === keepItem) continue;
-
-            const newId = getNextAvailableId('T');
-            const results = renameTask(item.file, newId, options.scope, item.prdDir, item.epicId);
-
-            taskIndex.set(extractNumericKey(newId), [{
-              ...item,
-              id: newId,
-              file: results.renamed.to
-            }]);
-
-            allResults.push({
-              type: 'task',
-              oldId: item.id,
-              newId,
-              prd: item.prdId,
-              ...results
-            });
-
-            if (!options.json) {
-              console.log(`✓ ${item.prdId}/${item.id} → ${newId}`);
-            }
-          }
-        }
-
-        if (options.json) {
-          jsonOut({ fixed: allResults });
-        } else if (allResults.length > 0) {
-          console.log(`\n✓ Fixed ${allResults.length} duplicate(s)`);
-        }
-        return;
-      }
+      if (options.check && !isId) { handleGlobalCheck(epicDupes, taskDupes, options); return; }
+      if (isPath && newId) { handleManualRename(target, newId, epicIndex, taskIndex, options); return; }
+      if (isId) { handleTargetedCheckOrFix(target, epicDupes, taskDupes, epicIndex, taskIndex, options); return; }
+      if (options.fix && !isId) { handleGlobalFix(epicDupes, taskDupes, epicIndex, taskIndex, options); return; }
 
       // No action specified, show help
       console.log('Usage:');
